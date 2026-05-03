@@ -93,6 +93,20 @@ public partial class DrawingCanvas : IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    [JSInvokable]
+    public Task OnSelectionCleared()
+    {
+        if (SelectedEntityIds.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        SelectedEntityIds.Clear();
+        SelectionChanged?.Invoke(SelectedEntityIds);
+        _ = InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_canvasInstance is not null)

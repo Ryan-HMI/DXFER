@@ -355,6 +355,10 @@ function handlePointerUp(state, event) {
         invokeDotNet(state, "OnEntityClicked", clickedId);
         updateDebugAttributes(state);
         draw(state);
+      } else if (clearSelectedEntities(state)) {
+        invokeDotNet(state, "OnSelectionCleared");
+        updateDebugAttributes(state);
+        draw(state);
       }
     }
   }
@@ -571,6 +575,15 @@ function toggleSelectedEntity(state, id) {
   } else {
     state.selectedIds.add(id);
   }
+}
+
+function clearSelectedEntities(state) {
+  if (state.selectedIds.size === 0) {
+    return false;
+  }
+
+  state.selectedIds.clear();
+  return true;
 }
 
 function setHoveredEntity(state, id) {
