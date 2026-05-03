@@ -13,7 +13,7 @@
             <div class="dxfer-section-title">Fit</div>
             <button type="button" class="dxfer-button" @onclick="FitAsync" disabled="@(!HasDocument)">Fit Extents</button>
             <button type="button" class="dxfer-button" @onclick="MoveBoundsToOrigin" disabled="@(!HasDocument)">Bounds Min To Origin</button>
-            <button type="button" class="dxfer-button" @onclick="MoveSelectedPointToOrigin" disabled="@(!HasDocument || !HasSelection)">Selected Point To Origin</button>
+            <button type="button" class="dxfer-button" @onclick="MoveSelectedPointToOrigin" disabled="@(!CanMoveSelectedPointToOrigin)">Selected Point To Origin</button>
         </section>
 
         <section class="dxfer-tool-section">

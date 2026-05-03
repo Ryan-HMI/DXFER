@@ -34,6 +34,9 @@ public partial class DrawingWorkbench
     private bool CanAlignSelectedVector =>
         SelectionVectorResolver.TryGetAlignmentVector(_document, _selectedEntityIds, out _, out _);
 
+    private bool CanMoveSelectedPointToOrigin =>
+        SelectionPointResolver.TryGetPointToOriginReference(_document, _selectedEntityIds, out _);
+
     private Bounds2 Bounds => _document.GetBounds();
 
     private string HoverText => FormatSelectionKey(_hoveredEntityId);
@@ -131,9 +134,9 @@ public partial class DrawingWorkbench
 
     private void MoveSelectedPointToOrigin()
     {
-        if (!TryGetSelectedPoint(out var point))
+        if (!SelectionPointResolver.TryGetPointToOriginReference(_document, _selectedEntityIds, out var point))
         {
-            _status = "Select an entity with a reference point first.";
+            _status = "Select one point, circle, or arc before moving a point to origin.";
             return;
         }
 
@@ -244,27 +247,6 @@ public partial class DrawingWorkbench
         }
 
         return DrawingPrepService.TryGetMeasurement(_document, wholeEntityIds, out measurement);
-    }
-
-    private bool TryGetSelectedPoint(out Point2 point)
-    {
-        foreach (var selectionKey in _selectedEntityIds)
-        {
-            if (TryGetPointFromSelectionKey(selectionKey, out point))
-            {
-                return true;
-            }
-        }
-
-        var wholeEntityIds = GetWholeEntityIdsForOperations().ToArray();
-        if (wholeEntityIds.Length > 0
-            && DrawingPrepService.TryGetFirstPoint(_document, wholeEntityIds, out point))
-        {
-            return true;
-        }
-
-        point = default;
-        return false;
     }
 
     private bool TryGetTwoSelectedPoints(out Point2 first, out Point2 second)
