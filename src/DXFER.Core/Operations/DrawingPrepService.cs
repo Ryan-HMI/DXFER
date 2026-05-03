@@ -61,14 +61,26 @@ public static class DrawingPrepService
             return document;
         }
 
-        var targetAngle = axis == AxisDirection.X ? 0.0 : 90.0;
-        var rotation = targetAngle - vectorAngle;
-        var bounds = document.GetBounds();
-        var center = new Point2(
-            bounds.MinX + bounds.Width / 2.0,
-            bounds.MinY + bounds.Height / 2.0);
+        return AlignVectorToAxis(document, vectorAngle, axis);
+    }
 
-        return Transform(document, Transform2.RotationDegreesAbout(rotation, center));
+    public static DrawingDocument AlignVectorToAxis(
+        DrawingDocument document,
+        Point2 vectorStart,
+        Point2 vectorEnd,
+        AxisDirection axis)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+
+        var deltaX = vectorEnd.X - vectorStart.X;
+        var deltaY = vectorEnd.Y - vectorStart.Y;
+        if (Math.Sqrt(deltaX * deltaX + deltaY * deltaY) <= 0.000001)
+        {
+            return document;
+        }
+
+        var vectorAngle = Math.Atan2(deltaY, deltaX) * 180.0 / Math.PI;
+        return AlignVectorToAxis(document, vectorAngle, axis);
     }
 
     public static DrawingDocument OrientLongBoundsAxis(DrawingDocument document, AxisDirection axis)
@@ -146,6 +158,21 @@ public static class DrawingPrepService
 
         angle = default;
         return false;
+    }
+
+    private static DrawingDocument AlignVectorToAxis(
+        DrawingDocument document,
+        double vectorAngle,
+        AxisDirection axis)
+    {
+        var targetAngle = axis == AxisDirection.X ? 0.0 : 90.0;
+        var rotation = targetAngle - vectorAngle;
+        var bounds = document.GetBounds();
+        var center = new Point2(
+            bounds.MinX + bounds.Width / 2.0,
+            bounds.MinY + bounds.Height / 2.0);
+
+        return Transform(document, Transform2.RotationDegreesAbout(rotation, center));
     }
 
     private static bool TryGetVector(DrawingEntity entity, out Point2 start, out Point2 end)

@@ -70,6 +70,12 @@
     border-color: #7f96a8;
 }
 
+.dxfer-button-active {
+    color: #f8fbfd;
+    background: #1f4b5f;
+    border-color: #38bdf8;
+}
+
 .dxfer-button:disabled {
     color: #697781;
     background: #1d242a;

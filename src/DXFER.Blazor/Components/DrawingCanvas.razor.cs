@@ -25,6 +25,9 @@ public partial class DrawingCanvas : IAsyncDisposable
     public bool ShowToolbar { get; set; } = true;
 
     [Parameter]
+    public bool ShowOriginAxes { get; set; }
+
+    [Parameter]
     public Action<string?>? HoveredEntityChanged { get; set; }
 
     [Parameter]
@@ -40,6 +43,11 @@ public partial class DrawingCanvas : IAsyncDisposable
         {
             await SetCanvasDocumentAsync();
         }
+
+        if (_canvasInstance is not null)
+        {
+            await SetOriginAxesVisibilityAsync();
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -54,6 +62,7 @@ public partial class DrawingCanvas : IAsyncDisposable
         _canvasInstance = await _module.InvokeAsync<IJSObjectReference>("createDrawingCanvas", _canvas, _dotNetReference);
 
         await SetCanvasDocumentAsync();
+        await SetOriginAxesVisibilityAsync();
     }
 
     public async Task FitToExtentsAsync()
@@ -67,25 +76,39 @@ public partial class DrawingCanvas : IAsyncDisposable
     }
 
     [JSInvokable]
-    public Task OnEntityHovered(string? entityId)
+    public Task OnEntityHovered(string? selectionKey)
     {
-        if (StringComparer.Ordinal.Equals(HoveredEntityId, entityId))
+        if (StringComparer.Ordinal.Equals(HoveredEntityId, selectionKey))
         {
             return Task.CompletedTask;
         }
 
-        HoveredEntityId = entityId;
+        HoveredEntityId = selectionKey;
         HoveredEntityChanged?.Invoke(HoveredEntityId);
         _ = InvokeAsync(StateHasChanged);
         return Task.CompletedTask;
     }
 
     [JSInvokable]
-    public Task OnEntityClicked(string entityId)
+    public Task OnEntityClicked(string selectionKey)
     {
-        if (!SelectedEntityIds.Add(entityId))
+        if (!SelectedEntityIds.Add(selectionKey))
         {
-            SelectedEntityIds.Remove(entityId);
+            SelectedEntityIds.Remove(selectionKey);
+        }
+
+        SelectionChanged?.Invoke(SelectedEntityIds);
+        _ = InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnSelectionChangedFromCanvas(string[] selectionKeys)
+    {
+        SelectedEntityIds.Clear();
+        foreach (var selectionKey in selectionKeys)
+        {
+            SelectedEntityIds.Add(selectionKey);
         }
 
         SelectionChanged?.Invoke(SelectedEntityIds);
@@ -154,5 +177,15 @@ public partial class DrawingCanvas : IAsyncDisposable
 
         var dto = Document is null ? CanvasDocumentDto.Empty : CanvasDocumentDto.FromDocument(Document);
         await _canvasInstance.InvokeVoidAsync("setDocument", dto);
+    }
+
+    private async Task SetOriginAxesVisibilityAsync()
+    {
+        if (_canvasInstance is null)
+        {
+            return;
+        }
+
+        await _canvasInstance.InvokeVoidAsync("setOriginAxesVisible", ShowOriginAxes);
     }
 }

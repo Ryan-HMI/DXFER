@@ -63,6 +63,26 @@ public sealed class DrawingPrepServiceTests
     }
 
     [Fact]
+    public void AlignsExplicitVectorToGlobalYAxisAroundDocumentCenter()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("other"), new Point2(0, 10), new Point2(10, 10))
+        });
+
+        var aligned = DrawingPrepService.AlignVectorToAxis(
+            document,
+            new Point2(0, 0),
+            new Point2(10, 0),
+            AxisDirection.Y);
+
+        var edge = aligned.Entities[0].Should().BeOfType<LineEntity>().Subject;
+        Math.Abs(edge.End.X - edge.Start.X).Should().BeLessThan(0.0001);
+        Math.Abs(edge.End.Y - edge.Start.Y).Should().BeGreaterThan(9.999);
+    }
+
+    [Fact]
     public void ReportsDistanceWithAxisDeltas()
     {
         var measurement = MeasurementService.Measure(new Point2(2, 3), new Point2(8, 11));

@@ -12,6 +12,8 @@ namespace DXFER.Blazor.Components;
 public partial class DrawingWorkbench
 {
     private const long MaxDxfFileSize = 25 * 1024 * 1024;
+    private const string SegmentKeySeparator = "|segment|";
+    private const string PointKeySeparator = "|point|";
 
     private DrawingCanvas? _canvas;
     private DrawingDocument _document = SampleDrawingFactory.CreateCanvasPrototype();
@@ -20,6 +22,7 @@ public partial class DrawingWorkbench
     private string? _hoveredEntityId;
     private string _exportText = string.Empty;
     private GrainDirection _grainDirection = GrainDirection.GlobalX;
+    private bool _showOriginAxes;
     private readonly HashSet<string> _selectedEntityIds = new(StringComparer.Ordinal);
 
     private bool HasDocument => _document.Entities.Count > 0;
@@ -28,11 +31,13 @@ public partial class DrawingWorkbench
 
     private Bounds2 Bounds => _document.GetBounds();
 
+    private string HoverText => FormatSelectionKey(_hoveredEntityId);
+
     private string MeasurementText
     {
         get
         {
-            if (!DrawingPrepService.TryGetMeasurement(_document, _selectedEntityIds, out var measurement))
+            if (!TryGetSelectionMeasurement(out var measurement))
             {
                 return "none";
             }
@@ -123,14 +128,14 @@ public partial class DrawingWorkbench
 
     private void MoveSelectedPointToOrigin()
     {
-        if (!DrawingPrepService.TryGetFirstPoint(_document, _selectedEntityIds, out var point))
+        if (!TryGetSelectedPoint(out var point))
         {
             _status = "Select an entity with a reference point first.";
             return;
         }
 
         _document = DrawingPrepService.MovePointToOrigin(_document, point);
-        _status = "Moved first point from the selected entity to global origin.";
+        _status = "Moved selected reference point to global origin.";
         _exportText = string.Empty;
     }
 
@@ -142,9 +147,28 @@ public partial class DrawingWorkbench
 
     private void OrientLongAxisToY() => OrientLongAxis(AxisDirection.Y);
 
+    private void ToggleOriginAxes()
+    {
+        _showOriginAxes = !_showOriginAxes;
+        _status = _showOriginAxes
+            ? "Origin axes enabled."
+            : "Origin axes hidden.";
+    }
+
     private void AlignSelectedVector(AxisDirection axis)
     {
-        var vectorId = _selectedEntityIds.FirstOrDefault();
+        if (TryGetSelectedVector(out var vectorStart, out var vectorEnd))
+        {
+            var beforeVectorAlign = _document;
+            _document = DrawingPrepService.AlignVectorToAxis(_document, vectorStart, vectorEnd, axis);
+            _status = ReferenceEquals(beforeVectorAlign, _document)
+                ? "Selected points do not expose a usable vector."
+                : $"Aligned selected vector to global {axis}.";
+            _exportText = string.Empty;
+            return;
+        }
+
+        var vectorId = GetWholeEntityIdsForOperations().FirstOrDefault();
         if (vectorId is null)
         {
             _status = "Select a line or polyline segment to use as the alignment vector.";
@@ -195,6 +219,197 @@ public partial class DrawingWorkbench
         }
 
         _ = InvokeAsync(StateHasChanged);
+    }
+
+    private bool TryGetSelectionMeasurement(out MeasurementResult measurement)
+    {
+        if (TryGetTwoSelectedPoints(out var firstPoint, out var secondPoint))
+        {
+            measurement = MeasurementService.Measure(firstPoint, secondPoint);
+            return true;
+        }
+
+        if (TryGetSelectedSegment(out var segmentStart, out var segmentEnd))
+        {
+            measurement = MeasurementService.Measure(segmentStart, segmentEnd);
+            return true;
+        }
+
+        var wholeEntityIds = GetWholeEntityIdsForOperations().ToArray();
+        if (wholeEntityIds.Length == 0)
+        {
+            measurement = default;
+            return false;
+        }
+
+        return DrawingPrepService.TryGetMeasurement(_document, wholeEntityIds, out measurement);
+    }
+
+    private bool TryGetSelectedVector(out Point2 start, out Point2 end)
+    {
+        if (TryGetTwoSelectedPoints(out start, out end))
+        {
+            return true;
+        }
+
+        return TryGetSelectedSegment(out start, out end);
+    }
+
+    private bool TryGetSelectedPoint(out Point2 point)
+    {
+        foreach (var selectionKey in _selectedEntityIds)
+        {
+            if (TryGetPointFromSelectionKey(selectionKey, out point))
+            {
+                return true;
+            }
+        }
+
+        var wholeEntityIds = GetWholeEntityIdsForOperations().ToArray();
+        if (wholeEntityIds.Length > 0
+            && DrawingPrepService.TryGetFirstPoint(_document, wholeEntityIds, out point))
+        {
+            return true;
+        }
+
+        point = default;
+        return false;
+    }
+
+    private bool TryGetTwoSelectedPoints(out Point2 first, out Point2 second)
+    {
+        Point2? firstPoint = null;
+        Point2? secondPoint = null;
+
+        foreach (var selectionKey in _selectedEntityIds)
+        {
+            if (!TryGetPointFromSelectionKey(selectionKey, out var point))
+            {
+                continue;
+            }
+
+            if (firstPoint is null)
+            {
+                firstPoint = point;
+                continue;
+            }
+
+            secondPoint = point;
+            break;
+        }
+
+        if (firstPoint is { } firstValue && secondPoint is { } secondValue)
+        {
+            first = firstValue;
+            second = secondValue;
+            return true;
+        }
+
+        first = default;
+        second = default;
+        return false;
+    }
+
+    private bool TryGetSelectedSegment(out Point2 start, out Point2 end)
+    {
+        foreach (var selectionKey in _selectedEntityIds)
+        {
+            if (!TryParseSegmentSelectionKey(selectionKey, out var entityId, out var segmentIndex))
+            {
+                continue;
+            }
+
+            if (FindEntity(entityId) is PolylineEntity polyline
+                && segmentIndex >= 0
+                && segmentIndex < polyline.Vertices.Count - 1)
+            {
+                start = polyline.Vertices[segmentIndex];
+                end = polyline.Vertices[segmentIndex + 1];
+                return true;
+            }
+        }
+
+        start = default;
+        end = default;
+        return false;
+    }
+
+    private bool TryGetPointFromSelectionKey(string selectionKey, out Point2 point)
+    {
+        var separatorIndex = selectionKey.IndexOf(PointKeySeparator, StringComparison.Ordinal);
+        if (separatorIndex < 0)
+        {
+            point = default;
+            return false;
+        }
+
+        var tail = selectionKey[(separatorIndex + PointKeySeparator.Length)..];
+        var parts = tail.Split('|', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 3
+            || !double.TryParse(parts[^2], NumberStyles.Float, CultureInfo.InvariantCulture, out var x)
+            || !double.TryParse(parts[^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var y))
+        {
+            point = default;
+            return false;
+        }
+
+        point = new Point2(x, y);
+        return true;
+    }
+
+    private bool TryParseSegmentSelectionKey(string selectionKey, out string entityId, out int segmentIndex)
+    {
+        var separatorIndex = selectionKey.IndexOf(SegmentKeySeparator, StringComparison.Ordinal);
+        if (separatorIndex < 0)
+        {
+            entityId = string.Empty;
+            segmentIndex = default;
+            return false;
+        }
+
+        entityId = selectionKey[..separatorIndex];
+        return int.TryParse(
+            selectionKey[(separatorIndex + SegmentKeySeparator.Length)..],
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out segmentIndex);
+    }
+
+    private IEnumerable<string> GetWholeEntityIdsForOperations() =>
+        _selectedEntityIds
+            .Where(selectionKey =>
+                !selectionKey.Contains(PointKeySeparator, StringComparison.Ordinal)
+                && !selectionKey.Contains(SegmentKeySeparator, StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal);
+
+    private DrawingEntity? FindEntity(string entityId) =>
+        _document.Entities.FirstOrDefault(entity =>
+            StringComparer.Ordinal.Equals(entity.Id.Value, entityId));
+
+    private static string FormatSelectionKey(string? selectionKey)
+    {
+        if (string.IsNullOrWhiteSpace(selectionKey))
+        {
+            return "none";
+        }
+
+        var pointIndex = selectionKey.IndexOf(PointKeySeparator, StringComparison.Ordinal);
+        if (pointIndex >= 0)
+        {
+            var entityId = selectionKey[..pointIndex];
+            var tail = selectionKey[(pointIndex + PointKeySeparator.Length)..];
+            var parts = tail.Split('|', StringSplitOptions.RemoveEmptyEntries);
+            var label = parts.Length >= 3 ? string.Join(" ", parts[..^2]) : "point";
+            return $"{entityId} {label}";
+        }
+
+        var segmentIndex = selectionKey.IndexOf(SegmentKeySeparator, StringComparison.Ordinal);
+        if (segmentIndex >= 0)
+        {
+            return $"{selectionKey[..segmentIndex]} segment {selectionKey[(segmentIndex + SegmentKeySeparator.Length)..]}";
+        }
+
+        return selectionKey;
     }
 
     private static string FormatRange(double min, double max) => $"{FormatNumber(min)} to {FormatNumber(max)}";

@@ -17,6 +17,17 @@
         </section>
 
         <section class="dxfer-tool-section">
+            <div class="dxfer-section-title">View</div>
+            <button type="button"
+                    class="dxfer-button @(_showOriginAxes ? "dxfer-button-active" : null)"
+                    title="Toggle dotted global origin axes. X is red; Y is green."
+                    aria-pressed="@_showOriginAxes"
+                    @onclick="ToggleOriginAxes">
+                Origin Axes
+            </button>
+        </section>
+
+        <section class="dxfer-tool-section">
             <div class="dxfer-section-title">Align</div>
             <button type="button" class="dxfer-button" @onclick="AlignSelectedVectorToX" disabled="@(!HasSelection)">Selected Vector To X</button>
             <button type="button" class="dxfer-button" @onclick="AlignSelectedVectorToY" disabled="@(!HasSelection)">Selected Vector To Y</button>
@@ -41,6 +52,7 @@
         <DrawingCanvas @ref="_canvas"
                        Document="_document"
                        ShowToolbar="false"
+                       ShowOriginAxes="_showOriginAxes"
                        HoveredEntityChanged="OnHoveredEntityChanged"
                        SelectionChanged="OnSelectionChanged" />
     </main>
@@ -56,7 +68,7 @@
             <div class="dxfer-section-title">Selection</div>
             <dl class="dxfer-metrics">
                 <dt>Hover</dt>
-                <dd>@(_hoveredEntityId ?? "none")</dd>
+                <dd>@HoverText</dd>
                 <dt>Selected</dt>
                 <dd>@_selectedEntityIds.Count</dd>
                 <dt>Measure</dt>

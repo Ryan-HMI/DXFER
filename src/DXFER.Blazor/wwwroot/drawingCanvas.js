@@ -1,9 +1,12 @@
 const DEFAULT_FIT_MARGIN = 32;
 const HIT_TEST_TOLERANCE = 9;
+const SNAP_POINT_TOLERANCE = 8;
 const CLICK_MOVE_TOLERANCE = 5;
 const MIN_VIEW_SCALE = 0.000001;
 const MAX_VIEW_SCALE = 1000000;
 const FULL_CIRCLE_DEGREES = 360;
+const SEGMENT_KEY_SEPARATOR = "|segment|";
+const POINT_KEY_SEPARATOR = "|point|";
 
 export function createDrawingCanvas(canvas, dotnetRef) {
   const context = canvas.getContext("2d");
@@ -16,8 +19,9 @@ export function createDrawingCanvas(canvas, dotnetRef) {
     context,
     dotnetRef,
     document: null,
-    hoveredId: null,
-    selectedIds: new Set(),
+    showOriginAxes: false,
+    hoveredTarget: null,
+    selectedKeys: new Set(),
     view: {
       scale: 1,
       offsetX: 0,
@@ -28,6 +32,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
     panning: false,
     lastPointerScreen: null,
     clickCandidate: null,
+    selectionBox: null,
     previousTouchAction: canvas.style.touchAction
   };
 
@@ -38,6 +43,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
   const onPointerCancel = event => handlePointerCancel(state, event);
   const onPointerLeave = () => handlePointerLeave(state);
   const onWheel = event => handleWheel(state, event);
+  const onDoubleClick = event => handleDoubleClick(state, event);
   const onContextMenu = event => event.preventDefault();
 
   state.canvas.style.touchAction = "none";
@@ -47,6 +53,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
   state.canvas.addEventListener("pointercancel", onPointerCancel);
   state.canvas.addEventListener("pointerleave", onPointerLeave);
   state.canvas.addEventListener("wheel", onWheel, { passive: false });
+  state.canvas.addEventListener("dblclick", onDoubleClick);
   state.canvas.addEventListener("contextmenu", onContextMenu);
   window.addEventListener("resize", resize);
 
@@ -75,6 +82,12 @@ export function createDrawingCanvas(canvas, dotnetRef) {
       draw(state);
     },
 
+    setOriginAxesVisible(visible) {
+      state.showOriginAxes = Boolean(visible);
+      updateDebugAttributes(state);
+      draw(state);
+    },
+
     dispose() {
       state.disposed = true;
       state.canvas.removeEventListener("pointermove", onPointerMove);
@@ -83,6 +96,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
       state.canvas.removeEventListener("pointercancel", onPointerCancel);
       state.canvas.removeEventListener("pointerleave", onPointerLeave);
       state.canvas.removeEventListener("wheel", onWheel);
+      state.canvas.removeEventListener("dblclick", onDoubleClick);
       state.canvas.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("resize", resize);
 
@@ -91,7 +105,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
       }
 
       state.canvas.style.touchAction = state.previousTouchAction;
-      setHoveredEntity(state, null);
+      setHoveredTarget(state, null);
       updateDebugAttributes(state);
     }
   };
@@ -130,6 +144,10 @@ function draw(state) {
   context.fillStyle = "#0f172a";
   context.fillRect(0, 0, size.width, size.height);
 
+  if (state.showOriginAxes) {
+    drawOriginAxes(state, size);
+  }
+
   const entities = getDocumentEntities(state.document);
   for (const entity of entities) {
     drawEntity(state, entity, {
@@ -139,27 +157,28 @@ function draw(state) {
     });
   }
 
-  for (const entity of entities) {
-    const id = getEntityId(entity);
-    if (id && state.selectedIds.has(id)) {
-      drawEntity(state, entity, {
+  for (const selectedKey of state.selectedKeys) {
+    const target = resolveSelectionTarget(state, selectedKey);
+    if (target) {
+      drawTarget(state, target, {
         strokeStyle: "#38bdf8",
-        lineWidth: 4,
+        lineWidth: target.kind === "point" ? 2 : 4,
         lineDash: []
       });
     }
   }
 
-  if (state.hoveredId) {
-    const hoveredEntity = entities.find(entity => getEntityId(entity) === state.hoveredId);
-    if (hoveredEntity) {
-      const isSelected = state.selectedIds.has(state.hoveredId);
-      drawEntity(state, hoveredEntity, {
-        strokeStyle: isSelected ? "#fde68a" : "#f59e0b",
-        lineWidth: isSelected ? 2 : 3.5,
-        lineDash: isSelected ? [6, 4] : []
-      });
-    }
+  if (state.hoveredTarget) {
+    const isSelected = state.selectedKeys.has(state.hoveredTarget.key);
+    drawTarget(state, state.hoveredTarget, {
+      strokeStyle: isSelected ? "#fde68a" : "#f59e0b",
+      lineWidth: state.hoveredTarget.kind === "point" ? 2 : isSelected ? 2 : 3.5,
+      lineDash: isSelected ? [6, 4] : []
+    });
+  }
+
+  if (state.selectionBox) {
+    drawSelectionBox(state);
   }
 
   context.restore();
@@ -180,6 +199,129 @@ function drawEntity(state, entity, style) {
     context.stroke();
   }
 
+  context.restore();
+}
+
+function drawOriginAxes(state, size) {
+  const { context } = state;
+  const origin = worldToScreen(state, { x: 0, y: 0 });
+
+  context.save();
+  context.lineWidth = 1.25;
+  context.setLineDash([4, 5]);
+
+  context.strokeStyle = "#ef4444";
+  context.beginPath();
+  context.moveTo(0, origin.y);
+  context.lineTo(size.width, origin.y);
+  context.stroke();
+
+  context.strokeStyle = "#22c55e";
+  context.beginPath();
+  context.moveTo(origin.x, 0);
+  context.lineTo(origin.x, size.height);
+  context.stroke();
+
+  context.setLineDash([]);
+  context.strokeStyle = "#e5e7eb";
+  context.fillStyle = "#0f172a";
+  context.lineWidth = 1.5;
+  context.beginPath();
+  context.arc(origin.x, origin.y, 4, 0, Math.PI * 2);
+  context.fill();
+  context.stroke();
+  context.restore();
+}
+
+function drawTarget(state, target, style) {
+  const { context } = state;
+
+  if (target.kind === "point") {
+    drawPointTarget(state, target.point, style);
+    return;
+  }
+
+  context.save();
+  context.strokeStyle = style.strokeStyle;
+  context.lineWidth = style.lineWidth;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.setLineDash(style.lineDash || []);
+
+  const hasPath = target.kind === "segment"
+    ? buildPolylineSegmentPath(state, target.entity, target.segmentIndex)
+    : buildEntityPath(state, target.entity);
+  if (hasPath) {
+    context.stroke();
+  }
+
+  context.restore();
+
+  if (target.closestPoint) {
+    drawClosestPointMarker(state, target.closestPoint, style.strokeStyle);
+  }
+}
+
+function drawPointTarget(state, point, style) {
+  const { context } = state;
+  const screenPoint = worldToScreen(state, point);
+
+  context.save();
+  context.strokeStyle = style.strokeStyle;
+  context.fillStyle = "#0f172a";
+  context.lineWidth = style.lineWidth;
+  context.setLineDash([]);
+  context.beginPath();
+  context.arc(screenPoint.x, screenPoint.y, 5, 0, Math.PI * 2);
+  context.fill();
+  context.stroke();
+  context.beginPath();
+  context.moveTo(screenPoint.x - 8, screenPoint.y);
+  context.lineTo(screenPoint.x + 8, screenPoint.y);
+  context.moveTo(screenPoint.x, screenPoint.y - 8);
+  context.lineTo(screenPoint.x, screenPoint.y + 8);
+  context.stroke();
+  context.restore();
+}
+
+function drawClosestPointMarker(state, point, strokeStyle) {
+  const { context } = state;
+  const screenPoint = worldToScreen(state, point);
+
+  context.save();
+  context.strokeStyle = strokeStyle;
+  context.fillStyle = "#0f172a";
+  context.lineWidth = 1.5;
+  context.beginPath();
+  context.arc(screenPoint.x, screenPoint.y, 3.5, 0, Math.PI * 2);
+  context.fill();
+  context.stroke();
+  context.restore();
+}
+
+function drawSelectionBox(state) {
+  const { context, selectionBox } = state;
+  if (!selectionBox) {
+    return;
+  }
+
+  const rect = normalizeScreenRect(selectionBox.start, selectionBox.end);
+  const isCrossing = isCrossingSelection(selectionBox);
+  const isDeselect = selectionBox.operation === "deselect";
+  const strokeStyle = isDeselect ? "#f97316" : isCrossing ? "#22c55e" : "#38bdf8";
+  const fillStyle = isDeselect
+    ? "rgba(249, 115, 22, 0.14)"
+    : isCrossing
+      ? "rgba(34, 197, 94, 0.14)"
+      : "rgba(56, 189, 248, 0.14)";
+
+  context.save();
+  context.strokeStyle = strokeStyle;
+  context.fillStyle = fillStyle;
+  context.lineWidth = 1.5;
+  context.setLineDash(isCrossing ? [6, 4] : []);
+  context.fillRect(rect.minX, rect.minY, rect.maxX - rect.minX, rect.maxY - rect.minY);
+  context.strokeRect(rect.minX, rect.minY, rect.maxX - rect.minX, rect.maxY - rect.minY);
   context.restore();
 }
 
@@ -230,6 +372,21 @@ function buildPolylinePath(state, entity) {
     state.context.lineTo(screenPoint.x, screenPoint.y);
   }
 
+  return true;
+}
+
+function buildPolylineSegmentPath(state, entity, segmentIndex) {
+  const points = getEntityPoints(entity);
+  if (segmentIndex < 0 || segmentIndex >= points.length - 1) {
+    return false;
+  }
+
+  const start = worldToScreen(state, points[segmentIndex]);
+  const end = worldToScreen(state, points[segmentIndex + 1]);
+
+  state.context.beginPath();
+  state.context.moveTo(start.x, start.y);
+  state.context.lineTo(end.x, end.y);
   return true;
 }
 
@@ -288,11 +445,28 @@ function handlePointerMove(state, event) {
     const moveDistance = distanceBetweenScreenPoints(screenPoint, state.clickCandidate.screenPoint);
     if (moveDistance > CLICK_MOVE_TOLERANCE) {
       state.clickCandidate.cancelled = true;
+      if (state.clickCandidate.pointerId === event.pointerId && !state.selectionBox) {
+        state.selectionBox = {
+          start: state.clickCandidate.screenPoint,
+          end: screenPoint,
+          pointerId: event.pointerId,
+          operation: getSelectionBoxOperation(event)
+        };
+      }
     }
   }
 
-  const nearestId = findNearestEntityId(state, screenPoint);
-  if (setHoveredEntity(state, nearestId)) {
+  if (state.selectionBox && state.selectionBox.pointerId === event.pointerId) {
+    state.selectionBox.end = screenPoint;
+    state.selectionBox.operation = getSelectionBoxOperation(event);
+    event.preventDefault();
+    updateDebugAttributes(state);
+    draw(state);
+    return;
+  }
+
+  const nearestTarget = findNearestTarget(state, screenPoint);
+  if (setHoveredTarget(state, nearestTarget)) {
     draw(state);
   }
 }
@@ -309,6 +483,7 @@ function handlePointerDown(state, event) {
     state.panning = true;
     state.lastPointerScreen = screenPoint;
     state.clickCandidate = null;
+    state.selectionBox = null;
     event.preventDefault();
     return;
   }
@@ -335,11 +510,30 @@ function handlePointerUp(state, event) {
     releasePointer(state.canvas, event.pointerId);
     event.preventDefault();
 
-    const nearestId = findNearestEntityId(state, screenPoint);
-    if (setHoveredEntity(state, nearestId)) {
+    const nearestTarget = findNearestTarget(state, screenPoint);
+    if (setHoveredTarget(state, nearestTarget)) {
       draw(state);
     }
 
+    return;
+  }
+
+  if (state.selectionBox && state.selectionBox.pointerId === event.pointerId) {
+    state.selectionBox.end = screenPoint;
+    state.selectionBox.operation = getSelectionBoxOperation(event);
+    const changed = applyBoxSelection(state, state.selectionBox);
+    state.selectionBox = null;
+    state.clickCandidate = null;
+    if (changed) {
+      invokeDotNet(state, "OnSelectionChangedFromCanvas", Array.from(state.selectedKeys));
+    }
+
+    const nearestTarget = findNearestTarget(state, screenPoint);
+    setHoveredTarget(state, nearestTarget);
+    updateDebugAttributes(state);
+    draw(state);
+    releasePointer(state.canvas, event.pointerId);
+    event.preventDefault();
     return;
   }
 
@@ -349,13 +543,13 @@ function handlePointerUp(state, event) {
   if (candidate && candidate.pointerId === event.pointerId && !candidate.cancelled) {
     const moveDistance = distanceBetweenScreenPoints(screenPoint, candidate.screenPoint);
     if (moveDistance <= CLICK_MOVE_TOLERANCE) {
-      const clickedId = findNearestEntityId(state, screenPoint);
-      if (clickedId) {
-        toggleSelectedEntity(state, clickedId);
-        invokeDotNet(state, "OnEntityClicked", clickedId);
+      const clickedTarget = findNearestTarget(state, screenPoint);
+      if (clickedTarget) {
+        toggleSelectedTarget(state, clickedTarget);
+        invokeDotNet(state, "OnEntityClicked", clickedTarget.key);
         updateDebugAttributes(state);
         draw(state);
-      } else if (clearSelectedEntities(state)) {
+      } else if (clearSelectedTargets(state)) {
         invokeDotNet(state, "OnSelectionCleared");
         updateDebugAttributes(state);
         draw(state);
@@ -370,9 +564,10 @@ function handlePointerCancel(state, event) {
   state.panning = false;
   state.lastPointerScreen = null;
   state.clickCandidate = null;
+  state.selectionBox = null;
   releasePointer(state.canvas, event.pointerId);
 
-  if (setHoveredEntity(state, null)) {
+  if (setHoveredTarget(state, null)) {
     draw(state);
   }
 }
@@ -382,7 +577,14 @@ function handlePointerLeave(state) {
     return;
   }
 
-  if (setHoveredEntity(state, null)) {
+  if (state.selectionBox) {
+    state.selectionBox = null;
+    updateDebugAttributes(state);
+    draw(state);
+    return;
+  }
+
+  if (setHoveredTarget(state, null)) {
     draw(state);
   }
 }
@@ -408,10 +610,30 @@ function handleWheel(state, event) {
   state.view.offsetX = screenPoint.x - worldPoint.x * state.view.scale;
   state.view.offsetY = screenPoint.y + worldPoint.y * state.view.scale;
 
-  const nearestId = findNearestEntityId(state, screenPoint);
-  setHoveredEntity(state, nearestId);
+  const nearestTarget = findNearestTarget(state, screenPoint);
+  setHoveredTarget(state, nearestTarget);
   updateDebugAttributes(state);
   draw(state);
+}
+
+function handleDoubleClick(state, event) {
+  if (state.disposed || state.panning || state.selectionBox) {
+    return;
+  }
+
+  const screenPoint = getPointerScreenPoint(state, event);
+  const target = findNearestWholeEntityTarget(state, screenPoint);
+  if (!target) {
+    return;
+  }
+
+  state.selectedKeys.clear();
+  state.selectedKeys.add(target.key);
+  setHoveredTarget(state, target);
+  invokeDotNet(state, "OnSelectionChangedFromCanvas", Array.from(state.selectedKeys));
+  updateDebugAttributes(state);
+  draw(state);
+  event.preventDefault();
 }
 
 function fitToExtents(state) {
@@ -457,160 +679,587 @@ function screenToWorld(state, point) {
   };
 }
 
-function findNearestEntityId(state, screenPoint) {
-  let nearestId = null;
+function findNearestTarget(state, screenPoint) {
+  let nearestPointHit = null;
+  let nearestEdgeHit = null;
+
+  for (const entity of getDocumentEntities(state.document)) {
+    const pointHit = getEntityPointHit(state, entity, screenPoint);
+    if (pointHit && (!nearestPointHit || pointHit.distance < nearestPointHit.distance)) {
+      nearestPointHit = pointHit;
+    }
+
+    const edgeHit = getEntityEdgeHit(state, entity, screenPoint);
+    if (edgeHit && (!nearestEdgeHit || edgeHit.distance < nearestEdgeHit.distance)) {
+      nearestEdgeHit = edgeHit;
+    }
+  }
+
+  if (nearestPointHit && nearestPointHit.distance <= SNAP_POINT_TOLERANCE) {
+    return nearestPointHit.target;
+  }
+
+  if (nearestEdgeHit && nearestEdgeHit.distance <= HIT_TEST_TOLERANCE) {
+    return nearestEdgeHit.target;
+  }
+
+  return null;
+}
+
+function findNearestWholeEntityTarget(state, screenPoint) {
+  let nearestTarget = null;
   let nearestDistance = Number.POSITIVE_INFINITY;
 
   for (const entity of getDocumentEntities(state.document)) {
-    const id = getEntityId(entity);
-    if (!id) {
+    const target = createEntityTarget(entity);
+    if (!target) {
       continue;
     }
 
     const distance = getEntityScreenDistance(state, entity, screenPoint);
     if (distance < nearestDistance) {
       nearestDistance = distance;
-      nearestId = id;
+      nearestTarget = target;
     }
   }
 
-  return nearestDistance <= HIT_TEST_TOLERANCE ? nearestId : null;
+  return nearestDistance <= HIT_TEST_TOLERANCE ? nearestTarget : null;
 }
 
-function getEntityScreenDistance(state, entity, screenPoint) {
+function getEntityPointHit(state, entity, screenPoint) {
+  let nearestHit = null;
+
+  for (const snapPoint of getSnapPoints(entity)) {
+    const screenSnapPoint = worldToScreen(state, snapPoint.point);
+    const distance = distanceBetweenScreenPoints(screenPoint, screenSnapPoint);
+    if (!nearestHit || distance < nearestHit.distance) {
+      nearestHit = {
+        target: createPointTarget(entity, snapPoint.label, snapPoint.point),
+        distance
+      };
+    }
+  }
+
+  return nearestHit;
+}
+
+function getEntityEdgeHit(state, entity, screenPoint) {
   const kind = getEntityKind(entity);
 
   switch (kind) {
     case "line":
-      return getLineScreenDistance(state, entity, screenPoint);
+      return getLineEdgeHit(state, entity, screenPoint);
     case "polyline":
-      return getPolylineScreenDistance(state, entity, screenPoint);
+      return getPolylineSegmentScreenHit(state, entity, screenPoint);
     case "circle":
-      return getCircleScreenDistance(state, entity, screenPoint);
+      return getCircleEdgeHit(state, entity, screenPoint);
     case "arc":
-      return getArcScreenDistance(state, entity, screenPoint);
+      return getArcEdgeHit(state, entity, screenPoint);
     default:
-      return Number.POSITIVE_INFINITY;
+      return null;
   }
 }
 
-function getLineScreenDistance(state, entity, screenPoint) {
-  const points = getEntityPoints(entity);
-  if (points.length < 2) {
-    return Number.POSITIVE_INFINITY;
-  }
-
-  return distanceToScreenSegment(
-    screenPoint,
-    worldToScreen(state, points[0]),
-    worldToScreen(state, points[1]));
+function getEntityScreenDistance(state, entity, screenPoint) {
+  const hit = getEntityEdgeHit(state, entity, screenPoint);
+  return hit ? hit.distance : Number.POSITIVE_INFINITY;
 }
 
-function getPolylineScreenDistance(state, entity, screenPoint) {
+function getLineEdgeHit(state, entity, screenPoint) {
+  const target = createEntityTarget(entity);
   const points = getEntityPoints(entity);
-  if (points.length < 2) {
-    return Number.POSITIVE_INFINITY;
+  if (!target || points.length < 2) {
+    return null;
   }
 
-  let closest = Number.POSITIVE_INFINITY;
+  const start = worldToScreen(state, points[0]);
+  const end = worldToScreen(state, points[1]);
+  const projection = closestPointOnScreenSegment(screenPoint, start, end);
+
+  target.closestPoint = screenToWorld(state, projection.point);
+  return {
+    target,
+    distance: projection.distance
+  };
+}
+
+function getPolylineSegmentScreenHit(state, entity, screenPoint) {
+  const id = getEntityId(entity);
+  const points = getEntityPoints(entity);
+  if (!id || points.length < 2) {
+    return null;
+  }
+
+  let closestDistance = Number.POSITIVE_INFINITY;
+  let closestSegmentIndex = -1;
+  let closestWorldPoint = null;
 
   for (let index = 1; index < points.length; index += 1) {
-    closest = Math.min(
-      closest,
-      distanceToScreenSegment(
-        screenPoint,
-        worldToScreen(state, points[index - 1]),
-        worldToScreen(state, points[index])));
+    const projection = closestPointOnScreenSegment(
+      screenPoint,
+      worldToScreen(state, points[index - 1]),
+      worldToScreen(state, points[index]));
+    if (projection.distance < closestDistance) {
+      closestDistance = projection.distance;
+      closestSegmentIndex = index - 1;
+      closestWorldPoint = screenToWorld(state, projection.point);
+    }
   }
 
-  return closest;
+  return closestSegmentIndex < 0
+    ? null
+    : {
+      target: createPolylineSegmentTarget(entity, closestSegmentIndex, closestWorldPoint),
+      distance: closestDistance
+    };
 }
 
-function getCircleScreenDistance(state, entity, screenPoint) {
+function getCircleEdgeHit(state, entity, screenPoint) {
+  const target = createEntityTarget(entity);
   const center = getEntityCenter(entity);
   const radius = getEntityRadius(entity);
 
-  if (!center || !isFinitePositive(radius)) {
-    return Number.POSITIVE_INFINITY;
+  if (!target || !center || !isFinitePositive(radius)) {
+    return null;
   }
 
   const screenCenter = worldToScreen(state, center);
   const screenRadius = radius * state.view.scale;
-  return Math.abs(distanceBetweenScreenPoints(screenPoint, screenCenter) - screenRadius);
+  const vectorX = screenPoint.x - screenCenter.x;
+  const vectorY = screenPoint.y - screenCenter.y;
+  const vectorLength = Math.hypot(vectorX, vectorY);
+  const closestScreenPoint = vectorLength <= 0.000001
+    ? { x: screenCenter.x + screenRadius, y: screenCenter.y }
+    : {
+      x: screenCenter.x + vectorX / vectorLength * screenRadius,
+      y: screenCenter.y + vectorY / vectorLength * screenRadius
+    };
+
+  target.closestPoint = screenToWorld(state, closestScreenPoint);
+  return {
+    target,
+    distance: Math.abs(vectorLength - screenRadius)
+  };
 }
 
-function getArcScreenDistance(state, entity, screenPoint) {
+function getArcEdgeHit(state, entity, screenPoint) {
+  const target = createEntityTarget(entity);
   const center = getEntityCenter(entity);
   const radius = getEntityRadius(entity);
 
-  if (!center || !isFinitePositive(radius)) {
-    return Number.POSITIVE_INFINITY;
+  if (!target || !center || !isFinitePositive(radius)) {
+    return null;
   }
 
   const worldPoint = screenToWorld(state, screenPoint);
   const angleDegrees = radiansToDegrees(Math.atan2(worldPoint.y - center.y, worldPoint.x - center.x));
-  const startAngle = getEntityStartAngle(entity);
-  const endAngle = getEntityEndAngle(entity);
+  const screenCenter = worldToScreen(state, center);
+  const screenRadius = radius * state.view.scale;
 
-  if (isAngleOnArc(angleDegrees, startAngle, endAngle)) {
-    const screenCenter = worldToScreen(state, center);
-    const screenRadius = radius * state.view.scale;
-    return Math.abs(distanceBetweenScreenPoints(screenPoint, screenCenter) - screenRadius);
+  if (isAngleOnArc(angleDegrees, getEntityStartAngle(entity), getEntityEndAngle(entity))) {
+    const closestWorldPoint = pointOnCircle(center, radius, angleDegrees);
+    target.closestPoint = closestWorldPoint;
+    return {
+      target,
+      distance: Math.abs(distanceBetweenScreenPoints(screenPoint, screenCenter) - screenRadius)
+    };
   }
 
-  const endpoints = getArcEndpointWorldPoints(entity);
-  if (endpoints.length === 0) {
-    return Number.POSITIVE_INFINITY;
-  }
-
-  return endpoints.reduce((closest, point) => {
+  const endpointHits = getArcEndpointWorldPoints(entity).map(point => {
     const screenEndpoint = worldToScreen(state, point);
-    return Math.min(closest, distanceBetweenScreenPoints(screenPoint, screenEndpoint));
-  }, Number.POSITIVE_INFINITY);
-}
+    return {
+      point,
+      distance: distanceBetweenScreenPoints(screenPoint, screenEndpoint)
+    };
+  });
 
-function toggleSelectedEntity(state, id) {
-  if (state.selectedIds.has(id)) {
-    state.selectedIds.delete(id);
-  } else {
-    state.selectedIds.add(id);
+  const nearestEndpoint = endpointHits.reduce((nearest, candidate) =>
+    !nearest || candidate.distance < nearest.distance ? candidate : nearest, null);
+  if (!nearestEndpoint) {
+    return null;
   }
+
+  target.closestPoint = nearestEndpoint.point;
+  return {
+    target,
+    distance: nearestEndpoint.distance
+  };
 }
 
-function clearSelectedEntities(state) {
-  if (state.selectedIds.size === 0) {
+function applyBoxSelection(state, selectionBox) {
+  const rect = normalizeScreenRect(selectionBox.start, selectionBox.end);
+  const crossing = isCrossingSelection(selectionBox);
+  const operation = selectionBox.operation;
+  const targets = getBoxSelectionTargets(state, rect, crossing);
+  let changed = false;
+
+  for (const target of targets) {
+    if (operation === "deselect") {
+      if (state.selectedKeys.delete(target.key)) {
+        changed = true;
+      }
+    } else if (!state.selectedKeys.has(target.key)) {
+      state.selectedKeys.add(target.key);
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+function getBoxSelectionTargets(state, rect, crossing) {
+  const targets = [];
+
+  for (const entity of getDocumentEntities(state.document)) {
+    const target = createEntityTarget(entity);
+    if (!target) {
+      continue;
+    }
+
+    const hit = crossing
+      ? entityIntersectsScreenRect(state, entity, rect)
+      : entityInsideScreenRect(state, entity, rect);
+    if (hit) {
+      targets.push(target);
+    }
+  }
+
+  return targets;
+}
+
+function entityInsideScreenRect(state, entity, rect) {
+  const bounds = getEntityScreenBounds(state, entity);
+  return bounds
+    && bounds.minX >= rect.minX
+    && bounds.maxX <= rect.maxX
+    && bounds.minY >= rect.minY
+    && bounds.maxY <= rect.maxY;
+}
+
+function entityIntersectsScreenRect(state, entity, rect) {
+  const bounds = getEntityScreenBounds(state, entity);
+  if (!bounds || !screenRectsOverlap(bounds, rect)) {
     return false;
   }
 
-  state.selectedIds.clear();
+  const segments = getEntityScreenSegments(state, entity);
+  if (segments.length === 0) {
+    const center = getEntityCenter(entity);
+    return center ? pointInScreenRect(worldToScreen(state, center), rect) : false;
+  }
+
+  return segments.some(segment =>
+    pointInScreenRect(segment.start, rect)
+    || pointInScreenRect(segment.end, rect)
+    || screenSegmentIntersectsRect(segment.start, segment.end, rect));
+}
+
+function getEntityScreenBounds(state, entity) {
+  const points = getEntityScreenSamplePoints(state, entity);
+  if (points.length === 0) {
+    return null;
+  }
+
+  let bounds = null;
+  for (const point of points) {
+    bounds = includeScreenBoundsPoint(bounds, point);
+  }
+
+  return bounds;
+}
+
+function getEntityScreenSegments(state, entity) {
+  const points = getEntityScreenSamplePoints(state, entity);
+  const segments = [];
+
+  for (let index = 1; index < points.length; index += 1) {
+    segments.push({
+      start: points[index - 1],
+      end: points[index]
+    });
+  }
+
+  if (getEntityKind(entity) === "circle" && points.length > 2) {
+    segments.push({
+      start: points[points.length - 1],
+      end: points[0]
+    });
+  }
+
+  return segments;
+}
+
+function getEntityScreenSamplePoints(state, entity) {
+  const kind = getEntityKind(entity);
+
+  if (kind === "line" || kind === "polyline") {
+    return getEntityPoints(entity).map(point => worldToScreen(state, point));
+  }
+
+  if (kind === "circle") {
+    const center = getEntityCenter(entity);
+    const radius = getEntityRadius(entity);
+    if (!center || !isFinitePositive(radius)) {
+      return [];
+    }
+
+    const points = [];
+    for (let index = 0; index < 32; index += 1) {
+      points.push(worldToScreen(state, pointOnCircle(center, radius, index * FULL_CIRCLE_DEGREES / 32)));
+    }
+
+    return points;
+  }
+
+  if (kind === "arc") {
+    return getArcWorldPoints(entity).map(point => worldToScreen(state, point));
+  }
+
+  return [];
+}
+
+function getSnapPoints(entity) {
+  const kind = getEntityKind(entity);
+
+  switch (kind) {
+    case "line":
+      return getLineSnapPoints(entity);
+    case "polyline":
+      return getPolylineSnapPoints(entity);
+    case "circle":
+      return getCircleSnapPoints(entity);
+    case "arc":
+      return getArcSnapPoints(entity);
+    default:
+      return [];
+  }
+}
+
+function getLineSnapPoints(entity) {
+  const points = getEntityPoints(entity);
+  if (points.length < 2) {
+    return [];
+  }
+
+  return [
+    { label: "start", point: points[0] },
+    { label: "end", point: points[1] },
+    { label: "mid", point: midpoint(points[0], points[1]) }
+  ];
+}
+
+function getPolylineSnapPoints(entity) {
+  const points = getEntityPoints(entity);
+  const snapPoints = [];
+
+  for (let index = 0; index < points.length; index += 1) {
+    snapPoints.push({ label: `vertex-${index}`, point: points[index] });
+  }
+
+  for (let index = 1; index < points.length; index += 1) {
+    snapPoints.push({ label: `mid-${index - 1}`, point: midpoint(points[index - 1], points[index]) });
+  }
+
+  return snapPoints;
+}
+
+function getCircleSnapPoints(entity) {
+  const center = getEntityCenter(entity);
+  const radius = getEntityRadius(entity);
+  if (!center || !isFinitePositive(radius)) {
+    return [];
+  }
+
+  return [
+    { label: "center", point: center },
+    { label: "quadrant-0", point: pointOnCircle(center, radius, 0) },
+    { label: "quadrant-90", point: pointOnCircle(center, radius, 90) },
+    { label: "quadrant-180", point: pointOnCircle(center, radius, 180) },
+    { label: "quadrant-270", point: pointOnCircle(center, radius, 270) }
+  ];
+}
+
+function getArcSnapPoints(entity) {
+  const center = getEntityCenter(entity);
+  const radius = getEntityRadius(entity);
+  if (!center || !isFinitePositive(radius)) {
+    return [];
+  }
+
+  const startAngle = getEntityStartAngle(entity);
+  const endAngle = getEntityEndAngle(entity);
+  const sweep = getPositiveSweepDegrees(startAngle, endAngle);
+  const snapPoints = [
+    { label: "center", point: center },
+    { label: "start", point: pointOnCircle(center, radius, startAngle) },
+    { label: "end", point: pointOnCircle(center, radius, endAngle) },
+    { label: "mid", point: pointOnCircle(center, radius, startAngle + sweep / 2) }
+  ];
+
+  for (const quadrantAngle of [0, 90, 180, 270]) {
+    if (isAngleOnArc(quadrantAngle, startAngle, endAngle)) {
+      snapPoints.push({
+        label: `quadrant-${quadrantAngle}`,
+        point: pointOnCircle(center, radius, quadrantAngle)
+      });
+    }
+  }
+
+  return snapPoints;
+}
+
+function createEntityTarget(entity) {
+  const id = getEntityId(entity);
+  if (!id) {
+    return null;
+  }
+
+  return {
+    kind: "entity",
+    key: id,
+    entityId: id,
+    entity
+  };
+}
+
+function createPolylineSegmentTarget(entity, segmentIndex, closestPoint) {
+  const id = getEntityId(entity);
+  if (!id) {
+    return null;
+  }
+
+  return {
+    kind: "segment",
+    key: `${id}${SEGMENT_KEY_SEPARATOR}${segmentIndex}`,
+    entityId: id,
+    entity,
+    segmentIndex,
+    closestPoint
+  };
+}
+
+function createPointTarget(entity, label, point) {
+  const id = getEntityId(entity);
+  if (!id) {
+    return null;
+  }
+
+  return {
+    kind: "point",
+    key: `${id}${POINT_KEY_SEPARATOR}${sanitizeKeyPart(label)}|${formatKeyNumber(point.x)}|${formatKeyNumber(point.y)}`,
+    entityId: id,
+    entity,
+    label,
+    point
+  };
+}
+
+function resolveSelectionTarget(state, key) {
+  const pointTarget = parsePointTargetKey(state, key);
+  if (pointTarget) {
+    return pointTarget;
+  }
+
+  const segmentTarget = parseSegmentTargetKey(state, key);
+  if (segmentTarget) {
+    return segmentTarget;
+  }
+
+  const entity = getDocumentEntities(state.document)
+    .find(candidate => StringComparer(getEntityId(candidate), key));
+  return entity ? createEntityTarget(entity) : null;
+}
+
+function parsePointTargetKey(state, key) {
+  const separatorIndex = key.indexOf(POINT_KEY_SEPARATOR);
+  if (separatorIndex < 0) {
+    return null;
+  }
+
+  const entityId = key.slice(0, separatorIndex);
+  const parts = key.slice(separatorIndex + POINT_KEY_SEPARATOR.length).split("|");
+  if (parts.length < 3) {
+    return null;
+  }
+
+  const x = Number(parts[parts.length - 2]);
+  const y = Number(parts[parts.length - 1]);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+
+  const entity = getDocumentEntities(state.document)
+    .find(candidate => StringComparer(getEntityId(candidate), entityId));
+  if (!entity) {
+    return null;
+  }
+
+  return {
+    kind: "point",
+    key,
+    entityId,
+    entity,
+    label: parts.slice(0, parts.length - 2).join("|"),
+    point: { x, y }
+  };
+}
+
+function parseSegmentTargetKey(state, key) {
+  const separatorIndex = key.indexOf(SEGMENT_KEY_SEPARATOR);
+  if (separatorIndex < 0) {
+    return null;
+  }
+
+  const entityId = key.slice(0, separatorIndex);
+  const segmentIndex = Number(key.slice(separatorIndex + SEGMENT_KEY_SEPARATOR.length));
+  if (!Number.isInteger(segmentIndex)) {
+    return null;
+  }
+
+  const entity = getDocumentEntities(state.document)
+    .find(candidate => StringComparer(getEntityId(candidate), entityId));
+  return entity ? createPolylineSegmentTarget(entity, segmentIndex, null) : null;
+}
+
+function toggleSelectedTarget(state, target) {
+  if (state.selectedKeys.has(target.key)) {
+    state.selectedKeys.delete(target.key);
+  } else {
+    state.selectedKeys.add(target.key);
+  }
+}
+
+function clearSelectedTargets(state) {
+  if (state.selectedKeys.size === 0) {
+    return false;
+  }
+
+  state.selectedKeys.clear();
   return true;
 }
 
-function setHoveredEntity(state, id) {
-  if (state.hoveredId === id) {
+function setHoveredTarget(state, target) {
+  const previousKey = state.hoveredTarget ? state.hoveredTarget.key : null;
+  const nextKey = target ? target.key : null;
+  if (previousKey === nextKey) {
     return false;
   }
 
-  state.hoveredId = id;
-  invokeDotNet(state, "OnEntityHovered", id);
+  state.hoveredTarget = target;
+  invokeDotNet(state, "OnEntityHovered", nextKey);
   updateDebugAttributes(state);
   return true;
 }
 
 function pruneInteractionState(state) {
-  const entityIds = new Set(
-    getDocumentEntities(state.document)
-      .map(entity => getEntityId(entity))
-      .filter(id => id));
-
-  for (const selectedId of state.selectedIds) {
-    if (!entityIds.has(selectedId)) {
-      state.selectedIds.delete(selectedId);
+  for (const selectedKey of Array.from(state.selectedKeys)) {
+    if (!resolveSelectionTarget(state, selectedKey)) {
+      state.selectedKeys.delete(selectedKey);
     }
   }
 
-  if (state.hoveredId && !entityIds.has(state.hoveredId)) {
-    setHoveredEntity(state, null);
+  if (state.hoveredTarget && !resolveSelectionTarget(state, state.hoveredTarget.key)) {
+    setHoveredTarget(state, null);
   }
 
   updateDebugAttributes(state);
@@ -619,8 +1268,14 @@ function pruneInteractionState(state) {
 function updateDebugAttributes(state) {
   const entities = getDocumentEntities(state.document);
   state.canvas.dataset.entityCount = String(entities.length);
-  state.canvas.dataset.selectedCount = String(state.selectedIds.size);
-  state.canvas.dataset.hoveredId = state.hoveredId || "";
+  state.canvas.dataset.selectedCount = String(state.selectedKeys.size);
+  state.canvas.dataset.selectedKeys = Array.from(state.selectedKeys).join(",");
+  state.canvas.dataset.hoveredId = state.hoveredTarget ? state.hoveredTarget.key : "";
+  state.canvas.dataset.hoveredKind = state.hoveredTarget ? state.hoveredTarget.kind : "";
+  state.canvas.dataset.selectionBoxMode = state.selectionBox
+    ? `${state.selectionBox.operation}:${isCrossingSelection(state.selectionBox) ? "crossing" : "window"}`
+    : "";
+  state.canvas.dataset.originAxes = state.showOriginAxes ? "true" : "false";
   state.canvas.dataset.scale = String(state.view.scale);
   state.canvas.dataset.offsetX = String(state.view.offsetX);
   state.canvas.dataset.offsetY = String(state.view.offsetY);
@@ -677,6 +1332,79 @@ function getPointerScreenPoint(state, event) {
 
 function isPanPointerDown(event) {
   return event.button === 1 || event.button === 2 || (event.button === 0 && event.shiftKey);
+}
+
+function getSelectionBoxOperation(event) {
+  return event.ctrlKey || event.metaKey ? "deselect" : "add";
+}
+
+function isCrossingSelection(selectionBox) {
+  return selectionBox.end.x < selectionBox.start.x;
+}
+
+function normalizeScreenRect(first, second) {
+  return {
+    minX: Math.min(first.x, second.x),
+    minY: Math.min(first.y, second.y),
+    maxX: Math.max(first.x, second.x),
+    maxY: Math.max(first.y, second.y)
+  };
+}
+
+function pointInScreenRect(point, rect) {
+  return point.x >= rect.minX && point.x <= rect.maxX && point.y >= rect.minY && point.y <= rect.maxY;
+}
+
+function screenRectsOverlap(first, second) {
+  return first.minX <= second.maxX
+    && first.maxX >= second.minX
+    && first.minY <= second.maxY
+    && first.maxY >= second.minY;
+}
+
+function screenSegmentIntersectsRect(start, end, rect) {
+  const corners = [
+    { x: rect.minX, y: rect.minY },
+    { x: rect.maxX, y: rect.minY },
+    { x: rect.maxX, y: rect.maxY },
+    { x: rect.minX, y: rect.maxY }
+  ];
+
+  return segmentsIntersect(start, end, corners[0], corners[1])
+    || segmentsIntersect(start, end, corners[1], corners[2])
+    || segmentsIntersect(start, end, corners[2], corners[3])
+    || segmentsIntersect(start, end, corners[3], corners[0]);
+}
+
+function segmentsIntersect(firstStart, firstEnd, secondStart, secondEnd) {
+  const d1 = orientation(firstStart, firstEnd, secondStart);
+  const d2 = orientation(firstStart, firstEnd, secondEnd);
+  const d3 = orientation(secondStart, secondEnd, firstStart);
+  const d4 = orientation(secondStart, secondEnd, firstEnd);
+
+  return d1 * d2 <= 0 && d3 * d4 <= 0;
+}
+
+function orientation(a, b, c) {
+  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+function includeScreenBoundsPoint(bounds, point) {
+  if (!bounds) {
+    return {
+      minX: point.x,
+      minY: point.y,
+      maxX: point.x,
+      maxY: point.y
+    };
+  }
+
+  return {
+    minX: Math.min(bounds.minX, point.x),
+    minY: Math.min(bounds.minY, point.y),
+    maxX: Math.max(bounds.maxX, point.x),
+    maxY: Math.max(bounds.maxY, point.y)
+  };
 }
 
 function normalizeWheelDelta(event) {
@@ -937,6 +1665,13 @@ function pointOnCircle(center, radius, angleDegrees) {
   };
 }
 
+function midpoint(start, end) {
+  return {
+    x: (start.x + end.x) / 2,
+    y: (start.y + end.y) / 2
+  };
+}
+
 function isAngleOnArc(angleDegrees, startAngleDegrees, endAngleDegrees) {
   const sweep = getPositiveSweepDegrees(startAngleDegrees, endAngleDegrees);
   if (sweep >= FULL_CIRCLE_DEGREES) {
@@ -966,22 +1701,29 @@ function getCounterClockwiseDeltaDegrees(startAngleDegrees, angleDegrees) {
   return delta < 0 ? delta + FULL_CIRCLE_DEGREES : delta;
 }
 
-function distanceToScreenSegment(point, start, end) {
+function closestPointOnScreenSegment(point, start, end) {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const lengthSquared = dx * dx + dy * dy;
 
   if (lengthSquared === 0) {
-    return distanceBetweenScreenPoints(point, start);
+    return {
+      point: start,
+      distance: distanceBetweenScreenPoints(point, start)
+    };
   }
 
   const projected = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
   const clamped = clamp(projected, 0, 1);
-
-  return distanceBetweenScreenPoints(point, {
+  const closestPoint = {
     x: start.x + dx * clamped,
     y: start.y + dy * clamped
-  });
+  };
+
+  return {
+    point: closestPoint,
+    distance: distanceBetweenScreenPoints(point, closestPoint)
+  };
 }
 
 function distanceBetweenScreenPoints(first, second) {
@@ -1002,4 +1744,16 @@ function isFinitePositive(value) {
 
 function clamp(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function formatKeyNumber(value) {
+  return String(Math.round(value * 1000000) / 1000000);
+}
+
+function sanitizeKeyPart(value) {
+  return String(value).replaceAll("|", "-");
+}
+
+function StringComparer(first, second) {
+  return first === second;
 }
