@@ -1,0 +1,12 @@
+C:\Users\roter\source\repos\DXFER\src\DXFER.Core\bin\Debug\net8.0\DXFER.Core.deps.json
+C:\Users\roter\source\repos\DXFER\src\DXFER.Core\bin\Debug\net8.0\DXFER.Core.dll
+C:\Users\roter\source\repos\DXFER\src\DXFER.Core\bin\Debug\net8.0\DXFER.Core.pdb
+C:\Users\roter\source\repos\DXFER\src\DXFER.Core\obj\Debug\net8.0\DXFER.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\roter\source\repos\DXFER\src\DXFER.Core\obj\Debug\net8.0\DXFER.Core.AssemblyInfoInputs.cache
+C:\Users\roter\source\repos\DXFER\src\DXFER.Core\obj\Debug\net8.0\DXFER.Core.AssemblyInfo.cs
+C:\Users\roter\source\repos\DXFER\src\DXFER.Core\obj\Debug\net8.0\DXFER.Core.csproj.CoreCompileInputs.cache
+C:\Users\roter\source\repos\DXFER\src\DXFER.Core\obj\Debug\net8.0\DXFER.Core.sourcelink.json
+C:\Users\roter\source\repos\DXFER\src\DXFER.Core\obj\Debug\net8.0\DXFER.Core.dll
+C:\Users\roter\source\repos\DXFER\src\DXFER.Core\obj\Debug\net8.0\refint\DXFER.Core.dll
+C:\Users\roter\source\repos\DXFER\src\DXFER.Core\obj\Debug\net8.0\DXFER.Core.pdb
+C:\Users\roter\source\repos\DXFER\src\DXFER.Core\obj\Debug\net8.0\ref\DXFER.Core.dll

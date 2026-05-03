@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DXFER.Blazor/DXFER.Blazor.csproj" />
+    <Project Path="src/DXFER.Core/DXFER.Core.csproj" />
+    <Project Path="src/DXFER.Web/DXFER.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DXFER.Core.Tests/DXFER.Core.Tests.csproj" />
+  </Folder>
+</Solution>
