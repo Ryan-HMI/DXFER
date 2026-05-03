@@ -611,6 +611,35 @@ function updateDebugAttributes(state) {
   state.canvas.dataset.scale = String(state.view.scale);
   state.canvas.dataset.offsetX = String(state.view.offsetX);
   state.canvas.dataset.offsetY = String(state.view.offsetY);
+
+  const rect = state.canvas.getBoundingClientRect();
+  state.canvas.dataset.canvasLeft = String(rect.left);
+  state.canvas.dataset.canvasTop = String(rect.top);
+  state.canvas.dataset.canvasWidth = String(rect.width);
+  state.canvas.dataset.canvasHeight = String(rect.height);
+
+  const firstEntity = entities[0];
+  if (!firstEntity) {
+    state.canvas.dataset.firstEntity = "";
+    state.canvas.dataset.firstPointCount = "0";
+    state.canvas.dataset.firstScreenStart = "";
+    state.canvas.dataset.firstScreenEnd = "";
+    return;
+  }
+
+  const firstPoints = getEntityPoints(firstEntity);
+  state.canvas.dataset.firstEntity = `${getEntityKind(firstEntity)}:${getEntityId(firstEntity) || ""}`;
+  state.canvas.dataset.firstPointCount = String(firstPoints.length);
+
+  if (firstPoints.length >= 2) {
+    const firstScreenStart = worldToScreen(state, firstPoints[0]);
+    const firstScreenEnd = worldToScreen(state, firstPoints[1]);
+    state.canvas.dataset.firstScreenStart = `${firstScreenStart.x},${firstScreenStart.y}`;
+    state.canvas.dataset.firstScreenEnd = `${firstScreenEnd.x},${firstScreenEnd.y}`;
+  } else {
+    state.canvas.dataset.firstScreenStart = "";
+    state.canvas.dataset.firstScreenEnd = "";
+  }
 }
 
 function getCanvasCssSize(state) {
