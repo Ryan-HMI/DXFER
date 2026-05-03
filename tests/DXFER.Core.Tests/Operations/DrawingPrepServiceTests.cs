@@ -83,6 +83,26 @@ public sealed class DrawingPrepServiceTests
     }
 
     [Fact]
+    public void RepeatingAxisAlignmentFlipsParallelVectorDirection()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("other"), new Point2(0, 10), new Point2(10, 10))
+        });
+
+        var flipped = DrawingPrepService.AlignVectorToAxis(
+            document,
+            new Point2(0, 0),
+            new Point2(10, 0),
+            AxisDirection.X);
+
+        var edge = flipped.Entities[0].Should().BeOfType<LineEntity>().Subject;
+        edge.End.X.Should().BeLessThan(edge.Start.X);
+        Math.Abs(edge.End.Y - edge.Start.Y).Should().BeLessThan(0.0001);
+    }
+
+    [Fact]
     public void ReportsDistanceWithAxisDeltas()
     {
         var measurement = MeasurementService.Measure(new Point2(2, 3), new Point2(8, 11));

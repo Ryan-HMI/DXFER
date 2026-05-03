@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using DXFER.Blazor.Selection;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
 using DXFER.Core.IO;
@@ -21,13 +22,17 @@ public partial class DrawingWorkbench
     private string _status = "Ready. Select a line to align a vector or load a DXF.";
     private string? _hoveredEntityId;
     private string _exportText = string.Empty;
-    private GrainDirection _grainDirection = GrainDirection.GlobalX;
+    private GrainDirection _grainDirection = GrainDirection.None;
     private bool _showOriginAxes;
+    private int _selectionResetToken;
     private readonly HashSet<string> _selectedEntityIds = new(StringComparer.Ordinal);
 
     private bool HasDocument => _document.Entities.Count > 0;
 
     private bool HasSelection => _selectedEntityIds.Count > 0;
+
+    private bool CanAlignSelectedVector =>
+        SelectionVectorResolver.TryGetAlignmentVector(_document, _selectedEntityIds, out _, out _);
 
     private Bounds2 Bounds => _document.GetBounds();
 
@@ -95,8 +100,7 @@ public partial class DrawingWorkbench
         }
 
         _document = document;
-        _selectedEntityIds.Clear();
-        _hoveredEntityId = null;
+        ResetSelection();
         _status = $"Loaded {document.Entities.Count} supported entities from DXF.";
     }
 
@@ -106,8 +110,7 @@ public partial class DrawingWorkbench
         _fileName = "Sample flat pattern";
         _status = "Sample drawing loaded.";
         _exportText = string.Empty;
-        _selectedEntityIds.Clear();
-        _hoveredEntityId = null;
+        ResetSelection();
     }
 
     private async Task FitAsync()
@@ -157,28 +160,16 @@ public partial class DrawingWorkbench
 
     private void AlignSelectedVector(AxisDirection axis)
     {
-        if (TryGetSelectedVector(out var vectorStart, out var vectorEnd))
+        if (!SelectionVectorResolver.TryGetAlignmentVector(_document, _selectedEntityIds, out var vectorStart, out var vectorEnd))
         {
-            var beforeVectorAlign = _document;
-            _document = DrawingPrepService.AlignVectorToAxis(_document, vectorStart, vectorEnd, axis);
-            _status = ReferenceEquals(beforeVectorAlign, _document)
-                ? "Selected points do not expose a usable vector."
-                : $"Aligned selected vector to global {axis}.";
-            _exportText = string.Empty;
-            return;
-        }
-
-        var vectorId = GetWholeEntityIdsForOperations().FirstOrDefault();
-        if (vectorId is null)
-        {
-            _status = "Select a line or polyline segment to use as the alignment vector.";
+            _status = "Select one line or segment, or exactly two points, before aligning a vector.";
             return;
         }
 
         var before = _document;
-        _document = DrawingPrepService.AlignVectorToAxis(_document, vectorId, axis);
+        _document = DrawingPrepService.AlignVectorToAxis(_document, vectorStart, vectorEnd, axis);
         _status = ReferenceEquals(before, _document)
-            ? "Selected entity does not expose a usable vector."
+            ? "Selected vector has no usable length."
             : $"Aligned selected vector to global {axis}.";
         _exportText = string.Empty;
     }
@@ -193,9 +184,12 @@ public partial class DrawingWorkbench
     private void SetGrainDirection(GrainDirection grainDirection)
     {
         _grainDirection = grainDirection;
-        _status = grainDirection == GrainDirection.GlobalX
-            ? "Grain annotation set to global X."
-            : "Grain annotation set to global Y.";
+        _status = grainDirection switch
+        {
+            GrainDirection.GlobalX => "Grain annotation set to global X.",
+            GrainDirection.GlobalY => "Grain annotation set to global Y.",
+            _ => "Grain annotation cleared."
+        };
     }
 
     private void GenerateDxfExport()
@@ -221,6 +215,13 @@ public partial class DrawingWorkbench
         _ = InvokeAsync(StateHasChanged);
     }
 
+    private void ResetSelection()
+    {
+        _selectedEntityIds.Clear();
+        _hoveredEntityId = null;
+        _selectionResetToken++;
+    }
+
     private bool TryGetSelectionMeasurement(out MeasurementResult measurement)
     {
         if (TryGetTwoSelectedPoints(out var firstPoint, out var secondPoint))
@@ -243,16 +244,6 @@ public partial class DrawingWorkbench
         }
 
         return DrawingPrepService.TryGetMeasurement(_document, wholeEntityIds, out measurement);
-    }
-
-    private bool TryGetSelectedVector(out Point2 start, out Point2 end)
-    {
-        if (TryGetTwoSelectedPoints(out start, out end))
-        {
-            return true;
-        }
-
-        return TryGetSelectedSegment(out start, out end);
     }
 
     private bool TryGetSelectedPoint(out Point2 point)

@@ -21,6 +21,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
     dotnetRef,
     document: null,
     showOriginAxes: false,
+    grainDirection: "none",
     hoveredTarget: null,
     selectedKeys: new Set(),
     view: {
@@ -71,7 +72,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
   return {
     setDocument(document) {
       state.document = document || null;
-      pruneInteractionState(state);
+      pruneInteractionState(state, true);
       fitToExtents(state);
       updateDebugAttributes(state);
       draw(state);
@@ -79,6 +80,18 @@ export function createDrawingCanvas(canvas, dotnetRef) {
 
     fitToExtents() {
       fitToExtents(state);
+      updateDebugAttributes(state);
+      draw(state);
+    },
+
+    setGrainDirection(direction) {
+      state.grainDirection = normalizeGrainDirection(direction);
+      updateDebugAttributes(state);
+      draw(state);
+    },
+
+    clearSelection() {
+      clearInteractionState(state);
       updateDebugAttributes(state);
       draw(state);
     },
@@ -182,6 +195,8 @@ function draw(state) {
     drawSelectionBox(state);
   }
 
+  drawGrainDirection(state, size);
+
   context.restore();
 }
 
@@ -232,6 +247,51 @@ function drawOriginAxes(state, size) {
   context.fill();
   context.stroke();
   context.restore();
+}
+
+function drawGrainDirection(state, size) {
+  const direction = normalizeGrainDirection(state.grainDirection);
+  if (direction === "none") {
+    return;
+  }
+
+  const { context } = state;
+  const origin = { x: 20, y: size.height - 28 };
+  const end = direction === "globaly"
+    ? { x: origin.x, y: origin.y - 48 }
+    : { x: origin.x + 58, y: origin.y };
+  const label = direction === "globaly" ? "GRAIN Y" : "GRAIN X";
+
+  context.save();
+  context.lineWidth = 2.5;
+  context.strokeStyle = "#facc15";
+  context.fillStyle = "#facc15";
+  context.setLineDash([]);
+  context.beginPath();
+  context.moveTo(origin.x, origin.y);
+  context.lineTo(end.x, end.y);
+  context.stroke();
+
+  const arrowAngle = Math.atan2(end.y - origin.y, end.x - origin.x);
+  drawArrowHead(context, end, arrowAngle, 9);
+
+  context.font = "600 12px Segoe UI, system-ui, sans-serif";
+  context.textBaseline = "middle";
+  context.fillText(label, end.x + 10, end.y);
+  context.restore();
+}
+
+function drawArrowHead(context, point, angle, size) {
+  context.beginPath();
+  context.moveTo(point.x, point.y);
+  context.lineTo(
+    point.x - size * Math.cos(angle - Math.PI / 6),
+    point.y - size * Math.sin(angle - Math.PI / 6));
+  context.lineTo(
+    point.x - size * Math.cos(angle + Math.PI / 6),
+    point.y - size * Math.sin(angle + Math.PI / 6));
+  context.closePath();
+  context.fill();
 }
 
 function drawTarget(state, target, style) {
@@ -1352,17 +1412,27 @@ function setHoveredTarget(state, target) {
   return true;
 }
 
-function pruneInteractionState(state) {
+function pruneInteractionState(state, removePointTargets = false) {
   for (const selectedKey of Array.from(state.selectedKeys)) {
-    if (!resolveSelectionTarget(state, selectedKey)) {
+    if ((removePointTargets && isPointSelectionKey(selectedKey)) || !resolveSelectionTarget(state, selectedKey)) {
       state.selectedKeys.delete(selectedKey);
     }
   }
 
-  if (state.hoveredTarget && !resolveSelectionTarget(state, state.hoveredTarget.key)) {
+  if (state.hoveredTarget
+    && ((removePointTargets && isPointSelectionKey(state.hoveredTarget.key))
+      || !resolveSelectionTarget(state, state.hoveredTarget.key))) {
     setHoveredTarget(state, null);
   }
 
+  updateDebugAttributes(state);
+}
+
+function clearInteractionState(state) {
+  state.hoveredTarget = null;
+  state.selectedKeys.clear();
+  state.clickCandidate = null;
+  state.selectionBox = null;
   updateDebugAttributes(state);
 }
 
@@ -1377,6 +1447,7 @@ function updateDebugAttributes(state) {
     ? `${state.selectionBox.operation}:${isCrossingSelection(state.selectionBox) ? "crossing" : "window"}`
     : "";
   state.canvas.dataset.originAxes = state.showOriginAxes ? "true" : "false";
+  state.canvas.dataset.grainDirection = normalizeGrainDirection(state.grainDirection);
   state.canvas.dataset.scale = String(state.view.scale);
   state.canvas.dataset.offsetX = String(state.view.offsetX);
   state.canvas.dataset.offsetY = String(state.view.offsetY);
@@ -1518,6 +1589,15 @@ function normalizeWheelDelta(event) {
   }
 
   return event.deltaY;
+}
+
+function normalizeGrainDirection(direction) {
+  const normalized = String(direction || "none").toLowerCase();
+  return normalized === "globalx" || normalized === "globaly" ? normalized : "none";
+}
+
+function isPointSelectionKey(selectionKey) {
+  return String(selectionKey || "").includes(POINT_KEY_SEPARATOR);
 }
 
 function capturePointer(canvas, pointerId) {

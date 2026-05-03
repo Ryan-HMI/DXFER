@@ -5,6 +5,8 @@ namespace DXFER.Core.Operations;
 
 public static class DrawingPrepService
 {
+    private const double ParallelAngleToleranceDegrees = 0.001;
+
     public static DrawingDocument MoveBoundsMinimumToOrigin(DrawingDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -166,13 +168,37 @@ public static class DrawingPrepService
         AxisDirection axis)
     {
         var targetAngle = axis == AxisDirection.X ? 0.0 : 90.0;
-        var rotation = targetAngle - vectorAngle;
+        var rotation = IsParallelToAxis(vectorAngle, targetAngle)
+            ? 180.0
+            : targetAngle - vectorAngle;
         var bounds = document.GetBounds();
         var center = new Point2(
             bounds.MinX + bounds.Width / 2.0,
             bounds.MinY + bounds.Height / 2.0);
 
         return Transform(document, Transform2.RotationDegreesAbout(rotation, center));
+    }
+
+    private static bool IsParallelToAxis(double vectorAngle, double targetAngle)
+    {
+        var delta = Math.Abs(NormalizeSignedDegrees(vectorAngle - targetAngle));
+        return delta <= ParallelAngleToleranceDegrees
+            || Math.Abs(delta - 180.0) <= ParallelAngleToleranceDegrees;
+    }
+
+    private static double NormalizeSignedDegrees(double angle)
+    {
+        var normalized = angle % 360.0;
+        if (normalized > 180.0)
+        {
+            normalized -= 360.0;
+        }
+        else if (normalized <= -180.0)
+        {
+            normalized += 360.0;
+        }
+
+        return normalized;
     }
 
     private static bool TryGetVector(DrawingEntity entity, out Point2 start, out Point2 end)

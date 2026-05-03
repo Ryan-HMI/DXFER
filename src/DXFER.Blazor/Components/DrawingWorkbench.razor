@@ -29,14 +29,18 @@
 
         <section class="dxfer-tool-section">
             <div class="dxfer-section-title">Align</div>
-            <button type="button" class="dxfer-button" @onclick="AlignSelectedVectorToX" disabled="@(!HasSelection)">Selected Vector To X</button>
-            <button type="button" class="dxfer-button" @onclick="AlignSelectedVectorToY" disabled="@(!HasSelection)">Selected Vector To Y</button>
+            <button type="button" class="dxfer-button" @onclick="AlignSelectedVectorToX" disabled="@(!CanAlignSelectedVector)">Selected Vector To X</button>
+            <button type="button" class="dxfer-button" @onclick="AlignSelectedVectorToY" disabled="@(!CanAlignSelectedVector)">Selected Vector To Y</button>
             <button type="button" class="dxfer-button" @onclick="OrientLongAxisToX" disabled="@(!HasDocument)">Long Bounds To X</button>
             <button type="button" class="dxfer-button" @onclick="OrientLongAxisToY" disabled="@(!HasDocument)">Long Bounds To Y</button>
         </section>
 
         <section class="dxfer-tool-section">
             <div class="dxfer-section-title">Grain</div>
+            <label class="dxfer-radio">
+                <input type="radio" name="grain-direction" checked="@(_grainDirection == GrainDirection.None)" @onchange="() => SetGrainDirection(GrainDirection.None)" />
+                <span>No grain</span>
+            </label>
             <label class="dxfer-radio">
                 <input type="radio" name="grain-direction" checked="@(_grainDirection == GrainDirection.GlobalX)" @onchange="() => SetGrainDirection(GrainDirection.GlobalX)" />
                 <span>Global X</span>
@@ -53,6 +57,8 @@
                        Document="_document"
                        ShowToolbar="false"
                        ShowOriginAxes="_showOriginAxes"
+                       GrainDirection="_grainDirection"
+                       SelectionResetToken="_selectionResetToken"
                        HoveredEntityChanged="OnHoveredEntityChanged"
                        SelectionChanged="OnSelectionChanged" />
     </main>

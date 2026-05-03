@@ -1,5 +1,6 @@
 using DXFER.Blazor.Interop;
 using DXFER.Core.Documents;
+using DXFER.Core.Operations;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 
@@ -14,6 +15,7 @@ public partial class DrawingCanvas : IAsyncDisposable
     private IJSObjectReference? _canvasInstance;
     private DotNetObjectReference<DrawingCanvas>? _dotNetReference;
     private DrawingDocument? _renderedDocument;
+    private int _renderedSelectionResetToken;
 
     [Inject]
     private IJSRuntime JsRuntime { get; set; } = default!;
@@ -28,6 +30,12 @@ public partial class DrawingCanvas : IAsyncDisposable
     public bool ShowOriginAxes { get; set; }
 
     [Parameter]
+    public GrainDirection GrainDirection { get; set; } = GrainDirection.None;
+
+    [Parameter]
+    public int SelectionResetToken { get; set; }
+
+    [Parameter]
     public Action<string?>? HoveredEntityChanged { get; set; }
 
     [Parameter]
@@ -39,6 +47,12 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     protected override async Task OnParametersSetAsync()
     {
+        if (_canvasInstance is not null && _renderedSelectionResetToken != SelectionResetToken)
+        {
+            _renderedSelectionResetToken = SelectionResetToken;
+            await ClearSelectionStateAsync();
+        }
+
         if (_canvasInstance is not null && !ReferenceEquals(_renderedDocument, Document))
         {
             await SetCanvasDocumentAsync();
@@ -47,6 +61,7 @@ public partial class DrawingCanvas : IAsyncDisposable
         if (_canvasInstance is not null)
         {
             await SetOriginAxesVisibilityAsync();
+            await SetGrainDirectionAsync();
         }
     }
 
@@ -61,8 +76,10 @@ public partial class DrawingCanvas : IAsyncDisposable
         _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", CanvasModulePath);
         _canvasInstance = await _module.InvokeAsync<IJSObjectReference>("createDrawingCanvas", _canvas, _dotNetReference);
 
+        _renderedSelectionResetToken = SelectionResetToken;
         await SetCanvasDocumentAsync();
         await SetOriginAxesVisibilityAsync();
+        await SetGrainDirectionAsync();
     }
 
     public async Task FitToExtentsAsync()
@@ -170,9 +187,11 @@ public partial class DrawingCanvas : IAsyncDisposable
         {
             _renderedDocument = Document;
             HoveredEntityId = null;
-            SelectedEntityIds.Clear();
             HoveredEntityChanged?.Invoke(HoveredEntityId);
-            SelectionChanged?.Invoke(SelectedEntityIds);
+            if (RemoveStoredPointSelections())
+            {
+                SelectionChanged?.Invoke(SelectedEntityIds);
+            }
         }
 
         var dto = Document is null ? CanvasDocumentDto.Empty : CanvasDocumentDto.FromDocument(Document);
@@ -187,5 +206,43 @@ public partial class DrawingCanvas : IAsyncDisposable
         }
 
         await _canvasInstance.InvokeVoidAsync("setOriginAxesVisible", ShowOriginAxes);
+    }
+
+    private async Task SetGrainDirectionAsync()
+    {
+        if (_canvasInstance is null)
+        {
+            return;
+        }
+
+        await _canvasInstance.InvokeVoidAsync("setGrainDirection", GrainDirection.ToString());
+    }
+
+    private async Task ClearSelectionStateAsync()
+    {
+        HoveredEntityId = null;
+        SelectedEntityIds.Clear();
+        HoveredEntityChanged?.Invoke(HoveredEntityId);
+        SelectionChanged?.Invoke(SelectedEntityIds);
+
+        if (_canvasInstance is not null)
+        {
+            await _canvasInstance.InvokeVoidAsync("clearSelection");
+        }
+    }
+
+    private bool RemoveStoredPointSelections()
+    {
+        var removed = false;
+        foreach (var selectedEntityId in SelectedEntityIds.ToArray())
+        {
+            if (selectedEntityId.Contains("|point|", StringComparison.Ordinal))
+            {
+                SelectedEntityIds.Remove(selectedEntityId);
+                removed = true;
+            }
+        }
+
+        return removed;
     }
 }
