@@ -44,12 +44,19 @@ This milestone may use generated fixture geometry before full DXF import is comp
 - Open DWG files externally for reference inspection.
 - Target .NET 8 to stay aligned with HMI-Sync.
 
+### V1 Stretch Goals
+
+- Auto Orient Bounds for a single trusted flat pattern. This finds a rotation that improves the axis-aligned XY bounding rectangle, applies that rotation to selected or all entities, and recomputes bounds.
+
+This is not nesting. It does not optimize sheet utilization, drop usage, multi-part layouts, or CAM table placement.
+
 ### V1 Non-Goals
 
 - Native DWG parsing.
 - DWG editing or DWG writing.
 - Deriving manufacturing bounds or scale from customer-supplied DWG, PDF, or DXF files.
 - Full sketch constraint solving.
+- Nesting or material utilization optimization.
 - 3D STEP viewing.
 - Blender scene generation.
 - Direct writes to the HMI-Sync database.
@@ -216,6 +223,18 @@ V1 editing tools:
 - Show before and after bounds.
 - Export normalized DXF plus `*.dxfer.json`.
 
+V1 stretch editing tool:
+
+- Auto Orient Bounds. For selected or all trusted flat-pattern entities, compute candidate rotations that reduce the axis-aligned XY bounding rectangle. Apply the chosen rotation as a normal document transform, preview before/after bounds, then let the user accept or cancel.
+
+Auto Orient Bounds should support these objectives when practical:
+
+- minimum bounding area
+- minimum width
+- minimum height
+
+The initial implementation can approximate arcs and curves into sample points, compute a convex hull, and evaluate hull-edge candidate angles. A simpler sampled-angle implementation is acceptable for a prototype if it is isolated behind the same service interface.
+
 ## Measurement Tools
 
 V1 measurement tools:
@@ -290,6 +309,7 @@ Required V1 tests:
 
 - geometry transform tests: rotate, translate, align to X/Y, point to origin
 - bounds tests before and after normalization
+- Auto Orient Bounds tests for simple rectangles, rotated rectangles, and L-shaped fixture geometry when the stretch goal is implemented
 - grain metadata tests for X/Y export choices
 - measurement tests for distance, X delta, Y delta, line length, arc length, and selected bounds
 - DXF fixture tests using small Onshape-generated sample files
