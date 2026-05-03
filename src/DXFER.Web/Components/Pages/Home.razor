@@ -1,7 +1,11 @@
-﻿@page "/"
+@page "/"
+@using DXFER.Blazor.Components
+@using DXFER.Core.Documents
 
-<PageTitle>Home</PageTitle>
+<PageTitle>DXFER Canvas Prototype</PageTitle>
 
-<h1>Hello, world!</h1>
+<DrawingCanvas Document="_document" />
 
-Welcome to your new app.
+@code {
+    private readonly DrawingDocument _document = SampleDrawingFactory.CreateCanvasPrototype();
+}

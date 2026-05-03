@@ -1,0 +1,14 @@
+@namespace DXFER.Blazor.Components
+@using DXFER.Core.Documents
+
+<div class="drawing-shell">
+    <div class="drawing-toolbar" role="toolbar" aria-label="Drawing canvas controls">
+        <button type="button" class="drawing-toolbar-button" @onclick="FitToExtentsAsync">Fit</button>
+        <span class="drawing-toolbar-status">Hover: @(HoveredEntityId ?? "none")</span>
+        <span class="drawing-toolbar-status">Selected: @SelectedEntityIds.Count</span>
+    </div>
+
+    <div class="drawing-canvas-frame">
+        <canvas @ref="_canvas" class="drawing-canvas"></canvas>
+    </div>
+</div>
