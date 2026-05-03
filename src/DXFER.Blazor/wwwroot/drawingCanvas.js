@@ -7,6 +7,7 @@ const MAX_VIEW_SCALE = 1000000;
 const FULL_CIRCLE_DEGREES = 360;
 const SEGMENT_KEY_SEPARATOR = "|segment|";
 const POINT_KEY_SEPARATOR = "|point|";
+const WORLD_GEOMETRY_TOLERANCE = 0.000001;
 
 export function createDrawingCanvas(canvas, dotnetRef) {
   const context = canvas.getContext("2d");
@@ -257,9 +258,6 @@ function drawTarget(state, target, style) {
 
   context.restore();
 
-  if (target.closestPoint) {
-    drawClosestPointMarker(state, target.closestPoint, style.strokeStyle);
-  }
 }
 
 function drawPointTarget(state, point, style) {
@@ -280,21 +278,6 @@ function drawPointTarget(state, point, style) {
   context.lineTo(screenPoint.x + 8, screenPoint.y);
   context.moveTo(screenPoint.x, screenPoint.y - 8);
   context.lineTo(screenPoint.x, screenPoint.y + 8);
-  context.stroke();
-  context.restore();
-}
-
-function drawClosestPointMarker(state, point, strokeStyle) {
-  const { context } = state;
-  const screenPoint = worldToScreen(state, point);
-
-  context.save();
-  context.strokeStyle = strokeStyle;
-  context.fillStyle = "#0f172a";
-  context.lineWidth = 1.5;
-  context.beginPath();
-  context.arc(screenPoint.x, screenPoint.y, 3.5, 0, Math.PI * 2);
-  context.fill();
   context.stroke();
   context.restore();
 }
@@ -728,14 +711,20 @@ function findNearestWholeEntityTarget(state, screenPoint) {
 
 function getEntityPointHit(state, entity, screenPoint) {
   let nearestHit = null;
+  const entities = getDocumentEntities(state.document);
 
-  for (const snapPoint of getSnapPoints(entity)) {
+  for (const snapPoint of getSnapPoints(entity, entities)) {
     const screenSnapPoint = worldToScreen(state, snapPoint.point);
     const distance = distanceBetweenScreenPoints(screenPoint, screenSnapPoint);
-    if (!nearestHit || distance < nearestHit.distance) {
+    const priority = Number(snapPoint.priority || 0);
+    const nearestPriority = nearestHit ? Number(nearestHit.priority || 0) : 0;
+    if (!nearestHit
+      || distance < nearestHit.distance
+      || (Math.abs(distance - nearestHit.distance) <= 0.000001 && priority > nearestPriority)) {
       nearestHit = {
         target: createPointTarget(entity, snapPoint.label, snapPoint.point),
-        distance
+        distance,
+        priority
       };
     }
   }
@@ -776,7 +765,6 @@ function getLineEdgeHit(state, entity, screenPoint) {
   const end = worldToScreen(state, points[1]);
   const projection = closestPointOnScreenSegment(screenPoint, start, end);
 
-  target.closestPoint = screenToWorld(state, projection.point);
   return {
     target,
     distance: projection.distance
@@ -792,7 +780,6 @@ function getPolylineSegmentScreenHit(state, entity, screenPoint) {
 
   let closestDistance = Number.POSITIVE_INFINITY;
   let closestSegmentIndex = -1;
-  let closestWorldPoint = null;
 
   for (let index = 1; index < points.length; index += 1) {
     const projection = closestPointOnScreenSegment(
@@ -802,14 +789,13 @@ function getPolylineSegmentScreenHit(state, entity, screenPoint) {
     if (projection.distance < closestDistance) {
       closestDistance = projection.distance;
       closestSegmentIndex = index - 1;
-      closestWorldPoint = screenToWorld(state, projection.point);
     }
   }
 
   return closestSegmentIndex < 0
     ? null
     : {
-      target: createPolylineSegmentTarget(entity, closestSegmentIndex, closestWorldPoint),
+      target: createPolylineSegmentTarget(entity, closestSegmentIndex),
       distance: closestDistance
     };
 }
@@ -828,14 +814,6 @@ function getCircleEdgeHit(state, entity, screenPoint) {
   const vectorX = screenPoint.x - screenCenter.x;
   const vectorY = screenPoint.y - screenCenter.y;
   const vectorLength = Math.hypot(vectorX, vectorY);
-  const closestScreenPoint = vectorLength <= 0.000001
-    ? { x: screenCenter.x + screenRadius, y: screenCenter.y }
-    : {
-      x: screenCenter.x + vectorX / vectorLength * screenRadius,
-      y: screenCenter.y + vectorY / vectorLength * screenRadius
-    };
-
-  target.closestPoint = screenToWorld(state, closestScreenPoint);
   return {
     target,
     distance: Math.abs(vectorLength - screenRadius)
@@ -857,8 +835,6 @@ function getArcEdgeHit(state, entity, screenPoint) {
   const screenRadius = radius * state.view.scale;
 
   if (isAngleOnArc(angleDegrees, getEntityStartAngle(entity), getEntityEndAngle(entity))) {
-    const closestWorldPoint = pointOnCircle(center, radius, angleDegrees);
-    target.closestPoint = closestWorldPoint;
     return {
       target,
       distance: Math.abs(distanceBetweenScreenPoints(screenPoint, screenCenter) - screenRadius)
@@ -879,7 +855,6 @@ function getArcEdgeHit(state, entity, screenPoint) {
     return null;
   }
 
-  target.closestPoint = nearestEndpoint.point;
   return {
     target,
     distance: nearestEndpoint.distance
@@ -1018,37 +993,40 @@ function getEntityScreenSamplePoints(state, entity) {
   return [];
 }
 
-function getSnapPoints(entity) {
+function getSnapPoints(entity, entities) {
   const kind = getEntityKind(entity);
 
   switch (kind) {
     case "line":
-      return getLineSnapPoints(entity);
+      return getLineSnapPoints(entity, entities);
     case "polyline":
-      return getPolylineSnapPoints(entity);
+      return getPolylineSnapPoints(entity, entities);
     case "circle":
-      return getCircleSnapPoints(entity);
+      return getCircleSnapPoints(entity, entities);
     case "arc":
-      return getArcSnapPoints(entity);
+      return getArcSnapPoints(entity, entities);
     default:
       return [];
   }
 }
 
-function getLineSnapPoints(entity) {
+function getLineSnapPoints(entity, entities) {
   const points = getEntityPoints(entity);
   if (points.length < 2) {
     return [];
   }
 
-  return [
+  const snapPoints = [
     { label: "start", point: points[0] },
     { label: "end", point: points[1] },
     { label: "mid", point: midpoint(points[0], points[1]) }
   ];
+
+  addTangentSnapPointsForLinearEntity(snapPoints, entity, getLinearSegments(entity), entities);
+  return snapPoints;
 }
 
-function getPolylineSnapPoints(entity) {
+function getPolylineSnapPoints(entity, entities) {
   const points = getEntityPoints(entity);
   const snapPoints = [];
 
@@ -1060,26 +1038,30 @@ function getPolylineSnapPoints(entity) {
     snapPoints.push({ label: `mid-${index - 1}`, point: midpoint(points[index - 1], points[index]) });
   }
 
+  addTangentSnapPointsForLinearEntity(snapPoints, entity, getLinearSegments(entity), entities);
   return snapPoints;
 }
 
-function getCircleSnapPoints(entity) {
+function getCircleSnapPoints(entity, entities) {
   const center = getEntityCenter(entity);
   const radius = getEntityRadius(entity);
   if (!center || !isFinitePositive(radius)) {
     return [];
   }
 
-  return [
+  const snapPoints = [
     { label: "center", point: center },
     { label: "quadrant-0", point: pointOnCircle(center, radius, 0) },
     { label: "quadrant-90", point: pointOnCircle(center, radius, 90) },
     { label: "quadrant-180", point: pointOnCircle(center, radius, 180) },
     { label: "quadrant-270", point: pointOnCircle(center, radius, 270) }
   ];
+
+  addTangentSnapPointsForCurveEntity(snapPoints, entity, entities);
+  return snapPoints;
 }
 
-function getArcSnapPoints(entity) {
+function getArcSnapPoints(entity, entities) {
   const center = getEntityCenter(entity);
   const radius = getEntityRadius(entity);
   if (!center || !isFinitePositive(radius)) {
@@ -1105,7 +1087,127 @@ function getArcSnapPoints(entity) {
     }
   }
 
+  addTangentSnapPointsForCurveEntity(snapPoints, entity, entities);
   return snapPoints;
+}
+
+function addTangentSnapPointsForLinearEntity(snapPoints, entity, segments, entities) {
+  const entityId = getEntityId(entity);
+  if (!entityId || !Array.isArray(entities)) {
+    return;
+  }
+
+  for (const curveEntity of entities) {
+    const curveId = getEntityId(curveEntity);
+    if (!curveId || curveId === entityId || !isCurveEntity(curveEntity)) {
+      continue;
+    }
+
+    for (const segment of segments) {
+      const tangentPoint = getSegmentCurveTangentPoint(segment.start, segment.end, curveEntity);
+      if (tangentPoint) {
+        addUniqueSnapPoint(snapPoints, `tangent-${curveId}`, tangentPoint);
+      }
+    }
+  }
+}
+
+function addTangentSnapPointsForCurveEntity(snapPoints, entity, entities) {
+  const entityId = getEntityId(entity);
+  if (!entityId || !Array.isArray(entities)) {
+    return;
+  }
+
+  for (const linearEntity of entities) {
+    const linearId = getEntityId(linearEntity);
+    if (!linearId || linearId === entityId || !isLinearEntity(linearEntity)) {
+      continue;
+    }
+
+    for (const segment of getLinearSegments(linearEntity)) {
+      const tangentPoint = getSegmentCurveTangentPoint(segment.start, segment.end, entity);
+      if (tangentPoint) {
+        const segmentLabel = segment.segmentIndex === null ? "" : `-${segment.segmentIndex}`;
+        addUniqueSnapPoint(snapPoints, `tangent-${linearId}${segmentLabel}`, tangentPoint);
+      }
+    }
+  }
+}
+
+function getSegmentCurveTangentPoint(segmentStart, segmentEnd, curveEntity) {
+  const center = getEntityCenter(curveEntity);
+  const radius = getEntityRadius(curveEntity);
+  if (!center || !isFinitePositive(radius)) {
+    return null;
+  }
+
+  const projection = closestPointOnWorldSegment(center, segmentStart, segmentEnd);
+  if (!projection || projection.parameter < -WORLD_GEOMETRY_TOLERANCE || projection.parameter > 1 + WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const tolerance = Math.max(WORLD_GEOMETRY_TOLERANCE, radius * 0.0001);
+  if (Math.abs(projection.distance - radius) > tolerance) {
+    return null;
+  }
+
+  if (getEntityKind(curveEntity) === "arc") {
+    const angleDegrees = radiansToDegrees(Math.atan2(projection.point.y - center.y, projection.point.x - center.x));
+    if (!isAngleOnArc(angleDegrees, getEntityStartAngle(curveEntity), getEntityEndAngle(curveEntity))) {
+      return null;
+    }
+  }
+
+  return projection.point;
+}
+
+function getLinearSegments(entity) {
+  const kind = getEntityKind(entity);
+  const points = getEntityPoints(entity);
+
+  if (kind === "line" && points.length >= 2) {
+    return [{
+      start: points[0],
+      end: points[1],
+      segmentIndex: null
+    }];
+  }
+
+  if (kind !== "polyline" || points.length < 2) {
+    return [];
+  }
+
+  const segments = [];
+  for (let index = 1; index < points.length; index += 1) {
+    segments.push({
+      start: points[index - 1],
+      end: points[index],
+      segmentIndex: index - 1
+    });
+  }
+
+  return segments;
+}
+
+function addUniqueSnapPoint(snapPoints, label, point) {
+  const isTangent = String(label).startsWith("tangent-");
+  const duplicate = snapPoints.some(existing =>
+    Math.abs(existing.point.x - point.x) <= WORLD_GEOMETRY_TOLERANCE
+    && Math.abs(existing.point.y - point.y) <= WORLD_GEOMETRY_TOLERANCE);
+
+  if (!duplicate || isTangent) {
+    snapPoints.push({ label, point, priority: isTangent ? 10 : 0 });
+  }
+}
+
+function isLinearEntity(entity) {
+  const kind = getEntityKind(entity);
+  return kind === "line" || kind === "polyline";
+}
+
+function isCurveEntity(entity) {
+  const kind = getEntityKind(entity);
+  return kind === "circle" || kind === "arc";
 }
 
 function createEntityTarget(entity) {
@@ -1122,7 +1224,7 @@ function createEntityTarget(entity) {
   };
 }
 
-function createPolylineSegmentTarget(entity, segmentIndex, closestPoint) {
+function createPolylineSegmentTarget(entity, segmentIndex) {
   const id = getEntityId(entity);
   if (!id) {
     return null;
@@ -1133,8 +1235,7 @@ function createPolylineSegmentTarget(entity, segmentIndex, closestPoint) {
     key: `${id}${SEGMENT_KEY_SEPARATOR}${segmentIndex}`,
     entityId: id,
     entity,
-    segmentIndex,
-    closestPoint
+    segmentIndex
   };
 }
 
@@ -1726,7 +1827,38 @@ function closestPointOnScreenSegment(point, start, end) {
   };
 }
 
+function closestPointOnWorldSegment(point, start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+
+  if (lengthSquared <= WORLD_GEOMETRY_TOLERANCE * WORLD_GEOMETRY_TOLERANCE) {
+    return {
+      point: start,
+      distance: distanceBetweenWorldPoints(point, start),
+      parameter: 0
+    };
+  }
+
+  const parameter = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
+  const clamped = clamp(parameter, 0, 1);
+  const closestPoint = {
+    x: start.x + dx * clamped,
+    y: start.y + dy * clamped
+  };
+
+  return {
+    point: closestPoint,
+    distance: distanceBetweenWorldPoints(point, closestPoint),
+    parameter
+  };
+}
+
 function distanceBetweenScreenPoints(first, second) {
+  return Math.hypot(first.x - second.x, first.y - second.y);
+}
+
+function distanceBetweenWorldPoints(first, second) {
   return Math.hypot(first.x - second.x, first.y - second.y);
 }
 
