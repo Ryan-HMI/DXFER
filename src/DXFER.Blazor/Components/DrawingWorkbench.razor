@@ -23,15 +23,6 @@
                            Label="Collapse tool palette"
                            OnClick="ToggleToolPanel" />
         </div>
-        <label class="dxfer-width-control">
-            <span>Width</span>
-            <input type="range"
-                   min="184"
-                   max="320"
-                   step="8"
-                   value="@_toolPanelWidth"
-                   @oninput="OnToolPanelWidthChanged" />
-        </label>
         <section class="dxfer-tool-section">
             <div class="dxfer-section-title">File</div>
             <div class="dxfer-command-strip" role="toolbar" aria-label="File tools">
@@ -88,15 +79,28 @@
     </aside>
     }
 
+    @if (!_isToolPanelCollapsed)
+    {
+        <button type="button"
+                class="dxfer-panel-resizer dxfer-panel-resizer-left"
+                title="Resize tool palette"
+                aria-label="Resize tool palette"
+                @onpointerdown="BeginToolPanelResize"
+                @onpointerdown:preventDefault="true" />
+    }
+
     <main class="dxfer-canvas-panel">
         <DrawingCanvas @ref="_canvas"
                        Document="_document"
                        ShowToolbar="false"
+                       ActiveTool="_activeTool"
                        ShowOriginAxes="_showOriginAxes"
                        GrainDirection="_grainDirection"
                        SelectionResetToken="_selectionResetToken"
                        HoveredEntityChanged="OnHoveredEntityChanged"
-                       SelectionChanged="OnSelectionChanged" />
+                       SelectionChanged="OnSelectionChanged"
+                       ToolCommitRequested="OnToolCommitRequested"
+                       ToolCancelRequested="OnToolCanceled" />
     </main>
 
     @if (_isInspectorCollapsed)
@@ -121,15 +125,6 @@
                            Label="Collapse inspector"
                            OnClick="ToggleInspector" />
         </div>
-        <label class="dxfer-width-control">
-            <span>Width</span>
-            <input type="range"
-                   min="220"
-                   max="460"
-                   step="10"
-                   value="@_inspectorWidth"
-                   @oninput="OnInspectorWidthChanged" />
-        </label>
         <section class="dxfer-inspector-section">
             <div class="dxfer-section-title">Status</div>
             <div class="dxfer-file-name">@_fileName</div>
@@ -173,5 +168,24 @@
             </section>
         }
     </aside>
+    }
+
+    @if (!_isInspectorCollapsed)
+    {
+        <button type="button"
+                class="dxfer-panel-resizer dxfer-panel-resizer-right"
+                title="Resize inspector"
+                aria-label="Resize inspector"
+                @onpointerdown="BeginInspectorResize"
+                @onpointerdown:preventDefault="true" />
+    }
+
+    @if (_resizeTarget is not DockResizeTarget.None)
+    {
+        <div class="dxfer-resize-capture"
+             @onpointermove="OnWorkbenchPointerMove"
+             @onpointerup="EndDockPanelResize"
+             @onpointercancel="EndDockPanelResize"
+             @onpointerleave="EndDockPanelResize"></div>
     }
 </div>

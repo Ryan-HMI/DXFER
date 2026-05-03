@@ -6,5 +6,5 @@ public sealed record WorkbenchToolCommand(
     CadIconName Icon,
     string Label,
     bool Disabled = false,
-    bool Pressed = false,
+    bool? Pressed = null,
     bool IsFuture = false);

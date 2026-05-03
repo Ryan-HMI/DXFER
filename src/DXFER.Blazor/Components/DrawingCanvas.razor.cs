@@ -15,6 +15,7 @@ public partial class DrawingCanvas : IAsyncDisposable
     private IJSObjectReference? _canvasInstance;
     private DotNetObjectReference<DrawingCanvas>? _dotNetReference;
     private DrawingDocument? _renderedDocument;
+    private WorkbenchTool? _renderedActiveTool;
     private int _renderedSelectionResetToken;
 
     [Inject]
@@ -30,6 +31,9 @@ public partial class DrawingCanvas : IAsyncDisposable
     public bool ShowOriginAxes { get; set; }
 
     [Parameter]
+    public WorkbenchTool? ActiveTool { get; set; }
+
+    [Parameter]
     public GrainDirection GrainDirection { get; set; } = GrainDirection.None;
 
     [Parameter]
@@ -40,6 +44,12 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public Action<IReadOnlySet<string>>? SelectionChanged { get; set; }
+
+    [Parameter]
+    public Action<string, IReadOnlyList<CanvasPointDto>>? ToolCommitRequested { get; set; }
+
+    [Parameter]
+    public Action? ToolCancelRequested { get; set; }
 
     protected string? HoveredEntityId { get; private set; }
 
@@ -60,6 +70,11 @@ public partial class DrawingCanvas : IAsyncDisposable
 
         if (_canvasInstance is not null)
         {
+            if (_renderedActiveTool != ActiveTool)
+            {
+                await SetActiveToolAsync();
+            }
+
             await SetOriginAxesVisibilityAsync();
             await SetGrainDirectionAsync();
         }
@@ -78,6 +93,7 @@ public partial class DrawingCanvas : IAsyncDisposable
 
         _renderedSelectionResetToken = SelectionResetToken;
         await SetCanvasDocumentAsync();
+        await SetActiveToolAsync();
         await SetOriginAxesVisibilityAsync();
         await SetGrainDirectionAsync();
     }
@@ -147,6 +163,26 @@ public partial class DrawingCanvas : IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    [JSInvokable]
+    public Task OnSketchToolCommitted(string toolName, double[] coordinates)
+    {
+        var points = new List<CanvasPointDto>();
+        for (var index = 0; index + 1 < coordinates.Length; index += 2)
+        {
+            points.Add(new CanvasPointDto(coordinates[index], coordinates[index + 1]));
+        }
+
+        ToolCommitRequested?.Invoke(toolName, points);
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnSketchToolCanceled()
+    {
+        ToolCancelRequested?.Invoke();
+        return Task.CompletedTask;
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_canvasInstance is not null)
@@ -206,6 +242,17 @@ public partial class DrawingCanvas : IAsyncDisposable
         }
 
         await _canvasInstance.InvokeVoidAsync("setOriginAxesVisible", ShowOriginAxes);
+    }
+
+    private async Task SetActiveToolAsync()
+    {
+        if (_canvasInstance is null)
+        {
+            return;
+        }
+
+        await _canvasInstance.InvokeVoidAsync("setActiveTool", ActiveTool?.ToString() ?? "select");
+        _renderedActiveTool = ActiveTool;
     }
 
     private async Task SetGrainDirectionAsync()

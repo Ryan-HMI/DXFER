@@ -22,6 +22,11 @@ export function createDrawingCanvas(canvas, dotnetRef) {
     document: null,
     showOriginAxes: false,
     grainDirection: "none",
+    activeTool: "select",
+    toolDraft: {
+      points: [],
+      previewPoint: null
+    },
     hoveredTarget: null,
     selectedKeys: new Set(),
     view: {
@@ -47,6 +52,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
   const onWheel = event => handleWheel(state, event);
   const onDoubleClick = event => handleDoubleClick(state, event);
   const onContextMenu = event => event.preventDefault();
+  const onKeyDown = event => handleKeyDown(state, event);
 
   state.canvas.style.touchAction = "none";
   state.canvas.addEventListener("pointermove", onPointerMove);
@@ -58,6 +64,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
   state.canvas.addEventListener("dblclick", onDoubleClick);
   state.canvas.addEventListener("contextmenu", onContextMenu);
   window.addEventListener("resize", resize);
+  window.addEventListener("keydown", onKeyDown);
 
   const resizeObserver = typeof ResizeObserver === "undefined"
     ? null
@@ -102,6 +109,17 @@ export function createDrawingCanvas(canvas, dotnetRef) {
       draw(state);
     },
 
+    setActiveTool(toolName) {
+      state.activeTool = normalizeToolName(toolName);
+      state.toolDraft = {
+        points: [],
+        previewPoint: null
+      };
+      state.canvas.dataset.activeTool = state.activeTool;
+      updateDebugAttributes(state);
+      draw(state);
+    },
+
     dispose() {
       state.disposed = true;
       state.canvas.removeEventListener("pointermove", onPointerMove);
@@ -113,6 +131,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
       state.canvas.removeEventListener("dblclick", onDoubleClick);
       state.canvas.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("resize", resize);
+      window.removeEventListener("keydown", onKeyDown);
 
       if (resizeObserver) {
         resizeObserver.disconnect();
@@ -195,6 +214,7 @@ function draw(state) {
     drawSelectionBox(state);
   }
 
+  drawToolPreview(state);
   drawGrainDirection(state, size);
 
   context.restore();
@@ -368,6 +388,59 @@ function drawSelectionBox(state) {
   context.restore();
 }
 
+function drawToolPreview(state) {
+  const tool = getSketchCreationTool(state);
+  if (!tool || !state.toolDraft || state.toolDraft.points.length === 0 || !state.toolDraft.previewPoint) {
+    return;
+  }
+
+  const first = state.toolDraft.points[0];
+  const second = state.toolDraft.previewPoint;
+  const { context } = state;
+
+  context.save();
+  context.strokeStyle = "#facc15";
+  context.fillStyle = "#facc15";
+  context.lineWidth = 1.5;
+  context.setLineDash([6, 4]);
+
+  if (tool === "line") {
+    const start = worldToScreen(state, first);
+    const end = worldToScreen(state, second);
+    context.beginPath();
+    context.moveTo(start.x, start.y);
+    context.lineTo(end.x, end.y);
+    context.stroke();
+  } else if (tool === "midpointline") {
+    const start = worldToScreen(state, mirrorPoint(first, second));
+    const end = worldToScreen(state, second);
+    context.beginPath();
+    context.moveTo(start.x, start.y);
+    context.lineTo(end.x, end.y);
+    context.stroke();
+  } else if (tool === "twopointrectangle") {
+    const a = worldToScreen(state, first);
+    const b = worldToScreen(state, second);
+    const rect = normalizeScreenRect(a, b);
+    context.strokeRect(rect.minX, rect.minY, rect.maxX - rect.minX, rect.maxY - rect.minY);
+  } else if (tool === "centercircle") {
+    const center = worldToScreen(state, first);
+    const radius = distanceBetweenWorldPoints(first, second) * state.view.scale;
+    if (radius > 0) {
+      context.beginPath();
+      context.arc(center.x, center.y, radius, 0, Math.PI * 2);
+      context.stroke();
+    }
+  }
+
+  const marker = worldToScreen(state, first);
+  context.setLineDash([]);
+  context.beginPath();
+  context.arc(marker.x, marker.y, 3.5, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
 function buildEntityPath(state, entity) {
   const kind = getEntityKind(entity);
 
@@ -484,6 +557,28 @@ function handlePointerMove(state, event) {
     return;
   }
 
+  if (getSketchCreationTool(state)) {
+    const nearestTarget = findNearestTarget(state, screenPoint);
+    setHoveredTarget(state, nearestTarget);
+
+    if (state.toolDraft && state.toolDraft.points.length > 0) {
+      state.toolDraft.previewPoint = getSketchWorldPoint(state, screenPoint, nearestTarget);
+      updateDebugAttributes(state);
+      draw(state);
+    } else if (nearestTarget) {
+      draw(state);
+    }
+
+    if (state.clickCandidate) {
+      const moveDistance = distanceBetweenScreenPoints(screenPoint, state.clickCandidate.screenPoint);
+      if (moveDistance > CLICK_MOVE_TOLERANCE) {
+        state.clickCandidate.cancelled = true;
+      }
+    }
+
+    return;
+  }
+
   if (state.clickCandidate) {
     const moveDistance = distanceBetweenScreenPoints(screenPoint, state.clickCandidate.screenPoint);
     if (moveDistance > CLICK_MOVE_TOLERANCE) {
@@ -531,12 +626,16 @@ function handlePointerDown(state, event) {
     return;
   }
 
-  if (event.button === 0) {
+  if (isPrimaryPointerButton(event)) {
     state.clickCandidate = {
       screenPoint,
       pointerId: event.pointerId,
       cancelled: false
     };
+
+    if (getSketchCreationTool(state)) {
+      event.preventDefault();
+    }
   }
 }
 
@@ -586,6 +685,15 @@ function handlePointerUp(state, event) {
   if (candidate && candidate.pointerId === event.pointerId && !candidate.cancelled) {
     const moveDistance = distanceBetweenScreenPoints(screenPoint, candidate.screenPoint);
     if (moveDistance <= CLICK_MOVE_TOLERANCE) {
+      if (getSketchCreationTool(state)) {
+        handleSketchToolClick(state, screenPoint);
+        updateDebugAttributes(state);
+        draw(state);
+        releasePointer(state.canvas, event.pointerId);
+        event.preventDefault();
+        return;
+      }
+
       const clickedTarget = findNearestTarget(state, screenPoint);
       if (clickedTarget) {
         toggleSelectedTarget(state, clickedTarget);
@@ -601,6 +709,35 @@ function handlePointerUp(state, event) {
   }
 
   releasePointer(state.canvas, event.pointerId);
+}
+
+function handleSketchToolClick(state, screenPoint) {
+  const tool = getSketchCreationTool(state);
+  if (!tool) {
+    return;
+  }
+
+  const worldPoint = getSketchWorldPoint(state, screenPoint);
+  if (!state.toolDraft || state.toolDraft.points.length === 0) {
+    state.toolDraft = {
+      points: [worldPoint],
+      previewPoint: null
+    };
+    setHoveredTarget(state, null);
+    return;
+  }
+
+  const first = state.toolDraft.points[0];
+  if (distanceBetweenWorldPoints(first, worldPoint) <= WORLD_GEOMETRY_TOLERANCE) {
+    state.toolDraft.previewPoint = null;
+    return;
+  }
+
+  state.toolDraft = tool === "line"
+    ? { points: [worldPoint], previewPoint: null }
+    : { points: [], previewPoint: null };
+  setHoveredTarget(state, null);
+  invokeDotNet(state, "OnSketchToolCommitted", tool, [first.x, first.y, worldPoint.x, worldPoint.y]);
 }
 
 function handlePointerCancel(state, event) {
@@ -632,6 +769,23 @@ function handlePointerLeave(state) {
   }
 }
 
+function handleKeyDown(state, event) {
+  if (event.key !== "Escape" || normalizeToolName(state.activeTool) === "select") {
+    return;
+  }
+
+  state.activeTool = "select";
+  state.toolDraft = {
+    points: [],
+    previewPoint: null
+  };
+  setHoveredTarget(state, null);
+  invokeDotNet(state, "OnSketchToolCanceled");
+  updateDebugAttributes(state);
+  draw(state);
+  event.preventDefault();
+}
+
 function handleWheel(state, event) {
   if (state.disposed) {
     return;
@@ -661,6 +815,18 @@ function handleWheel(state, event) {
 
 function handleDoubleClick(state, event) {
   if (state.disposed || state.panning || state.selectionBox) {
+    return;
+  }
+
+  if (getSketchCreationTool(state)) {
+    state.toolDraft = {
+      points: [],
+      previewPoint: null
+    };
+    setHoveredTarget(state, null);
+    updateDebugAttributes(state);
+    draw(state);
+    event.preventDefault();
     return;
   }
 
@@ -720,6 +886,14 @@ function screenToWorld(state, point) {
     x: (point.x - state.view.offsetX) / state.view.scale,
     y: (state.view.offsetY - point.y) / state.view.scale
   };
+}
+
+function getSketchWorldPoint(state, screenPoint, target = state.hoveredTarget) {
+  if (target && target.kind === "point" && target.point) {
+    return target.point;
+  }
+
+  return screenToWorld(state, screenPoint);
 }
 
 function findNearestTarget(state, screenPoint) {
@@ -1448,6 +1622,8 @@ function updateDebugAttributes(state) {
     : "";
   state.canvas.dataset.originAxes = state.showOriginAxes ? "true" : "false";
   state.canvas.dataset.grainDirection = normalizeGrainDirection(state.grainDirection);
+  state.canvas.dataset.activeTool = normalizeToolName(state.activeTool);
+  state.canvas.dataset.toolDraftPointCount = state.toolDraft ? String(state.toolDraft.points.length) : "0";
   state.canvas.dataset.scale = String(state.view.scale);
   state.canvas.dataset.offsetX = String(state.view.offsetX);
   state.canvas.dataset.offsetY = String(state.view.offsetY);
@@ -1504,6 +1680,10 @@ function getPointerScreenPoint(state, event) {
 
 function isPanPointerDown(event) {
   return event.button === 1 || event.button === 2 || (event.button === 0 && event.shiftKey);
+}
+
+function isPrimaryPointerButton(event) {
+  return event.button === 0 || event.buttons === 1;
 }
 
 function getSelectionBoxOperation(event) {
@@ -1594,6 +1774,25 @@ function normalizeWheelDelta(event) {
 function normalizeGrainDirection(direction) {
   const normalized = String(direction || "none").toLowerCase();
   return normalized === "globalx" || normalized === "globaly" ? normalized : "none";
+}
+
+function normalizeToolName(toolName) {
+  return String(toolName || "select").replace(/[-_\s]/g, "").toLowerCase();
+}
+
+function getSketchCreationTool(state) {
+  switch (normalizeToolName(state.activeTool)) {
+    case "line":
+      return "line";
+    case "midpointline":
+      return "midpointline";
+    case "twopointrectangle":
+      return "twopointrectangle";
+    case "centercircle":
+      return "centercircle";
+    default:
+      return null;
+  }
 }
 
 function isPointSelectionKey(selectionKey) {
@@ -1850,6 +2049,13 @@ function midpoint(start, end) {
   return {
     x: (start.x + end.x) / 2,
     y: (start.y + end.y) / 2
+  };
+}
+
+function mirrorPoint(center, point) {
+  return {
+    x: (2 * center.x) - point.x,
+    y: (2 * center.y) - point.y
   };
 }
 
