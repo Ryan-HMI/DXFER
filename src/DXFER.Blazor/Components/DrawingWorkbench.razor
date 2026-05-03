@@ -1,7 +1,37 @@
 @namespace DXFER.Blazor.Components
 
-<div class="dxfer-workbench">
+<div class="@WorkbenchCssClass" style="@WorkbenchGridStyle">
+    @if (_isToolPanelCollapsed)
+    {
+        <button type="button"
+                class="dxfer-dock-tab dxfer-dock-tab-left"
+                title="Show tool palette"
+                aria-label="Show tool palette"
+                @onclick="ToggleToolPanel">
+            <CadIcon Name="@CadIconName.CollapseRight" />
+        </button>
+    }
+    else
+    {
     <aside class="dxfer-tool-panel" aria-label="DXFER prep tools">
+        <div class="dxfer-dock-header">
+            <div>
+                <div class="dxfer-section-title">Tools</div>
+                <div class="dxfer-dock-subtitle">Grouped CAD palette</div>
+            </div>
+            <CadIconButton Icon="@CadIconName.CollapseLeft"
+                           Label="Collapse tool palette"
+                           OnClick="ToggleToolPanel" />
+        </div>
+        <label class="dxfer-width-control">
+            <span>Width</span>
+            <input type="range"
+                   min="184"
+                   max="320"
+                   step="8"
+                   value="@_toolPanelWidth"
+                   @oninput="OnToolPanelWidthChanged" />
+        </label>
         <section class="dxfer-tool-section">
             <div class="dxfer-section-title">File</div>
             <div class="dxfer-command-strip" role="toolbar" aria-label="File tools">
@@ -15,86 +45,15 @@
                 </label>
                 <CadIconButton Icon="@CadIconName.Sample"
                                Label="Load sample drawing"
-                               OnClick="LoadSample" />
+                               OnClick="@(() => InvokeWorkbenchCommand(WorkbenchCommandId.LoadSample))" />
                 <CadIconButton Icon="@CadIconName.Export"
                                Label="Export DXF text"
                                Disabled="@(!HasDocument)"
-                               OnClick="GenerateDxfExport" />
+                               OnClick="@(() => InvokeWorkbenchCommand(WorkbenchCommandId.ExportDxfText))" />
             </div>
         </section>
 
-        <section class="dxfer-tool-section">
-            <div class="dxfer-section-title">Tools</div>
-            <div class="dxfer-command-strip" role="toolbar" aria-label="CAD tools">
-                <CadIconButton Icon="@CadIconName.Select"
-                               Label="Select"
-                               Pressed="@(_activeTool == WorkbenchTool.Select)"
-                               OnClick="ActivateSelectTool" />
-                <CadIconButton Icon="@CadIconName.Measure"
-                               Label="Measure"
-                               Pressed="@(_activeTool == WorkbenchTool.Measure)"
-                               OnClick="ActivateMeasureTool" />
-                <CadIconButton Icon="@CadIconName.Undo"
-                               Label="Undo"
-                               Disabled="@(!CanUndo)"
-                               OnClick="UndoLastDocumentChange" />
-                <CadIconButton Icon="@CadIconName.Redo"
-                               Label="Redo"
-                               Disabled="@(!CanRedo)"
-                               OnClick="RedoLastDocumentChange" />
-            </div>
-        </section>
-
-        <section class="dxfer-tool-section">
-            <div class="dxfer-section-title">Fit</div>
-            <div class="dxfer-command-strip" role="toolbar" aria-label="Fit and origin tools">
-                <CadIconButton Icon="@CadIconName.Fit"
-                               Label="Fit extents"
-                               Disabled="@(!HasDocument)"
-                               OnClick="FitAsync" />
-                <CadIconButton Icon="@CadIconName.BoundsToOrigin"
-                               Label="Move bounds minimum to origin"
-                               Disabled="@(!HasDocument)"
-                               OnClick="MoveBoundsToOrigin" />
-                <CadIconButton Icon="@CadIconName.PointToOrigin"
-                               Label="Move selected point to origin"
-                               Disabled="@(!CanMoveSelectedPointToOrigin)"
-                               OnClick="MoveSelectedPointToOrigin" />
-            </div>
-        </section>
-
-        <section class="dxfer-tool-section">
-            <div class="dxfer-section-title">View</div>
-            <div class="dxfer-command-strip" role="toolbar" aria-label="View tools">
-                <CadIconButton Icon="@CadIconName.OriginAxes"
-                               Label="Origin axes"
-                               Tooltip="Toggle dotted global origin axes. X is red; Y is green."
-                               Pressed="@_showOriginAxes"
-                               OnClick="ToggleOriginAxes" />
-            </div>
-        </section>
-
-        <section class="dxfer-tool-section">
-            <div class="dxfer-section-title">Align</div>
-            <div class="dxfer-command-strip" role="toolbar" aria-label="Alignment tools">
-                <CadIconButton Icon="@CadIconName.VectorToX"
-                               Label="Align selected vector to X"
-                               Disabled="@(!CanAlignSelectedVector)"
-                               OnClick="AlignSelectedVectorToX" />
-                <CadIconButton Icon="@CadIconName.VectorToY"
-                               Label="Align selected vector to Y"
-                               Disabled="@(!CanAlignSelectedVector)"
-                               OnClick="AlignSelectedVectorToY" />
-                <CadIconButton Icon="@CadIconName.LongBoundsToX"
-                               Label="Orient long bounds to X"
-                               Disabled="@(!HasDocument)"
-                               OnClick="OrientLongAxisToX" />
-                <CadIconButton Icon="@CadIconName.LongBoundsToY"
-                               Label="Orient long bounds to Y"
-                               Disabled="@(!HasDocument)"
-                               OnClick="OrientLongAxisToY" />
-            </div>
-        </section>
+        <WorkbenchToolPalette Groups="@ToolGroups" OnCommandInvoked="InvokeWorkbenchCommand" />
 
         <section class="dxfer-tool-section">
             <div class="dxfer-section-title">Grain</div>
@@ -111,7 +70,23 @@
                 <span>Global Y</span>
             </label>
         </section>
+
+        @if (IsParametricCommandActive)
+        {
+            <section class="dxfer-command-panel" aria-label="Command parameters">
+                <div class="dxfer-command-panel-title">@ActiveToolLabel</div>
+                <label>
+                    <span>Distance</span>
+                    <input type="number" placeholder="0.000" disabled />
+                </label>
+                <label>
+                    <span>Angle</span>
+                    <input type="number" placeholder="0.000" disabled />
+                </label>
+            </section>
+        }
     </aside>
+    }
 
     <main class="dxfer-canvas-panel">
         <DrawingCanvas @ref="_canvas"
@@ -124,7 +99,37 @@
                        SelectionChanged="OnSelectionChanged" />
     </main>
 
+    @if (_isInspectorCollapsed)
+    {
+        <button type="button"
+                class="dxfer-dock-tab dxfer-dock-tab-right"
+                title="Show inspector"
+                aria-label="Show inspector"
+                @onclick="ToggleInspector">
+            <CadIcon Name="@CadIconName.CollapseLeft" />
+        </button>
+    }
+    else
+    {
     <aside class="dxfer-inspector" aria-label="Drawing inspector">
+        <div class="dxfer-dock-header">
+            <div>
+                <div class="dxfer-section-title">Inspector</div>
+                <div class="dxfer-dock-subtitle">Debug and Sync detail</div>
+            </div>
+            <CadIconButton Icon="@CadIconName.CollapseRight"
+                           Label="Collapse inspector"
+                           OnClick="ToggleInspector" />
+        </div>
+        <label class="dxfer-width-control">
+            <span>Width</span>
+            <input type="range"
+                   min="220"
+                   max="460"
+                   step="10"
+                   value="@_inspectorWidth"
+                   @oninput="OnInspectorWidthChanged" />
+        </label>
         <section class="dxfer-inspector-section">
             <div class="dxfer-section-title">Status</div>
             <div class="dxfer-file-name">@_fileName</div>
@@ -168,4 +173,5 @@
             </section>
         }
     </aside>
+    }
 </div>

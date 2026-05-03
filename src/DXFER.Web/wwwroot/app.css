@@ -57,6 +57,14 @@ button {
     align-items: center;
 }
 
+.dxfer-section-title {
+    color: #f2f5f7;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
 .dxfer-icon,
 .dxfer-icon-button .dxfer-icon,
 .dxfer-file-picker .dxfer-icon {
@@ -90,6 +98,10 @@ button {
     color: #f8fbfd;
     background: #1f4b5f;
     border-color: #38bdf8;
+}
+
+.dxfer-icon-button-future:not(:disabled) {
+    border-style: dashed;
 }
 
 .dxfer-icon-button:disabled {

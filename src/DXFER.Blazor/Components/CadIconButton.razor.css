@@ -24,6 +24,10 @@
     border-color: #38bdf8;
 }
 
+.dxfer-icon-button-future:not(:disabled) {
+    border-style: dashed;
+}
+
 .dxfer-icon-button:disabled {
     color: #697781;
     background: #1d242a;

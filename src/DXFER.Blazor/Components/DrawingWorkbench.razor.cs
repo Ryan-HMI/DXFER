@@ -24,7 +24,11 @@ public partial class DrawingWorkbench
     private string _exportText = string.Empty;
     private GrainDirection _grainDirection = GrainDirection.None;
     private WorkbenchTool _activeTool = WorkbenchTool.Select;
-    private bool _showOriginAxes;
+    private bool _showOriginAxes = true;
+    private bool _isToolPanelCollapsed;
+    private bool _isInspectorCollapsed;
+    private int _toolPanelWidth = 220;
+    private int _inspectorWidth = 280;
     private int _selectionResetToken;
     private readonly HashSet<string> _selectedEntityIds = new(StringComparer.Ordinal);
     private readonly Stack<DrawingDocument> _undoStack = new();
@@ -45,6 +49,99 @@ public partial class DrawingWorkbench
         SelectionPointResolver.TryGetPointToOriginReference(_document, _selectedEntityIds, out _);
 
     private Bounds2 Bounds => _document.GetBounds();
+
+    private IReadOnlyList<WorkbenchToolGroup> ToolGroups => new[]
+    {
+        new WorkbenchToolGroup("Navigate", new[]
+        {
+            Command(WorkbenchCommandId.Select, WorkbenchTool.Select, CadIconName.Select, "Select"),
+            Command(WorkbenchCommandId.Measure, WorkbenchTool.Measure, CadIconName.Measure, "Measure"),
+            Command(WorkbenchCommandId.Undo, null, CadIconName.Undo, "Undo", !CanUndo),
+            Command(WorkbenchCommandId.Redo, null, CadIconName.Redo, "Redo", !CanRedo),
+            Command(WorkbenchCommandId.FitExtents, null, CadIconName.Fit, "Fit extents", !HasDocument),
+            Command(WorkbenchCommandId.OriginAxes, null, CadIconName.OriginAxes, "Origin axes", pressed: _showOriginAxes)
+        }),
+        new WorkbenchToolGroup("Geometry", new[]
+        {
+            Command(WorkbenchCommandId.Line, WorkbenchTool.Line, CadIconName.Line, "Line", isFuture: true),
+            Command(WorkbenchCommandId.CenterLine, WorkbenchTool.CenterLine, CadIconName.CenterLine, "Centerline", isFuture: true),
+            Command(WorkbenchCommandId.TwoPointRectangle, WorkbenchTool.TwoPointRectangle, CadIconName.Rectangle, "Two-point rectangle", isFuture: true),
+            Command(WorkbenchCommandId.CenterRectangle, WorkbenchTool.CenterRectangle, CadIconName.CenterRectangle, "Center rectangle", isFuture: true),
+            Command(WorkbenchCommandId.CenterCircle, WorkbenchTool.CenterCircle, CadIconName.Circle, "Center circle", isFuture: true),
+            Command(WorkbenchCommandId.ThreePointCircle, WorkbenchTool.ThreePointCircle, CadIconName.ThreePointCircle, "Three-point circle", isFuture: true),
+            Command(WorkbenchCommandId.ThreePointArc, WorkbenchTool.ThreePointArc, CadIconName.Arc, "Three-point arc", isFuture: true),
+            Command(WorkbenchCommandId.Slot, WorkbenchTool.Slot, CadIconName.Slot, "Slot", isFuture: true)
+        }),
+        new WorkbenchToolGroup("Edit", new[]
+        {
+            Command(WorkbenchCommandId.Trim, WorkbenchTool.Trim, CadIconName.Trim, "Trim", isFuture: true),
+            Command(WorkbenchCommandId.Extend, WorkbenchTool.Extend, CadIconName.Extend, "Extend", isFuture: true),
+            Command(WorkbenchCommandId.SplitAtPoint, WorkbenchTool.SplitAtPoint, CadIconName.Split, "Split at point", isFuture: true),
+            Command(WorkbenchCommandId.Offset, WorkbenchTool.Offset, CadIconName.Offset, "Offset", isFuture: true),
+            Command(WorkbenchCommandId.Fillet, WorkbenchTool.Fillet, CadIconName.Fillet, "Fillet", isFuture: true),
+            Command(WorkbenchCommandId.Chamfer, WorkbenchTool.Chamfer, CadIconName.Chamfer, "Chamfer", isFuture: true)
+        }),
+        new WorkbenchToolGroup("Transform", new[]
+        {
+            Command(WorkbenchCommandId.Translate, WorkbenchTool.Translate, CadIconName.Move, "Translate", isFuture: true),
+            Command(WorkbenchCommandId.Rotate, WorkbenchTool.Rotate, CadIconName.Rotate, "Rotate", isFuture: true),
+            Command(WorkbenchCommandId.Scale, WorkbenchTool.Scale, CadIconName.Scale, "Scale", isFuture: true),
+            Command(WorkbenchCommandId.Mirror, WorkbenchTool.Mirror, CadIconName.Mirror, "Mirror", isFuture: true),
+            Command(WorkbenchCommandId.VectorToX, null, CadIconName.VectorToX, "Align selected vector to X", !CanAlignSelectedVector),
+            Command(WorkbenchCommandId.VectorToY, null, CadIconName.VectorToY, "Align selected vector to Y", !CanAlignSelectedVector)
+        }),
+        new WorkbenchToolGroup("Pattern", new[]
+        {
+            Command(WorkbenchCommandId.LinearPattern, WorkbenchTool.LinearPattern, CadIconName.LinearPattern, "Linear pattern", isFuture: true),
+            Command(WorkbenchCommandId.CircularPattern, WorkbenchTool.CircularPattern, CadIconName.CircularPattern, "Circular pattern", isFuture: true)
+        }),
+        new WorkbenchToolGroup("Prep", new[]
+        {
+            Command(WorkbenchCommandId.BoundsToOrigin, null, CadIconName.BoundsToOrigin, "Move bounds minimum to origin", !HasDocument),
+            Command(WorkbenchCommandId.PointToOrigin, null, CadIconName.PointToOrigin, "Move selected point to origin", !CanMoveSelectedPointToOrigin),
+            Command(WorkbenchCommandId.LongBoundsToX, null, CadIconName.LongBoundsToX, "Orient long bounds to X", !HasDocument),
+            Command(WorkbenchCommandId.LongBoundsToY, null, CadIconName.LongBoundsToY, "Orient long bounds to Y", !HasDocument)
+        })
+    };
+
+    private string WorkbenchCssClass
+    {
+        get
+        {
+            var classes = new List<string> { "dxfer-workbench" };
+            if (_isToolPanelCollapsed)
+            {
+                classes.Add("dxfer-tool-panel-collapsed");
+            }
+
+            if (_isInspectorCollapsed)
+            {
+                classes.Add("dxfer-inspector-collapsed");
+            }
+
+            return string.Join(" ", classes);
+        }
+    }
+
+    private string WorkbenchGridStyle =>
+        $"--dxfer-tools-width:{_toolPanelWidth}px;--dxfer-inspector-width:{_inspectorWidth}px;";
+
+    private bool IsParametricCommandActive =>
+        _activeTool is not WorkbenchTool.Select and not WorkbenchTool.Measure;
+
+    private string ActiveToolLabel => _activeTool switch
+    {
+        WorkbenchTool.CenterLine => "Centerline",
+        WorkbenchTool.TwoPointRectangle => "Two-point rectangle",
+        WorkbenchTool.CenterRectangle => "Center rectangle",
+        WorkbenchTool.CenterCircle => "Center circle",
+        WorkbenchTool.ThreePointCircle => "Three-point circle",
+        WorkbenchTool.ThreePointArc => "Three-point arc",
+        WorkbenchTool.SplitAtPoint => "Split at point",
+        WorkbenchTool.LinearPattern => "Linear pattern",
+        WorkbenchTool.CircularPattern => "Circular pattern",
+        _ => _activeTool.ToString()
+    };
 
     private string HoverText => FormatSelectionKey(_hoveredEntityId);
 
@@ -125,16 +222,62 @@ public partial class DrawingWorkbench
         ResetSelection();
     }
 
-    private void ActivateSelectTool()
+    private async Task InvokeWorkbenchCommand(WorkbenchCommandId commandId)
     {
-        _activeTool = WorkbenchTool.Select;
-        _status = "Select tool active.";
+        switch (commandId)
+        {
+            case WorkbenchCommandId.LoadSample:
+                LoadSample();
+                break;
+            case WorkbenchCommandId.ExportDxfText:
+                GenerateDxfExport();
+                break;
+            case WorkbenchCommandId.Select:
+                ActivateTool(WorkbenchTool.Select, "Select tool active.");
+                break;
+            case WorkbenchCommandId.Measure:
+                ActivateTool(WorkbenchTool.Measure, "Measure tool active.");
+                break;
+            case WorkbenchCommandId.Undo:
+                UndoLastDocumentChange();
+                break;
+            case WorkbenchCommandId.Redo:
+                RedoLastDocumentChange();
+                break;
+            case WorkbenchCommandId.FitExtents:
+                await FitAsync();
+                break;
+            case WorkbenchCommandId.OriginAxes:
+                ToggleOriginAxes();
+                break;
+            case WorkbenchCommandId.BoundsToOrigin:
+                MoveBoundsToOrigin();
+                break;
+            case WorkbenchCommandId.PointToOrigin:
+                MoveSelectedPointToOrigin();
+                break;
+            case WorkbenchCommandId.VectorToX:
+                AlignSelectedVectorToX();
+                break;
+            case WorkbenchCommandId.VectorToY:
+                AlignSelectedVectorToY();
+                break;
+            case WorkbenchCommandId.LongBoundsToX:
+                OrientLongAxisToX();
+                break;
+            case WorkbenchCommandId.LongBoundsToY:
+                OrientLongAxisToY();
+                break;
+            default:
+                ActivateTool(ToFutureTool(commandId), $"{FormatCommandName(commandId)} command shell active.");
+                break;
+        }
     }
 
-    private void ActivateMeasureTool()
+    private void ActivateTool(WorkbenchTool tool, string status)
     {
-        _activeTool = WorkbenchTool.Measure;
-        _status = "Measure tool active.";
+        _activeTool = tool;
+        _status = status;
     }
 
     private void UndoLastDocumentChange()
@@ -209,6 +352,16 @@ public partial class DrawingWorkbench
             ? "Origin axes enabled."
             : "Origin axes hidden.";
     }
+
+    private void ToggleToolPanel() => _isToolPanelCollapsed = !_isToolPanelCollapsed;
+
+    private void ToggleInspector() => _isInspectorCollapsed = !_isInspectorCollapsed;
+
+    private void OnToolPanelWidthChanged(ChangeEventArgs args) =>
+        _toolPanelWidth = ClampParsedInt(args.Value, 184, 320, _toolPanelWidth);
+
+    private void OnInspectorWidthChanged(ChangeEventArgs args) =>
+        _inspectorWidth = ClampParsedInt(args.Value, 220, 460, _inspectorWidth);
 
     private void AlignSelectedVector(AxisDirection axis)
     {
@@ -470,4 +623,63 @@ public partial class DrawingWorkbench
     private static string FormatNumber(double value) => Round(value).ToString("0.###", CultureInfo.InvariantCulture);
 
     private static double Round(double value) => Math.Round(value, 4);
+
+    private WorkbenchToolCommand Command(
+        WorkbenchCommandId id,
+        WorkbenchTool? tool,
+        CadIconName icon,
+        string label,
+        bool disabled = false,
+        bool pressed = false,
+        bool isFuture = false) =>
+        new(id, tool, icon, label, disabled, pressed || (tool.HasValue && tool.Value == _activeTool), isFuture);
+
+    private static int ClampParsedInt(object? value, int min, int max, int fallback)
+    {
+        if (value is null
+            || !int.TryParse(value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+        {
+            return fallback;
+        }
+
+        return Math.Clamp(parsed, min, max);
+    }
+
+    private static WorkbenchTool ToFutureTool(WorkbenchCommandId commandId) => commandId switch
+    {
+        WorkbenchCommandId.Line => WorkbenchTool.Line,
+        WorkbenchCommandId.CenterLine => WorkbenchTool.CenterLine,
+        WorkbenchCommandId.TwoPointRectangle => WorkbenchTool.TwoPointRectangle,
+        WorkbenchCommandId.CenterRectangle => WorkbenchTool.CenterRectangle,
+        WorkbenchCommandId.CenterCircle => WorkbenchTool.CenterCircle,
+        WorkbenchCommandId.ThreePointCircle => WorkbenchTool.ThreePointCircle,
+        WorkbenchCommandId.ThreePointArc => WorkbenchTool.ThreePointArc,
+        WorkbenchCommandId.Slot => WorkbenchTool.Slot,
+        WorkbenchCommandId.Trim => WorkbenchTool.Trim,
+        WorkbenchCommandId.Extend => WorkbenchTool.Extend,
+        WorkbenchCommandId.SplitAtPoint => WorkbenchTool.SplitAtPoint,
+        WorkbenchCommandId.Offset => WorkbenchTool.Offset,
+        WorkbenchCommandId.Fillet => WorkbenchTool.Fillet,
+        WorkbenchCommandId.Chamfer => WorkbenchTool.Chamfer,
+        WorkbenchCommandId.Translate => WorkbenchTool.Translate,
+        WorkbenchCommandId.Rotate => WorkbenchTool.Rotate,
+        WorkbenchCommandId.Scale => WorkbenchTool.Scale,
+        WorkbenchCommandId.Mirror => WorkbenchTool.Mirror,
+        WorkbenchCommandId.LinearPattern => WorkbenchTool.LinearPattern,
+        WorkbenchCommandId.CircularPattern => WorkbenchTool.CircularPattern,
+        _ => WorkbenchTool.Select
+    };
+
+    private static string FormatCommandName(WorkbenchCommandId commandId) => commandId switch
+    {
+        WorkbenchCommandId.TwoPointRectangle => "Two-point rectangle",
+        WorkbenchCommandId.CenterRectangle => "Center rectangle",
+        WorkbenchCommandId.CenterCircle => "Center circle",
+        WorkbenchCommandId.ThreePointCircle => "Three-point circle",
+        WorkbenchCommandId.ThreePointArc => "Three-point arc",
+        WorkbenchCommandId.SplitAtPoint => "Split at point",
+        WorkbenchCommandId.LinearPattern => "Linear pattern",
+        WorkbenchCommandId.CircularPattern => "Circular pattern",
+        _ => commandId.ToString()
+    };
 }

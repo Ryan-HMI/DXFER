@@ -1,0 +1,27 @@
+@namespace DXFER.Blazor.Components
+
+@foreach (var group in Groups)
+{
+    <section class="dxfer-tool-section">
+        <div class="dxfer-section-title">@group.Name</div>
+        <div class="dxfer-command-strip" role="toolbar" aria-label="@($"{group.Name} tools")">
+            @foreach (var command in group.Commands)
+            {
+                <CadIconButton Icon="@command.Icon"
+                               Label="@command.Label"
+                               Disabled="@command.Disabled"
+                               Pressed="@command.Pressed"
+                               Class="@(command.IsFuture ? "dxfer-icon-button-future" : null)"
+                               OnClick="@(() => OnCommandInvoked.InvokeAsync(command.Id))" />
+            }
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<WorkbenchToolGroup> Groups { get; set; } = Array.Empty<WorkbenchToolGroup>();
+
+    [Parameter]
+    public EventCallback<WorkbenchCommandId> OnCommandInvoked { get; set; }
+}
