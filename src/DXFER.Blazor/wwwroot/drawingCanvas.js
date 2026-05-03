@@ -65,11 +65,13 @@ export function createDrawingCanvas(canvas, dotnetRef) {
       state.document = document || null;
       pruneInteractionState(state);
       fitToExtents(state);
+      updateDebugAttributes(state);
       draw(state);
     },
 
     fitToExtents() {
       fitToExtents(state);
+      updateDebugAttributes(state);
       draw(state);
     },
 
@@ -90,6 +92,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
 
       state.canvas.style.touchAction = state.previousTouchAction;
       setHoveredEntity(state, null);
+      updateDebugAttributes(state);
     }
   };
 }
@@ -276,6 +279,7 @@ function handlePointerMove(state, event) {
     state.view.offsetY += screenPoint.y - state.lastPointerScreen.y;
     state.lastPointerScreen = screenPoint;
     event.preventDefault();
+    updateDebugAttributes(state);
     draw(state);
     return;
   }
@@ -349,6 +353,7 @@ function handlePointerUp(state, event) {
       if (clickedId) {
         toggleSelectedEntity(state, clickedId);
         invokeDotNet(state, "OnEntityClicked", clickedId);
+        updateDebugAttributes(state);
         draw(state);
       }
     }
@@ -401,6 +406,7 @@ function handleWheel(state, event) {
 
   const nearestId = findNearestEntityId(state, screenPoint);
   setHoveredEntity(state, nearestId);
+  updateDebugAttributes(state);
   draw(state);
 }
 
@@ -430,6 +436,7 @@ function fitToExtents(state) {
   state.view.scale = scale;
   state.view.offsetX = size.width / 2 - centerX * scale;
   state.view.offsetY = size.height / 2 + centerY * scale;
+  updateDebugAttributes(state);
 }
 
 function worldToScreen(state, point) {
@@ -573,6 +580,7 @@ function setHoveredEntity(state, id) {
 
   state.hoveredId = id;
   invokeDotNet(state, "OnEntityHovered", id);
+  updateDebugAttributes(state);
   return true;
 }
 
@@ -591,6 +599,18 @@ function pruneInteractionState(state) {
   if (state.hoveredId && !entityIds.has(state.hoveredId)) {
     setHoveredEntity(state, null);
   }
+
+  updateDebugAttributes(state);
+}
+
+function updateDebugAttributes(state) {
+  const entities = getDocumentEntities(state.document);
+  state.canvas.dataset.entityCount = String(entities.length);
+  state.canvas.dataset.selectedCount = String(state.selectedIds.size);
+  state.canvas.dataset.hoveredId = state.hoveredId || "";
+  state.canvas.dataset.scale = String(state.view.scale);
+  state.canvas.dataset.offsetX = String(state.view.offsetX);
+  state.canvas.dataset.offsetY = String(state.view.offsetY);
 }
 
 function getCanvasCssSize(state) {
