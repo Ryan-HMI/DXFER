@@ -21,6 +21,21 @@ public readonly record struct Transform2(
 
     public static Transform2 Translation(double x, double y) => new(1, 0, 0, 1, x, y);
 
+    public static Transform2 RotationDegreesAbout(double degrees, Point2 center)
+    {
+        var radians = degrees * Math.PI / 180.0;
+        var cos = Math.Cos(radians);
+        var sin = Math.Sin(radians);
+
+        return new Transform2(
+            cos,
+            -sin,
+            sin,
+            cos,
+            center.X - center.X * cos + center.Y * sin,
+            center.Y - center.X * sin - center.Y * cos);
+    }
+
     public Point2 Apply(Point2 point) =>
         new(
             point.X * M11 + point.Y * M12 + OffsetX,
