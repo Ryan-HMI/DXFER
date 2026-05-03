@@ -128,8 +128,10 @@ public partial class DrawingCanvas : IAsyncDisposable
             return;
         }
 
-        if (!ReferenceEquals(_renderedDocument, Document))
+        var documentChanged = !ReferenceEquals(_renderedDocument, Document);
+        if (documentChanged)
         {
+            _renderedDocument = Document;
             HoveredEntityId = null;
             SelectedEntityIds.Clear();
             HoveredEntityChanged?.Invoke(HoveredEntityId);
@@ -138,7 +140,5 @@ public partial class DrawingCanvas : IAsyncDisposable
 
         var dto = Document is null ? CanvasDocumentDto.Empty : CanvasDocumentDto.FromDocument(Document);
         await _canvasInstance.InvokeVoidAsync("setDocument", dto);
-
-        _renderedDocument = Document;
     }
 }
