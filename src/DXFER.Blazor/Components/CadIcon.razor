@@ -1,0 +1,110 @@
+@namespace DXFER.Blazor.Components
+
+<svg class="@CssClass"
+     width="20"
+     height="20"
+     viewBox="0 0 24 24"
+     fill="none"
+     stroke="currentColor"
+     stroke-width="1.8"
+     stroke-linecap="round"
+     stroke-linejoin="round"
+     aria-hidden="true"
+     focusable="false">
+    @switch (Name)
+    {
+        case CadIconName.FolderOpen:
+            <path d="M3.5 7.5V18a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-7.8a2 2 0 0 0-2-2h-7.2l-2-2H5.5a2 2 0 0 0-2 2Z" />
+            <path d="M3.5 10.5h17" />
+            break;
+        case CadIconName.Sample:
+            <path d="M5 4.5h8l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 4 19V6a1.5 1.5 0 0 1 1.5-1.5Z" />
+            <path d="M13 4.5V9h4" />
+            <path d="M8 14h6" />
+            <path d="M11 11v6" />
+            break;
+        case CadIconName.Export:
+            <path d="M12 3v11" />
+            <path d="m7.5 9.5 4.5 4.5 4.5-4.5" />
+            <path d="M5 18.5h14" />
+            <path d="M5 21h14" />
+            break;
+        case CadIconName.Select:
+            <path d="M5 3.5 18.5 14 12 15.2 9.1 21 5 3.5Z" />
+            <path d="m13 14 4.5 4.5" />
+            break;
+        case CadIconName.Measure:
+            <path d="m16 3 5 5L8 21l-5-5L16 3Z" />
+            <path d="m14 5 2 2" />
+            <path d="m11.5 7.5 2 2" />
+            <path d="m9 10 2 2" />
+            <path d="m6.5 12.5 2 2" />
+            break;
+        case CadIconName.Undo:
+            <path d="m9 14-5-5 5-5" />
+            <path d="M4 9h10.5A5.5 5.5 0 0 1 20 14.5v0A5.5 5.5 0 0 1 14.5 20H11" />
+            break;
+        case CadIconName.Redo:
+            <path d="m15 14 5-5-5-5" />
+            <path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13" />
+            break;
+        case CadIconName.Fit:
+            <path d="M8 3H4.5A1.5 1.5 0 0 0 3 4.5V8" />
+            <path d="M16 3h3.5A1.5 1.5 0 0 1 21 4.5V8" />
+            <path d="M21 16v3.5a1.5 1.5 0 0 1-1.5 1.5H16" />
+            <path d="M8 21H4.5A1.5 1.5 0 0 1 3 19.5V16" />
+            <path d="M8 8h8v8H8z" />
+            break;
+        case CadIconName.BoundsToOrigin:
+            <path d="M4 20V5" />
+            <path d="M4 20h15" />
+            <path d="M8 16h8V8H8z" />
+            <path d="m8 16-4 4" />
+            break;
+        case CadIconName.PointToOrigin:
+            <path d="M4 20V5" />
+            <path d="M4 20h15" />
+            <circle cx="14" cy="10" r="3" />
+            <path d="m12 12-8 8" />
+            break;
+        case CadIconName.OriginAxes:
+            <path d="M12 4v16" stroke-dasharray="2 3" />
+            <path d="M4 12h16" stroke-dasharray="2 3" />
+            <circle cx="12" cy="12" r="2" />
+            break;
+        case CadIconName.VectorToX:
+            <path d="M4 17h16" />
+            <path d="m16 13 4 4-4 4" />
+            <path d="M6 6l5 5" />
+            <path d="m11 6-5 5" />
+            break;
+        case CadIconName.VectorToY:
+            <path d="M7 20V4" />
+            <path d="m3 8 4-4 4 4" />
+            <path d="M15 6l2.5 4L20 6" />
+            <path d="M17.5 10v4" />
+            break;
+        case CadIconName.LongBoundsToX:
+            <path d="M4 14h16" />
+            <path d="m16 10 4 4-4 4" />
+            <path d="M5 6h9v4H5z" />
+            break;
+        case CadIconName.LongBoundsToY:
+            <path d="M10 20V4" />
+            <path d="m6 8 4-4 4 4" />
+            <path d="M14 10h4v9h-4z" />
+            break;
+    }
+</svg>
+
+@code {
+    [Parameter]
+    public CadIconName Name { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private string CssClass => string.IsNullOrWhiteSpace(Class)
+        ? "dxfer-icon"
+        : $"dxfer-icon {Class}";
+}

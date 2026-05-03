@@ -4,35 +4,96 @@
     <aside class="dxfer-tool-panel" aria-label="DXFER prep tools">
         <section class="dxfer-tool-section">
             <div class="dxfer-section-title">File</div>
-            <InputFile OnChange="OpenFileAsync" accept=".dxf,.dwg" class="dxfer-file-input" />
-            <button type="button" class="dxfer-button" @onclick="LoadSample">Sample</button>
-            <button type="button" class="dxfer-button" @onclick="GenerateDxfExport" disabled="@(!HasDocument)">Export DXF Text</button>
+            <div class="dxfer-command-strip" role="toolbar" aria-label="File tools">
+                <label class="dxfer-file-picker" title="Open DXF or DWG">
+                    <CadIcon Name="@CadIconName.FolderOpen" />
+                    <span>Open</span>
+                    <InputFile OnChange="OpenFileAsync"
+                               accept=".dxf,.dwg"
+                               class="dxfer-file-input"
+                               style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;" />
+                </label>
+                <CadIconButton Icon="@CadIconName.Sample"
+                               Label="Load sample drawing"
+                               OnClick="LoadSample" />
+                <CadIconButton Icon="@CadIconName.Export"
+                               Label="Export DXF text"
+                               Disabled="@(!HasDocument)"
+                               OnClick="GenerateDxfExport" />
+            </div>
+        </section>
+
+        <section class="dxfer-tool-section">
+            <div class="dxfer-section-title">Tools</div>
+            <div class="dxfer-command-strip" role="toolbar" aria-label="CAD tools">
+                <CadIconButton Icon="@CadIconName.Select"
+                               Label="Select"
+                               Pressed="@(_activeTool == WorkbenchTool.Select)"
+                               OnClick="ActivateSelectTool" />
+                <CadIconButton Icon="@CadIconName.Measure"
+                               Label="Measure"
+                               Pressed="@(_activeTool == WorkbenchTool.Measure)"
+                               OnClick="ActivateMeasureTool" />
+                <CadIconButton Icon="@CadIconName.Undo"
+                               Label="Undo"
+                               Disabled="@(!CanUndo)"
+                               OnClick="UndoLastDocumentChange" />
+                <CadIconButton Icon="@CadIconName.Redo"
+                               Label="Redo"
+                               Disabled="@(!CanRedo)"
+                               OnClick="RedoLastDocumentChange" />
+            </div>
         </section>
 
         <section class="dxfer-tool-section">
             <div class="dxfer-section-title">Fit</div>
-            <button type="button" class="dxfer-button" @onclick="FitAsync" disabled="@(!HasDocument)">Fit Extents</button>
-            <button type="button" class="dxfer-button" @onclick="MoveBoundsToOrigin" disabled="@(!HasDocument)">Bounds Min To Origin</button>
-            <button type="button" class="dxfer-button" @onclick="MoveSelectedPointToOrigin" disabled="@(!CanMoveSelectedPointToOrigin)">Selected Point To Origin</button>
+            <div class="dxfer-command-strip" role="toolbar" aria-label="Fit and origin tools">
+                <CadIconButton Icon="@CadIconName.Fit"
+                               Label="Fit extents"
+                               Disabled="@(!HasDocument)"
+                               OnClick="FitAsync" />
+                <CadIconButton Icon="@CadIconName.BoundsToOrigin"
+                               Label="Move bounds minimum to origin"
+                               Disabled="@(!HasDocument)"
+                               OnClick="MoveBoundsToOrigin" />
+                <CadIconButton Icon="@CadIconName.PointToOrigin"
+                               Label="Move selected point to origin"
+                               Disabled="@(!CanMoveSelectedPointToOrigin)"
+                               OnClick="MoveSelectedPointToOrigin" />
+            </div>
         </section>
 
         <section class="dxfer-tool-section">
             <div class="dxfer-section-title">View</div>
-            <button type="button"
-                    class="dxfer-button @(_showOriginAxes ? "dxfer-button-active" : null)"
-                    title="Toggle dotted global origin axes. X is red; Y is green."
-                    aria-pressed="@_showOriginAxes"
-                    @onclick="ToggleOriginAxes">
-                Origin Axes
-            </button>
+            <div class="dxfer-command-strip" role="toolbar" aria-label="View tools">
+                <CadIconButton Icon="@CadIconName.OriginAxes"
+                               Label="Origin axes"
+                               Tooltip="Toggle dotted global origin axes. X is red; Y is green."
+                               Pressed="@_showOriginAxes"
+                               OnClick="ToggleOriginAxes" />
+            </div>
         </section>
 
         <section class="dxfer-tool-section">
             <div class="dxfer-section-title">Align</div>
-            <button type="button" class="dxfer-button" @onclick="AlignSelectedVectorToX" disabled="@(!CanAlignSelectedVector)">Selected Vector To X</button>
-            <button type="button" class="dxfer-button" @onclick="AlignSelectedVectorToY" disabled="@(!CanAlignSelectedVector)">Selected Vector To Y</button>
-            <button type="button" class="dxfer-button" @onclick="OrientLongAxisToX" disabled="@(!HasDocument)">Long Bounds To X</button>
-            <button type="button" class="dxfer-button" @onclick="OrientLongAxisToY" disabled="@(!HasDocument)">Long Bounds To Y</button>
+            <div class="dxfer-command-strip" role="toolbar" aria-label="Alignment tools">
+                <CadIconButton Icon="@CadIconName.VectorToX"
+                               Label="Align selected vector to X"
+                               Disabled="@(!CanAlignSelectedVector)"
+                               OnClick="AlignSelectedVectorToX" />
+                <CadIconButton Icon="@CadIconName.VectorToY"
+                               Label="Align selected vector to Y"
+                               Disabled="@(!CanAlignSelectedVector)"
+                               OnClick="AlignSelectedVectorToY" />
+                <CadIconButton Icon="@CadIconName.LongBoundsToX"
+                               Label="Orient long bounds to X"
+                               Disabled="@(!HasDocument)"
+                               OnClick="OrientLongAxisToX" />
+                <CadIconButton Icon="@CadIconName.LongBoundsToY"
+                               Label="Orient long bounds to Y"
+                               Disabled="@(!HasDocument)"
+                               OnClick="OrientLongAxisToY" />
+            </div>
         </section>
 
         <section class="dxfer-tool-section">

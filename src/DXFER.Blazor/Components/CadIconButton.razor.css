@@ -1,0 +1,45 @@
+.dxfer-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.15rem;
+    height: 2.15rem;
+    padding: 0;
+    color: #edf3f7;
+    background: #26323b;
+    border: 1px solid #46545f;
+    border-radius: 4px;
+    font: 0.76rem/1.1 "Segoe UI", system-ui, sans-serif;
+}
+
+.dxfer-icon-button:hover:not(:disabled),
+.dxfer-icon-button:focus-visible:not(:disabled) {
+    background: #31404a;
+    border-color: #7f96a8;
+}
+
+.dxfer-icon-button-active {
+    color: #f8fbfd;
+    background: #1f4b5f;
+    border-color: #38bdf8;
+}
+
+.dxfer-icon-button:disabled {
+    color: #697781;
+    background: #1d242a;
+    border-color: #313941;
+}
+
+.dxfer-icon-button-wide {
+    justify-content: flex-start;
+    gap: 0.45rem;
+    width: auto;
+    min-width: 2.15rem;
+    padding: 0 0.6rem;
+}
+
+.dxfer-icon-button-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

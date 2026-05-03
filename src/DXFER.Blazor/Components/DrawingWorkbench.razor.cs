@@ -23,13 +23,20 @@ public partial class DrawingWorkbench
     private string? _hoveredEntityId;
     private string _exportText = string.Empty;
     private GrainDirection _grainDirection = GrainDirection.None;
+    private WorkbenchTool _activeTool = WorkbenchTool.Select;
     private bool _showOriginAxes;
     private int _selectionResetToken;
     private readonly HashSet<string> _selectedEntityIds = new(StringComparer.Ordinal);
+    private readonly Stack<DrawingDocument> _undoStack = new();
+    private readonly Stack<DrawingDocument> _redoStack = new();
 
     private bool HasDocument => _document.Entities.Count > 0;
 
     private bool HasSelection => _selectedEntityIds.Count > 0;
+
+    private bool CanUndo => _undoStack.Count > 0;
+
+    private bool CanRedo => _redoStack.Count > 0;
 
     private bool CanAlignSelectedVector =>
         SelectionVectorResolver.TryGetAlignmentVector(_document, _selectedEntityIds, out _, out _);
@@ -103,6 +110,7 @@ public partial class DrawingWorkbench
         }
 
         _document = document;
+        ClearHistory();
         ResetSelection();
         _status = $"Loaded {document.Entities.Count} supported entities from DXF.";
     }
@@ -113,7 +121,48 @@ public partial class DrawingWorkbench
         _fileName = "Sample flat pattern";
         _status = "Sample drawing loaded.";
         _exportText = string.Empty;
+        ClearHistory();
         ResetSelection();
+    }
+
+    private void ActivateSelectTool()
+    {
+        _activeTool = WorkbenchTool.Select;
+        _status = "Select tool active.";
+    }
+
+    private void ActivateMeasureTool()
+    {
+        _activeTool = WorkbenchTool.Measure;
+        _status = "Measure tool active.";
+    }
+
+    private void UndoLastDocumentChange()
+    {
+        if (!_undoStack.TryPop(out var previousDocument))
+        {
+            return;
+        }
+
+        _redoStack.Push(_document);
+        _document = previousDocument;
+        _exportText = string.Empty;
+        ResetSelection();
+        _status = "Undo applied.";
+    }
+
+    private void RedoLastDocumentChange()
+    {
+        if (!_redoStack.TryPop(out var nextDocument))
+        {
+            return;
+        }
+
+        _undoStack.Push(_document);
+        _document = nextDocument;
+        _exportText = string.Empty;
+        ResetSelection();
+        _status = "Redo applied.";
     }
 
     private async Task FitAsync()
@@ -127,9 +176,9 @@ public partial class DrawingWorkbench
 
     private void MoveBoundsToOrigin()
     {
-        _document = DrawingPrepService.MoveBoundsMinimumToOrigin(_document);
-        _status = "Moved drawing bounds minimum to global origin.";
-        _exportText = string.Empty;
+        ApplyDocumentChange(
+            DrawingPrepService.MoveBoundsMinimumToOrigin(_document),
+            "Moved drawing bounds minimum to global origin.");
     }
 
     private void MoveSelectedPointToOrigin()
@@ -140,9 +189,9 @@ public partial class DrawingWorkbench
             return;
         }
 
-        _document = DrawingPrepService.MovePointToOrigin(_document, point);
-        _status = "Moved selected reference point to global origin.";
-        _exportText = string.Empty;
+        ApplyDocumentChange(
+            DrawingPrepService.MovePointToOrigin(_document, point),
+            "Moved selected reference point to global origin.");
     }
 
     private void AlignSelectedVectorToX() => AlignSelectedVector(AxisDirection.X);
@@ -170,18 +219,47 @@ public partial class DrawingWorkbench
         }
 
         var before = _document;
-        _document = DrawingPrepService.AlignVectorToAxis(_document, vectorStart, vectorEnd, axis);
-        _status = ReferenceEquals(before, _document)
-            ? "Selected vector has no usable length."
-            : $"Aligned selected vector to global {axis}.";
-        _exportText = string.Empty;
+        var after = DrawingPrepService.AlignVectorToAxis(_document, vectorStart, vectorEnd, axis);
+        if (ReferenceEquals(before, after))
+        {
+            _status = "Selected vector has no usable length.";
+            return;
+        }
+
+        ApplyDocumentChange(after, $"Aligned selected vector to global {axis}.");
     }
 
     private void OrientLongAxis(AxisDirection axis)
     {
-        _document = DrawingPrepService.OrientLongBoundsAxis(_document, axis);
-        _status = $"Oriented long bounds axis to global {axis}.";
+        var after = DrawingPrepService.OrientLongBoundsAxis(_document, axis);
+        if (ReferenceEquals(_document, after))
+        {
+            _status = $"Long bounds axis is already global {axis}.";
+            return;
+        }
+
+        ApplyDocumentChange(after, $"Oriented long bounds axis to global {axis}.");
+    }
+
+    private void ApplyDocumentChange(DrawingDocument nextDocument, string status)
+    {
+        if (ReferenceEquals(_document, nextDocument))
+        {
+            _status = status;
+            return;
+        }
+
+        _undoStack.Push(_document);
+        _redoStack.Clear();
+        _document = nextDocument;
         _exportText = string.Empty;
+        _status = status;
+    }
+
+    private void ClearHistory()
+    {
+        _undoStack.Clear();
+        _redoStack.Clear();
     }
 
     private void SetGrainDirection(GrainDirection grainDirection)

@@ -1,0 +1,71 @@
+@namespace DXFER.Blazor.Components
+
+<button type="button"
+        class="@ButtonClass"
+        title="@TitleText"
+        aria-label="@Label"
+        aria-pressed="@PressedValue"
+        disabled="@Disabled"
+        @onclick="OnClick">
+    <CadIcon Name="@Icon" />
+    @if (ShowLabel)
+    {
+        <span class="dxfer-icon-button-label">@Label</span>
+    }
+</button>
+
+@code {
+    [Parameter]
+    public CadIconName Icon { get; set; }
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Tooltip { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public bool ShowLabel { get; set; }
+
+    [Parameter]
+    public bool? Pressed { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    private string TitleText => string.IsNullOrWhiteSpace(Tooltip) ? Label : Tooltip;
+
+    private string? PressedValue => Pressed.HasValue
+        ? (Pressed.Value ? "true" : "false")
+        : null;
+
+    private string ButtonClass
+    {
+        get
+        {
+            var classes = new List<string> { "dxfer-icon-button" };
+            if (Pressed == true)
+            {
+                classes.Add("dxfer-icon-button-active");
+            }
+
+            if (ShowLabel)
+            {
+                classes.Add("dxfer-icon-button-wide");
+            }
+
+            if (!string.IsNullOrWhiteSpace(Class))
+            {
+                classes.Add(Class);
+            }
+
+            return string.Join(" ", classes);
+        }
+    }
+}

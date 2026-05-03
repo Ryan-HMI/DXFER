@@ -34,7 +34,7 @@
 .dxfer-tool-section,
 .dxfer-inspector-section {
     display: grid;
-    gap: 0.55rem;
+    gap: 0.58rem;
     padding: 0.85rem;
     border-bottom: 1px solid #2d343b;
 }
@@ -47,10 +47,42 @@
     text-transform: uppercase;
 }
 
+.dxfer-command-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    align-items: center;
+}
+
+.dxfer-file-picker {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    height: 2.15rem;
+    padding: 0 0.6rem;
+    color: #edf3f7;
+    background: #26323b;
+    border: 1px solid #46545f;
+    border-radius: 4px;
+    font: 0.76rem/1.1 "Segoe UI", system-ui, sans-serif;
+    cursor: pointer;
+}
+
+.dxfer-file-picker:hover,
+.dxfer-file-picker:focus-within {
+    background: #31404a;
+    border-color: #7f96a8;
+}
+
 .dxfer-file-input {
+    position: absolute;
+    inset: 0;
     width: 100%;
-    color: #bac6cf;
-    font-size: 0.78rem;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
 }
 
 .dxfer-button {
