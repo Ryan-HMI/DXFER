@@ -5,8 +5,10 @@ const CLICK_MOVE_TOLERANCE = 5;
 const MIN_VIEW_SCALE = 0.000001;
 const MAX_VIEW_SCALE = 1000000;
 const FULL_CIRCLE_DEGREES = 360;
+const MAX_ACQUIRED_SNAP_POINTS = 2;
 const SEGMENT_KEY_SEPARATOR = "|segment|";
 const POINT_KEY_SEPARATOR = "|point|";
+const DYNAMIC_POINT_KEY_PREFIX = "__dynamic";
 const WORLD_GEOMETRY_TOLERANCE = 0.000001;
 
 export function createDrawingCanvas(canvas, dotnetRef) {
@@ -27,6 +29,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
       points: [],
       previewPoint: null
     },
+    acquiredSnapPoints: [],
     hoveredTarget: null,
     selectedKeys: new Set(),
     view: {
@@ -79,6 +82,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
   return {
     setDocument(document, fitToDocument = false) {
       state.document = document || null;
+      state.acquiredSnapPoints = [];
       pruneInteractionState(state, true);
       if (fitToDocument) {
         fitToExtents(state);
@@ -117,6 +121,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
         points: [],
         previewPoint: null
       };
+      state.acquiredSnapPoints = [];
       state.canvas.dataset.activeTool = state.activeTool;
       updateDebugAttributes(state);
       draw(state);
@@ -202,6 +207,9 @@ function draw(state) {
       });
     }
   }
+
+  drawAcquiredSnapPoints(state);
+  drawInferenceGuides(state, size);
 
   if (state.hoveredTarget) {
     const isSelected = state.selectedKeys.has(state.hoveredTarget.key);
@@ -340,6 +348,70 @@ function drawTarget(state, target, style) {
 
   context.restore();
 
+  if (getSketchCreationTool(state) && target.snapPoint) {
+    drawPointTarget(state, target.snapPoint, {
+      strokeStyle: style.strokeStyle,
+      lineWidth: 2
+    });
+  }
+}
+
+function drawAcquiredSnapPoints(state) {
+  if (!getSketchCreationTool(state) || state.acquiredSnapPoints.length === 0) {
+    return;
+  }
+
+  const { context } = state;
+  context.save();
+  context.strokeStyle = "#67e8f9";
+  context.fillStyle = "#0f172a";
+  context.lineWidth = 1.25;
+  context.setLineDash([]);
+
+  for (const acquired of state.acquiredSnapPoints) {
+    const point = worldToScreen(state, acquired.point);
+    context.beginPath();
+    context.rect(point.x - 3, point.y - 3, 6, 6);
+    context.fill();
+    context.stroke();
+  }
+
+  context.restore();
+}
+
+function drawInferenceGuides(state, size) {
+  const guides = state.hoveredTarget && Array.isArray(state.hoveredTarget.guides)
+    ? state.hoveredTarget.guides
+    : [];
+  if (guides.length === 0) {
+    return;
+  }
+
+  const { context } = state;
+  context.save();
+  context.strokeStyle = "#67e8f9";
+  context.lineWidth = 1;
+  context.setLineDash([4, 4]);
+
+  for (const guide of guides) {
+    const point = worldToScreen(state, guide.point);
+    context.beginPath();
+    if (guide.orientation === "segment" && guide.start) {
+      const start = worldToScreen(state, guide.start);
+      context.moveTo(start.x, start.y);
+      context.lineTo(point.x, point.y);
+    } else if (guide.orientation === "vertical") {
+      context.moveTo(point.x, 0);
+      context.lineTo(point.x, size.height);
+    } else {
+      context.moveTo(0, point.y);
+      context.lineTo(size.width, point.y);
+    }
+
+    context.stroke();
+  }
+
+  context.restore();
 }
 
 function drawPointTarget(state, point, style) {
@@ -720,7 +792,12 @@ function handleSketchToolClick(state, screenPoint) {
     return;
   }
 
-  const worldPoint = getSketchWorldPoint(state, screenPoint);
+  const clickTarget = findNearestTarget(state, screenPoint);
+  if (clickTarget) {
+    setHoveredTarget(state, clickTarget);
+  }
+
+  const worldPoint = getSketchWorldPoint(state, screenPoint, clickTarget);
   if (!state.toolDraft || state.toolDraft.points.length === 0) {
     state.toolDraft = {
       points: [worldPoint],
@@ -784,6 +861,7 @@ function handleKeyDown(state, event) {
       points: [],
       previewPoint: null
     };
+    state.acquiredSnapPoints = [];
     setHoveredTarget(state, null);
     invokeDotNet(state, "OnSketchToolCanceled");
     updateDebugAttributes(state);
@@ -905,6 +983,10 @@ function getSketchWorldPoint(state, screenPoint, target = state.hoveredTarget) {
     return target.point;
   }
 
+  if (target && target.snapPoint) {
+    return target.snapPoint;
+  }
+
   return screenToWorld(state, screenPoint);
 }
 
@@ -926,6 +1008,11 @@ function findNearestTarget(state, screenPoint) {
 
   if (nearestPointHit && nearestPointHit.distance <= SNAP_POINT_TOLERANCE) {
     return nearestPointHit.target;
+  }
+
+  const dynamicPointHit = getDynamicSketchSnapHit(state, screenPoint);
+  if (dynamicPointHit && dynamicPointHit.distance <= SNAP_POINT_TOLERANCE) {
+    return dynamicPointHit.target;
   }
 
   if (nearestEdgeHit && nearestEdgeHit.distance <= HIT_TEST_TOLERANCE) {
@@ -995,6 +1082,128 @@ function getEntityEdgeHit(state, entity, screenPoint) {
   }
 }
 
+function getDynamicSketchSnapHit(state, screenPoint) {
+  const tool = getSketchCreationTool(state);
+  if (!tool) {
+    return null;
+  }
+
+  const worldPoint = screenToWorld(state, screenPoint);
+  const candidates = [];
+  addAcquiredProjectionSnapCandidates(candidates, state, worldPoint);
+  addDynamicTangentSnapCandidates(candidates, state, tool);
+
+  let nearest = null;
+  for (const candidate of candidates) {
+    const screenCandidate = worldToScreen(state, candidate.point);
+    const distance = distanceBetweenScreenPoints(screenPoint, screenCandidate);
+    const priority = Number(candidate.priority || 0);
+    const nearestPriority = nearest ? Number(nearest.priority || 0) : 0;
+    if (!nearest
+      || distance < nearest.distance
+      || (Math.abs(distance - nearest.distance) <= 0.000001 && priority > nearestPriority)) {
+      nearest = {
+        target: createDynamicPointTarget(candidate.label, candidate.point, candidate.guides),
+        distance,
+        priority
+      };
+    }
+  }
+
+  return nearest;
+}
+
+function addAcquiredProjectionSnapCandidates(candidates, state, worldPoint) {
+  if (state.acquiredSnapPoints.length === 0) {
+    return;
+  }
+
+  if (state.acquiredSnapPoints.length === 2) {
+    const first = state.acquiredSnapPoints[0];
+    const second = state.acquiredSnapPoints[1];
+    addAcquiredIntersectionCandidate(candidates, first, second);
+    addAcquiredIntersectionCandidate(candidates, second, first);
+    addAcquiredMidpointCandidate(candidates, first, second);
+  }
+
+  for (const acquired of state.acquiredSnapPoints) {
+    candidates.push({
+      label: `project-v-${acquired.label}`,
+      point: { x: acquired.point.x, y: worldPoint.y },
+      guides: [{ orientation: "vertical", point: acquired.point }],
+      priority: 2
+    });
+    candidates.push({
+      label: `project-h-${acquired.label}`,
+      point: { x: worldPoint.x, y: acquired.point.y },
+      guides: [{ orientation: "horizontal", point: acquired.point }],
+      priority: 2
+    });
+  }
+}
+
+function addAcquiredMidpointCandidate(candidates, first, second) {
+  if (distanceBetweenWorldPoints(first.point, second.point) <= WORLD_GEOMETRY_TOLERANCE) {
+    return;
+  }
+
+  const point = midpoint(first.point, second.point);
+  candidates.push({
+    label: `midpoint-${first.label}-${second.label}`,
+    point,
+    guides: [{ orientation: "segment", start: first.point, point: second.point }],
+    priority: 6
+  });
+}
+
+function addAcquiredIntersectionCandidate(candidates, verticalSource, horizontalSource) {
+  if (Math.abs(verticalSource.point.x - horizontalSource.point.x) <= WORLD_GEOMETRY_TOLERANCE
+    || Math.abs(verticalSource.point.y - horizontalSource.point.y) <= WORLD_GEOMETRY_TOLERANCE) {
+    return;
+  }
+
+  candidates.push({
+    label: `project-${verticalSource.label}-${horizontalSource.label}`,
+    point: {
+      x: verticalSource.point.x,
+      y: horizontalSource.point.y
+    },
+    guides: [
+      { orientation: "vertical", point: verticalSource.point },
+      { orientation: "horizontal", point: horizontalSource.point }
+    ],
+    priority: 5
+  });
+}
+
+function addDynamicTangentSnapCandidates(candidates, state, tool) {
+  if (tool !== "line" && tool !== "midpointline") {
+    return;
+  }
+
+  if (!state.toolDraft || state.toolDraft.points.length === 0) {
+    return;
+  }
+
+  const anchor = state.toolDraft.points[0];
+  for (const entity of getDocumentEntities(state.document)) {
+    if (!isCurveEntity(entity)) {
+      continue;
+    }
+
+    const entityId = getEntityId(entity) || "curve";
+    const tangentPoints = getPointCurveTangentPoints(anchor, entity);
+    for (let index = 0; index < tangentPoints.length; index += 1) {
+      candidates.push({
+        label: `tangent-${entityId}-${index}`,
+        point: tangentPoints[index],
+        guides: [{ orientation: "segment", start: anchor, point: tangentPoints[index] }],
+        priority: 8
+      });
+    }
+  }
+}
+
 function getEntityScreenDistance(state, entity, screenPoint) {
   const hit = getEntityEdgeHit(state, entity, screenPoint);
   return hit ? hit.distance : Number.POSITIVE_INFINITY;
@@ -1012,7 +1221,7 @@ function getLineEdgeHit(state, entity, screenPoint) {
   const projection = closestPointOnScreenSegment(screenPoint, start, end);
 
   return {
-    target,
+    target: withSnapPoint(target, screenToWorld(state, projection.point)),
     distance: projection.distance
   };
 }
@@ -1026,6 +1235,7 @@ function getPolylineSegmentScreenHit(state, entity, screenPoint) {
 
   let closestDistance = Number.POSITIVE_INFINITY;
   let closestSegmentIndex = -1;
+  let closestProjectionPoint = null;
 
   for (let index = 1; index < points.length; index += 1) {
     const projection = closestPointOnScreenSegment(
@@ -1035,13 +1245,16 @@ function getPolylineSegmentScreenHit(state, entity, screenPoint) {
     if (projection.distance < closestDistance) {
       closestDistance = projection.distance;
       closestSegmentIndex = index - 1;
+      closestProjectionPoint = projection.point;
     }
   }
 
-  return closestSegmentIndex < 0
+  return closestSegmentIndex < 0 || !closestProjectionPoint
     ? null
     : {
-      target: createPolylineSegmentTarget(entity, closestSegmentIndex),
+      target: withSnapPoint(
+        createPolylineSegmentTarget(entity, closestSegmentIndex),
+        screenToWorld(state, closestProjectionPoint)),
       distance: closestDistance
     };
 }
@@ -1060,8 +1273,15 @@ function getCircleEdgeHit(state, entity, screenPoint) {
   const vectorX = screenPoint.x - screenCenter.x;
   const vectorY = screenPoint.y - screenCenter.y;
   const vectorLength = Math.hypot(vectorX, vectorY);
+  const snapPoint = vectorLength > 0
+    ? screenToWorld(state, {
+      x: screenCenter.x + vectorX * screenRadius / vectorLength,
+      y: screenCenter.y + vectorY * screenRadius / vectorLength
+    })
+    : null;
+
   return {
-    target,
+    target: snapPoint ? withSnapPoint(target, snapPoint) : target,
     distance: Math.abs(vectorLength - screenRadius)
   };
 }
@@ -1082,7 +1302,7 @@ function getArcEdgeHit(state, entity, screenPoint) {
 
   if (isAngleOnArc(angleDegrees, getEntityStartAngle(entity), getEntityEndAngle(entity))) {
     return {
-      target,
+      target: withSnapPoint(target, pointOnCircle(center, radius, angleDegrees)),
       distance: Math.abs(distanceBetweenScreenPoints(screenPoint, screenCenter) - screenRadius)
     };
   }
@@ -1102,7 +1322,7 @@ function getArcEdgeHit(state, entity, screenPoint) {
   }
 
   return {
-    target,
+    target: withSnapPoint(target, nearestEndpoint.point),
     distance: nearestEndpoint.distance
   };
 }
@@ -1407,6 +1627,44 @@ function getSegmentCurveTangentPoint(segmentStart, segmentEnd, curveEntity) {
   return projection.point;
 }
 
+function getPointCurveTangentPoints(point, curveEntity) {
+  const center = getEntityCenter(curveEntity);
+  const radius = getEntityRadius(curveEntity);
+  if (!center || !isFinitePositive(radius)) {
+    return [];
+  }
+
+  const deltaX = point.x - center.x;
+  const deltaY = point.y - center.y;
+  const distance = Math.hypot(deltaX, deltaY);
+  if (distance <= radius + WORLD_GEOMETRY_TOLERANCE) {
+    return [];
+  }
+
+  const baseAngle = Math.atan2(deltaY, deltaX);
+  const offsetAngle = Math.acos(clamp(radius / distance, -1, 1));
+  const tangentAngles = [baseAngle + offsetAngle, baseAngle - offsetAngle];
+  const points = [];
+
+  for (const tangentAngle of tangentAngles) {
+    const tangentPoint = {
+      x: center.x + radius * Math.cos(tangentAngle),
+      y: center.y + radius * Math.sin(tangentAngle)
+    };
+
+    if (getEntityKind(curveEntity) === "arc") {
+      const tangentDegrees = radiansToDegrees(tangentAngle);
+      if (!isAngleOnArc(tangentDegrees, getEntityStartAngle(curveEntity), getEntityEndAngle(curveEntity))) {
+        continue;
+      }
+    }
+
+    points.push(tangentPoint);
+  }
+
+  return points;
+}
+
 function getLinearSegments(entity) {
   const kind = getEntityKind(entity);
   const points = getEntityPoints(entity);
@@ -1501,6 +1759,25 @@ function createPointTarget(entity, label, point) {
   };
 }
 
+function createDynamicPointTarget(label, point, guides = []) {
+  return {
+    kind: "point",
+    key: `${DYNAMIC_POINT_KEY_PREFIX}${POINT_KEY_SEPARATOR}${sanitizeKeyPart(label)}|${formatKeyNumber(point.x)}|${formatKeyNumber(point.y)}`,
+    entityId: null,
+    entity: null,
+    label,
+    point,
+    dynamic: true,
+    guides
+  };
+}
+
+function withSnapPoint(target, snapPoint) {
+  return target
+    ? { ...target, snapPoint }
+    : null;
+}
+
 function resolveSelectionTarget(state, key) {
   const pointTarget = parsePointTargetKey(state, key);
   if (pointTarget) {
@@ -1587,15 +1864,53 @@ function clearSelectedTargets(state) {
 
 function setHoveredTarget(state, target) {
   const previousKey = state.hoveredTarget ? state.hoveredTarget.key : null;
+  const previousNotifyKey = state.hoveredTarget && !state.hoveredTarget.dynamic
+    ? previousKey
+    : null;
   const nextKey = target ? target.key : null;
+  const nextNotifyKey = target && !target.dynamic
+    ? nextKey
+    : null;
+
   if (previousKey === nextKey) {
     return false;
   }
 
   state.hoveredTarget = target;
-  invokeDotNet(state, "OnEntityHovered", nextKey);
+  rememberAcquiredSnapPoint(state, target);
+  if (previousNotifyKey !== nextNotifyKey) {
+    invokeDotNet(state, "OnEntityHovered", nextNotifyKey);
+  }
+
   updateDebugAttributes(state);
   return true;
+}
+
+function rememberAcquiredSnapPoint(state, target) {
+  if (!getSketchCreationTool(state)
+    || !target
+    || target.kind !== "point"
+    || target.dynamic
+    || !target.point) {
+    return;
+  }
+
+  const duplicateIndex = state.acquiredSnapPoints.findIndex(acquired =>
+    acquired.key === target.key
+    || distanceBetweenWorldPoints(acquired.point, target.point) <= WORLD_GEOMETRY_TOLERANCE);
+  if (duplicateIndex >= 0) {
+    state.acquiredSnapPoints.splice(duplicateIndex, 1);
+  }
+
+  state.acquiredSnapPoints.push({
+    key: target.key,
+    label: sanitizeKeyPart(target.label || target.entityId || "point"),
+    point: target.point
+  });
+
+  while (state.acquiredSnapPoints.length > MAX_ACQUIRED_SNAP_POINTS) {
+    state.acquiredSnapPoints.shift();
+  }
 }
 
 function pruneInteractionState(state, removePointTargets = false) {
@@ -1629,6 +1944,7 @@ function updateDebugAttributes(state) {
   state.canvas.dataset.selectedKeys = Array.from(state.selectedKeys).join(",");
   state.canvas.dataset.hoveredId = state.hoveredTarget ? state.hoveredTarget.key : "";
   state.canvas.dataset.hoveredKind = state.hoveredTarget ? state.hoveredTarget.kind : "";
+  state.canvas.dataset.acquiredSnapCount = String(state.acquiredSnapPoints.length);
   state.canvas.dataset.selectionBoxMode = state.selectionBox
     ? `${state.selectionBox.operation}:${isCrossingSelection(state.selectionBox) ? "crossing" : "window"}`
     : "";
