@@ -1,0 +1,92 @@
+@namespace DXFER.Blazor.Components
+
+<div class="dxfer-workbench">
+    <aside class="dxfer-tool-panel" aria-label="DXFER prep tools">
+        <section class="dxfer-tool-section">
+            <div class="dxfer-section-title">File</div>
+            <InputFile OnChange="OpenFileAsync" accept=".dxf,.dwg" class="dxfer-file-input" />
+            <button type="button" class="dxfer-button" @onclick="LoadSample">Sample</button>
+            <button type="button" class="dxfer-button" @onclick="GenerateDxfExport" disabled="@(!HasDocument)">Export DXF Text</button>
+        </section>
+
+        <section class="dxfer-tool-section">
+            <div class="dxfer-section-title">Fit</div>
+            <button type="button" class="dxfer-button" @onclick="FitAsync" disabled="@(!HasDocument)">Fit Extents</button>
+            <button type="button" class="dxfer-button" @onclick="MoveBoundsToOrigin" disabled="@(!HasDocument)">Bounds Min To Origin</button>
+            <button type="button" class="dxfer-button" @onclick="MoveSelectedPointToOrigin" disabled="@(!HasDocument || !HasSelection)">Selected Point To Origin</button>
+        </section>
+
+        <section class="dxfer-tool-section">
+            <div class="dxfer-section-title">Align</div>
+            <button type="button" class="dxfer-button" @onclick="AlignSelectedVectorToX" disabled="@(!HasSelection)">Selected Vector To X</button>
+            <button type="button" class="dxfer-button" @onclick="AlignSelectedVectorToY" disabled="@(!HasSelection)">Selected Vector To Y</button>
+            <button type="button" class="dxfer-button" @onclick="OrientLongAxisToX" disabled="@(!HasDocument)">Long Bounds To X</button>
+            <button type="button" class="dxfer-button" @onclick="OrientLongAxisToY" disabled="@(!HasDocument)">Long Bounds To Y</button>
+        </section>
+
+        <section class="dxfer-tool-section">
+            <div class="dxfer-section-title">Grain</div>
+            <label class="dxfer-radio">
+                <input type="radio" name="grain-direction" checked="@(_grainDirection == GrainDirection.GlobalX)" @onchange="() => SetGrainDirection(GrainDirection.GlobalX)" />
+                <span>Global X</span>
+            </label>
+            <label class="dxfer-radio">
+                <input type="radio" name="grain-direction" checked="@(_grainDirection == GrainDirection.GlobalY)" @onchange="() => SetGrainDirection(GrainDirection.GlobalY)" />
+                <span>Global Y</span>
+            </label>
+        </section>
+    </aside>
+
+    <main class="dxfer-canvas-panel">
+        <DrawingCanvas @ref="_canvas"
+                       Document="_document"
+                       ShowToolbar="false"
+                       HoveredEntityChanged="OnHoveredEntityChanged"
+                       SelectionChanged="OnSelectionChanged" />
+    </main>
+
+    <aside class="dxfer-inspector" aria-label="Drawing inspector">
+        <section class="dxfer-inspector-section">
+            <div class="dxfer-section-title">Status</div>
+            <div class="dxfer-file-name">@_fileName</div>
+            <div class="dxfer-status">@_status</div>
+        </section>
+
+        <section class="dxfer-inspector-section">
+            <div class="dxfer-section-title">Selection</div>
+            <dl class="dxfer-metrics">
+                <dt>Hover</dt>
+                <dd>@(_hoveredEntityId ?? "none")</dd>
+                <dt>Selected</dt>
+                <dd>@_selectedEntityIds.Count</dd>
+                <dt>Measure</dt>
+                <dd>@MeasurementText</dd>
+            </dl>
+        </section>
+
+        <section class="dxfer-inspector-section">
+            <div class="dxfer-section-title">Bounds</div>
+            <dl class="dxfer-metrics">
+                <dt>X</dt>
+                <dd>@FormatRange(Bounds.MinX, Bounds.MaxX)</dd>
+                <dt>Y</dt>
+                <dd>@FormatRange(Bounds.MinY, Bounds.MaxY)</dd>
+                <dt>Size</dt>
+                <dd>@FormatSize(Bounds.Width, Bounds.Height)</dd>
+            </dl>
+        </section>
+
+        <section class="dxfer-inspector-section dxfer-metadata-section">
+            <div class="dxfer-section-title">Sync Metadata</div>
+            <pre class="dxfer-metadata">@MetadataJson</pre>
+        </section>
+
+        @if (!string.IsNullOrWhiteSpace(_exportText))
+        {
+            <section class="dxfer-inspector-section dxfer-export-section">
+                <div class="dxfer-section-title">DXF Export</div>
+                <textarea class="dxfer-export-text" readonly>@_exportText</textarea>
+            </section>
+        }
+    </aside>
+</div>

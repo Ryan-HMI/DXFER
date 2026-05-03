@@ -1,12 +1,7 @@
 @page "/"
 @rendermode InteractiveServer
 @using DXFER.Blazor.Components
-@using DXFER.Core.Documents
 
-<PageTitle>DXFER Canvas Prototype</PageTitle>
+<PageTitle>DXFER Workbench</PageTitle>
 
-<DrawingCanvas Document="_document" />
-
-@code {
-    private readonly DrawingDocument _document = SampleDrawingFactory.CreateCanvasPrototype();
-}
+<DrawingWorkbench />

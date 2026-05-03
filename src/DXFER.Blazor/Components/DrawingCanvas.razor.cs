@@ -21,6 +21,15 @@ public partial class DrawingCanvas : IAsyncDisposable
     [Parameter]
     public DrawingDocument? Document { get; set; }
 
+    [Parameter]
+    public bool ShowToolbar { get; set; } = true;
+
+    [Parameter]
+    public Action<string?>? HoveredEntityChanged { get; set; }
+
+    [Parameter]
+    public Action<IReadOnlySet<string>>? SelectionChanged { get; set; }
+
     protected string? HoveredEntityId { get; private set; }
 
     protected HashSet<string> SelectedEntityIds { get; } = new(StringComparer.Ordinal);
@@ -47,7 +56,7 @@ public partial class DrawingCanvas : IAsyncDisposable
         await SetCanvasDocumentAsync();
     }
 
-    protected async Task FitToExtentsAsync()
+    public async Task FitToExtentsAsync()
     {
         if (_canvasInstance is null)
         {
@@ -66,7 +75,9 @@ public partial class DrawingCanvas : IAsyncDisposable
         }
 
         HoveredEntityId = entityId;
-        return InvokeAsync(StateHasChanged);
+        HoveredEntityChanged?.Invoke(HoveredEntityId);
+        _ = InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
     }
 
     [JSInvokable]
@@ -77,7 +88,9 @@ public partial class DrawingCanvas : IAsyncDisposable
             SelectedEntityIds.Remove(entityId);
         }
 
-        return InvokeAsync(StateHasChanged);
+        SelectionChanged?.Invoke(SelectedEntityIds);
+        _ = InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
     }
 
     public async ValueTask DisposeAsync()
@@ -119,6 +132,8 @@ public partial class DrawingCanvas : IAsyncDisposable
         {
             HoveredEntityId = null;
             SelectedEntityIds.Clear();
+            HoveredEntityChanged?.Invoke(HoveredEntityId);
+            SelectionChanged?.Invoke(SelectedEntityIds);
         }
 
         var dto = Document is null ? CanvasDocumentDto.Empty : CanvasDocumentDto.FromDocument(Document);

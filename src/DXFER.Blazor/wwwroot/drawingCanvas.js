@@ -704,12 +704,17 @@ function releasePointer(canvas, pointerId) {
 
 function invokeDotNet(state, methodName, ...args) {
   if (!state.dotnetRef || typeof state.dotnetRef.invokeMethodAsync !== "function") {
+    state.canvas.dataset.lastDotnetCallback = `${methodName}:missing`;
     return;
   }
 
+  state.canvas.dataset.lastDotnetCallback = `${methodName}:pending`;
   const invocation = state.dotnetRef.invokeMethodAsync(methodName, ...args);
   if (invocation && typeof invocation.catch === "function") {
-    invocation.catch(error => {
+    invocation.then(() => {
+      state.canvas.dataset.lastDotnetCallback = `${methodName}:ok`;
+    }).catch(error => {
+      state.canvas.dataset.lastDotnetCallback = `${methodName}:error`;
       console.error(`DXFER canvas callback ${methodName} failed.`, error);
     });
   }
