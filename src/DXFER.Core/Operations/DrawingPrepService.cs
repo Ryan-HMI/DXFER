@@ -48,6 +48,18 @@ public static class DrawingPrepService
                 selected.Contains(entity.Id.Value) ? entity.Transform(transform) : entity));
     }
 
+    public static DrawingDocument RotateAboutBoundsCenter(DrawingDocument document, double degrees)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+
+        var bounds = document.GetBounds();
+        var center = new Point2(
+            bounds.MinX + bounds.Width / 2.0,
+            bounds.MinY + bounds.Height / 2.0);
+
+        return Transform(document, Transform2.RotationDegreesAbout(degrees, center));
+    }
+
     public static DrawingDocument AlignVectorToAxis(
         DrawingDocument document,
         string vectorEntityId,
@@ -83,25 +95,6 @@ public static class DrawingPrepService
 
         var vectorAngle = Math.Atan2(deltaY, deltaX) * 180.0 / Math.PI;
         return AlignVectorToAxis(document, vectorAngle, axis);
-    }
-
-    public static DrawingDocument OrientLongBoundsAxis(DrawingDocument document, AxisDirection axis)
-    {
-        ArgumentNullException.ThrowIfNull(document);
-
-        var bounds = document.GetBounds();
-        var longAxisIsX = bounds.Width >= bounds.Height;
-        var targetLongAxisIsX = axis == AxisDirection.X;
-        if (longAxisIsX == targetLongAxisIsX)
-        {
-            return document;
-        }
-
-        var center = new Point2(
-            bounds.MinX + bounds.Width / 2.0,
-            bounds.MinY + bounds.Height / 2.0);
-
-        return Transform(document, Transform2.RotationDegreesAbout(90, center));
     }
 
     public static bool TryGetFirstPoint(DrawingDocument document, IEnumerable<string> selectedEntityIds, out Point2 point)

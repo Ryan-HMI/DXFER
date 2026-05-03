@@ -77,10 +77,12 @@ export function createDrawingCanvas(canvas, dotnetRef) {
   resizeCanvas(state);
 
   return {
-    setDocument(document) {
+    setDocument(document, fitToDocument = false) {
       state.document = document || null;
       pruneInteractionState(state, true);
-      fitToExtents(state);
+      if (fitToDocument) {
+        fitToExtents(state);
+      }
       updateDebugAttributes(state);
       draw(state);
     },
@@ -615,6 +617,7 @@ function handlePointerDown(state, event) {
   }
 
   const screenPoint = getPointerScreenPoint(state, event);
+  focusCanvas(state.canvas);
   capturePointer(state.canvas, event.pointerId);
 
   if (isPanPointerDown(event)) {
@@ -770,20 +773,29 @@ function handlePointerLeave(state) {
 }
 
 function handleKeyDown(state, event) {
-  if (event.key !== "Escape" || normalizeToolName(state.activeTool) === "select") {
+  if (state.disposed || isEditableKeyTarget(event.target)) {
     return;
   }
 
-  state.activeTool = "select";
-  state.toolDraft = {
-    points: [],
-    previewPoint: null
-  };
-  setHoveredTarget(state, null);
-  invokeDotNet(state, "OnSketchToolCanceled");
-  updateDebugAttributes(state);
-  draw(state);
-  event.preventDefault();
+  const activeTool = normalizeToolName(state.activeTool);
+  if (event.key === "Escape" && activeTool !== "select") {
+    state.activeTool = "select";
+    state.toolDraft = {
+      points: [],
+      previewPoint: null
+    };
+    setHoveredTarget(state, null);
+    invokeDotNet(state, "OnSketchToolCanceled");
+    updateDebugAttributes(state);
+    draw(state);
+    event.preventDefault();
+    return;
+  }
+
+  if (event.key === "Delete" && activeTool === "select" && state.selectedKeys.size > 0) {
+    invokeDotNet(state, "OnDeleteSelectionRequested", Array.from(state.selectedKeys));
+    event.preventDefault();
+  }
 }
 
 function handleWheel(state, event) {
@@ -1686,6 +1698,14 @@ function isPrimaryPointerButton(event) {
   return event.button === 0 || event.buttons === 1;
 }
 
+function isEditableKeyTarget(target) {
+  if (!target || typeof target.closest !== "function") {
+    return false;
+  }
+
+  return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+}
+
 function getSelectionBoxOperation(event) {
   return event.ctrlKey || event.metaKey ? "deselect" : "add";
 }
@@ -1820,6 +1840,18 @@ function releasePointer(canvas, pointerId) {
     canvas.releasePointerCapture(pointerId);
   } catch {
     // Pointer capture can fail if the browser has already released the pointer.
+  }
+}
+
+function focusCanvas(canvas) {
+  if (typeof canvas.focus !== "function") {
+    return;
+  }
+
+  try {
+    canvas.focus({ preventScroll: true });
+  } catch {
+    canvas.focus();
   }
 }
 

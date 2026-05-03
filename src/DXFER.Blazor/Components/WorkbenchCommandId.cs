@@ -28,6 +28,7 @@ public enum WorkbenchCommandId
     Point,
     Text,
     Construction,
+    DeleteSelection,
     Slot,
     PowerTrim,
     SplitAtPoint,
@@ -37,6 +38,8 @@ public enum WorkbenchCommandId
     Dimension,
     Translate,
     Rotate,
+    Rotate90Clockwise,
+    Rotate90CounterClockwise,
     Scale,
     Mirror,
     LinearPattern,
@@ -60,7 +63,5 @@ public enum WorkbenchCommandId
     PointToOrigin,
     OriginAxes,
     VectorToX,
-    VectorToY,
-    LongBoundsToX,
-    LongBoundsToY
+    VectorToY
 }

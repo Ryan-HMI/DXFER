@@ -36,6 +36,7 @@ public partial class DrawingWorkbench
     private int _toolPanelWidth = 220;
     private int _inspectorWidth = 280;
     private int _selectionResetToken;
+    private int _documentFitToken = 1;
     private int _createdEntitySequence;
     private DockResizeTarget _resizeTarget = DockResizeTarget.None;
     private double _resizeStartClientX;
@@ -48,6 +49,9 @@ public partial class DrawingWorkbench
     private bool HasDocument => _document.Entities.Count > 0;
 
     private bool HasSelection => _selectedEntityIds.Count > 0;
+
+    private bool CanDeleteSelection =>
+        SelectionDeleteResolver.CanDeleteSelection(_document, _selectedEntityIds);
 
     private bool CanUndo => _undoStack.Count > 0;
 
@@ -98,6 +102,7 @@ public partial class DrawingWorkbench
         new WorkbenchToolGroup("Edit", new[]
         {
             Command(WorkbenchCommandId.Construction, WorkbenchTool.Construction, CadIconName.Construction, "Construction", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.DeleteSelection, null, CadIconName.Delete, "Delete selected geometry", !CanDeleteSelection),
             Command(WorkbenchCommandId.PowerTrim, WorkbenchTool.PowerTrim, CadIconName.PowerTrim, "Power trim/extend", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.SplitAtPoint, WorkbenchTool.SplitAtPoint, CadIconName.Split, "Split at point", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Offset, WorkbenchTool.Offset, CadIconName.Offset, "Offset", disabled: true, isFuture: true),
@@ -109,8 +114,12 @@ public partial class DrawingWorkbench
         {
             Command(WorkbenchCommandId.Translate, WorkbenchTool.Translate, CadIconName.Move, "Translate", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Rotate, WorkbenchTool.Rotate, CadIconName.Rotate, "Rotate", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.Rotate90Clockwise, null, CadIconName.Rotate90Clockwise, "Rotate 90 CW", !HasDocument),
+            Command(WorkbenchCommandId.Rotate90CounterClockwise, null, CadIconName.Rotate90CounterClockwise, "Rotate 90 CCW", !HasDocument),
             Command(WorkbenchCommandId.Scale, WorkbenchTool.Scale, CadIconName.Scale, "Scale", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Mirror, WorkbenchTool.Mirror, CadIconName.Mirror, "Mirror", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.BoundsToOrigin, null, CadIconName.BoundsToOrigin, "Move bounds minimum to origin", !HasDocument),
+            Command(WorkbenchCommandId.PointToOrigin, null, CadIconName.PointToOrigin, "Move selected point to origin", !CanMoveSelectedPointToOrigin),
             Command(WorkbenchCommandId.VectorToX, null, CadIconName.VectorToX, "Align selected vector to X", !CanAlignSelectedVector),
             Command(WorkbenchCommandId.VectorToY, null, CadIconName.VectorToY, "Align selected vector to Y", !CanAlignSelectedVector)
         }),
@@ -135,13 +144,6 @@ public partial class DrawingWorkbench
             Command(WorkbenchCommandId.Symmetric, WorkbenchTool.Symmetric, CadIconName.Symmetric, "Symmetric", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Fix, WorkbenchTool.Fix, CadIconName.Fix, "Fix", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Curvature, WorkbenchTool.Curvature, CadIconName.Curvature, "Curvature", disabled: true, isFuture: true)
-        }),
-        new WorkbenchToolGroup("Prep", new[]
-        {
-            Command(WorkbenchCommandId.BoundsToOrigin, null, CadIconName.BoundsToOrigin, "Move bounds minimum to origin", !HasDocument),
-            Command(WorkbenchCommandId.PointToOrigin, null, CadIconName.PointToOrigin, "Move selected point to origin", !CanMoveSelectedPointToOrigin),
-            Command(WorkbenchCommandId.LongBoundsToX, null, CadIconName.LongBoundsToX, "Orient long bounds to X", !HasDocument),
-            Command(WorkbenchCommandId.LongBoundsToY, null, CadIconName.LongBoundsToY, "Orient long bounds to Y", !HasDocument)
         })
     };
 
@@ -260,6 +262,7 @@ public partial class DrawingWorkbench
         }
 
         _document = document;
+        _documentFitToken++;
         ClearHistory();
         ResetSelection();
         _status = $"Loaded {document.Entities.Count} supported entities from DXF.";
@@ -268,6 +271,7 @@ public partial class DrawingWorkbench
     private void LoadSample()
     {
         _document = SampleDrawingFactory.CreateCanvasPrototype();
+        _documentFitToken++;
         _fileName = "Sample flat pattern";
         _status = "Sample drawing loaded.";
         _exportText = string.Empty;
@@ -300,6 +304,9 @@ public partial class DrawingWorkbench
             case WorkbenchCommandId.OriginAxes:
                 ToggleOriginAxes();
                 break;
+            case WorkbenchCommandId.DeleteSelection:
+                DeleteSelectedGeometry();
+                break;
             case WorkbenchCommandId.BoundsToOrigin:
                 MoveBoundsToOrigin();
                 break;
@@ -312,11 +319,11 @@ public partial class DrawingWorkbench
             case WorkbenchCommandId.VectorToY:
                 AlignSelectedVectorToY();
                 break;
-            case WorkbenchCommandId.LongBoundsToX:
-                OrientLongAxisToX();
+            case WorkbenchCommandId.Rotate90Clockwise:
+                RotateDocumentAboutBoundsCenter(-90, "Rotated drawing 90 degrees clockwise.");
                 break;
-            case WorkbenchCommandId.LongBoundsToY:
-                OrientLongAxisToY();
+            case WorkbenchCommandId.Rotate90CounterClockwise:
+                RotateDocumentAboutBoundsCenter(90, "Rotated drawing 90 degrees counterclockwise.");
                 break;
             default:
                 if (TryGetImplementedSketchTool(commandId, out var tool))
@@ -415,6 +422,28 @@ public partial class DrawingWorkbench
             "Moved drawing bounds minimum to global origin.");
     }
 
+    private void DeleteSelectedGeometry()
+    {
+        var result = SelectionDeleteResolver.DeleteSelection(_document, _selectedEntityIds);
+        if (result.DeletedGeometryCount == 0)
+        {
+            _status = "Select whole geometry or polyline segments before deleting.";
+            return;
+        }
+
+        ApplyDocumentChange(
+            result.Document,
+            FormatDeleteStatus(result));
+        ResetSelection();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void DeleteSelectedGeometry(IReadOnlySet<string> selectedEntityIds)
+    {
+        OnSelectionChanged(selectedEntityIds);
+        DeleteSelectedGeometry();
+    }
+
     private void MoveSelectedPointToOrigin()
     {
         if (!SelectionPointResolver.TryGetPointToOriginReference(_document, _selectedEntityIds, out var point))
@@ -431,10 +460,6 @@ public partial class DrawingWorkbench
     private void AlignSelectedVectorToX() => AlignSelectedVector(AxisDirection.X);
 
     private void AlignSelectedVectorToY() => AlignSelectedVector(AxisDirection.Y);
-
-    private void OrientLongAxisToX() => OrientLongAxis(AxisDirection.X);
-
-    private void OrientLongAxisToY() => OrientLongAxis(AxisDirection.Y);
 
     private void ToggleOriginAxes()
     {
@@ -507,16 +532,11 @@ public partial class DrawingWorkbench
         ApplyDocumentChange(after, $"Aligned selected vector to global {axis}.");
     }
 
-    private void OrientLongAxis(AxisDirection axis)
+    private void RotateDocumentAboutBoundsCenter(double degrees, string status)
     {
-        var after = DrawingPrepService.OrientLongBoundsAxis(_document, axis);
-        if (ReferenceEquals(_document, after))
-        {
-            _status = $"Long bounds axis is already global {axis}.";
-            return;
-        }
-
-        ApplyDocumentChange(after, $"Oriented long bounds axis to global {axis}.");
+        ApplyDocumentChange(
+            DrawingPrepService.RotateAboutBoundsCenter(_document, degrees),
+            status);
     }
 
     private void ApplyDocumentChange(DrawingDocument nextDocument, string status)
@@ -851,9 +871,12 @@ public partial class DrawingWorkbench
         WorkbenchCommandId.CircumscribedPolygon => "Circumscribed polygon",
         WorkbenchCommandId.SplineControlPoint => "Spline control point",
         WorkbenchCommandId.PowerTrim => "Power trim/extend",
+        WorkbenchCommandId.DeleteSelection => "Delete selected geometry",
         WorkbenchCommandId.SplitAtPoint => "Split at point",
         WorkbenchCommandId.LinearPattern => "Linear pattern",
         WorkbenchCommandId.CircularPattern => "Circular pattern",
+        WorkbenchCommandId.Rotate90Clockwise => "Rotate 90 CW",
+        WorkbenchCommandId.Rotate90CounterClockwise => "Rotate 90 CCW",
         _ => commandId.ToString()
     };
 
@@ -864,6 +887,25 @@ public partial class DrawingWorkbench
         "centercircle" => "Center circle",
         _ => "Line"
     };
+
+    private static string FormatDeleteStatus(SelectionDeleteResult result)
+    {
+        if (result.DeletedEntities > 0 && result.DeletedSegments > 0)
+        {
+            return $"Deleted {result.DeletedEntities} entities and {result.DeletedSegments} polyline segments.";
+        }
+
+        if (result.DeletedEntities > 0)
+        {
+            return result.DeletedEntities == 1
+                ? "Deleted 1 entity."
+                : $"Deleted {result.DeletedEntities} entities.";
+        }
+
+        return result.DeletedSegments == 1
+            ? "Deleted 1 polyline segment."
+            : $"Deleted {result.DeletedSegments} polyline segments.";
+    }
 }
 
 internal enum DockResizeTarget

@@ -93,6 +93,7 @@
         <DrawingCanvas @ref="_canvas"
                        Document="_document"
                        ShowToolbar="false"
+                       DocumentFitToken="_documentFitToken"
                        ActiveTool="_activeTool"
                        ShowOriginAxes="_showOriginAxes"
                        GrainDirection="_grainDirection"
@@ -100,7 +101,8 @@
                        HoveredEntityChanged="OnHoveredEntityChanged"
                        SelectionChanged="OnSelectionChanged"
                        ToolCommitRequested="OnToolCommitRequested"
-                       ToolCancelRequested="OnToolCanceled" />
+                       ToolCancelRequested="OnToolCanceled"
+                       DeleteSelectionRequested="DeleteSelectedGeometry" />
     </main>
 
     @if (_isInspectorCollapsed)

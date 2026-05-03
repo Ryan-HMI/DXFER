@@ -17,6 +17,7 @@ public partial class DrawingCanvas : IAsyncDisposable
     private DrawingDocument? _renderedDocument;
     private WorkbenchTool? _renderedActiveTool;
     private int _renderedSelectionResetToken;
+    private int _renderedDocumentFitToken = -1;
 
     [Inject]
     private IJSRuntime JsRuntime { get; set; } = default!;
@@ -26,6 +27,9 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public bool ShowToolbar { get; set; } = true;
+
+    [Parameter]
+    public int DocumentFitToken { get; set; }
 
     [Parameter]
     public bool ShowOriginAxes { get; set; }
@@ -50,6 +54,9 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public Action? ToolCancelRequested { get; set; }
+
+    [Parameter]
+    public Action<IReadOnlySet<string>>? DeleteSelectionRequested { get; set; }
 
     protected string? HoveredEntityId { get; private set; }
 
@@ -183,6 +190,21 @@ public partial class DrawingCanvas : IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    [JSInvokable]
+    public Task OnDeleteSelectionRequested(string[] selectionKeys)
+    {
+        SelectedEntityIds.Clear();
+        foreach (var selectionKey in selectionKeys)
+        {
+            SelectedEntityIds.Add(selectionKey);
+        }
+
+        SelectionChanged?.Invoke(SelectedEntityIds);
+        DeleteSelectionRequested?.Invoke(SelectedEntityIds);
+        _ = InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_canvasInstance is not null)
@@ -230,8 +252,14 @@ public partial class DrawingCanvas : IAsyncDisposable
             }
         }
 
+        var shouldFitDocument = _renderedDocumentFitToken != DocumentFitToken;
+        if (shouldFitDocument)
+        {
+            _renderedDocumentFitToken = DocumentFitToken;
+        }
+
         var dto = Document is null ? CanvasDocumentDto.Empty : CanvasDocumentDto.FromDocument(Document);
-        await _canvasInstance.InvokeVoidAsync("setDocument", dto);
+        await _canvasInstance.InvokeVoidAsync("setDocument", dto, shouldFitDocument);
     }
 
     private async Task SetOriginAxesVisibilityAsync()

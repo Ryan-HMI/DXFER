@@ -31,6 +31,7 @@ public enum CadIconName
     Point,
     Text,
     Construction,
+    Delete,
     Slot,
     PowerTrim,
     Split,
@@ -40,6 +41,8 @@ public enum CadIconName
     Dimension,
     Move,
     Rotate,
+    Rotate90Clockwise,
+    Rotate90CounterClockwise,
     Scale,
     Mirror,
     LinearPattern,
@@ -63,7 +66,5 @@ public enum CadIconName
     PointToOrigin,
     OriginAxes,
     VectorToX,
-    VectorToY,
-    LongBoundsToX,
-    LongBoundsToY
+    VectorToY
 }

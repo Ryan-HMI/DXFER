@@ -46,6 +46,23 @@ public sealed class DrawingPrepServiceTests
     }
 
     [Fact]
+    public void RotatesDocumentAboutBoundsCenter()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(10, 0))
+        });
+
+        var rotated = DrawingPrepService.RotateAboutBoundsCenter(document, 90);
+
+        var edge = rotated.Entities[0].Should().BeOfType<LineEntity>().Subject;
+        edge.Start.X.Should().BeApproximately(5, 0.0001);
+        edge.Start.Y.Should().BeApproximately(-5, 0.0001);
+        edge.End.X.Should().BeApproximately(5, 0.0001);
+        edge.End.Y.Should().BeApproximately(5, 0.0001);
+    }
+
+    [Fact]
     public void AlignsSelectedVectorToGlobalXAxisAroundDocumentCenter()
     {
         var vectorId = EntityId.Create("vector");
