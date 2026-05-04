@@ -31,6 +31,9 @@ public static class DxfDocumentWriter
                 case PolylineEntity polyline:
                     WritePolyline(builder, polyline);
                     break;
+                case SplineEntity spline:
+                    WriteSpline(builder, spline);
+                    break;
             }
         }
 
@@ -75,6 +78,35 @@ public static class DxfDocumentWriter
         foreach (var vertex in polyline.Vertices)
         {
             WritePoint(builder, vertex, 10, 20);
+        }
+    }
+
+    private static void WriteSpline(StringBuilder builder, SplineEntity spline)
+    {
+        WritePair(builder, 0, "SPLINE");
+        WritePair(builder, 5, spline.Id.Value);
+        WritePair(builder, 70, spline.Weights.Any(weight => Math.Abs(weight - 1d) > 0.000001) ? "12" : "8");
+        WritePair(builder, 71, spline.Degree.ToString(CultureInfo.InvariantCulture));
+        WritePair(builder, 72, spline.Knots.Count.ToString(CultureInfo.InvariantCulture));
+        WritePair(builder, 73, spline.ControlPoints.Count.ToString(CultureInfo.InvariantCulture));
+        WritePair(builder, 74, "0");
+
+        foreach (var knot in spline.Knots)
+        {
+            WritePair(builder, 40, Format(knot));
+        }
+
+        if (spline.Weights.Any(weight => Math.Abs(weight - 1d) > 0.000001))
+        {
+            foreach (var weight in spline.Weights)
+            {
+                WritePair(builder, 41, Format(weight));
+            }
+        }
+
+        foreach (var point in spline.ControlPoints)
+        {
+            WritePoint(builder, point, 10, 20);
         }
     }
 

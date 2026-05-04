@@ -257,7 +257,7 @@ public partial class DrawingWorkbench
 
         if (document.Entities.Count == 0)
         {
-            _status = "No supported DXF entities were found. V1 reads LINE, CIRCLE, ARC, LWPOLYLINE, and POLYLINE.";
+            _status = "No supported DXF entities were found. V1 reads LINE, CIRCLE, ARC, LWPOLYLINE, POLYLINE, and SPLINE.";
             return;
         }
 

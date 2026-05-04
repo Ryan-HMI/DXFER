@@ -72,6 +72,16 @@ public static class DxfDocumentReader
                     }
 
                     break;
+
+                case "SPLINE":
+                    if (TryReadEntityPairs(pairs, index + 1, out var splinePairs, out var nextSplineIndex)
+                        && TryCreateSpline(splinePairs, CreateId(splinePairs, "spline", ref generatedId), out var spline))
+                    {
+                        entities.Add(spline);
+                        index = nextSplineIndex - 1;
+                    }
+
+                    break;
             }
         }
 
@@ -192,26 +202,33 @@ public static class DxfDocumentReader
 
     private static bool TryCreateLightweightPolyline(IReadOnlyList<DxfPair> pairs, EntityId id, out PolylineEntity polyline)
     {
-        var points = new List<Point2>();
-        var currentX = default(double?);
-
-        foreach (var pair in pairs)
-        {
-            if (pair.Code == 10 && TryReadDouble(pair.Value, out var x))
-            {
-                currentX = x;
-                continue;
-            }
-
-            if (pair.Code == 20 && currentX.HasValue && TryReadDouble(pair.Value, out var y))
-            {
-                points.Add(new Point2(currentX.Value, y));
-                currentX = null;
-            }
-        }
-
+        var points = ReadPointSequence(pairs, 10, 20);
         var closed = TryReadDouble(pairs, 70, out var flags) && (((int)flags) & 1) == 1;
         return TryCreatePolyline(points, closed, id, out polyline);
+    }
+
+    private static bool TryCreateSpline(IReadOnlyList<DxfPair> pairs, EntityId id, out SplineEntity spline)
+    {
+        var controlPoints = ReadPointSequence(pairs, 10, 20);
+        var knots = ReadDoubleSequence(pairs, 40);
+        var weights = ReadDoubleSequence(pairs, 41);
+
+        if (controlPoints.Count < 2
+            || !TryReadDouble(pairs, 71, out var rawDegree))
+        {
+            spline = default!;
+            return false;
+        }
+
+        var degree = (int)Math.Round(rawDegree);
+        if (degree < 1 || controlPoints.Count < degree + 1)
+        {
+            spline = default!;
+            return false;
+        }
+
+        spline = new SplineEntity(id, degree, controlPoints, knots, weights);
+        return true;
     }
 
     private static bool TryCreatePolyline(IReadOnlyList<Point2> points, bool closed, EntityId id, out PolylineEntity polyline)
@@ -230,6 +247,43 @@ public static class DxfDocumentReader
 
         polyline = default!;
         return false;
+    }
+
+    private static IReadOnlyList<Point2> ReadPointSequence(IReadOnlyList<DxfPair> pairs, int xCode, int yCode)
+    {
+        var points = new List<Point2>();
+        var currentX = default(double?);
+
+        foreach (var pair in pairs)
+        {
+            if (pair.Code == xCode && TryReadDouble(pair.Value, out var x))
+            {
+                currentX = x;
+                continue;
+            }
+
+            if (pair.Code == yCode && currentX.HasValue && TryReadDouble(pair.Value, out var y))
+            {
+                points.Add(new Point2(currentX.Value, y));
+                currentX = null;
+            }
+        }
+
+        return points;
+    }
+
+    private static IReadOnlyList<double> ReadDoubleSequence(IReadOnlyList<DxfPair> pairs, int code)
+    {
+        var values = new List<double>();
+        foreach (var pair in pairs)
+        {
+            if (pair.Code == code && TryReadDouble(pair.Value, out var value))
+            {
+                values.Add(value);
+            }
+        }
+
+        return values;
     }
 
     private static void FlushVertex(Dictionary<int, double> currentVertex, ICollection<Point2> points)

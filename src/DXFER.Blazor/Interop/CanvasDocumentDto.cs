@@ -59,6 +59,14 @@ public sealed record CanvasDocumentDto(
                 null,
                 null,
                 null),
+            SplineEntity spline => new CanvasEntityDto(
+                id,
+                kind,
+                spline.GetSamplePoints().Select(FromPoint).ToArray(),
+                null,
+                null,
+                null,
+                null),
             _ => new CanvasEntityDto(
                 id,
                 kind,

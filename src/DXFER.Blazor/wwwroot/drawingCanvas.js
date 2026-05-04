@@ -538,6 +538,8 @@ function buildEntityPath(state, entity) {
       return buildLinePath(state, entity);
     case "polyline":
       return buildPolylinePath(state, entity);
+    case "spline":
+      return buildPolylinePath(state, entity);
     case "circle":
       return buildCirclePath(state, entity);
     case "arc":
@@ -1089,6 +1091,8 @@ function getEntityEdgeHit(state, entity, screenPoint) {
       return getLineEdgeHit(state, entity, screenPoint);
     case "polyline":
       return getPolylineSegmentScreenHit(state, entity, screenPoint);
+    case "spline":
+      return getSampledCurveEdgeHit(state, entity, screenPoint);
     case "circle":
       return getCircleEdgeHit(state, entity, screenPoint);
     case "arc":
@@ -1302,6 +1306,35 @@ function getPolylineSegmentScreenHit(state, entity, screenPoint) {
     };
 }
 
+function getSampledCurveEdgeHit(state, entity, screenPoint) {
+  const target = createEntityTarget(entity);
+  const points = getEntityPoints(entity);
+  if (!target || points.length < 2) {
+    return null;
+  }
+
+  let closestDistance = Number.POSITIVE_INFINITY;
+  let closestProjectionPoint = null;
+
+  for (let index = 1; index < points.length; index += 1) {
+    const projection = closestPointOnScreenSegment(
+      screenPoint,
+      worldToScreen(state, points[index - 1]),
+      worldToScreen(state, points[index]));
+    if (projection.distance < closestDistance) {
+      closestDistance = projection.distance;
+      closestProjectionPoint = projection.point;
+    }
+  }
+
+  return closestProjectionPoint
+    ? {
+      target: withSnapPoint(target, screenToWorld(state, closestProjectionPoint)),
+      distance: closestDistance
+    }
+    : null;
+}
+
 function getCircleEdgeHit(state, entity, screenPoint) {
   const target = createEntityTarget(entity);
   const center = getEntityCenter(entity);
@@ -1476,7 +1509,7 @@ function getEntityScreenSegments(state, entity) {
 function getEntityScreenSamplePoints(state, entity) {
   const kind = getEntityKind(entity);
 
-  if (kind === "line" || kind === "polyline") {
+  if (kind === "line" || kind === "polyline" || kind === "spline") {
     return getEntityPoints(entity).map(point => worldToScreen(state, point));
   }
 
@@ -1510,6 +1543,8 @@ function getSnapPoints(entity, entities) {
       return getLineSnapPoints(entity, entities);
     case "polyline":
       return getPolylineSnapPoints(entity, entities);
+    case "spline":
+      return getSplineSnapPoints(entity, entities);
     case "circle":
       return getCircleSnapPoints(entity, entities);
     case "arc":
@@ -1550,6 +1585,22 @@ function getPolylineSnapPoints(entity, entities) {
 
   addIntersectionSnapPoints(snapPoints, entity, entities);
   addTangentSnapPointsForLinearEntity(snapPoints, entity, getLinearSegments(entity), entities);
+  return snapPoints;
+}
+
+function getSplineSnapPoints(entity, entities) {
+  const points = getEntityPoints(entity);
+  if (points.length < 2) {
+    return [];
+  }
+
+  const snapPoints = [
+    { label: "start", point: points[0] },
+    { label: "end", point: points[points.length - 1] },
+    { label: "mid", point: points[Math.floor(points.length / 2)] }
+  ];
+
+  addIntersectionSnapPoints(snapPoints, entity, entities);
   return snapPoints;
 }
 
@@ -1735,7 +1786,7 @@ function getEntityOrthographicSnapPoints(entity, sourcePoint, highlightedPoint) 
   const kind = getEntityKind(entity);
   const points = [];
 
-  if (kind === "line" || kind === "polyline") {
+  if (kind === "line" || kind === "polyline" || kind === "spline") {
     for (const segment of getLinearSegments(entity)) {
       addSegmentOrthographicSnapPoints(points, segment, sourcePoint, highlightedPoint);
     }
@@ -1846,7 +1897,7 @@ function getLinearSegments(entity) {
     }];
   }
 
-  if (kind !== "polyline" || points.length < 2) {
+  if ((kind !== "polyline" && kind !== "spline") || points.length < 2) {
     return [];
   }
 
@@ -1881,7 +1932,7 @@ function getEntityIntersections(firstEntity, secondEntity) {
 function getIntersectionPrimitives(entity) {
   const kind = getEntityKind(entity);
 
-  if (kind === "line" || kind === "polyline") {
+  if (kind === "line" || kind === "polyline" || kind === "spline") {
     return getLinearSegments(entity).map(segment => ({
       kind: "segment",
       start: segment.start,
@@ -2620,7 +2671,7 @@ function computeEntityBounds(entities) {
 function getEntityBoundsPoints(entity) {
   const kind = getEntityKind(entity);
 
-  if (kind === "line" || kind === "polyline") {
+  if (kind === "line" || kind === "polyline" || kind === "spline") {
     return getEntityPoints(entity);
   }
 
