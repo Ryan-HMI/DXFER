@@ -717,7 +717,6 @@ public partial class DrawingWorkbench : IDisposable
             return items;
         }
 
-        items.Add(new LiveReadoutItem("Hover", HoverText));
         items.Add(new LiveReadoutItem("Bounds", FormatSize(Bounds.Width, Bounds.Height)));
         return items;
     }

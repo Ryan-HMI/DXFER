@@ -65,7 +65,7 @@
     pointer-events: none;
 }
 
-.drawing-dimension-input {
+::deep .drawing-dimension-input {
     position: absolute;
     width: 4.8rem;
     height: 1.35rem;
@@ -82,15 +82,15 @@
     pointer-events: auto;
 }
 
-.drawing-dimension-input:focus {
+::deep .drawing-dimension-input:focus {
     color: #ffffff;
     background: #17212b;
     border-color: #7dd3fc;
     box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.24);
 }
 
-.drawing-dimension-input::-webkit-outer-spin-button,
-.drawing-dimension-input::-webkit-inner-spin-button {
+::deep .drawing-dimension-input::-webkit-outer-spin-button,
+::deep .drawing-dimension-input::-webkit-inner-spin-button {
     margin: 0;
     appearance: none;
 }

@@ -695,6 +695,12 @@ function getOrCreateDimensionInput(state, dimension) {
   input.addEventListener("pointerdown", event => {
     event.stopPropagation();
   });
+  input.addEventListener("pointerup", event => {
+    event.stopPropagation();
+  });
+  input.addEventListener("click", event => {
+    event.stopPropagation();
+  });
   input.addEventListener("keydown", event => handleDimensionInputKeyDown(state, input, event));
   input.addEventListener("change", () => commitDimensionInputValue(state, input));
 
