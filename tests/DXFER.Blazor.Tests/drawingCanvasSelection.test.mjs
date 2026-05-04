@@ -9,8 +9,11 @@ import {
   getAlignedRectangleCorners,
   getDefaultActiveDimensionKey,
   getDynamicSketchSnapHit,
+  getSketchToolPointCount,
   getNextDimensionKey,
+  getSplitAtPointRequest,
   getThreePointCircle,
+  findNearestTarget,
   isDynamicTargetCurrentToPointer,
   isInferenceGuideWithinScreenDistance,
   isPanPointerDownForTool,
@@ -380,6 +383,56 @@ test("dimension input screen position is clamped inside the canvas", () => {
   assert.deepEqual(clampDimensionInputScreenPoint(state, { x: 360, y: -25 }, 50, 20), { x: 250, y: 20 });
 });
 
+test("point sketch tool needs one click", () => {
+  assert.equal(getSketchToolPointCount("point"), 1);
+});
+
+test("persistent point entity is selected by id and exposes a snap point", () => {
+  const state = createHitTestState([
+    {
+      id: "point-a",
+      kind: "point",
+      points: [{ x: 5, y: 2 }]
+    }
+  ]);
+
+  const target = findNearestTarget(state, { x: 50, y: 80 });
+
+  assert.equal(target.key, "point-a");
+  assert.equal(target.kind, "entity");
+  assert.deepEqual(target.snapPoint, { x: 5, y: 2 });
+});
+
+test("split at point request projects clicked line point", () => {
+  const state = createHitTestState([
+    {
+      id: "edge",
+      kind: "line",
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+    }
+  ]);
+  state.activeTool = "splitatpoint";
+
+  const request = getSplitAtPointRequest(state, { x: 40, y: 100 });
+
+  assert.equal(request.targetKey, "edge");
+  assertApproxEqual(request.point.x, 4);
+  assertApproxEqual(request.point.y, 0);
+});
+
 function assertApproxEqual(actual, expected, tolerance = 0.000001) {
   assert.ok(Math.abs(actual - expected) <= tolerance, `expected ${actual} to equal ${expected}`);
+}
+
+function createHitTestState(entities) {
+  return {
+    activeTool: "select",
+    document: { entities },
+    acquiredSnapPoints: [],
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 100
+    }
+  };
 }

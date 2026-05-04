@@ -28,6 +28,9 @@ public static class DxfDocumentWriter
                 case ArcEntity arc:
                     WriteArc(builder, arc);
                     break;
+                case PointEntity point:
+                    WritePointEntity(builder, point);
+                    break;
                 case PolylineEntity polyline:
                     WritePolyline(builder, polyline);
                     break;
@@ -66,6 +69,13 @@ public static class DxfDocumentWriter
         WritePair(builder, 40, Format(arc.Radius));
         WritePair(builder, 50, Format(arc.StartAngleDegrees));
         WritePair(builder, 51, Format(arc.EndAngleDegrees));
+    }
+
+    private static void WritePointEntity(StringBuilder builder, PointEntity point)
+    {
+        WritePair(builder, 0, "POINT");
+        WritePair(builder, 5, point.Id.Value);
+        WritePoint(builder, point.Location, 10, 20);
     }
 
     private static void WritePolyline(StringBuilder builder, PolylineEntity polyline)

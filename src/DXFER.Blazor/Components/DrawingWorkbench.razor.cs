@@ -165,7 +165,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.Spline, WorkbenchTool.Spline, CadIconName.Spline, "Spline", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Bezier, WorkbenchTool.Bezier, CadIconName.Bezier, "Bezier", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.SplineControlPoint, WorkbenchTool.SplineControlPoint, CadIconName.SplineControlPoint, "Spline control point", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Point, WorkbenchTool.Point, CadIconName.Point, "Point", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.Point, WorkbenchTool.Point, CadIconName.Point, "Point"),
             Command(WorkbenchCommandId.Text, WorkbenchTool.Text, CadIconName.Text, "Text", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Slot, WorkbenchTool.Slot, CadIconName.Slot, "Slot", disabled: true, isFuture: true)
         }),
@@ -176,7 +176,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.Construction, WorkbenchTool.Construction, CadIconName.Construction, "Construction", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.DeleteSelection, null, CadIconName.Delete, "Delete selected geometry", !CanDeleteSelection),
             Command(WorkbenchCommandId.PowerTrim, WorkbenchTool.PowerTrim, CadIconName.PowerTrim, "Power trim/extend", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.SplitAtPoint, WorkbenchTool.SplitAtPoint, CadIconName.Split, "Split at point", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.SplitAtPoint, WorkbenchTool.SplitAtPoint, CadIconName.Split, "Split at point"),
             Command(WorkbenchCommandId.Offset, WorkbenchTool.Offset, CadIconName.Offset, "Offset", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Fillet, WorkbenchTool.Fillet, CadIconName.Fillet, "Fillet", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Chamfer, WorkbenchTool.Chamfer, CadIconName.Chamfer, "Chamfer", disabled: true, isFuture: true),
@@ -262,6 +262,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.InscribedPolygon => "Inscribed polygon",
         WorkbenchTool.CircumscribedPolygon => "Circumscribed polygon",
         WorkbenchTool.SplineControlPoint => "Spline control point",
+        WorkbenchTool.Point => "Point",
         WorkbenchTool.PowerTrim => "Power trim/extend",
         WorkbenchTool.ThreePointArc => "Three-point arc",
         WorkbenchTool.SplitAtPoint => "Split at point",
@@ -283,6 +284,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.AlignedRectangle => "Aligned rectangle: click baseline start, baseline end, then depth. Esc: cancel.",
         WorkbenchTool.CenterCircle => "Center circle: click center, then radius point. Shift: polar snap. Esc: cancel.",
         WorkbenchTool.ThreePointCircle => "Three-point circle: click three points on the circumference. Esc: cancel.",
+        WorkbenchTool.Point => "Point: click to place a persistent sketch point. Esc: cancel.",
+        WorkbenchTool.SplitAtPoint => "Split at point: click a line, or select one line and one point before invoking. Esc: cancel.",
         not null => $"{ActiveToolLabel}: follow canvas prompts. Esc: cancel.",
         null => "Selection: click to select and make active. Click active again to deselect. Box select adds; Ctrl-box deselects."
     };
@@ -345,7 +348,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         if (document.Entities.Count == 0)
         {
-            _status = "No supported DXF entities were found. V1 reads LINE, CIRCLE, ARC, LWPOLYLINE, POLYLINE, and SPLINE.";
+            _status = "No supported DXF entities were found. V1 reads LINE, CIRCLE, ARC, POINT, LWPOLYLINE, POLYLINE, and SPLINE.";
             return;
         }
 
@@ -395,6 +398,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchCommandId.DeleteSelection:
                 DeleteSelectedGeometry();
                 break;
+            case WorkbenchCommandId.SplitAtPoint:
+                if (!TrySplitSelectedLineAtPoint())
+                {
+                    ActivateTool(
+                        WorkbenchTool.SplitAtPoint,
+                        "Split at point active. Click a line, or select one line and one point before invoking.");
+                }
+
+                break;
             case WorkbenchCommandId.BoundsToOrigin:
                 MoveBoundsToOrigin();
                 break;
@@ -428,11 +440,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void OnToolCommitRequested(string toolName, IReadOnlyList<CanvasPointDto> points)
     {
-        if (points.Count < 2)
-        {
-            return;
-        }
-
         var toolPoints = points.Select(ToPoint).ToArray();
         var newEntities = CreateEntitiesForTool(toolName, toolPoints).ToArray();
         if (newEntities.Length == 0)
@@ -445,6 +452,18 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             $"{FormatCreatedToolName(toolName)} added.");
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnSplitAtPointRequested(string targetKey, CanvasPointDto point)
+    {
+        if (!TryGetLineIdForSplitTarget(targetKey, out var lineEntityId))
+        {
+            _status = "Select one line before splitting at a selected point.";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        SplitLineAtPoint(lineEntityId, ToPoint(point));
     }
 
     private void OnToolCanceled()
@@ -529,6 +548,66 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         OnSelectionChanged(selectedEntityIds);
         DeleteSelectedGeometry();
+    }
+
+    private bool TrySplitSelectedLineAtPoint()
+    {
+        if (!LineSplitSelectionResolver.TryResolveLineAndPoint(
+                _document,
+                _selectedEntityIds,
+                out var lineEntityId,
+                out var point))
+        {
+            return false;
+        }
+
+        return SplitLineAtPoint(lineEntityId, point);
+    }
+
+    private bool SplitLineAtPoint(string lineEntityId, Point2 point)
+    {
+        var newLineId = CreateEntityId("line");
+        if (!LineSplitService.TrySplitLineAtPoint(_document, lineEntityId, point, newLineId, out var nextDocument))
+        {
+            _status = "Split point must lie inside the selected line.";
+            _ = InvokeAsync(StateHasChanged);
+            return false;
+        }
+
+        ApplyDocumentChange(nextDocument, "Split line at point.");
+        _activeTool = null;
+        ResetSelection();
+        _ = InvokeAsync(StateHasChanged);
+        return true;
+    }
+
+    private bool TryGetLineIdForSplitTarget(string targetKey, out string lineEntityId)
+    {
+        if (FindEntity(targetKey) is LineEntity)
+        {
+            lineEntityId = targetKey;
+            return true;
+        }
+
+        if (TryParsePointSelectionEntityId(targetKey, out var pointEntityId)
+            && FindEntity(pointEntityId) is LineEntity)
+        {
+            lineEntityId = pointEntityId;
+            return true;
+        }
+
+        var selectedLineIds = _selectedEntityIds
+            .Where(selectionKey => FindEntity(selectionKey) is LineEntity)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (selectedLineIds.Length == 1)
+        {
+            lineEntityId = selectedLineIds[0];
+            return true;
+        }
+
+        lineEntityId = string.Empty;
+        return false;
     }
 
     private void MoveSelectedPointToOrigin()
@@ -796,6 +875,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 items.Add(new LiveReadoutItem("Sweep", $"{FormatNumber(sweep)} deg"));
                 items.Add(new LiveReadoutItem("Arc Len", FormatNumber(arc.Radius * sweep * Math.PI / 180.0)));
                 break;
+            case PointEntity point:
+                items.Add(new LiveReadoutItem("X", FormatNumber(point.Location.X)));
+                items.Add(new LiveReadoutItem("Y", FormatNumber(point.Location.Y)));
+                break;
             case PolylineEntity polyline:
                 AddPolylineReadouts(items, polyline.Vertices);
                 break;
@@ -876,6 +959,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 new Point2(circle.Center.X + circle.Radius, circle.Center.Y + circle.Radius)
             },
             ArcEntity arc => arc.GetSamplePoints(32),
+            PointEntity point => new[] { point.Location },
             PolylineEntity polyline => polyline.Vertices,
             SplineEntity spline => spline.GetSamplePoints(),
             _ => Array.Empty<Point2>()
@@ -1043,6 +1127,19 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             out segmentIndex);
     }
 
+    private static bool TryParsePointSelectionEntityId(string selectionKey, out string entityId)
+    {
+        var separatorIndex = selectionKey.IndexOf(PointKeySeparator, StringComparison.Ordinal);
+        if (separatorIndex < 0)
+        {
+            entityId = string.Empty;
+            return false;
+        }
+
+        entityId = selectionKey[..separatorIndex];
+        return !string.IsNullOrWhiteSpace(entityId);
+    }
+
     private IEnumerable<string> GetWholeEntityIdsForOperations() =>
         _selectedEntityIds
             .Where(selectionKey =>
@@ -1091,6 +1188,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private IEnumerable<DrawingEntity> CreateEntitiesForTool(string toolName, IReadOnlyList<Point2> points)
     {
         var normalizedTool = NormalizeToolName(toolName);
+        if (normalizedTool == "point" && points.Count >= 1)
+        {
+            yield return new PointEntity(CreateEntityId("point"), points[0]);
+            yield break;
+        }
+
         if (points.Count < 2)
         {
             yield break;
@@ -1306,6 +1409,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchCommandId.ThreePointCircle:
                 tool = WorkbenchTool.ThreePointCircle;
                 return true;
+            case WorkbenchCommandId.Point:
+                tool = WorkbenchTool.Point;
+                return true;
             default:
                 tool = default;
                 return false;
@@ -1316,6 +1422,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         WorkbenchTool.AlignedRectangle => "Pick baseline start, baseline end, then depth.",
         WorkbenchTool.ThreePointCircle => "Pick three points on the circle.",
+        WorkbenchTool.Point => "Pick a point on the canvas.",
         _ => "Pick two points on the canvas."
     };
 
@@ -1358,6 +1465,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         "alignedrectangle" => "Aligned rectangle",
         "centercircle" => "Center circle",
         "threepointcircle" => "Three-point circle",
+        "point" => "Point",
         _ => "Line"
     };
 

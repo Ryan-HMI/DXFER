@@ -51,6 +51,14 @@ public sealed record CanvasDocumentDto(
                 arc.Radius,
                 arc.StartAngleDegrees,
                 arc.EndAngleDegrees),
+            PointEntity point => new CanvasEntityDto(
+                id,
+                kind,
+                new[] { FromPoint(point.Location) },
+                null,
+                null,
+                null,
+                null),
             PolylineEntity polyline => new CanvasEntityDto(
                 id,
                 kind,

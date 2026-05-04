@@ -241,6 +241,9 @@ public static class DrawingPrepService
             case ArcEntity arc:
                 point = arc.GetSamplePoints(1)[0];
                 return true;
+            case PointEntity pointEntity:
+                point = pointEntity.Location;
+                return true;
             default:
                 point = default;
                 return false;
