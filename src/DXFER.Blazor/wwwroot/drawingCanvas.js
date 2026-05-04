@@ -33,6 +33,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
     acquiredSnapPoints: [],
     hoveredTarget: null,
     selectedKeys: new Set(),
+    activeSelectionKey: null,
     view: {
       scale: 1,
       offsetX: 0,
@@ -207,9 +208,10 @@ function draw(state) {
   for (const selectedKey of state.selectedKeys) {
     const target = resolveSelectionTarget(state, selectedKey);
     if (target) {
+      const isActive = selectedKey === state.activeSelectionKey;
       drawTarget(state, target, {
-        strokeStyle: "#38bdf8",
-        lineWidth: target.kind === "point" ? 2 : 4,
+        strokeStyle: isActive ? "#facc15" : "#38bdf8",
+        lineWidth: target.kind === "point" ? isActive ? 3 : 2 : isActive ? 5 : 4,
         lineDash: []
       });
     }
@@ -220,9 +222,10 @@ function draw(state) {
 
   if (state.hoveredTarget) {
     const isSelected = state.selectedKeys.has(state.hoveredTarget.key);
+    const isActive = state.hoveredTarget.key === state.activeSelectionKey;
     drawTarget(state, state.hoveredTarget, {
-      strokeStyle: isSelected ? "#fde68a" : "#f59e0b",
-      lineWidth: state.hoveredTarget.kind === "point" ? 2 : isSelected ? 2 : 3.5,
+      strokeStyle: isActive ? "#facc15" : isSelected ? "#fde68a" : "#f59e0b",
+      lineWidth: state.hoveredTarget.kind === "point" ? isActive ? 3 : 2 : isActive ? 4 : isSelected ? 2 : 3.5,
       lineDash: isSelected ? [6, 4] : []
     });
   }
@@ -500,18 +503,22 @@ function drawToolPreview(state) {
     context.moveTo(start.x, start.y);
     context.lineTo(end.x, end.y);
     context.stroke();
+    drawLinearPreviewDimension(state, first, second);
   } else if (tool === "midpointline") {
-    const start = worldToScreen(state, mirrorPoint(first, second));
+    const mirrored = mirrorPoint(first, second);
+    const start = worldToScreen(state, mirrored);
     const end = worldToScreen(state, second);
     context.beginPath();
     context.moveTo(start.x, start.y);
     context.lineTo(end.x, end.y);
     context.stroke();
+    drawLinearPreviewDimension(state, mirrored, second);
   } else if (tool === "twopointrectangle") {
     const a = worldToScreen(state, first);
     const b = worldToScreen(state, second);
     const rect = normalizeScreenRect(a, b);
     context.strokeRect(rect.minX, rect.minY, rect.maxX - rect.minX, rect.maxY - rect.minY);
+    drawRectanglePreviewDimensions(state, first, second);
   } else if (tool === "centercircle") {
     const center = worldToScreen(state, first);
     const radius = distanceBetweenWorldPoints(first, second) * state.view.scale;
@@ -519,6 +526,7 @@ function drawToolPreview(state) {
       context.beginPath();
       context.arc(center.x, center.y, radius, 0, Math.PI * 2);
       context.stroke();
+      drawRadiusPreviewDimension(state, first, second);
     }
   }
 
@@ -527,6 +535,88 @@ function drawToolPreview(state) {
   context.beginPath();
   context.arc(marker.x, marker.y, 3.5, 0, Math.PI * 2);
   context.fill();
+  context.restore();
+}
+
+function drawLinearPreviewDimension(state, first, second) {
+  const label = formatDimensionValue(distanceBetweenWorldPoints(first, second));
+  if (!label) {
+    return;
+  }
+
+  const start = worldToScreen(state, first);
+  const end = worldToScreen(state, second);
+  const midpointScreen = midpointScreenPoint(start, end);
+  const normal = getScreenNormal(start, end);
+  drawFloatingDimensionLabel(state, label, {
+    x: midpointScreen.x + normal.x * 18,
+    y: midpointScreen.y + normal.y * 18
+  });
+}
+
+function drawRectanglePreviewDimensions(state, first, second) {
+  const minX = Math.min(first.x, second.x);
+  const maxX = Math.max(first.x, second.x);
+  const minY = Math.min(first.y, second.y);
+  const maxY = Math.max(first.y, second.y);
+  const topLeft = worldToScreen(state, { x: minX, y: maxY });
+  const topRight = worldToScreen(state, { x: maxX, y: maxY });
+  const bottomLeft = worldToScreen(state, { x: minX, y: minY });
+
+  drawFloatingDimensionLabel(state, formatDimensionValue(maxX - minX), {
+    x: (topLeft.x + topRight.x) / 2,
+    y: topLeft.y - 20
+  });
+  drawFloatingDimensionLabel(state, formatDimensionValue(maxY - minY), {
+    x: bottomLeft.x - 28,
+    y: (topLeft.y + bottomLeft.y) / 2
+  });
+}
+
+function drawRadiusPreviewDimension(state, center, edge) {
+  const label = formatDimensionValue(distanceBetweenWorldPoints(center, edge));
+  if (!label) {
+    return;
+  }
+
+  const centerScreen = worldToScreen(state, center);
+  const edgeScreen = worldToScreen(state, edge);
+  const midpointScreen = midpointScreenPoint(centerScreen, edgeScreen);
+  const normal = getScreenNormal(centerScreen, edgeScreen);
+  drawFloatingDimensionLabel(state, label, {
+    x: midpointScreen.x + normal.x * 18,
+    y: midpointScreen.y + normal.y * 18
+  });
+}
+
+function drawFloatingDimensionLabel(state, label, point) {
+  if (!label) {
+    return;
+  }
+
+  const { context } = state;
+  context.save();
+  context.font = "650 12px Segoe UI, system-ui, sans-serif";
+  context.textBaseline = "middle";
+  context.textAlign = "center";
+
+  const metrics = context.measureText(label);
+  const width = Math.ceil(metrics.width) + 10;
+  const height = 20;
+  const x = point.x - width / 2;
+  const y = point.y - height / 2;
+
+  context.fillStyle = "rgba(15, 23, 42, 0.88)";
+  context.strokeStyle = "#38bdf8";
+  context.lineWidth = 1;
+  context.setLineDash([]);
+  context.beginPath();
+  context.roundRect(x, y, width, height, 3);
+  context.fill();
+  context.stroke();
+
+  context.fillStyle = "#7dd3fc";
+  context.fillText(label, point.x, point.y + 0.5);
   context.restore();
 }
 
@@ -759,7 +849,7 @@ function handlePointerUp(state, event) {
     state.selectionBox = null;
     state.clickCandidate = null;
     if (changed) {
-      invokeDotNet(state, "OnSelectionChangedFromCanvas", Array.from(state.selectedKeys));
+      notifySelectionChanged(state);
     }
 
     const nearestTarget = findNearestTarget(state, screenPoint);
@@ -788,8 +878,9 @@ function handlePointerUp(state, event) {
 
       const clickedTarget = findNearestTarget(state, screenPoint);
       if (clickedTarget) {
-        toggleSelectedTarget(state, clickedTarget);
-        invokeDotNet(state, "OnEntityClicked", clickedTarget.key);
+        if (applyDirectSelectionClick(state, clickedTarget.key)) {
+          notifySelectionChanged(state);
+        }
         updateDebugAttributes(state);
         draw(state);
       } else if (clearSelectedTargets(state)) {
@@ -945,8 +1036,9 @@ function handleDoubleClick(state, event) {
 
   state.selectedKeys.clear();
   state.selectedKeys.add(target.key);
+  state.activeSelectionKey = target.key;
   setHoveredTarget(state, target);
-  invokeDotNet(state, "OnSelectionChangedFromCanvas", Array.from(state.selectedKeys));
+  notifySelectionChanged(state);
   updateDebugAttributes(state);
   draw(state);
   event.preventDefault();
@@ -992,6 +1084,27 @@ function screenToWorld(state, point) {
   return {
     x: (point.x - state.view.offsetX) / state.view.scale,
     y: (state.view.offsetY - point.y) / state.view.scale
+  };
+}
+
+function midpointScreenPoint(first, second) {
+  return {
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2
+  };
+}
+
+function getScreenNormal(first, second) {
+  const dx = second.x - first.x;
+  const dy = second.y - first.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= 0.000001) {
+    return { x: 0, y: -1 };
+  }
+
+  return {
+    x: -dy / length,
+    y: dx / length
   };
 }
 
@@ -1419,6 +1532,10 @@ function applyBoxSelection(state, selectionBox) {
       state.selectedKeys.add(target.key);
       changed = true;
     }
+  }
+
+  if (syncActiveSelectionWithSelectedKeys(state)) {
+    changed = true;
   }
 
   return changed;
@@ -2272,21 +2389,46 @@ function parseSegmentTargetKey(state, key) {
   return entity ? createPolylineSegmentTarget(entity, segmentIndex, null) : null;
 }
 
-function toggleSelectedTarget(state, target) {
-  if (state.selectedKeys.has(target.key)) {
-    state.selectedKeys.delete(target.key);
-  } else {
-    state.selectedKeys.add(target.key);
+export function applyDirectSelectionClick(state, selectionKey) {
+  if (!selectionKey) {
+    return false;
   }
+
+  if (state.activeSelectionKey === selectionKey) {
+    const removed = state.selectedKeys.delete(selectionKey);
+    state.activeSelectionKey = null;
+    return removed;
+  }
+
+  if (!state.selectedKeys.has(selectionKey)) {
+    state.selectedKeys.add(selectionKey);
+  }
+
+  state.activeSelectionKey = selectionKey;
+  return true;
+}
+
+export function syncActiveSelectionWithSelectedKeys(state) {
+  if (state.activeSelectionKey && !state.selectedKeys.has(state.activeSelectionKey)) {
+    state.activeSelectionKey = null;
+    return true;
+  }
+
+  return false;
 }
 
 function clearSelectedTargets(state) {
-  if (state.selectedKeys.size === 0) {
+  if (state.selectedKeys.size === 0 && !state.activeSelectionKey) {
     return false;
   }
 
   state.selectedKeys.clear();
+  state.activeSelectionKey = null;
   return true;
+}
+
+function notifySelectionChanged(state) {
+  invokeDotNet(state, "OnSelectionChangedFromCanvas", Array.from(state.selectedKeys), state.activeSelectionKey || null);
 }
 
 function setHoveredTarget(state, target) {
@@ -2360,6 +2502,8 @@ function pruneInteractionState(state, removePointTargets = false) {
     }
   }
 
+  syncActiveSelectionWithSelectedKeys(state);
+
   if (state.hoveredTarget
     && ((removePointTargets && isPointSelectionKey(state.hoveredTarget.key))
       || !resolveSelectionTarget(state, state.hoveredTarget.key))) {
@@ -2372,6 +2516,7 @@ function pruneInteractionState(state, removePointTargets = false) {
 function clearInteractionState(state) {
   state.hoveredTarget = null;
   state.selectedKeys.clear();
+  state.activeSelectionKey = null;
   state.clickCandidate = null;
   state.selectionBox = null;
   updateDebugAttributes(state);
@@ -2382,6 +2527,7 @@ function updateDebugAttributes(state) {
   state.canvas.dataset.entityCount = String(entities.length);
   state.canvas.dataset.selectedCount = String(state.selectedKeys.size);
   state.canvas.dataset.selectedKeys = Array.from(state.selectedKeys).join(",");
+  state.canvas.dataset.activeSelectionKey = state.activeSelectionKey || "";
   state.canvas.dataset.hoveredId = state.hoveredTarget ? state.hoveredTarget.key : "";
   state.canvas.dataset.hoveredKind = state.hoveredTarget ? state.hoveredTarget.kind : "";
   state.canvas.dataset.hoveredSnapPoint = state.hoveredTarget && state.hoveredTarget.snapPoint
@@ -3038,6 +3184,15 @@ function clamp(value, minimum, maximum) {
 
 function formatKeyNumber(value) {
   return String(Math.round(value * 1000000) / 1000000);
+}
+
+function formatDimensionValue(value) {
+  if (!Number.isFinite(value)) {
+    return "";
+  }
+
+  const rounded = Math.round(value * 1000) / 1000;
+  return rounded.toFixed(3).replace(/\.?0+$/, "");
 }
 
 function sanitizeKeyPart(value) {

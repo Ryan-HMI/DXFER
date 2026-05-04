@@ -50,6 +50,9 @@ public partial class DrawingCanvas : IAsyncDisposable
     public Action<IReadOnlySet<string>>? SelectionChanged { get; set; }
 
     [Parameter]
+    public Action<string?>? ActiveSelectionChanged { get; set; }
+
+    [Parameter]
     public Action<string, IReadOnlyList<CanvasPointDto>>? ToolCommitRequested { get; set; }
 
     [Parameter]
@@ -61,6 +64,8 @@ public partial class DrawingCanvas : IAsyncDisposable
     protected string? HoveredEntityId { get; private set; }
 
     protected HashSet<string> SelectedEntityIds { get; } = new(StringComparer.Ordinal);
+
+    protected string? ActiveSelectionKey { get; private set; }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -132,18 +137,25 @@ public partial class DrawingCanvas : IAsyncDisposable
     [JSInvokable]
     public Task OnEntityClicked(string selectionKey)
     {
-        if (!SelectedEntityIds.Add(selectionKey))
+        if (StringComparer.Ordinal.Equals(ActiveSelectionKey, selectionKey))
         {
             SelectedEntityIds.Remove(selectionKey);
+            ActiveSelectionKey = null;
+        }
+        else
+        {
+            SelectedEntityIds.Add(selectionKey);
+            ActiveSelectionKey = selectionKey;
         }
 
         SelectionChanged?.Invoke(SelectedEntityIds);
+        ActiveSelectionChanged?.Invoke(ActiveSelectionKey);
         _ = InvokeAsync(StateHasChanged);
         return Task.CompletedTask;
     }
 
     [JSInvokable]
-    public Task OnSelectionChangedFromCanvas(string[] selectionKeys)
+    public Task OnSelectionChangedFromCanvas(string[] selectionKeys, string? activeSelectionKey)
     {
         SelectedEntityIds.Clear();
         foreach (var selectionKey in selectionKeys)
@@ -151,7 +163,11 @@ public partial class DrawingCanvas : IAsyncDisposable
             SelectedEntityIds.Add(selectionKey);
         }
 
+        ActiveSelectionKey = activeSelectionKey is not null && SelectedEntityIds.Contains(activeSelectionKey)
+            ? activeSelectionKey
+            : null;
         SelectionChanged?.Invoke(SelectedEntityIds);
+        ActiveSelectionChanged?.Invoke(ActiveSelectionKey);
         _ = InvokeAsync(StateHasChanged);
         return Task.CompletedTask;
     }
@@ -165,7 +181,9 @@ public partial class DrawingCanvas : IAsyncDisposable
         }
 
         SelectedEntityIds.Clear();
+        ActiveSelectionKey = null;
         SelectionChanged?.Invoke(SelectedEntityIds);
+        ActiveSelectionChanged?.Invoke(ActiveSelectionKey);
         _ = InvokeAsync(StateHasChanged);
         return Task.CompletedTask;
     }
@@ -199,7 +217,9 @@ public partial class DrawingCanvas : IAsyncDisposable
             SelectedEntityIds.Add(selectionKey);
         }
 
+        ActiveSelectionKey = null;
         SelectionChanged?.Invoke(SelectedEntityIds);
+        ActiveSelectionChanged?.Invoke(ActiveSelectionKey);
         DeleteSelectionRequested?.Invoke(SelectedEntityIds);
         _ = InvokeAsync(StateHasChanged);
         return Task.CompletedTask;
@@ -249,6 +269,7 @@ public partial class DrawingCanvas : IAsyncDisposable
             if (RemoveStoredPointSelections())
             {
                 SelectionChanged?.Invoke(SelectedEntityIds);
+                ActiveSelectionChanged?.Invoke(ActiveSelectionKey);
             }
         }
 
@@ -297,8 +318,10 @@ public partial class DrawingCanvas : IAsyncDisposable
     {
         HoveredEntityId = null;
         SelectedEntityIds.Clear();
+        ActiveSelectionKey = null;
         HoveredEntityChanged?.Invoke(HoveredEntityId);
         SelectionChanged?.Invoke(SelectedEntityIds);
+        ActiveSelectionChanged?.Invoke(ActiveSelectionKey);
 
         if (_canvasInstance is not null)
         {
@@ -316,6 +339,12 @@ public partial class DrawingCanvas : IAsyncDisposable
                 SelectedEntityIds.Remove(selectedEntityId);
                 removed = true;
             }
+        }
+
+        if (ActiveSelectionKey is not null && !SelectedEntityIds.Contains(ActiveSelectionKey))
+        {
+            ActiveSelectionKey = null;
+            removed = true;
         }
 
         return removed;

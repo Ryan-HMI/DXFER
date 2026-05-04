@@ -59,6 +59,42 @@ public sealed class SelectionVectorResolverTests
         end.Should().Be(new Point2(5, 5));
     }
 
+    [Fact]
+    public void ActiveLineSelectionWinsWhenMultipleEntitiesAreSelected()
+    {
+        var document = CreateDocument();
+
+        var result = SelectionVectorResolver.TryGetAlignmentVector(
+            document,
+            new[] { "circle-a", "line-a" },
+            "line-a",
+            out var start,
+            out var end);
+
+        result.Should().BeTrue();
+        start.Should().Be(new Point2(0, 0));
+        end.Should().Be(new Point2(10, 0));
+    }
+
+    [Fact]
+    public void ActivePointSelectionDefinesVectorEndWithOneOtherSelectedPoint()
+    {
+        var document = CreateDocument();
+        const string firstPoint = "line-a|point|start|0|0";
+        const string activePoint = "circle-a|point|quadrant-90|20|30";
+
+        var result = SelectionVectorResolver.TryGetAlignmentVector(
+            document,
+            new[] { firstPoint, activePoint },
+            activePoint,
+            out var start,
+            out var end);
+
+        result.Should().BeTrue();
+        start.Should().Be(new Point2(0, 0));
+        end.Should().Be(new Point2(20, 30));
+    }
+
     [Theory]
     [InlineData("circle-a")]
     [InlineData("arc-a")]

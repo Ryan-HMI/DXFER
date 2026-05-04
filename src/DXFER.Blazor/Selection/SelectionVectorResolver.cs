@@ -13,6 +13,48 @@ public static class SelectionVectorResolver
     public static bool TryGetAlignmentVector(
         DrawingDocument document,
         IEnumerable<string> selectionKeys,
+        string? activeSelectionKey,
+        out Point2 start,
+        out Point2 end)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(selectionKeys);
+
+        var keys = selectionKeys
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (!string.IsNullOrWhiteSpace(activeSelectionKey)
+            && keys.Contains(activeSelectionKey, StringComparer.Ordinal))
+        {
+            if (TryGetPointFromSelectionKey(activeSelectionKey, out var activePoint))
+            {
+                var otherPoints = keys
+                    .Where(key => !StringComparer.Ordinal.Equals(key, activeSelectionKey))
+                    .Select(key => TryGetPointFromSelectionKey(key, out var point) ? point : (Point2?)null)
+                    .OfType<Point2>()
+                    .ToArray();
+
+                if (otherPoints.Length == 1)
+                {
+                    start = otherPoints[0];
+                    end = activePoint;
+                    return HasUsableLength(start, end);
+                }
+            }
+            else if (TryGetSelectionKeyVector(document, activeSelectionKey, out start, out end))
+            {
+                return true;
+            }
+        }
+
+        return TryGetAlignmentVector(document, keys, out start, out end);
+    }
+
+    public static bool TryGetAlignmentVector(
+        DrawingDocument document,
+        IEnumerable<string> selectionKeys,
         out Point2 start,
         out Point2 end)
     {
@@ -39,6 +81,15 @@ public static class SelectionVectorResolver
         }
 
         var selectionKey = keys[0];
+        return TryGetSelectionKeyVector(document, selectionKey, out start, out end);
+    }
+
+    private static bool TryGetSelectionKeyVector(
+        DrawingDocument document,
+        string selectionKey,
+        out Point2 start,
+        out Point2 end)
+    {
         if (TryParseSegmentSelectionKey(selectionKey, out var entityId, out var segmentIndex))
         {
             return TryGetPolylineSegmentVector(document, entityId, segmentIndex, out start, out end);

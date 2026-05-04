@@ -135,14 +135,15 @@
     cursor: col-resize;
 }
 
-.dxfer-live-readout {
+.dxfer-command-bar {
     position: absolute;
     right: 0;
     bottom: 0;
     left: 0;
     z-index: 8;
-    display: flex;
-    align-items: center;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
     gap: 0.35rem;
     min-height: 2rem;
     padding: 0.25rem 0.55rem;
@@ -151,6 +152,23 @@
     border-top: 1px solid #2d3841;
     box-sizing: border-box;
     overflow-x: auto;
+}
+
+.dxfer-command-prompt {
+    min-width: 0;
+    max-height: 2.7rem;
+    overflow: hidden;
+    color: #cfe2ee;
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+
+.dxfer-command-chips {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.35rem;
 }
 
 .dxfer-live-readout-item {
@@ -164,6 +182,16 @@
     border-radius: 4px;
     font-size: 0.76rem;
     line-height: 1.1;
+}
+
+@media (max-width: 900px) {
+    .dxfer-command-bar {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .dxfer-command-chips {
+        justify-content: flex-start;
+    }
 }
 
 .dxfer-live-readout-label {

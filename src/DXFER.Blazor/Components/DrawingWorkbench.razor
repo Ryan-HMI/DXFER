@@ -82,6 +82,7 @@
                        SelectionResetToken="_selectionResetToken"
                        HoveredEntityChanged="OnHoveredEntityChanged"
                        SelectionChanged="OnSelectionChanged"
+                       ActiveSelectionChanged="OnActiveSelectionChanged"
                        ToolCommitRequested="OnToolCommitRequested"
                        ToolCancelRequested="OnToolCanceled"
                        DeleteSelectionRequested="DeleteSelectedGeometry" />
@@ -164,14 +165,17 @@
                 @onpointerdown:preventDefault="true" />
     }
 
-    <footer class="dxfer-live-readout" aria-label="Live measurement readout">
-        @foreach (var item in LiveMeasurementReadouts)
-        {
-            <div class="dxfer-live-readout-item">
-                <span class="dxfer-live-readout-label">@item.Label</span>
-                <span class="dxfer-live-readout-value">@item.Value</span>
-            </div>
-        }
+    <footer class="dxfer-command-bar" aria-label="Command and measurement readout">
+        <div class="dxfer-command-prompt">@CommandPromptText</div>
+        <div class="dxfer-command-chips" aria-label="Live measurement readout">
+            @foreach (var item in LiveMeasurementReadouts)
+            {
+                <div class="dxfer-live-readout-item">
+                    <span class="dxfer-live-readout-label">@item.Label</span>
+                    <span class="dxfer-live-readout-value">@item.Value</span>
+                </div>
+            }
+        </div>
     </footer>
 
     @if (_resizeTarget is not DockResizeTarget.None)

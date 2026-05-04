@@ -27,6 +27,7 @@ public partial class DrawingWorkbench : IDisposable
     private string _fileName = "Sample flat pattern";
     private string _status = "Ready. Select a line to align a vector or load a DXF.";
     private string? _hoveredEntityId;
+    private string? _activeSelectionKey;
     private string _exportText = string.Empty;
     private GrainDirection _grainDirection = GrainDirection.None;
     private WorkbenchTool? _activeTool;
@@ -73,7 +74,7 @@ public partial class DrawingWorkbench : IDisposable
     private bool CanRedo => _redoStack.Count > 0;
 
     private bool CanAlignSelectedVector =>
-        SelectionVectorResolver.TryGetAlignmentVector(_document, _selectedEntityIds, out _, out _);
+        SelectionVectorResolver.TryGetAlignmentVector(_document, _selectedEntityIds, _activeSelectionKey, out _, out _);
 
     private bool CanMoveSelectedPointToOrigin =>
         SelectionPointResolver.TryGetPointToOriginReference(_document, _selectedEntityIds, out _);
@@ -214,6 +215,19 @@ public partial class DrawingWorkbench : IDisposable
     };
 
     private string HoverText => FormatSelectionKey(_hoveredEntityId);
+
+    private string ActiveSelectionText => FormatSelectionKey(_activeSelectionKey);
+
+    private string CommandPromptText => _activeTool switch
+    {
+        WorkbenchTool.Measure => "Measure: select points or geometry for live deltas. Esc: exit measure.",
+        WorkbenchTool.Line => "Line: click start point, then end point. Shift: polar snap. Double-click: start a fresh line. Esc: cancel.",
+        WorkbenchTool.MidpointLine => "Midpoint line: click midpoint, then endpoint. Shift: polar snap. Esc: cancel.",
+        WorkbenchTool.TwoPointRectangle => "Corner rectangle: click first corner, then opposite corner. Shift: polar snap. Esc: cancel.",
+        WorkbenchTool.CenterCircle => "Center circle: click center, then radius point. Shift: polar snap. Esc: cancel.",
+        not null => $"{ActiveToolLabel}: follow canvas prompts. Esc: cancel.",
+        null => "Selection: click to select and make active. Click active again to deselect. Box select adds; Ctrl-box deselects."
+    };
 
     private string MeasurementText
     {
@@ -531,7 +545,7 @@ public partial class DrawingWorkbench : IDisposable
 
     private void AlignSelectedVector(AxisDirection axis)
     {
-        if (!SelectionVectorResolver.TryGetAlignmentVector(_document, _selectedEntityIds, out var vectorStart, out var vectorEnd))
+        if (!SelectionVectorResolver.TryGetAlignmentVector(_document, _selectedEntityIds, _activeSelectionKey, out var vectorStart, out var vectorEnd))
         {
             _status = "Select one line or segment, or exactly two points, before aligning a vector.";
             return;
@@ -607,6 +621,19 @@ public partial class DrawingWorkbench : IDisposable
             _selectedEntityIds.Add(selectedEntityId);
         }
 
+        if (_activeSelectionKey is not null && !_selectedEntityIds.Contains(_activeSelectionKey))
+        {
+            _activeSelectionKey = null;
+        }
+
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnActiveSelectionChanged(string? activeSelectionKey)
+    {
+        _activeSelectionKey = activeSelectionKey is not null && _selectedEntityIds.Contains(activeSelectionKey)
+            ? activeSelectionKey
+            : null;
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -614,6 +641,7 @@ public partial class DrawingWorkbench : IDisposable
     {
         _selectedEntityIds.Clear();
         _hoveredEntityId = null;
+        _activeSelectionKey = null;
         _selectionResetToken++;
     }
 
@@ -645,7 +673,9 @@ public partial class DrawingWorkbench : IDisposable
     {
         var items = new List<LiveReadoutItem>
         {
-            new("Sel", _selectedEntityIds.Count == 0 ? "none" : _selectedEntityIds.Count.ToString(CultureInfo.InvariantCulture))
+            new("Sel", _selectedEntityIds.Count == 0 ? "none" : _selectedEntityIds.Count.ToString(CultureInfo.InvariantCulture)),
+            new("Active", ActiveSelectionText),
+            new("Affects", "Drawing")
         };
 
         if (_activeTool is { } activeTool)

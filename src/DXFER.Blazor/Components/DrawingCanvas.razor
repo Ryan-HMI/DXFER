@@ -8,6 +8,7 @@
             <button type="button" class="drawing-toolbar-button" @onclick="FitToExtentsAsync">Fit</button>
             <span class="drawing-toolbar-status">Hover: @(HoveredEntityId ?? "none")</span>
             <span class="drawing-toolbar-status">Selected: @SelectedEntityIds.Count</span>
+            <span class="drawing-toolbar-status">Active: @(ActiveSelectionKey ?? "none")</span>
         </div>
     }
 
