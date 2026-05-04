@@ -674,14 +674,13 @@ function updateDimensionInputs(state, dimensions) {
 
   for (const dimension of dimensions) {
     const input = getOrCreateDimensionInput(state, dimension);
-    const draftValue = state.toolDraft && state.toolDraft.dimensionValues
-      ? state.toolDraft.dimensionValues[dimension.key]
-      : null;
-    const displayValue = Number.isFinite(Number(draftValue))
-      ? formatDimensionValue(Number(draftValue))
+    const lockedValue = getLockedDraftDimensionValue(state, dimension.key);
+    const hasLockedValue = Number.isFinite(lockedValue);
+    const displayValue = hasLockedValue
+      ? formatDimensionValue(lockedValue)
       : formatDimensionValue(dimension.value);
 
-    if (document.activeElement !== input) {
+    if (shouldRefreshDimensionInputValue(document.activeElement === input, hasLockedValue, input.dataset.dimensionEditing === "true")) {
       input.value = displayValue;
     }
 
@@ -728,6 +727,10 @@ export function getNextDimensionKey(dimensions, currentKey, reverse = false) {
   const offset = reverse ? -1 : 1;
   const nextIndex = (currentIndex + offset + keys.length) % keys.length;
   return keys[nextIndex];
+}
+
+export function shouldRefreshDimensionInputValue(isFocused, hasLockedValue, hasTransientEdit = false) {
+  return !hasTransientEdit && (!isFocused || !hasLockedValue);
 }
 
 function focusActiveDimensionInputIfNeeded(state, dimensions) {
@@ -795,6 +798,7 @@ function handleDimensionInputKeyDown(state, input, event) {
   event.stopPropagation();
 
   if (event.key === "Enter") {
+    input.dataset.dimensionEditing = "false";
     commitDimensionInputValue(state, input);
     const dimensions = getVisibleDimensionDescriptors(state);
     if (isLastDimensionInput(dimensions, input)) {
@@ -807,9 +811,11 @@ function handleDimensionInputKeyDown(state, input, event) {
     }
     event.preventDefault();
   } else if (event.key === "Escape") {
+    cancelActiveTool(state);
     focusCanvas(state.canvas);
     event.preventDefault();
   } else if (event.key === "Tab") {
+    input.dataset.dimensionEditing = "false";
     commitDimensionInputValue(state, input);
     focusDimensionInputByKey(
       state,
@@ -821,15 +827,29 @@ function handleDimensionInputKeyDown(state, input, event) {
 
 function commitDimensionInputValue(state, input) {
   const text = String(input.value || "").trim();
-  if (!text || text === "-" || text === "." || text === "-.") {
+  if (!text) {
+    input.dataset.dimensionEditing = "false";
+    if (clearDraftDimensionValue(state, input.dataset.dimensionKey)) {
+      updateDebugAttributes(state);
+      draw(state);
+      return true;
+    }
+
+    return false;
+  }
+
+  if (text === "-" || text === "." || text === "-.") {
+    input.dataset.dimensionEditing = "true";
     return false;
   }
 
   const value = Number(text);
   if (!applyDraftDimensionValue(state, input.dataset.dimensionKey, value)) {
+    input.dataset.dimensionEditing = "true";
     return false;
   }
 
+  input.dataset.dimensionEditing = "false";
   updateDebugAttributes(state);
   draw(state);
   return true;
@@ -909,6 +929,16 @@ function clearDimensionInputs(state) {
 
   state.dimensionInputs.clear();
   state.activeDimensionKey = null;
+}
+
+function clearDimensionInputEditState(state) {
+  if (!state.dimensionInputs) {
+    return;
+  }
+
+  for (const input of state.dimensionInputs.values()) {
+    input.dataset.dimensionEditing = "false";
+  }
 }
 
 function drawFloatingDimensionLabel(state, label, point) {
@@ -1275,6 +1305,7 @@ function commitSketchToolPoints(state, tool, first, second) {
   state.toolDraft = tool === "line"
     ? { points: [second], previewPoint: null, dimensionValues: {} }
     : createEmptyToolDraft();
+  clearDimensionInputEditState(state);
   setHoveredTarget(state, null);
   invokeDotNet(state, "OnSketchToolCommitted", tool, [first.x, first.y, second.x, second.y]);
 }
@@ -1318,13 +1349,7 @@ function handleKeyDown(state, event) {
 
   const activeTool = normalizeToolName(state.activeTool);
   if (event.key === "Escape" && activeTool !== "select") {
-    state.activeTool = "select";
-    state.toolDraft = createEmptyToolDraft();
-    state.acquiredSnapPoints = [];
-    setHoveredTarget(state, null);
-    invokeDotNet(state, "OnSketchToolCanceled");
-    updateDebugAttributes(state);
-    draw(state);
+    cancelActiveTool(state);
     event.preventDefault();
     return;
   }
@@ -1333,6 +1358,23 @@ function handleKeyDown(state, event) {
     invokeDotNet(state, "OnDeleteSelectionRequested", Array.from(state.selectedKeys));
     event.preventDefault();
   }
+}
+
+function cancelActiveTool(state) {
+  const activeTool = normalizeToolName(state.activeTool);
+  if (activeTool === "select") {
+    return false;
+  }
+
+  state.activeTool = "select";
+  state.toolDraft = createEmptyToolDraft();
+  state.acquiredSnapPoints = [];
+  clearDimensionInputEditState(state);
+  setHoveredTarget(state, null);
+  invokeDotNet(state, "OnSketchToolCanceled");
+  updateDebugAttributes(state);
+  draw(state);
+  return true;
 }
 
 function handleWheel(state, event) {
@@ -2808,6 +2850,27 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
     ...(state.toolDraft.dimensionValues || {}),
     [dimension]: numericValue
   };
+  return true;
+}
+
+function getLockedDraftDimensionValue(state, dimensionKey) {
+  const dimension = String(dimensionKey || "").toLowerCase();
+  const value = state && state.toolDraft && state.toolDraft.dimensionValues
+    ? state.toolDraft.dimensionValues[dimension]
+    : null;
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function clearDraftDimensionValue(state, dimensionKey) {
+  const dimension = String(dimensionKey || "").toLowerCase();
+  if (!dimension || !state || !state.toolDraft || !state.toolDraft.dimensionValues || !(dimension in state.toolDraft.dimensionValues)) {
+    return false;
+  }
+
+  const nextDimensionValues = { ...state.toolDraft.dimensionValues };
+  delete nextDimensionValues[dimension];
+  state.toolDraft.dimensionValues = nextDimensionValues;
   return true;
 }
 

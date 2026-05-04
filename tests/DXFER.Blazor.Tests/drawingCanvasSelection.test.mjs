@@ -9,6 +9,7 @@ import {
   getNextDimensionKey,
   isDynamicTargetCurrentToPointer,
   isPanPointerDownForTool,
+  shouldRefreshDimensionInputValue,
   syncActiveSelectionWithSelectedKeys
 } from "../../src/DXFER.Blazor/wwwroot/drawingCanvas.js";
 
@@ -202,6 +203,13 @@ test("dimension active key defaults and cycles through all visible dimensions", 
   assert.equal(getNextDimensionKey(dimensions, "width", false), "height");
   assert.equal(getNextDimensionKey(dimensions, "height", false), "width");
   assert.equal(getNextDimensionKey(dimensions, "width", true), "height");
+});
+
+test("focused dimension input keeps typed locks but refreshes live preview when unlocked", () => {
+  assert.equal(shouldRefreshDimensionInputValue(true, true), false);
+  assert.equal(shouldRefreshDimensionInputValue(true, false), true);
+  assert.equal(shouldRefreshDimensionInputValue(false, true), true);
+  assert.equal(shouldRefreshDimensionInputValue(true, false, true), false);
 });
 
 function assertApproxEqual(actual, expected, tolerance = 0.000001) {
