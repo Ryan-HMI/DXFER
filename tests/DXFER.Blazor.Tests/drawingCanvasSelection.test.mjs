@@ -5,8 +5,10 @@ import {
   applyLockedDraftDimensions,
   applyDirectSelectionClick,
   applyPolarSnapIfRequested,
+  getAlignedRectangleCorners,
   getDefaultActiveDimensionKey,
   getNextDimensionKey,
+  getThreePointCircle,
   isDynamicTargetCurrentToPointer,
   isPanPointerDownForTool,
   shouldAutoSelectDimensionInputValue,
@@ -125,6 +127,71 @@ test("draft rectangle dimensions preserve dragged quadrant", () => {
 
   assert.equal(applyDraftDimensionValue(state, "height", 4), true);
   assert.deepEqual(state.toolDraft.previewPoint, { x: 4, y: 14 });
+});
+
+test("draft aligned rectangle length preserves baseline direction", () => {
+  const state = {
+    activeTool: "alignedrectangle",
+    toolDraft: {
+      points: [{ x: 1, y: 2 }],
+      previewPoint: { x: 4, y: 6 }
+    }
+  };
+
+  const changed = applyDraftDimensionValue(state, "length", 10);
+
+  assert.equal(changed, true);
+  assert.deepEqual(state.toolDraft.previewPoint, { x: 7, y: 10 });
+});
+
+test("draft aligned rectangle depth preserves side of baseline", () => {
+  const state = {
+    activeTool: "alignedrectangle",
+    toolDraft: {
+      points: [{ x: 0, y: 0 }, { x: 4, y: 0 }],
+      previewPoint: { x: 4, y: 3 }
+    }
+  };
+
+  const changed = applyDraftDimensionValue(state, "depth", 5);
+
+  assert.equal(changed, true);
+  assert.deepEqual(state.toolDraft.previewPoint, { x: 4, y: 5 });
+});
+
+test("aligned rectangle corners project depth perpendicular to baseline", () => {
+  const corners = getAlignedRectangleCorners(
+    { x: 0, y: 0 },
+    { x: 4, y: 0 },
+    { x: 3, y: 2 }
+  );
+
+  assert.deepEqual(corners, [
+    { x: 0, y: 0 },
+    { x: 4, y: 0 },
+    { x: 4, y: 2 },
+    { x: 0, y: 2 }
+  ]);
+});
+
+test("three point circle returns circumcenter and radius", () => {
+  const circle = getThreePointCircle(
+    { x: 0, y: 1 },
+    { x: 1, y: 0 },
+    { x: -1, y: 0 }
+  );
+
+  assertApproxEqual(circle.center.x, 0);
+  assertApproxEqual(circle.center.y, 0);
+  assertApproxEqual(circle.radius, 1);
+});
+
+test("three point circle rejects collinear points", () => {
+  assert.equal(getThreePointCircle(
+    { x: 0, y: 0 },
+    { x: 1, y: 1 },
+    { x: 2, y: 2 }
+  ), null);
 });
 
 test("locked draft dimensions reapply after cursor movement", () => {

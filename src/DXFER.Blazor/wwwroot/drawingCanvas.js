@@ -518,8 +518,10 @@ function drawToolPreview(state) {
     return [];
   }
 
-  const first = state.toolDraft.points[0];
-  const second = state.toolDraft.previewPoint;
+  const points = state.toolDraft.points;
+  const first = points[0];
+  const second = points.length > 1 ? points[1] : state.toolDraft.previewPoint;
+  const third = state.toolDraft.previewPoint;
   const { context } = state;
   const dimensions = [];
 
@@ -552,6 +554,21 @@ function drawToolPreview(state) {
     const rect = normalizeScreenRect(a, b);
     context.strokeRect(rect.minX, rect.minY, rect.maxX - rect.minX, rect.maxY - rect.minY);
     addRectanglePreviewDimensions(dimensions, state, first, second);
+  } else if (tool === "alignedrectangle") {
+    if (points.length === 1) {
+      const start = worldToScreen(state, first);
+      const end = worldToScreen(state, second);
+      context.beginPath();
+      context.moveTo(start.x, start.y);
+      context.lineTo(end.x, end.y);
+      context.stroke();
+      addLinearPreviewDimension(dimensions, state, "length", "Length", first, second);
+    } else {
+      const corners = getAlignedRectangleCorners(first, second, third);
+      drawWorldPolyline(state, corners.concat(corners[0]));
+      addLinearPreviewDimension(dimensions, state, "length", "Length", first, second);
+      addAlignedRectangleDepthDimension(dimensions, state, corners);
+    }
   } else if (tool === "centercircle") {
     const center = worldToScreen(state, first);
     const radius = distanceBetweenWorldPoints(first, second) * state.view.scale;
@@ -561,15 +578,46 @@ function drawToolPreview(state) {
       context.stroke();
       addRadiusPreviewDimension(dimensions, state, first, second);
     }
+  } else if (tool === "threepointcircle") {
+    if (points.length === 1) {
+      drawWorldPolyline(state, [first, third]);
+    } else {
+      const circle = getThreePointCircle(first, second, third);
+      if (circle) {
+        const center = worldToScreen(state, circle.center);
+        const radius = circle.radius * state.view.scale;
+        context.beginPath();
+        context.arc(center.x, center.y, radius, 0, Math.PI * 2);
+        context.stroke();
+      }
+      drawWorldPolyline(state, [second, third]);
+    }
   }
 
-  const marker = worldToScreen(state, first);
   context.setLineDash([]);
-  context.beginPath();
-  context.arc(marker.x, marker.y, 3.5, 0, Math.PI * 2);
-  context.fill();
+  for (const point of points) {
+    const marker = worldToScreen(state, point);
+    context.beginPath();
+    context.arc(marker.x, marker.y, 3.5, 0, Math.PI * 2);
+    context.fill();
+  }
   context.restore();
   return dimensions;
+}
+
+function drawWorldPolyline(state, points) {
+  if (!points || points.length < 2) {
+    return;
+  }
+
+  const first = worldToScreen(state, points[0]);
+  state.context.beginPath();
+  state.context.moveTo(first.x, first.y);
+  for (let index = 1; index < points.length; index += 1) {
+    const point = worldToScreen(state, points[index]);
+    state.context.lineTo(point.x, point.y);
+  }
+  state.context.stroke();
 }
 
 function addLinearPreviewDimension(dimensions, state, key, label, first, second) {
@@ -627,6 +675,31 @@ function addRectanglePreviewDimensions(dimensions, state, first, second) {
       }
     });
   }
+}
+
+function addAlignedRectangleDepthDimension(dimensions, state, corners) {
+  if (!corners || corners.length < 4) {
+    return;
+  }
+
+  const value = distanceBetweenWorldPoints(corners[1], corners[2]);
+  if (!formatDimensionValue(value)) {
+    return;
+  }
+
+  const start = worldToScreen(state, corners[1]);
+  const end = worldToScreen(state, corners[2]);
+  const midpointScreen = midpointScreenPoint(start, end);
+  const normal = getScreenNormal(start, end);
+  dimensions.push({
+    key: "depth",
+    label: "Depth",
+    value,
+    point: {
+      x: midpointScreen.x + normal.x * 18,
+      y: midpointScreen.y + normal.y * 18
+    }
+  });
 }
 
 function addRadiusPreviewDimension(dimensions, state, center, edge) {
@@ -1317,17 +1390,28 @@ function handleSketchToolClick(state, screenPoint, event) {
     return;
   }
 
-  const first = state.toolDraft.points[0];
   state.toolDraft.previewPoint = worldPoint;
   applyLockedDraftDimensions(state);
   worldPoint = state.toolDraft.previewPoint;
 
-  if (distanceBetweenWorldPoints(first, worldPoint) <= WORLD_GEOMETRY_TOLERANCE) {
+  const previousPoint = state.toolDraft.points[state.toolDraft.points.length - 1];
+  if (distanceBetweenWorldPoints(previousPoint, worldPoint) <= WORLD_GEOMETRY_TOLERANCE) {
     state.toolDraft.previewPoint = null;
     return;
   }
 
-  commitSketchToolPoints(state, tool, first, worldPoint);
+  const nextPoints = state.toolDraft.points.concat(worldPoint);
+  if (nextPoints.length < getSketchToolPointCount(tool)) {
+    state.toolDraft = {
+      points: nextPoints,
+      previewPoint: null,
+      dimensionValues: {}
+    };
+    setHoveredTarget(state, null);
+    return;
+  }
+
+  commitSketchToolPoints(state, tool, nextPoints);
 }
 
 function commitCurrentSketchTool(state) {
@@ -1336,23 +1420,28 @@ function commitCurrentSketchTool(state) {
     return false;
   }
 
-  const first = state.toolDraft.points[0];
-  const second = state.toolDraft.previewPoint;
-  if (distanceBetweenWorldPoints(first, second) <= WORLD_GEOMETRY_TOLERANCE) {
+  const points = state.toolDraft.points.concat(state.toolDraft.previewPoint);
+  if (points.length < getSketchToolPointCount(tool)) {
     return false;
   }
 
-  commitSketchToolPoints(state, tool, first, second);
+  const previousPoint = points[points.length - 2];
+  const lastPoint = points[points.length - 1];
+  if (distanceBetweenWorldPoints(previousPoint, lastPoint) <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
+  commitSketchToolPoints(state, tool, points);
   return true;
 }
 
-function commitSketchToolPoints(state, tool, first, second) {
+function commitSketchToolPoints(state, tool, points) {
   state.toolDraft = tool === "line"
-    ? { points: [second], previewPoint: null, dimensionValues: {} }
+    ? { points: [points[1]], previewPoint: null, dimensionValues: {} }
     : createEmptyToolDraft();
   clearDimensionInputEditState(state);
   setHoveredTarget(state, null);
-  invokeDotNet(state, "OnSketchToolCommitted", tool, [first.x, first.y, second.x, second.y]);
+  invokeDotNet(state, "OnSketchToolCommitted", tool, flattenPointCoordinates(points));
 }
 
 function handlePointerCancel(state, event) {
@@ -2865,7 +2954,8 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
     return false;
   }
 
-  const anchor = state.toolDraft.points[0];
+  const points = state.toolDraft.points;
+  const anchor = points[0];
   const previewPoint = state.toolDraft.previewPoint || { x: anchor.x + 1, y: anchor.y };
   let nextPreviewPoint = null;
 
@@ -2884,6 +2974,30 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
       x: anchor.x + width * signX,
       y: anchor.y + height * signY
     };
+  } else if (tool === "alignedrectangle" && dimension === "length") {
+    if (points.length === 1) {
+      nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
+    } else {
+      const baselineEnd = points[1];
+      const nextBaselineEnd = pointFromAnchorWithLength(anchor, baselineEnd, numericValue);
+      const depthVector = getAlignedRectangleDepthVector(anchor, baselineEnd, previewPoint);
+      state.toolDraft.points = [anchor, nextBaselineEnd];
+      nextPreviewPoint = {
+        x: nextBaselineEnd.x + depthVector.x,
+        y: nextBaselineEnd.y + depthVector.y
+      };
+    }
+  } else if (tool === "alignedrectangle" && dimension === "depth" && points.length >= 2) {
+    const baselineEnd = points[1];
+    const normal = getLeftNormal(anchor, baselineEnd);
+    if (normal) {
+      const currentDepth = dotPoints(subtractPoints(previewPoint, baselineEnd), normal);
+      const sign = currentDepth < 0 ? -1 : 1;
+      nextPreviewPoint = {
+        x: baselineEnd.x + normal.x * numericValue * sign,
+        y: baselineEnd.y + normal.y * numericValue * sign
+      };
+    }
   }
 
   if (!nextPreviewPoint) {
@@ -2961,6 +3075,69 @@ function pointFromAnchorWithLength(anchor, referencePoint, length) {
   return {
     x: anchor.x + dx / currentLength * length,
     y: anchor.y + dy / currentLength * length
+  };
+}
+
+export function getAlignedRectangleCorners(first, second, depthPoint) {
+  const depthVector = getAlignedRectangleDepthVector(first, second, depthPoint);
+  return [
+    { x: first.x, y: first.y },
+    { x: second.x, y: second.y },
+    { x: second.x + depthVector.x, y: second.y + depthVector.y },
+    { x: first.x + depthVector.x, y: first.y + depthVector.y }
+  ];
+}
+
+function getAlignedRectangleDepthVector(first, second, depthPoint) {
+  const normal = getLeftNormal(first, second);
+  if (!normal) {
+    return { x: 0, y: 0 };
+  }
+
+  const depth = dotPoints(subtractPoints(depthPoint, second), normal);
+  return {
+    x: normal.x * depth,
+    y: normal.y * depth
+  };
+}
+
+function getLeftNormal(first, second) {
+  const dx = second.x - first.x;
+  const dy = second.y - first.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  return {
+    x: -dy / length,
+    y: dx / length
+  };
+}
+
+export function getThreePointCircle(first, second, third) {
+  const ax = first.x;
+  const ay = first.y;
+  const bx = second.x;
+  const by = second.y;
+  const cx = third.x;
+  const cy = third.y;
+  const determinant = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+  if (Math.abs(determinant) <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const aSquared = ax * ax + ay * ay;
+  const bSquared = bx * bx + by * by;
+  const cSquared = cx * cx + cy * cy;
+  const center = {
+    x: (aSquared * (by - cy) + bSquared * (cy - ay) + cSquared * (ay - by)) / determinant,
+    y: (aSquared * (cx - bx) + bSquared * (ax - cx) + cSquared * (bx - ax)) / determinant
+  };
+
+  return {
+    center,
+    radius: distanceBetweenWorldPoints(center, first)
   };
 }
 
@@ -3274,11 +3451,29 @@ function getSketchCreationTool(state) {
       return "midpointline";
     case "twopointrectangle":
       return "twopointrectangle";
+    case "alignedrectangle":
+      return "alignedrectangle";
     case "centercircle":
       return "centercircle";
+    case "threepointcircle":
+      return "threepointcircle";
     default:
       return null;
   }
+}
+
+function getSketchToolPointCount(tool) {
+  switch (tool) {
+    case "alignedrectangle":
+    case "threepointcircle":
+      return 3;
+    default:
+      return 2;
+  }
+}
+
+function flattenPointCoordinates(points) {
+  return points.flatMap(point => [point.x, point.y]);
 }
 
 function isPointSelectionKey(selectionKey) {
