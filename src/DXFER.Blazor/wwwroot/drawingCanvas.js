@@ -25,6 +25,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     dimensionOverlay,
     dimensionInputs: new Map(),
     activeDimensionKey: null,
+    suppressDimensionInputCommit: false,
     document: null,
     showOriginAxes: false,
     grainDirection: "none",
@@ -680,8 +681,14 @@ function updateDimensionInputs(state, dimensions) {
       ? formatDimensionValue(lockedValue)
       : formatDimensionValue(dimension.value);
 
-    if (shouldRefreshDimensionInputValue(document.activeElement === input, hasLockedValue, input.dataset.dimensionEditing === "true")) {
+    const isFocused = document.activeElement === input;
+    const isEditing = input.dataset.dimensionEditing === "true";
+    const isActiveDimension = dimension.key === state.activeDimensionKey;
+    if (shouldRefreshDimensionInputValue(isFocused, hasLockedValue, isEditing)) {
       input.value = displayValue;
+      if (shouldAutoSelectDimensionInputValue(isFocused, hasLockedValue, isEditing, isActiveDimension)) {
+        selectInputText(input);
+      }
     }
 
     input.dataset.dimensionKey = dimension.key;
@@ -733,6 +740,14 @@ export function shouldRefreshDimensionInputValue(isFocused, hasLockedValue, hasT
   return !hasTransientEdit && (!isFocused || !hasLockedValue);
 }
 
+export function shouldAutoSelectDimensionInputValue(isFocused, hasLockedValue, hasTransientEdit = false, isActiveDimension = false) {
+  return isFocused && isActiveDimension && !hasLockedValue && !hasTransientEdit;
+}
+
+export function shouldCommitDimensionInputOnBlur(suppressDimensionInputCommit = false) {
+  return !suppressDimensionInputCommit;
+}
+
 function focusActiveDimensionInputIfNeeded(state, dimensions) {
   const activeKey = getDefaultActiveDimensionKey(dimensions, state.activeDimensionKey);
   if (!activeKey) {
@@ -779,7 +794,9 @@ function getOrCreateDimensionInput(state, dimension) {
   });
   input.addEventListener("focus", () => setActiveDimensionInput(state, input));
   input.addEventListener("blur", () => {
-    commitDimensionInputValue(state, input);
+    if (shouldCommitDimensionInputOnBlur(state.suppressDimensionInputCommit)) {
+      commitDimensionInputValue(state, input);
+    }
     if (state.activeDimensionKey === input.dataset.dimensionKey) {
       state.activeDimensionKey = null;
     }
@@ -797,13 +814,24 @@ function getOrCreateDimensionInput(state, dimension) {
 function handleDimensionInputKeyDown(state, input, event) {
   event.stopPropagation();
 
+  if (isDimensionTypingKey(event)
+    && shouldAutoSelectDimensionInputValue(
+      document.activeElement === input,
+      Number.isFinite(getLockedDraftDimensionValue(state, input.dataset.dimensionKey)),
+      input.dataset.dimensionEditing === "true",
+      state.activeDimensionKey === input.dataset.dimensionKey)) {
+    selectInputText(input);
+    input.dataset.dimensionEditing = "true";
+    return;
+  }
+
   if (event.key === "Enter") {
     input.dataset.dimensionEditing = "false";
     commitDimensionInputValue(state, input);
     const dimensions = getVisibleDimensionDescriptors(state);
     if (isLastDimensionInput(dimensions, input)) {
       commitCurrentSketchTool(state);
-      focusCanvas(state.canvas);
+      focusCanvasWithoutDimensionCommit(state);
       updateDebugAttributes(state);
       draw(state);
     } else {
@@ -812,7 +840,7 @@ function handleDimensionInputKeyDown(state, input, event) {
     event.preventDefault();
   } else if (event.key === "Escape") {
     cancelActiveTool(state);
-    focusCanvas(state.canvas);
+    focusCanvasWithoutDimensionCommit(state);
     event.preventDefault();
   } else if (event.key === "Tab") {
     input.dataset.dimensionEditing = "false";
@@ -894,6 +922,15 @@ function focusDimensionInput(state, input, selectContents) {
   setActiveDimensionInput(state, input);
 }
 
+function focusCanvasWithoutDimensionCommit(state) {
+  state.suppressDimensionInputCommit = true;
+  try {
+    focusCanvas(state.canvas);
+  } finally {
+    state.suppressDimensionInputCommit = false;
+  }
+}
+
 function selectInputText(input) {
   if (!input || typeof input.select !== "function") {
     return;
@@ -903,6 +940,14 @@ function selectInputText(input) {
     input.select();
   } catch {
   }
+}
+
+function isDimensionTypingKey(event) {
+  if (!event || event.ctrlKey || event.metaKey || event.altKey || event.key.length !== 1) {
+    return false;
+  }
+
+  return /[0-9.+-]/.test(event.key);
 }
 
 function getVisibleDimensionDescriptors(state) {
