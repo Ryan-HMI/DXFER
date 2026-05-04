@@ -4,6 +4,8 @@ import {
   applyDraftDimensionValue,
   applyLockedDraftDimensions,
   applyDirectSelectionClick,
+  applyPolarSnapIfRequested,
+  isDynamicTargetCurrentToPointer,
   isPanPointerDownForTool,
   syncActiveSelectionWithSelectedKeys
 } from "../../src/DXFER.Blazor/wwwroot/drawingCanvas.js";
@@ -142,3 +144,47 @@ test("shift is polar snap instead of pan while sketch tools are active", () => {
   assert.equal(isPanPointerDownForTool({ button: 1, shiftKey: false }, "line"), true);
   assert.equal(isPanPointerDownForTool({ button: 2, shiftKey: false }, "line"), false);
 });
+
+test("dynamic inferred target is hidden when cursor moves away from it", () => {
+  const state = {
+    pointerScreenPoint: { x: 100, y: 100 },
+    view: {
+      scale: 1,
+      offsetX: 0,
+      offsetY: 0
+    }
+  };
+
+  const target = {
+    dynamic: true,
+    point: { x: 0, y: 0 }
+  };
+
+  assert.equal(isDynamicTargetCurrentToPointer(state, target), false);
+  state.pointerScreenPoint = { x: 3, y: -4 };
+  assert.equal(isDynamicTargetCurrentToPointer(state, target), true);
+  assert.equal(isDynamicTargetCurrentToPointer(state, { dynamic: false, point: { x: 0, y: 0 } }), true);
+});
+
+test("line polar snap is ortho by default and fine increment with shift", () => {
+  const state = {
+    polarSnapIncrementDegrees: 15,
+    toolDraft: {
+      points: [{ x: 0, y: 0 }]
+    }
+  };
+  const point = { x: 10, y: 3 };
+  const radius = Math.hypot(point.x, point.y);
+
+  const ortho = applyPolarSnapIfRequested(state, point, "line", { shiftKey: false });
+  assertApproxEqual(ortho.x, radius);
+  assertApproxEqual(ortho.y, 0);
+
+  const fine = applyPolarSnapIfRequested(state, point, "line", { shiftKey: true });
+  assertApproxEqual(fine.x, Math.cos(Math.PI / 12) * radius);
+  assertApproxEqual(fine.y, Math.sin(Math.PI / 12) * radius);
+});
+
+function assertApproxEqual(actual, expected, tolerance = 0.000001) {
+  assert.ok(Math.abs(actual - expected) <= tolerance, `expected ${actual} to equal ${expected}`);
+}

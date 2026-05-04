@@ -23,10 +23,11 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     dotnetRef,
     dimensionOverlay,
     dimensionInputs: new Map(),
+    activeDimensionKey: null,
     document: null,
     showOriginAxes: false,
     grainDirection: "none",
-    polarSnapIncrementDegrees: 45,
+    polarSnapIncrementDegrees: 15,
     activeTool: "select",
     toolDraft: createEmptyToolDraft(),
     acquiredSnapPoints: [],
@@ -42,6 +43,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     disposed: false,
     panning: false,
     lastPointerScreen: null,
+    pointerScreenPoint: null,
     clickCandidate: null,
     selectionBox: null,
     previousTouchAction: canvas.style.touchAction
@@ -84,7 +86,6 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     setDocument(document, fitToDocument = false) {
       state.document = document || null;
       state.acquiredSnapPoints = [];
-      state.toolDraft = createEmptyToolDraft();
       pruneInteractionState(state, true);
       if (fitToDocument) {
         fitToExtents(state);
@@ -351,6 +352,10 @@ function drawArrowHead(context, point, angle, size) {
 }
 
 function drawTarget(state, target, style) {
+  if (!isDynamicTargetCurrentToPointer(state, target)) {
+    return;
+  }
+
   const { context } = state;
 
   if (target.kind === "point") {
@@ -406,7 +411,9 @@ function drawAcquiredSnapPoints(state) {
 }
 
 function drawInferenceGuides(state, size) {
-  const guides = state.hoveredTarget && Array.isArray(state.hoveredTarget.guides)
+  const guides = state.hoveredTarget
+    && isDynamicTargetCurrentToPointer(state, state.hoveredTarget)
+    && Array.isArray(state.hoveredTarget.guides)
     ? state.hoveredTarget.guides
     : [];
   if (guides.length === 0) {
@@ -676,6 +683,7 @@ function updateDimensionInputs(state, dimensions) {
     input.dataset.dimensionLabel = dimension.label;
     input.style.left = `${dimension.point.x}px`;
     input.style.top = `${dimension.point.y}px`;
+    input.classList.toggle("drawing-dimension-input-active", document.activeElement === input);
   }
 }
 
@@ -690,10 +698,13 @@ function getOrCreateDimensionInput(state, dimension) {
   input.step = "0.001";
   input.inputMode = "decimal";
   input.className = "drawing-dimension-input";
+  input.style.pointerEvents = "auto";
+  input.style.zIndex = "5";
   input.title = dimension.label;
   input.setAttribute("aria-label", dimension.label);
   input.addEventListener("pointerdown", event => {
     event.stopPropagation();
+    focusElement(input);
   });
   input.addEventListener("pointerup", event => {
     event.stopPropagation();
@@ -701,6 +712,15 @@ function getOrCreateDimensionInput(state, dimension) {
   input.addEventListener("click", event => {
     event.stopPropagation();
   });
+  input.addEventListener("focus", () => setActiveDimensionInput(state, input));
+  input.addEventListener("blur", () => {
+    commitDimensionInputValue(state, input);
+    if (state.activeDimensionKey === input.dataset.dimensionKey) {
+      state.activeDimensionKey = null;
+    }
+    input.classList.remove("drawing-dimension-input-active");
+  });
+  input.addEventListener("input", () => commitDimensionInputValue(state, input));
   input.addEventListener("keydown", event => handleDimensionInputKeyDown(state, input, event));
   input.addEventListener("change", () => commitDimensionInputValue(state, input));
 
@@ -714,16 +734,23 @@ function handleDimensionInputKeyDown(state, input, event) {
 
   if (event.key === "Enter") {
     commitDimensionInputValue(state, input);
-    state.canvas.focus({ preventScroll: true });
+    focusCanvas(state.canvas);
     event.preventDefault();
   } else if (event.key === "Escape") {
-    state.canvas.focus({ preventScroll: true });
+    focusCanvas(state.canvas);
     event.preventDefault();
+  } else if (event.key === "Tab") {
+    commitDimensionInputValue(state, input);
   }
 }
 
 function commitDimensionInputValue(state, input) {
-  const value = Number(input.value);
+  const text = String(input.value || "").trim();
+  if (!text || text === "-" || text === "." || text === "-.") {
+    return false;
+  }
+
+  const value = Number(text);
   if (!applyDraftDimensionValue(state, input.dataset.dimensionKey, value)) {
     return false;
   }
@@ -731,6 +758,13 @@ function commitDimensionInputValue(state, input) {
   updateDebugAttributes(state);
   draw(state);
   return true;
+}
+
+function setActiveDimensionInput(state, input) {
+  state.activeDimensionKey = input.dataset.dimensionKey || null;
+  for (const candidate of state.dimensionInputs.values()) {
+    candidate.classList.toggle("drawing-dimension-input-active", candidate === input);
+  }
 }
 
 function clearDimensionInputs(state) {
@@ -743,6 +777,7 @@ function clearDimensionInputs(state) {
   }
 
   state.dimensionInputs.clear();
+  state.activeDimensionKey = null;
 }
 
 function drawFloatingDimensionLabel(state, label, point) {
@@ -883,6 +918,7 @@ function handlePointerMove(state, event) {
   }
 
   const screenPoint = getPointerScreenPoint(state, event);
+  state.pointerScreenPoint = screenPoint;
 
   if (state.panning && state.lastPointerScreen) {
     state.view.offsetX += screenPoint.x - state.lastPointerScreen.x;
@@ -953,6 +989,7 @@ function handlePointerDown(state, event) {
   }
 
   const screenPoint = getPointerScreenPoint(state, event);
+  state.pointerScreenPoint = screenPoint;
   focusCanvas(state.canvas);
   capturePointer(state.canvas, event.pointerId);
 
@@ -984,6 +1021,7 @@ function handlePointerUp(state, event) {
   }
 
   const screenPoint = getPointerScreenPoint(state, event);
+  state.pointerScreenPoint = screenPoint;
 
   if (state.panning) {
     state.panning = false;
@@ -1093,6 +1131,7 @@ function handleSketchToolClick(state, screenPoint, event) {
 function handlePointerCancel(state, event) {
   state.panning = false;
   state.lastPointerScreen = null;
+  state.pointerScreenPoint = null;
   state.clickCandidate = null;
   state.selectionBox = null;
   releasePointer(state.canvas, event.pointerId);
@@ -1106,6 +1145,8 @@ function handlePointerLeave(state) {
   if (state.panning) {
     return;
   }
+
+  state.pointerScreenPoint = null;
 
   if (state.selectionBox) {
     state.selectionBox = null;
@@ -1151,6 +1192,7 @@ function handleWheel(state, event) {
   event.preventDefault();
 
   const screenPoint = getPointerScreenPoint(state, event);
+  state.pointerScreenPoint = screenPoint;
   const worldPoint = screenToWorld(state, screenPoint);
   const normalizedDelta = normalizeWheelDelta(event);
   const zoomFactor = clamp(Math.exp(-normalizedDelta * 0.001), 0.2, 5);
@@ -2633,6 +2675,19 @@ export function applyLockedDraftDimensions(state) {
   return changed;
 }
 
+export function isDynamicTargetCurrentToPointer(state, target) {
+  if (!target || !target.dynamic) {
+    return true;
+  }
+
+  if (!state || !state.pointerScreenPoint || !target.point) {
+    return false;
+  }
+
+  const targetScreenPoint = worldToScreen(state, target.point);
+  return distanceBetweenScreenPoints(state.pointerScreenPoint, targetScreenPoint) <= SNAP_POINT_TOLERANCE;
+}
+
 function pointFromAnchorWithLength(anchor, referencePoint, length) {
   const dx = referencePoint.x - anchor.x;
   const dy = referencePoint.y - anchor.y;
@@ -2942,7 +2997,7 @@ function normalizeGrainDirection(direction) {
 function normalizePolarSnapIncrement(incrementDegrees) {
   const parsed = Number(incrementDegrees);
   if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 180) {
-    return 45;
+    return 15;
   }
 
   return parsed;
@@ -2996,14 +3051,18 @@ function releasePointer(canvas, pointerId) {
 }
 
 function focusCanvas(canvas) {
-  if (typeof canvas.focus !== "function") {
+  focusElement(canvas);
+}
+
+function focusElement(element) {
+  if (!element || typeof element.focus !== "function") {
     return;
   }
 
   try {
-    canvas.focus({ preventScroll: true });
+    element.focus({ preventScroll: true });
   } catch {
-    canvas.focus();
+    element.focus();
   }
 }
 
@@ -3221,10 +3280,8 @@ function getArcEndpointWorldPoints(entity) {
   ];
 }
 
-function applyPolarSnapIfRequested(state, point, tool, event) {
-  if (!event
-    || !event.shiftKey
-    || (tool !== "line" && tool !== "midpointline")
+export function applyPolarSnapIfRequested(state, point, tool, event) {
+  if ((tool !== "line" && tool !== "midpointline")
     || !state.toolDraft
     || state.toolDraft.points.length === 0) {
     return point;
@@ -3236,7 +3293,9 @@ function applyPolarSnapIfRequested(state, point, tool, event) {
     return point;
   }
 
-  const increment = normalizePolarSnapIncrement(state.polarSnapIncrementDegrees);
+  const increment = event && event.shiftKey
+    ? normalizePolarSnapIncrement(state.polarSnapIncrementDegrees)
+    : 90;
   const rawAngle = radiansToDegrees(Math.atan2(point.y - anchor.y, point.x - anchor.x));
   const snappedAngle = Math.round(rawAngle / increment) * increment;
   return pointOnCircle(anchor, distance, snappedAngle);

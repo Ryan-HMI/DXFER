@@ -62,11 +62,13 @@
 .drawing-dimension-overlay {
     position: absolute;
     inset: 0;
+    z-index: 4;
     pointer-events: none;
 }
 
 ::deep .drawing-dimension-input {
     position: absolute;
+    z-index: 5;
     width: 4.8rem;
     height: 1.35rem;
     transform: translate(-50%, -50%);
@@ -86,7 +88,12 @@
     color: #ffffff;
     background: #17212b;
     border-color: #7dd3fc;
-    box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.24);
+    box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.28), 0 0 14px rgba(56, 189, 248, 0.42);
+}
+
+::deep .drawing-dimension-input-active {
+    border-color: #bae6fd;
+    box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.32), 0 0 16px rgba(56, 189, 248, 0.5);
 }
 
 ::deep .drawing-dimension-input::-webkit-outer-spin-button,
