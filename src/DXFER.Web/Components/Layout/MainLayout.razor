@@ -2,8 +2,35 @@
 
 <div class="page">
     <header class="app-header">
-        <div class="app-title">DXFER</div>
-        <div class="app-subtitle">Canvas prototype</div>
+        <details class="app-menu">
+            <summary class="app-menu-toggle" aria-label="Open application menu" title="Application menu">
+                <span class="app-menu-bar" aria-hidden="true"></span>
+                <span class="app-menu-bar" aria-hidden="true"></span>
+                <span class="app-menu-bar" aria-hidden="true"></span>
+            </summary>
+            <nav class="app-menu-panel" aria-label="Application menu">
+                <section class="app-menu-section" aria-labelledby="app-menu-file">
+                    <div id="app-menu-file" class="app-menu-section-title">File</div>
+                    <div class="app-menu-section-items">New, Open, Export</div>
+                </section>
+                <section class="app-menu-section" aria-labelledby="app-menu-edit">
+                    <div id="app-menu-edit" class="app-menu-section-title">Edit</div>
+                    <div class="app-menu-section-items">Undo, Redo, Delete</div>
+                </section>
+                <section class="app-menu-section" aria-labelledby="app-menu-view">
+                    <div id="app-menu-view" class="app-menu-section-title">View</div>
+                    <div class="app-menu-section-items">Fit, Zoom, Panels</div>
+                </section>
+                <section class="app-menu-section" aria-labelledby="app-menu-settings">
+                    <div id="app-menu-settings" class="app-menu-section-title">Settings</div>
+                    <div class="app-menu-section-items">Units, Theme, Preferences</div>
+                </section>
+            </nav>
+        </details>
+        <div class="app-brand">
+            <div class="app-title">DXFER</div>
+            <div class="app-subtitle">Canvas prototype</div>
+        </div>
     </header>
 
     <main class="app-main">

@@ -21,8 +21,102 @@ html, body {
     background: #171e24;
     border-bottom: 1px solid #2b3640;
     display: flex;
-    gap: 14px;
+    gap: 10px;
     padding: 0 18px;
+    position: relative;
+}
+
+.app-menu {
+    display: inline-flex;
+    flex: 0 0 auto;
+    position: relative;
+}
+
+.app-menu-toggle {
+    align-items: center;
+    background: #222c34;
+    border: 1px solid #3f4b55;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    flex-direction: column;
+    gap: 3px;
+    height: 2rem;
+    justify-content: center;
+    list-style: none;
+    padding: 0;
+    width: 2rem;
+}
+
+.app-menu-toggle::-webkit-details-marker {
+    display: none;
+}
+
+.app-menu-toggle:hover,
+.app-menu-toggle:focus-visible,
+.app-menu[open] .app-menu-toggle {
+    background: #2d3943;
+    border-color: #7f96a8;
+    outline: none;
+}
+
+.app-menu-toggle:focus-visible {
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.32);
+}
+
+.app-menu-bar {
+    background: #dce7ed;
+    border-radius: 1px;
+    display: block;
+    height: 2px;
+    width: 14px;
+}
+
+.app-menu-panel {
+    background: #1b232a;
+    border: 1px solid #35434e;
+    border-radius: 6px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.34);
+    display: grid;
+    gap: 6px;
+    left: 0;
+    padding: 8px;
+    position: absolute;
+    top: calc(100% + 8px);
+    width: 218px;
+    z-index: 50;
+}
+
+.app-menu-section {
+    border-bottom: 1px solid #2d3841;
+    display: grid;
+    gap: 2px;
+    padding: 0 0 6px;
+}
+
+.app-menu-section:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+}
+
+.app-menu-section-title {
+    color: #f2f6f8;
+    font-size: 0.76rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.app-menu-section-items {
+    color: #93a4b0;
+    font-size: 0.72rem;
+    line-height: 1.25;
+}
+
+.app-brand {
+    align-items: baseline;
+    display: flex;
+    gap: 14px;
+    min-width: 0;
 }
 
 .app-title {
@@ -30,11 +124,15 @@ html, body {
     font-size: 16px;
     font-weight: 700;
     letter-spacing: 0;
+    white-space: nowrap;
 }
 
 .app-subtitle {
     color: #8ea0ae;
     font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .app-main,
