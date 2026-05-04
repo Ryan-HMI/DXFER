@@ -23,27 +23,6 @@
                            Label="Collapse tool palette"
                            OnClick="ToggleToolPanel" />
         </div>
-        <details class="dxfer-tool-section dxfer-tool-section-collapsible" open>
-            <summary class="dxfer-tool-section-summary">
-                <span class="dxfer-section-title">File</span>
-            </summary>
-            <div class="dxfer-command-strip" role="toolbar" aria-label="File tools">
-                <label class="dxfer-file-picker" title="Open DXF or DWG" aria-label="Open DXF or DWG">
-                    <CadIcon Name="@CadIconName.FolderOpen" />
-                    <InputFile OnChange="OpenFileAsync"
-                               accept=".dxf,.dwg"
-                               class="dxfer-file-input"
-                               style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;" />
-                </label>
-                <CadIconButton Icon="@CadIconName.Sample"
-                               Label="Load sample drawing"
-                               OnClick="@(() => InvokeWorkbenchCommand(WorkbenchCommandId.LoadSample))" />
-                <CadIconButton Icon="@CadIconName.Export"
-                               Label="Export DXF text"
-                               Disabled="@(!HasDocument)"
-                               OnClick="@(() => InvokeWorkbenchCommand(WorkbenchCommandId.ExportDxfText))" />
-            </div>
-        </details>
 
         <WorkbenchToolPalette Groups="@ToolGroups" OnCommandInvoked="InvokeWorkbenchCommand" />
 

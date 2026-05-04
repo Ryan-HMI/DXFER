@@ -54,7 +54,7 @@ html, body {
 
 .app-menu-toggle:hover,
 .app-menu-toggle:focus-visible,
-.app-menu[open] .app-menu-toggle {
+.app-menu-open .app-menu-toggle {
     background: #2d3943;
     border-color: #7f96a8;
     outline: none;
@@ -82,9 +82,13 @@ html, body {
     left: 0;
     padding: 5px;
     position: absolute;
-    top: calc(100% + 8px);
+    top: 100%;
     width: 184px;
     z-index: 50;
+}
+
+.app-menu:not(.app-menu-open) .app-menu-panel {
+    display: none;
 }
 
 .app-menu-group {
@@ -121,6 +125,20 @@ html, body {
 
 .app-menu-command:disabled {
     color: #657581;
+}
+
+.app-menu-file-command {
+    cursor: pointer;
+    position: relative;
+}
+
+.app-menu-file-input {
+    cursor: pointer;
+    height: 100%;
+    inset: 0;
+    opacity: 0;
+    position: absolute;
+    width: 100%;
 }
 
 .app-menu-arrow {

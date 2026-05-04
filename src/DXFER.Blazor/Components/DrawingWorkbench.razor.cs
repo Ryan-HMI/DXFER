@@ -52,11 +52,13 @@ public partial class DrawingWorkbench : IDisposable
     protected override void OnInitialized()
     {
         MenuCommandService.CommandRequested += InvokeWorkbenchCommand;
+        MenuCommandService.FileOpenRequested += OpenFileAsync;
     }
 
     public void Dispose()
     {
         MenuCommandService.CommandRequested -= InvokeWorkbenchCommand;
+        MenuCommandService.FileOpenRequested -= OpenFileAsync;
     }
 
     private bool HasDocument => _document.Entities.Count > 0;
@@ -253,9 +255,8 @@ public partial class DrawingWorkbench : IDisposable
         }
     }
 
-    private async Task OpenFileAsync(InputFileChangeEventArgs args)
+    private async Task OpenFileAsync(IBrowserFile file)
     {
-        var file = args.File;
         _fileName = file.Name;
         _exportText = string.Empty;
 
