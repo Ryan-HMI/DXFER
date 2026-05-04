@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using DXFER.Blazor.IO;
 using DXFER.Blazor.Interop;
 using DXFER.Blazor.Selection;
 using DXFER.Blazor.Sketching;
@@ -18,6 +19,7 @@ namespace DXFER.Blazor.Components;
 public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 {
     private const string HotkeyModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js";
+    private const string DownloadModulePath = "./_content/DXFER.Blazor/downloadFile.js?v=20260504-save";
     private const long MaxDxfFileSize = 25 * 1024 * 1024;
     private const string SegmentKeySeparator = "|segment|";
     private const string PointKeySeparator = "|point|";
@@ -55,6 +57,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private readonly Stack<DrawingDocument> _redoStack = new();
     private IJSObjectReference? _hotkeyModule;
     private IJSObjectReference? _hotkeyListener;
+    private IJSObjectReference? _downloadModule;
     private DotNetObjectReference<DrawingWorkbench>? _hotkeyDotNetReference;
 
     [Inject]
@@ -114,6 +117,17 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             try
             {
                 await _hotkeyModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+
+        if (_downloadModule is not null)
+        {
+            try
+            {
+                await _downloadModule.DisposeAsync();
             }
             catch (JSDisconnectedException)
             {
@@ -415,6 +429,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 break;
             case WorkbenchCommandId.ExportDxfText:
                 GenerateDxfExport();
+                break;
+            case WorkbenchCommandId.SaveDxf:
+                await DownloadDxfAsync();
                 break;
             case WorkbenchCommandId.Measure:
                 ActivateTool(WorkbenchTool.Measure, "Measure command active. Press Esc to return to selection.");
@@ -934,6 +951,20 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         _exportText = DxfDocumentWriter.Write(_document);
         _status = "Generated ASCII DXF export text for supported entities.";
+    }
+
+    private async Task DownloadDxfAsync()
+    {
+        var exportText = DxfDocumentWriter.Write(_document);
+        var downloadName = DxfDownloadFileName.FromSourceName(_fileName);
+        _exportText = exportText;
+        _downloadModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", DownloadModulePath);
+        await _downloadModule.InvokeVoidAsync(
+            "downloadTextFile",
+            downloadName,
+            exportText,
+            "application/dxf;charset=utf-8");
+        _status = $"Saved {downloadName}.";
     }
 
     private void OnHoveredEntityChanged(string? entityId)
@@ -1718,6 +1749,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchCommandId.PowerTrim => "Power trim/extend",
         WorkbenchCommandId.DeleteSelection => "Delete selected geometry",
         WorkbenchCommandId.SplitAtPoint => "Split at point",
+        WorkbenchCommandId.SaveDxf => "Save DXF",
         WorkbenchCommandId.LinearPattern => "Linear pattern",
         WorkbenchCommandId.CircularPattern => "Circular pattern",
         WorkbenchCommandId.Rotate90Clockwise => "Rotate 90 CW",

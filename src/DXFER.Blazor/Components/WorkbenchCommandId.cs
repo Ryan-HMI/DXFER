@@ -4,6 +4,7 @@ public enum WorkbenchCommandId
 {
     LoadSample,
     ExportDxfText,
+    SaveDxf,
     Measure,
     Undo,
     Redo,

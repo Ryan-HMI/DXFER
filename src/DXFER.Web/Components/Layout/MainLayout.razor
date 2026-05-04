@@ -25,6 +25,7 @@
                                            accept=".dxf,.dwg"
                                            class="app-menu-file-input" />
                             </label>
+                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SaveDxf)">Save DXF</button>
                             <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.ExportDxfText)">Export DXF text</button>
                         </div>
                     </div>
