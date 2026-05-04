@@ -60,6 +60,9 @@ public partial class DrawingCanvas : IAsyncDisposable
     public Action<string, IReadOnlyList<CanvasPointDto>>? ToolCommitRequested { get; set; }
 
     [Parameter]
+    public Action<string, CanvasPointDto>? SplitAtPointRequested { get; set; }
+
+    [Parameter]
     public Action? ToolCancelRequested { get; set; }
 
     [Parameter]
@@ -221,6 +224,13 @@ public partial class DrawingCanvas : IAsyncDisposable
         }
 
         ToolCommitRequested?.Invoke(toolName, points);
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnSplitAtPointRequested(string targetKey, double x, double y)
+    {
+        SplitAtPointRequested?.Invoke(targetKey, new CanvasPointDto(x, y));
         return Task.CompletedTask;
     }
 

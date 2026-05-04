@@ -4,13 +4,15 @@ using DXFER.Core.Geometry;
 
 namespace DXFER.Blazor.Selection;
 
-public static class SelectionPointResolver
+public static class LineSplitSelectionResolver
 {
+    private const string SegmentKeySeparator = "|segment|";
     private const string PointKeySeparator = "|point|";
 
-    public static bool TryGetPointToOriginReference(
+    public static bool TryResolveLineAndPoint(
         DrawingDocument document,
         IEnumerable<string> selectionKeys,
+        out string lineEntityId,
         out Point2 point)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -21,37 +23,50 @@ public static class SelectionPointResolver
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-        if (keys.Length != 1)
+        var lineIds = keys
+            .Where(key => !key.Contains(PointKeySeparator, StringComparison.Ordinal)
+                && !key.Contains(SegmentKeySeparator, StringComparison.Ordinal)
+                && FindEntity(document, key) is LineEntity)
+            .ToArray();
+
+        if (lineIds.Length != 1)
         {
+            lineEntityId = string.Empty;
             point = default;
             return false;
         }
 
-        var selectionKey = keys[0];
-        if (TryGetPointFromSelectionKey(selectionKey, out point))
+        var points = new List<Point2>();
+        foreach (var key in keys)
         {
-            return true;
+            if (TryGetPointFromSelectionKey(key, out var selectedPoint))
+            {
+                points.Add(selectedPoint);
+                continue;
+            }
+
+            if (!key.Contains(SegmentKeySeparator, StringComparison.Ordinal)
+                && FindEntity(document, key) is PointEntity pointEntity)
+            {
+                points.Add(pointEntity.Location);
+            }
         }
 
-        var entity = document.Entities.FirstOrDefault(candidate =>
-            StringComparer.Ordinal.Equals(candidate.Id.Value, selectionKey));
-
-        switch (entity)
+        if (points.Count != 1)
         {
-            case CircleEntity circle:
-                point = circle.Center;
-                return true;
-            case ArcEntity arc:
-                point = arc.Center;
-                return true;
-            case PointEntity pointEntity:
-                point = pointEntity.Location;
-                return true;
-            default:
-                point = default;
-                return false;
+            lineEntityId = string.Empty;
+            point = default;
+            return false;
         }
+
+        lineEntityId = lineIds[0];
+        point = points[0];
+        return true;
     }
+
+    private static DrawingEntity? FindEntity(DrawingDocument document, string entityId) =>
+        document.Entities.FirstOrDefault(entity =>
+            StringComparer.Ordinal.Equals(entity.Id.Value, entityId));
 
     private static bool TryGetPointFromSelectionKey(string selectionKey, out Point2 point)
     {

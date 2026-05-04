@@ -52,6 +52,14 @@ BEND
 51
 90
 0
+POINT
+8
+SKETCH
+10
+7
+20
+9
+0
 LWPOLYLINE
 8
 OUTLINE
@@ -125,16 +133,18 @@ EOF
 
         var document = DxfDocumentReader.Read(dxf);
 
-        document.Entities.Should().HaveCount(5);
+        document.Entities.Should().HaveCount(6);
         document.Entities[0].Should().BeOfType<LineEntity>()
             .Which.Start.Should().Be(new Point2(1, 2));
         document.Entities[1].Should().BeOfType<CircleEntity>()
             .Which.Radius.Should().Be(2.5);
         document.Entities[2].Should().BeOfType<ArcEntity>()
             .Which.EndAngleDegrees.Should().Be(90);
-        document.Entities[3].Should().BeOfType<PolylineEntity>()
+        document.Entities[3].Should().BeOfType<PointEntity>()
+            .Which.Location.Should().Be(new Point2(7, 9));
+        document.Entities[4].Should().BeOfType<PolylineEntity>()
             .Which.Vertices.Should().ContainInOrder(new Point2(0, 0), new Point2(3, 0), new Point2(3, 4), new Point2(0, 0));
-        var spline = document.Entities[4].Should().BeOfType<SplineEntity>().Subject;
+        var spline = document.Entities[5].Should().BeOfType<SplineEntity>().Subject;
         spline.Degree.Should().Be(3);
         spline.Knots.Should().ContainInOrder(0, 0, 0, 0, 1, 1, 1, 1);
         spline.ControlPoints.Should().ContainInOrder(
@@ -153,6 +163,7 @@ EOF
             new LineEntity(EntityId.Create("line-a"), new Point2(0, 0), new Point2(10, 0)),
             new CircleEntity(EntityId.Create("circle-a"), new Point2(5, 5), 1.25),
             new ArcEntity(EntityId.Create("arc-a"), new Point2(8, 8), 2, 15, 120),
+            new PointEntity(EntityId.Create("point-a"), new Point2(3, 4)),
             new PolylineEntity(EntityId.Create("poly-a"), new[] { new Point2(0, 0), new Point2(2, 0), new Point2(2, 1) }),
             new SplineEntity(
                 EntityId.Create("spline-a"),
@@ -165,8 +176,11 @@ EOF
         var roundTripped = DxfDocumentReader.Read(dxf);
 
         dxf.Should().Contain("SPLINE");
-        roundTripped.Entities.Should().HaveCount(5);
-        roundTripped.Entities[4].Should().BeOfType<SplineEntity>()
+        dxf.Should().Contain("POINT");
+        roundTripped.Entities.Should().HaveCount(6);
+        roundTripped.Entities[3].Should().BeOfType<PointEntity>()
+            .Which.Location.Should().Be(new Point2(3, 4));
+        roundTripped.Entities[5].Should().BeOfType<SplineEntity>()
             .Which.ControlPoints.Should().ContainInOrder(
                 new Point2(0, 0),
                 new Point2(1, 2),

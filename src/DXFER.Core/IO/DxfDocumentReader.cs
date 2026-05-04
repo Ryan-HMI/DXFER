@@ -54,6 +54,16 @@ public static class DxfDocumentReader
 
                     break;
 
+                case "POINT":
+                    if (TryReadEntityPairs(pairs, index + 1, out var pointPairs, out var nextPointIndex)
+                        && TryCreatePoint(pointPairs, CreateId(pointPairs, "point", ref generatedId), out var point))
+                    {
+                        entities.Add(point);
+                        index = nextPointIndex - 1;
+                    }
+
+                    break;
+
                 case "LWPOLYLINE":
                     if (TryReadEntityPairs(pairs, index + 1, out var polylinePairs, out var nextPolylineIndex)
                         && TryCreateLightweightPolyline(polylinePairs, CreateId(polylinePairs, "polyline", ref generatedId), out var polyline))
@@ -197,6 +207,18 @@ public static class DxfDocumentReader
         }
 
         arc = default!;
+        return false;
+    }
+
+    private static bool TryCreatePoint(IReadOnlyList<DxfPair> pairs, EntityId id, out PointEntity point)
+    {
+        if (TryReadPoint(pairs, 10, 20, out var location))
+        {
+            point = new PointEntity(id, location);
+            return true;
+        }
+
+        point = default!;
         return false;
     }
 

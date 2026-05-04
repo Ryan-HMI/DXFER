@@ -291,6 +291,16 @@ function drawEntity(state, entity, style) {
     context.shadowBlur = 9;
   }
 
+  if (getEntityKind(entity) === "point") {
+    const point = getPointEntityLocation(entity);
+    if (point) {
+      drawPointTarget(state, point, style);
+    }
+
+    context.restore();
+    return;
+  }
+
   const hasPath = buildEntityPath(state, entity);
   if (hasPath) {
     context.stroke();
@@ -384,6 +394,15 @@ function drawTarget(state, target, style) {
 
   if (target.kind === "point") {
     drawPointTarget(state, target.point, style, getPointTargetMarker(target));
+    return;
+  }
+
+  if (target.kind === "entity" && getEntityKind(target.entity) === "point") {
+    const point = target.snapPoint || getPointEntityLocation(target.entity);
+    if (point) {
+      drawPointTarget(state, point, style);
+    }
+
     return;
   }
 
@@ -1328,6 +1347,22 @@ function handlePointerMove(state, event) {
     return;
   }
 
+  if (isSplitAtPointTool(state)) {
+    const nearestTarget = findNearestTarget(state, screenPoint);
+    if (setHoveredTarget(state, nearestTarget)) {
+      draw(state);
+    }
+
+    if (state.clickCandidate) {
+      const moveDistance = distanceBetweenScreenPoints(screenPoint, state.clickCandidate.screenPoint);
+      if (moveDistance > CLICK_MOVE_TOLERANCE) {
+        state.clickCandidate.cancelled = true;
+      }
+    }
+
+    return;
+  }
+
   if (getSketchCreationTool(state)) {
     const nearestTarget = findNearestTarget(state, screenPoint);
     setHoveredTarget(state, nearestTarget);
@@ -1407,7 +1442,7 @@ function handlePointerDown(state, event) {
       cancelled: false
     };
 
-    if (getSketchCreationTool(state)) {
+    if (getSketchCreationTool(state) || isSplitAtPointTool(state)) {
       event.preventDefault();
     }
   }
@@ -1460,6 +1495,18 @@ function handlePointerUp(state, event) {
   if (candidate && candidate.pointerId === event.pointerId && !candidate.cancelled) {
     const moveDistance = distanceBetweenScreenPoints(screenPoint, candidate.screenPoint);
     if (moveDistance <= CLICK_MOVE_TOLERANCE) {
+      if (isSplitAtPointTool(state)) {
+        const request = getSplitAtPointRequest(state, screenPoint);
+        if (request) {
+          invokeDotNet(state, "OnSplitAtPointRequested", request.targetKey, request.point.x, request.point.y);
+        }
+        updateDebugAttributes(state);
+        draw(state);
+        releasePointer(state.canvas, event.pointerId);
+        event.preventDefault();
+        return;
+      }
+
       if (getSketchCreationTool(state)) {
         handleSketchToolClick(state, screenPoint, event);
         updateDebugAttributes(state);
@@ -1499,6 +1546,11 @@ function handleSketchToolClick(state, screenPoint, event) {
   }
 
   let worldPoint = getSketchWorldPoint(state, screenPoint, clickTarget, event);
+  if (getSketchToolPointCount(tool) === 1) {
+    commitSketchToolPoints(state, tool, [worldPoint]);
+    return;
+  }
+
   if (!state.toolDraft || state.toolDraft.points.length === 0) {
     state.toolDraft = {
       points: [worldPoint],
@@ -1777,7 +1829,7 @@ function getSketchWorldPoint(state, screenPoint, target = state.hoveredTarget, e
   return applyPolarSnapIfRequested(state, screenToWorld(state, screenPoint), tool, event);
 }
 
-function findNearestTarget(state, screenPoint) {
+export function findNearestTarget(state, screenPoint) {
   let nearestPointHit = null;
   let nearestEdgeHit = null;
 
@@ -1830,6 +1882,10 @@ function findNearestWholeEntityTarget(state, screenPoint) {
 }
 
 function getEntityPointHit(state, entity, screenPoint) {
+  if (getEntityKind(entity) === "point") {
+    return getPointEntityHit(state, entity, screenPoint);
+  }
+
   let nearestHit = null;
   const entities = getDocumentEntities(state.document);
 
@@ -1856,6 +1912,8 @@ function getEntityEdgeHit(state, entity, screenPoint) {
   const kind = getEntityKind(entity);
 
   switch (kind) {
+    case "point":
+      return getPointEntityHit(state, entity, screenPoint);
     case "line":
       return getLineEdgeHit(state, entity, screenPoint);
     case "polyline":
@@ -2045,6 +2103,20 @@ function addDynamicTangentSnapCandidates(candidates, state, tool) {
 function getEntityScreenDistance(state, entity, screenPoint) {
   const hit = getEntityEdgeHit(state, entity, screenPoint);
   return hit ? hit.distance : Number.POSITIVE_INFINITY;
+}
+
+function getPointEntityHit(state, entity, screenPoint) {
+  const point = getPointEntityLocation(entity);
+  const target = createEntityTarget(entity);
+  if (!point || !target) {
+    return null;
+  }
+
+  return {
+    target: withSnapPoint(target, point),
+    distance: distanceBetweenScreenPoints(screenPoint, worldToScreen(state, point)),
+    priority: 10
+  };
 }
 
 function getLineEdgeHit(state, entity, screenPoint) {
@@ -2304,6 +2376,11 @@ function getEntityScreenSegments(state, entity) {
 function getEntityScreenSamplePoints(state, entity) {
   const kind = getEntityKind(entity);
 
+  if (kind === "point") {
+    const point = getPointEntityLocation(entity);
+    return point ? [worldToScreen(state, point)] : [];
+  }
+
   if (kind === "line" || kind === "polyline" || kind === "spline") {
     return getEntityPoints(entity).map(point => worldToScreen(state, point));
   }
@@ -2334,6 +2411,8 @@ function getSnapPoints(entity, entities) {
   const kind = getEntityKind(entity);
 
   switch (kind) {
+    case "point":
+      return getPointSnapPoints(entity);
     case "line":
       return getLineSnapPoints(entity, entities);
     case "polyline":
@@ -2347,6 +2426,11 @@ function getSnapPoints(entity, entities) {
     default:
       return [];
   }
+}
+
+function getPointSnapPoints(entity) {
+  const point = getPointEntityLocation(entity);
+  return point ? [{ label: "point", point, priority: 10 }] : [];
 }
 
 function getLineSnapPoints(entity, entities) {
@@ -3422,17 +3506,24 @@ function sameOptionalWorldPoint(first, second) {
 }
 
 function rememberAcquiredSnapPoint(state, target) {
+  const isPersistentPointTarget = target
+    && target.kind === "entity"
+    && getEntityKind(target.entity) === "point"
+    && target.snapPoint;
+  const acquiredPoint = isPersistentPointTarget
+    ? target.snapPoint
+    : target && target.kind === "point" ? target.point : null;
+
   if (!getSketchCreationTool(state)
     || !target
-    || target.kind !== "point"
     || target.dynamic
-    || !target.point) {
+    || !acquiredPoint) {
     return;
   }
 
   const duplicateIndex = state.acquiredSnapPoints.findIndex(acquired =>
     acquired.key === target.key
-    || distanceBetweenWorldPoints(acquired.point, target.point) <= WORLD_GEOMETRY_TOLERANCE);
+    || distanceBetweenWorldPoints(acquired.point, acquiredPoint) <= WORLD_GEOMETRY_TOLERANCE);
   if (duplicateIndex >= 0) {
     state.acquiredSnapPoints.splice(duplicateIndex, 1);
   }
@@ -3440,7 +3531,7 @@ function rememberAcquiredSnapPoint(state, target) {
   state.acquiredSnapPoints.push({
     key: target.key,
     label: sanitizeKeyPart(target.label || target.entityId || "point"),
-    point: target.point
+    point: acquiredPoint
   });
 
   while (state.acquiredSnapPoints.length > MAX_ACQUIRED_SNAP_POINTS) {
@@ -3675,6 +3766,8 @@ function normalizeToolName(toolName) {
 
 function getSketchCreationTool(state) {
   switch (normalizeToolName(state.activeTool)) {
+    case "point":
+      return "point";
     case "line":
       return "line";
     case "midpointline":
@@ -3696,8 +3789,10 @@ function getSketchCreationTool(state) {
   }
 }
 
-function getSketchToolPointCount(tool) {
+export function getSketchToolPointCount(tool) {
   switch (tool) {
+    case "point":
+      return 1;
     case "alignedrectangle":
     case "threepointcircle":
     case "threepointarc":
@@ -3706,6 +3801,39 @@ function getSketchToolPointCount(tool) {
     default:
       return 2;
   }
+}
+
+function isSplitAtPointTool(state) {
+  return normalizeToolName(state && state.activeTool) === "splitatpoint";
+}
+
+export function getSplitAtPointRequest(state, screenPoint) {
+  if (!isSplitAtPointTool(state)) {
+    return null;
+  }
+
+  const target = findNearestTarget(state, screenPoint);
+  const point = getTargetSplitPoint(target);
+  if (!target || !point) {
+    return null;
+  }
+
+  return {
+    targetKey: target.key,
+    point
+  };
+}
+
+function getTargetSplitPoint(target) {
+  if (!target) {
+    return null;
+  }
+
+  if (target.kind === "point" && target.point) {
+    return target.point;
+  }
+
+  return target.snapPoint || null;
 }
 
 function flattenPointCoordinates(points) {
@@ -3803,6 +3931,11 @@ function computeEntityBounds(entities) {
 function getEntityBoundsPoints(entity) {
   const kind = getEntityKind(entity);
 
+  if (kind === "point") {
+    const point = getPointEntityLocation(entity);
+    return point ? [point] : [];
+  }
+
   if (kind === "line" || kind === "polyline" || kind === "spline") {
     return getEntityPoints(entity);
   }
@@ -3892,6 +4025,13 @@ function getEntityPoints(entity) {
   return rawPoints
     .map(readPoint)
     .filter(point => point !== null);
+}
+
+function getPointEntityLocation(entity) {
+  const points = getEntityPoints(entity);
+  return points.length > 0
+    ? points[0]
+    : getEntityCenter(entity);
 }
 
 function getEntityCenter(entity) {
