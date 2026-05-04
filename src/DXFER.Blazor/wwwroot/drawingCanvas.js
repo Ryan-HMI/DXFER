@@ -27,6 +27,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     dotnetRef,
     dimensionOverlay,
     dimensionInputs: new Map(),
+    persistentDimensionInputs: new Map(),
     activeDimensionKey: null,
     suppressDimensionInputCommit: false,
     document: null,
@@ -176,6 +177,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
 
       state.canvas.style.touchAction = state.previousTouchAction;
       clearDimensionInputs(state);
+      clearPersistentDimensionInputs(state);
       setHoveredTarget(state, null);
       updateDebugAttributes(state);
     }
@@ -265,6 +267,13 @@ function draw(state) {
 
   if (state.selectionBox) {
     drawSelectionBox(state);
+  }
+
+  drawPersistentConstraintGlyphs(state);
+  const persistentDimensions = getPersistentDimensionDescriptors(state);
+  updatePersistentDimensionInputs(state, persistentDimensions);
+  if (!state.dimensionOverlay) {
+    drawPreviewDimensionFallbackLabels(state, persistentDimensions);
   }
 
   const previewDimensions = drawToolPreview(state);
@@ -824,6 +833,296 @@ function addRadiusPreviewDimension(dimensions, state, center, edge) {
 function drawPreviewDimensionFallbackLabels(state, dimensions) {
   for (const dimension of dimensions) {
     drawFloatingDimensionLabel(state, formatDimensionValue(dimension.value), dimension.point);
+  }
+}
+
+export function getPersistentDimensionDescriptors(state) {
+  return getDocumentDimensions(state.document)
+    .map(dimension => getPersistentDimensionDescriptor(state, dimension))
+    .filter(dimension => dimension !== null);
+}
+
+function getPersistentDimensionDescriptor(state, dimension) {
+  const id = getSketchItemId(dimension);
+  const kind = getSketchItemKind(dimension);
+  const referenceKeys = getSketchReferenceKeys(dimension);
+  const value = Number(readProperty(dimension, "value", "Value"));
+  const anchor = readPoint(readProperty(dimension, "anchor", "Anchor"));
+  if (!id || !kind || !Number.isFinite(value)) {
+    return null;
+  }
+
+  const anchorPoint = anchor || getDimensionAnchorPoint(state, kind, referenceKeys);
+  if (!anchorPoint) {
+    return null;
+  }
+
+  return {
+    key: `persistent-${id}`,
+    id,
+    kind,
+    label: getDimensionLabel(kind),
+    value,
+    point: worldToScreen(state, anchorPoint)
+  };
+}
+
+function getDimensionAnchorPoint(state, kind, referenceKeys) {
+  if (kind === "radius" || kind === "diameter") {
+    const circleLike = resolveSketchCircleLikeReference(state, referenceKeys[0]);
+    if (!circleLike) {
+      return null;
+    }
+
+    return {
+      x: circleLike.center.x + circleLike.radius,
+      y: circleLike.center.y
+    };
+  }
+
+  const points = referenceKeys
+    .map(key => resolveSketchReferencePoint(state, key))
+    .filter(point => point !== null);
+  if (points.length >= 2) {
+    return midpoint(points[0], points[1]);
+  }
+
+  const entityAnchors = referenceKeys
+    .map(key => resolveSketchEntityAnchorPoint(state, key))
+    .filter(point => point !== null);
+  if (entityAnchors.length >= 2) {
+    return midpoint(entityAnchors[0], entityAnchors[1]);
+  }
+
+  return points[0] || entityAnchors[0] || null;
+}
+
+function getDimensionLabel(kind) {
+  switch (kind) {
+    case "radius":
+      return "Radius";
+    case "diameter":
+      return "Diameter";
+    case "angle":
+      return "Angle";
+    case "horizontaldistance":
+      return "Horizontal distance";
+    case "verticaldistance":
+      return "Vertical distance";
+    case "pointtolinedistance":
+      return "Point-to-line distance";
+    default:
+      return "Distance";
+  }
+}
+
+function updatePersistentDimensionInputs(state, dimensions) {
+  const overlay = state.dimensionOverlay;
+  if (!overlay) {
+    return;
+  }
+
+  const activeIds = new Set(dimensions.map(dimension => dimension.id));
+  for (const id of Array.from(state.persistentDimensionInputs.keys())) {
+    if (!activeIds.has(id)) {
+      const input = state.persistentDimensionInputs.get(id);
+      input.remove();
+      state.persistentDimensionInputs.delete(id);
+    }
+  }
+
+  for (const dimension of dimensions) {
+    const input = getOrCreatePersistentDimensionInput(state, dimension);
+    const isFocused = document.activeElement === input;
+    const isEditing = input.dataset.dimensionEditing === "true";
+    if (!isFocused && !isEditing) {
+      input.value = formatDimensionValue(dimension.value);
+    }
+
+    input.dataset.dimensionId = dimension.id;
+    input.dataset.dimensionLabel = dimension.label;
+    const inputPoint = clampDimensionInputScreenPoint(state, dimension.point);
+    input.style.left = `${inputPoint.x}px`;
+    input.style.top = `${inputPoint.y}px`;
+  }
+}
+
+function getOrCreatePersistentDimensionInput(state, dimension) {
+  let input = state.persistentDimensionInputs.get(dimension.id);
+  if (input) {
+    return input;
+  }
+
+  input = document.createElement("input");
+  input.type = "number";
+  input.step = "0.001";
+  input.inputMode = "decimal";
+  input.className = "drawing-dimension-input drawing-persistent-dimension-input";
+  input.style.pointerEvents = "auto";
+  input.style.zIndex = "6";
+  input.title = dimension.label;
+  input.setAttribute("aria-label", dimension.label);
+  input.dataset.dimensionId = dimension.id;
+  input.addEventListener("pointerdown", event => {
+    event.stopPropagation();
+    focusElement(input);
+    selectInputText(input);
+  });
+  input.addEventListener("pointerup", event => event.stopPropagation());
+  input.addEventListener("click", event => event.stopPropagation());
+  input.addEventListener("focus", () => {
+    input.dataset.dimensionEditing = "true";
+    input.classList.add("drawing-dimension-input-active");
+    selectInputText(input);
+  });
+  input.addEventListener("blur", () => {
+    input.dataset.dimensionEditing = "false";
+    input.classList.remove("drawing-dimension-input-active");
+    commitPersistentDimensionInputValue(state, input);
+  });
+  input.addEventListener("keydown", event => handlePersistentDimensionInputKeyDown(state, input, event));
+  input.addEventListener("change", () => commitPersistentDimensionInputValue(state, input));
+
+  state.dimensionOverlay.appendChild(input);
+  state.persistentDimensionInputs.set(dimension.id, input);
+  return input;
+}
+
+function handlePersistentDimensionInputKeyDown(state, input, event) {
+  event.stopPropagation();
+
+  if (event.key === "Enter") {
+    commitPersistentDimensionInputValue(state, input);
+    focusCanvas(state.canvas);
+    event.preventDefault();
+  } else if (event.key === "Escape") {
+    input.dataset.dimensionEditing = "false";
+    focusCanvas(state.canvas);
+    event.preventDefault();
+  } else if (event.key === "Tab") {
+    focusNextPersistentDimensionInput(state, input.dataset.dimensionId, event.shiftKey);
+    event.preventDefault();
+  }
+}
+
+function focusNextPersistentDimensionInput(state, currentId, reverse) {
+  const ids = Array.from(state.persistentDimensionInputs.keys());
+  if (ids.length === 0) {
+    return;
+  }
+
+  const index = Math.max(0, ids.indexOf(currentId));
+  const nextId = ids[(index + (reverse ? -1 : 1) + ids.length) % ids.length];
+  const nextInput = state.persistentDimensionInputs.get(nextId);
+  if (nextInput) {
+    focusElement(nextInput);
+    selectInputText(nextInput);
+  }
+}
+
+function commitPersistentDimensionInputValue(state, input) {
+  const id = input.dataset.dimensionId;
+  const value = Number(String(input.value || "").trim());
+  if (!id || !Number.isFinite(value)) {
+    return false;
+  }
+
+  input.dataset.dimensionEditing = "false";
+  invokeDotNet(state, "OnSketchDimensionValueChanged", id, value);
+  return true;
+}
+
+function clearPersistentDimensionInputs(state) {
+  if (!state.persistentDimensionInputs) {
+    return;
+  }
+
+  for (const input of state.persistentDimensionInputs.values()) {
+    input.remove();
+  }
+
+  state.persistentDimensionInputs.clear();
+}
+
+function drawPersistentConstraintGlyphs(state) {
+  const constraints = getDocumentConstraints(state.document);
+  for (const constraint of constraints) {
+    const anchor = getConstraintAnchorPoint(state, constraint);
+    if (!anchor) {
+      continue;
+    }
+
+    drawConstraintGlyph(state, getConstraintGlyphText(getSketchItemKind(constraint)), worldToScreen(state, anchor), constraint);
+  }
+}
+
+function getConstraintAnchorPoint(state, constraint) {
+  const referenceKeys = getSketchReferenceKeys(constraint);
+  const points = referenceKeys
+    .map(key => resolveSketchReferencePoint(state, key) || resolveSketchEntityAnchorPoint(state, key))
+    .filter(point => point !== null);
+  if (points.length === 0) {
+    return null;
+  }
+
+  const sum = points.reduce((total, point) => ({
+    x: total.x + point.x,
+    y: total.y + point.y
+  }), { x: 0, y: 0 });
+  return {
+    x: sum.x / points.length,
+    y: sum.y / points.length
+  };
+}
+
+function drawConstraintGlyph(state, text, point, constraint) {
+  if (!text) {
+    return;
+  }
+
+  const { context } = state;
+  const stateText = getSketchConstraintState(constraint);
+  context.save();
+  context.font = "700 9px Segoe UI, system-ui, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillStyle = stateText === "unsatisfied"
+    ? "rgba(127, 29, 29, 0.78)"
+    : "rgba(51, 65, 85, 0.82)";
+  context.strokeStyle = stateText === "unsatisfied" ? "#f87171" : "#64748b";
+  context.lineWidth = 1;
+  context.setLineDash([]);
+  context.beginPath();
+  context.rect(point.x - 8, point.y - 8, 16, 16);
+  context.fill();
+  context.stroke();
+  context.fillStyle = stateText === "unsatisfied" ? "#fecaca" : "#e2e8f0";
+  context.fillText(text, point.x, point.y + 0.5);
+  context.restore();
+}
+
+export function getConstraintGlyphText(kind) {
+  switch (kind) {
+    case "coincident":
+      return "C";
+    case "concentric":
+      return "O";
+    case "parallel":
+      return "//";
+    case "horizontal":
+      return "H";
+    case "vertical":
+      return "V";
+    case "perpendicular":
+      return "L";
+    case "equal":
+      return "=";
+    case "midpoint":
+      return "M";
+    case "fix":
+      return "F";
+    default:
+      return "";
   }
 }
 
@@ -3907,6 +4206,16 @@ function getDocumentEntities(document) {
   return Array.isArray(entities) ? entities : [];
 }
 
+function getDocumentDimensions(document) {
+  const dimensions = readProperty(document, "dimensions", "Dimensions");
+  return Array.isArray(dimensions) ? dimensions : [];
+}
+
+function getDocumentConstraints(document) {
+  const constraints = readProperty(document, "constraints", "Constraints");
+  return Array.isArray(constraints) ? constraints : [];
+}
+
 function getDocumentBounds(document) {
   const dtoBounds = readBounds(readProperty(document, "bounds", "Bounds"));
   if (dtoBounds) {
@@ -4040,6 +4349,167 @@ function getEntityCenter(entity) {
 
 function getEntityRadius(entity) {
   return Number(readProperty(entity, "radius", "Radius"));
+}
+
+function getSketchItemId(item) {
+  const id = readProperty(item, "id", "Id");
+  return id === null || id === undefined ? "" : String(id);
+}
+
+function getSketchItemKind(item) {
+  const kind = readProperty(item, "kind", "Kind");
+  return kind === null || kind === undefined ? "" : String(kind).replace(/[\s_-]/g, "").toLowerCase();
+}
+
+function getSketchReferenceKeys(item) {
+  const referenceKeys = readProperty(item, "referenceKeys", "ReferenceKeys");
+  return Array.isArray(referenceKeys)
+    ? referenceKeys.map(key => String(key))
+    : [];
+}
+
+function getSketchConstraintState(item) {
+  const state = readProperty(item, "state", "State");
+  return state === null || state === undefined ? "" : String(state).toLowerCase();
+}
+
+function resolveSketchReferencePoint(state, referenceKey) {
+  const reference = parseSketchReference(referenceKey);
+  if (!reference) {
+    return null;
+  }
+
+  const entity = findDocumentEntity(state, reference.entityId);
+  if (!entity) {
+    return null;
+  }
+
+  switch (getEntityKind(entity)) {
+    case "point":
+      return getPointEntityLocation(entity);
+    case "line": {
+      const points = getEntityPoints(entity);
+      if (reference.target === "start") {
+        return points[0] || null;
+      }
+
+      if (reference.target === "end") {
+        return points[1] || null;
+      }
+
+      return null;
+    }
+    case "circle":
+    case "arc":
+      return reference.target === "center" ? getEntityCenter(entity) : null;
+    default:
+      return null;
+  }
+}
+
+function resolveSketchEntityAnchorPoint(state, referenceKey) {
+  const reference = parseSketchReference(referenceKey);
+  if (!reference) {
+    return null;
+  }
+
+  const entity = findDocumentEntity(state, reference.entityId);
+  if (!entity) {
+    return null;
+  }
+
+  switch (getEntityKind(entity)) {
+    case "point":
+      return getPointEntityLocation(entity);
+    case "line": {
+      const points = getEntityPoints(entity);
+      return points.length >= 2 ? midpoint(points[0], points[1]) : null;
+    }
+    case "polyline":
+    case "spline": {
+      const points = getEntityPoints(entity);
+      if (points.length === 0) {
+        return null;
+      }
+
+      const sum = points.reduce((total, point) => ({
+        x: total.x + point.x,
+        y: total.y + point.y
+      }), { x: 0, y: 0 });
+      return {
+        x: sum.x / points.length,
+        y: sum.y / points.length
+      };
+    }
+    case "circle":
+    case "arc":
+      return getEntityCenter(entity);
+    default:
+      return null;
+  }
+}
+
+function resolveSketchCircleLikeReference(state, referenceKey) {
+  const reference = parseSketchReference(referenceKey);
+  if (!reference || reference.target !== "entity") {
+    return null;
+  }
+
+  const entity = findDocumentEntity(state, reference.entityId);
+  if (!entity || (getEntityKind(entity) !== "circle" && getEntityKind(entity) !== "arc")) {
+    return null;
+  }
+
+  const center = getEntityCenter(entity);
+  const radius = getEntityRadius(entity);
+  return center && isFinitePositive(radius)
+    ? { center, radius }
+    : null;
+}
+
+function parseSketchReference(referenceKey) {
+  const key = String(referenceKey || "").trim();
+  if (!key) {
+    return null;
+  }
+
+  const pointSeparatorIndex = key.indexOf(POINT_KEY_SEPARATOR);
+  if (pointSeparatorIndex >= 0) {
+    const entityId = key.slice(0, pointSeparatorIndex);
+    const tail = key.slice(pointSeparatorIndex + POINT_KEY_SEPARATOR.length);
+    const label = tail.split("|")[0] || "";
+    return {
+      entityId,
+      target: normalizeSketchReferenceTarget(label)
+    };
+  }
+
+  const targetSeparatorIndex = key.lastIndexOf(":");
+  if (targetSeparatorIndex > 0 && targetSeparatorIndex < key.length - 1) {
+    return {
+      entityId: key.slice(0, targetSeparatorIndex),
+      target: normalizeSketchReferenceTarget(key.slice(targetSeparatorIndex + 1))
+    };
+  }
+
+  return {
+    entityId: key,
+    target: "entity"
+  };
+}
+
+function normalizeSketchReferenceTarget(target) {
+  const normalized = String(target || "").toLowerCase();
+  if (normalized === "start" || normalized === "end" || normalized === "center") {
+    return normalized;
+  }
+
+  return "entity";
+}
+
+function findDocumentEntity(state, entityId) {
+  return getDocumentEntities(state.document)
+    .find(entity => StringComparer(getEntityId(entity), entityId)) || null;
 }
 
 function getEntityStartAngle(entity) {

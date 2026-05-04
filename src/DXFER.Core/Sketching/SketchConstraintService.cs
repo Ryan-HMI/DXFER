@@ -534,9 +534,7 @@ public static class SketchConstraintService
     {
         if (constraint.ReferenceKeys.Count >= 2
             && SketchReference.TryParse(constraint.ReferenceKeys[0], out firstReference)
-            && SketchReference.TryParse(constraint.ReferenceKeys[1], out secondReference)
-            && firstReference.Target != SketchReferenceTarget.Entity
-            && secondReference.Target != SketchReferenceTarget.Entity)
+            && SketchReference.TryParse(constraint.ReferenceKeys[1], out secondReference))
         {
             return true;
         }

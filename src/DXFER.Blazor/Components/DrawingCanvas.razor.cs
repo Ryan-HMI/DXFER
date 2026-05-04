@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260504-construction";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260504-parametric";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -67,6 +67,9 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public Action<IReadOnlySet<string>>? DeleteSelectionRequested { get; set; }
+
+    [Parameter]
+    public Action<string, double>? SketchDimensionValueChanged { get; set; }
 
     protected string? HoveredEntityId { get; private set; }
 
@@ -255,6 +258,13 @@ public partial class DrawingCanvas : IAsyncDisposable
         ActiveSelectionChanged?.Invoke(ActiveSelectionKey);
         DeleteSelectionRequested?.Invoke(SelectedEntityIds);
         _ = InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnSketchDimensionValueChanged(string dimensionId, double value)
+    {
+        SketchDimensionValueChanged?.Invoke(dimensionId, value);
         return Task.CompletedTask;
     }
 

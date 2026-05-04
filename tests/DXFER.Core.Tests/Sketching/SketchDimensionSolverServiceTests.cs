@@ -191,6 +191,24 @@ public sealed class SketchDimensionSolverServiceTests
     }
 
     [Fact]
+    public void AppliesLinearDistanceBetweenPointEntities()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new PointEntity(EntityId.Create("anchor"), new Point2(0, 0)),
+            new PointEntity(EntityId.Create("driven"), new Point2(3, 4))
+        });
+
+        var solved = SketchDimensionSolverService.ApplyDimension(
+            document,
+            DrivingDimension("distance", SketchDimensionKind.LinearDistance, 10, "anchor", "driven"));
+
+        solved.Entities.OfType<PointEntity>()
+            .Single(point => point.Id.Value == "driven")
+            .Location.Should().Be(new Point2(6, 8));
+    }
+
+    [Fact]
     public void FixedLastReferenceForcesLinearDimensionToMoveFirstReference()
     {
         var fix = new SketchConstraint(

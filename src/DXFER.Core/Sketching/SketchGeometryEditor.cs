@@ -77,6 +77,9 @@ internal static class SketchGeometryEditor
             case ArcEntity arc when reference.Target == SketchReferenceTarget.Center:
                 point = arc.Center;
                 return true;
+            case PointEntity pointEntity when reference.Target is SketchReferenceTarget.Entity or SketchReferenceTarget.Center:
+                point = pointEntity.Location;
+                return true;
             default:
                 point = default;
                 return false;
@@ -106,6 +109,9 @@ internal static class SketchGeometryEditor
                 return true;
             case ArcEntity arc when reference.Target == SketchReferenceTarget.Center:
                 entities[index] = arc with { Center = point };
+                return true;
+            case PointEntity pointEntity when reference.Target is SketchReferenceTarget.Entity or SketchReferenceTarget.Center:
+                entities[index] = pointEntity with { Location = point };
                 return true;
             default:
                 return false;

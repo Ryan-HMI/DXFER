@@ -7,9 +7,11 @@ import {
   applyPolarSnapIfRequested,
   clampDimensionInputScreenPoint,
   getAlignedRectangleCorners,
+  getConstraintGlyphText,
   getDefaultActiveDimensionKey,
   getDynamicSketchSnapHit,
   getCenterPointArc,
+  getPersistentDimensionDescriptors,
   getSketchToolPointCount,
   getNextDimensionKey,
   getSplitAtPointRequest,
@@ -441,6 +443,78 @@ test("dimension input screen position is clamped inside the canvas", () => {
   assert.deepEqual(clampDimensionInputScreenPoint(state, { x: 150, y: 100 }, 50, 20), { x: 150, y: 100 });
   assert.deepEqual(clampDimensionInputScreenPoint(state, { x: -40, y: 250 }, 50, 20), { x: 50, y: 180 });
   assert.deepEqual(clampDimensionInputScreenPoint(state, { x: 360, y: -25 }, 50, 20), { x: 250, y: 20 });
+});
+
+test("persistent dimension descriptors resolve line references to overlay positions", () => {
+  const state = {
+    document: {
+      entities: [
+        {
+          id: "edge",
+          kind: "line",
+          points: [{ x: 0, y: 0 }, { x: 3, y: 4 }]
+        }
+      ],
+      dimensions: [
+        {
+          id: "dim-1",
+          kind: "LinearDistance",
+          referenceKeys: ["edge:start", "edge:end"],
+          value: 5,
+          isDriving: true
+        }
+      ]
+    },
+    view: {
+      scale: 10,
+      offsetX: 100,
+      offsetY: 200
+    }
+  };
+
+  const descriptors = getPersistentDimensionDescriptors(state);
+
+  assert.equal(descriptors.length, 1);
+  assert.equal(descriptors[0].id, "dim-1");
+  assert.equal(descriptors[0].label, "Distance");
+  assert.equal(descriptors[0].value, 5);
+  assert.deepEqual(descriptors[0].point, { x: 115, y: 180 });
+});
+
+test("persistent dimension descriptors prefer explicit anchors", () => {
+  const state = {
+    document: {
+      entities: [],
+      dimensions: [
+        {
+          id: "radius-1",
+          kind: "Radius",
+          referenceKeys: ["hole"],
+          value: 2,
+          anchor: { x: 7, y: 8 },
+          isDriving: true
+        }
+      ]
+    },
+    view: {
+      scale: 2,
+      offsetX: 10,
+      offsetY: 30
+    }
+  };
+
+  const descriptors = getPersistentDimensionDescriptors(state);
+
+  assert.equal(descriptors.length, 1);
+  assert.equal(descriptors[0].label, "Radius");
+  assert.deepEqual(descriptors[0].point, { x: 24, y: 14 });
+});
+
+test("constraint glyphs use compact CAD relation markers", () => {
+  assert.equal(getConstraintGlyphText("coincident"), "C");
+  assert.equal(getConstraintGlyphText("horizontal"), "H");
+  assert.equal(getConstraintGlyphText("perpendicular"), "L");
+  assert.equal(getConstraintGlyphText("fix"), "F");
 });
 
 test("point sketch tool needs one click", () => {

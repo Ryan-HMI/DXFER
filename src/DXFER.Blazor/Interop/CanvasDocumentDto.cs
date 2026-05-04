@@ -1,23 +1,30 @@
 using System.Text.Json.Serialization;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
+using DXFER.Core.Sketching;
 
 namespace DXFER.Blazor.Interop;
 
 public sealed record CanvasDocumentDto(
     [property: JsonPropertyName("entities")] IReadOnlyList<CanvasEntityDto> Entities,
-    [property: JsonPropertyName("bounds")] CanvasBoundsDto Bounds)
+    [property: JsonPropertyName("bounds")] CanvasBoundsDto Bounds,
+    [property: JsonPropertyName("dimensions")] IReadOnlyList<CanvasSketchDimensionDto> Dimensions,
+    [property: JsonPropertyName("constraints")] IReadOnlyList<CanvasSketchConstraintDto> Constraints)
 {
     public static CanvasDocumentDto Empty { get; } = new(
         Array.Empty<CanvasEntityDto>(),
-        new CanvasBoundsDto(0, 0, 0, 0));
+        new CanvasBoundsDto(0, 0, 0, 0),
+        Array.Empty<CanvasSketchDimensionDto>(),
+        Array.Empty<CanvasSketchConstraintDto>());
 
     public static CanvasDocumentDto FromDocument(DrawingDocument document)
     {
         var bounds = document.GetBounds();
         var entities = document.Entities.Select(FromEntity).ToArray();
+        var dimensions = document.Dimensions.Select(FromDimension).ToArray();
+        var constraints = document.Constraints.Select(FromConstraint).ToArray();
 
-        return new CanvasDocumentDto(entities, FromBounds(bounds));
+        return new CanvasDocumentDto(entities, FromBounds(bounds), dimensions, constraints);
     }
 
     private static CanvasEntityDto FromEntity(DrawingEntity entity)
@@ -97,6 +104,22 @@ public sealed record CanvasDocumentDto(
 
     private static CanvasBoundsDto FromBounds(Bounds2 bounds) =>
         new(bounds.MinX, bounds.MinY, bounds.MaxX, bounds.MaxY);
+
+    private static CanvasSketchDimensionDto FromDimension(SketchDimension dimension) =>
+        new(
+            dimension.Id,
+            dimension.Kind.ToString(),
+            dimension.ReferenceKeys,
+            dimension.Value,
+            dimension.Anchor is null ? null : FromPoint(dimension.Anchor.Value),
+            dimension.IsDriving);
+
+    private static CanvasSketchConstraintDto FromConstraint(SketchConstraint constraint) =>
+        new(
+            constraint.Id,
+            constraint.Kind.ToString(),
+            constraint.ReferenceKeys,
+            constraint.State.ToString());
 }
 
 public sealed record CanvasEntityDto(
@@ -118,3 +141,17 @@ public sealed record CanvasBoundsDto(
     [property: JsonPropertyName("minY")] double MinY,
     [property: JsonPropertyName("maxX")] double MaxX,
     [property: JsonPropertyName("maxY")] double MaxY);
+
+public sealed record CanvasSketchDimensionDto(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("kind")] string Kind,
+    [property: JsonPropertyName("referenceKeys")] IReadOnlyList<string> ReferenceKeys,
+    [property: JsonPropertyName("value")] double Value,
+    [property: JsonPropertyName("anchor")] CanvasPointDto? Anchor,
+    [property: JsonPropertyName("isDriving")] bool IsDriving);
+
+public sealed record CanvasSketchConstraintDto(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("kind")] string Kind,
+    [property: JsonPropertyName("referenceKeys")] IReadOnlyList<string> ReferenceKeys,
+    [property: JsonPropertyName("state")] string State);

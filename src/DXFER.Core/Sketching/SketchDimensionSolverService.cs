@@ -407,9 +407,7 @@ public static class SketchDimensionSolverService
     {
         if (dimension.ReferenceKeys.Count >= 2
             && SketchReference.TryParse(dimension.ReferenceKeys[0], out firstReference)
-            && SketchReference.TryParse(dimension.ReferenceKeys[1], out secondReference)
-            && firstReference.Target != SketchReferenceTarget.Entity
-            && secondReference.Target != SketchReferenceTarget.Entity)
+            && SketchReference.TryParse(dimension.ReferenceKeys[1], out secondReference))
         {
             return true;
         }

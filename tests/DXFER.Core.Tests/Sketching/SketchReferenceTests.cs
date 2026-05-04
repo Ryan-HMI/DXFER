@@ -35,7 +35,8 @@ public sealed class SketchReferenceTests
         {
             new LineEntity(EntityId.Create("line-a"), new Point2(0, 1), new Point2(2, 3)),
             new CircleEntity(EntityId.Create("circle-a"), new Point2(5, 6), 7),
-            new ArcEntity(EntityId.Create("arc-a"), new Point2(8, 9), 10, 0, 90)
+            new ArcEntity(EntityId.Create("arc-a"), new Point2(8, 9), 10, 0, 90),
+            new PointEntity(EntityId.Create("point-a"), new Point2(11, 12))
         });
 
         SketchReferenceResolver.TryGetPoint(document, "line-a:start", out var lineStart).Should().BeTrue();
@@ -49,6 +50,9 @@ public sealed class SketchReferenceTests
 
         SketchReferenceResolver.TryGetPoint(document, "arc-a:center", out var arcCenter).Should().BeTrue();
         arcCenter.Should().Be(new Point2(8, 9));
+
+        SketchReferenceResolver.TryGetPoint(document, "point-a", out var pointEntityLocation).Should().BeTrue();
+        pointEntityLocation.Should().Be(new Point2(11, 12));
 
         SketchReferenceResolver.TryGetEntity(document, "line-a", out var entity).Should().BeTrue();
         entity.Should().BeOfType<LineEntity>();

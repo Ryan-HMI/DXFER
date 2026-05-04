@@ -96,6 +96,18 @@
     box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.32), 0 0 16px rgba(56, 189, 248, 0.5);
 }
 
+::deep .drawing-persistent-dimension-input {
+    color: #f8fafc;
+    background: rgba(30, 41, 59, 0.88);
+    border-color: #cbd5e1;
+    box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.18);
+}
+
+::deep .drawing-persistent-dimension-input:focus {
+    border-color: #7dd3fc;
+    box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.3), 0 0 16px rgba(56, 189, 248, 0.42);
+}
+
 ::deep .drawing-dimension-input::-webkit-outer-spin-button,
 ::deep .drawing-dimension-input::-webkit-inner-spin-button {
     margin: 0;

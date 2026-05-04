@@ -2,10 +2,12 @@ using System.Globalization;
 using System.Text.Json;
 using DXFER.Blazor.Interop;
 using DXFER.Blazor.Selection;
+using DXFER.Blazor.Sketching;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
 using DXFER.Core.IO;
 using DXFER.Core.Operations;
+using DXFER.Core.Sketching;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
@@ -42,6 +44,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private int _selectionResetToken;
     private int _documentFitToken = 1;
     private int _createdEntitySequence;
+    private int _createdDimensionSequence;
+    private int _createdConstraintSequence;
     private DockResizeTarget _resizeTarget = DockResizeTarget.None;
     private double _resizeStartClientX;
     private int _resizeStartToolPanelWidth;
@@ -136,6 +140,25 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private bool CanMoveSelectedPointToOrigin =>
         SelectionPointResolver.TryGetPointToOriginReference(_document, _selectedEntityIds, out _);
 
+    private bool CanCreateSketchDimension =>
+        SketchCommandFactory.TryBuildDimension(
+            _document,
+            _selectedEntityIds,
+            "preview",
+            out _,
+            out _,
+            _activeSelectionKey);
+
+    private bool CanCreateConstraint(SketchConstraintKind kind) =>
+        SketchCommandFactory.TryBuildConstraint(
+            _document,
+            _selectedEntityIds,
+            kind,
+            "preview",
+            out _,
+            out _,
+            _activeSelectionKey);
+
     private Bounds2 Bounds => _document.GetBounds();
 
     private IReadOnlyList<WorkbenchToolGroup> ToolGroups => new[]
@@ -187,7 +210,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.Offset, WorkbenchTool.Offset, CadIconName.Offset, "Offset", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Fillet, WorkbenchTool.Fillet, CadIconName.Fillet, "Fillet", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Chamfer, WorkbenchTool.Chamfer, CadIconName.Chamfer, "Chamfer", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Dimension, WorkbenchTool.Dimension, CadIconName.Dimension, "Dimension", disabled: true, isFuture: true)
+            Command(WorkbenchCommandId.Dimension, null, CadIconName.Dimension, "Dimension", !CanCreateSketchDimension)
         }),
         new WorkbenchToolGroup("Transform", new[]
         {
@@ -209,19 +232,19 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }),
         new WorkbenchToolGroup("Constraints", new[]
         {
-            Command(WorkbenchCommandId.Coincident, WorkbenchTool.Coincident, CadIconName.Coincident, "Coincident", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Concentric, WorkbenchTool.Concentric, CadIconName.Concentric, "Concentric", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Parallel, WorkbenchTool.Parallel, CadIconName.Parallel, "Parallel", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.Coincident, null, CadIconName.Coincident, "Coincident", !CanCreateConstraint(SketchConstraintKind.Coincident)),
+            Command(WorkbenchCommandId.Concentric, null, CadIconName.Concentric, "Concentric", !CanCreateConstraint(SketchConstraintKind.Concentric)),
+            Command(WorkbenchCommandId.Parallel, null, CadIconName.Parallel, "Parallel", !CanCreateConstraint(SketchConstraintKind.Parallel)),
             Command(WorkbenchCommandId.Tangent, WorkbenchTool.Tangent, CadIconName.Tangent, "Tangent", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Horizontal, WorkbenchTool.Horizontal, CadIconName.Horizontal, "Horizontal", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Vertical, WorkbenchTool.Vertical, CadIconName.Vertical, "Vertical", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Perpendicular, WorkbenchTool.Perpendicular, CadIconName.Perpendicular, "Perpendicular", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Equal, WorkbenchTool.Equal, CadIconName.Equal, "Equal", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Midpoint, WorkbenchTool.Midpoint, CadIconName.Midpoint, "Midpoint", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.Horizontal, null, CadIconName.Horizontal, "Horizontal", !CanCreateConstraint(SketchConstraintKind.Horizontal)),
+            Command(WorkbenchCommandId.Vertical, null, CadIconName.Vertical, "Vertical", !CanCreateConstraint(SketchConstraintKind.Vertical)),
+            Command(WorkbenchCommandId.Perpendicular, null, CadIconName.Perpendicular, "Perpendicular", !CanCreateConstraint(SketchConstraintKind.Perpendicular)),
+            Command(WorkbenchCommandId.Equal, null, CadIconName.Equal, "Equal", !CanCreateConstraint(SketchConstraintKind.Equal)),
+            Command(WorkbenchCommandId.Midpoint, null, CadIconName.Midpoint, "Midpoint", !CanCreateConstraint(SketchConstraintKind.Midpoint)),
             Command(WorkbenchCommandId.Normal, WorkbenchTool.Normal, CadIconName.Normal, "Normal", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Pierce, WorkbenchTool.Pierce, CadIconName.Pierce, "Pierce", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Symmetric, WorkbenchTool.Symmetric, CadIconName.Symmetric, "Symmetric", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Fix, WorkbenchTool.Fix, CadIconName.Fix, "Fix", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.Fix, null, CadIconName.Fix, "Fix", !CanCreateConstraint(SketchConstraintKind.Fix)),
             Command(WorkbenchCommandId.Curvature, WorkbenchTool.Curvature, CadIconName.Curvature, "Curvature", disabled: true, isFuture: true)
         })
     };
@@ -423,6 +446,46 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                         "Split at point active. Click a line, or select one line and one point before invoking.");
                 }
 
+                break;
+            case WorkbenchCommandId.Dimension:
+                await SyncSelectionFromCanvasAsync();
+                AddSketchDimension();
+                break;
+            case WorkbenchCommandId.Coincident:
+                await SyncSelectionFromCanvasAsync();
+                AddSketchConstraint(SketchConstraintKind.Coincident);
+                break;
+            case WorkbenchCommandId.Concentric:
+                await SyncSelectionFromCanvasAsync();
+                AddSketchConstraint(SketchConstraintKind.Concentric);
+                break;
+            case WorkbenchCommandId.Parallel:
+                await SyncSelectionFromCanvasAsync();
+                AddSketchConstraint(SketchConstraintKind.Parallel);
+                break;
+            case WorkbenchCommandId.Horizontal:
+                await SyncSelectionFromCanvasAsync();
+                AddSketchConstraint(SketchConstraintKind.Horizontal);
+                break;
+            case WorkbenchCommandId.Vertical:
+                await SyncSelectionFromCanvasAsync();
+                AddSketchConstraint(SketchConstraintKind.Vertical);
+                break;
+            case WorkbenchCommandId.Perpendicular:
+                await SyncSelectionFromCanvasAsync();
+                AddSketchConstraint(SketchConstraintKind.Perpendicular);
+                break;
+            case WorkbenchCommandId.Equal:
+                await SyncSelectionFromCanvasAsync();
+                AddSketchConstraint(SketchConstraintKind.Equal);
+                break;
+            case WorkbenchCommandId.Midpoint:
+                await SyncSelectionFromCanvasAsync();
+                AddSketchConstraint(SketchConstraintKind.Midpoint);
+                break;
+            case WorkbenchCommandId.Fix:
+                await SyncSelectionFromCanvasAsync();
+                AddSketchConstraint(SketchConstraintKind.Fix);
                 break;
             case WorkbenchCommandId.BoundsToOrigin:
                 MoveBoundsToOrigin();
@@ -639,6 +702,74 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);
         return true;
+    }
+
+    private void AddSketchDimension()
+    {
+        if (!SketchCommandFactory.TryBuildDimension(
+                _document,
+                _selectedEntityIds,
+                CreateDimensionId(),
+                out var dimension,
+                out var status,
+                _activeSelectionKey))
+        {
+            _status = status;
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        ApplyDocumentChange(SketchDimensionSolverService.ApplyDimension(_document, dimension), status);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void AddSketchConstraint(SketchConstraintKind kind)
+    {
+        if (!SketchCommandFactory.TryBuildConstraint(
+                _document,
+                _selectedEntityIds,
+                kind,
+                CreateConstraintId(kind),
+                out var constraint,
+                out var status,
+                _activeSelectionKey))
+        {
+            _status = status;
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var nextDocument = SketchConstraintService.ApplyConstraint(_document, constraint);
+        var appliedConstraint = nextDocument.Constraints.FirstOrDefault(candidate => candidate.Id == constraint.Id);
+        var appliedStatus = appliedConstraint?.State == SketchConstraintState.Unsatisfied
+            ? $"{status} Constraint is currently unsatisfied."
+            : status;
+        ApplyDocumentChange(nextDocument, appliedStatus);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnSketchDimensionValueChanged(string dimensionId, double value)
+    {
+        var existing = _document.Dimensions.FirstOrDefault(
+            dimension => StringComparer.Ordinal.Equals(dimension.Id, dimensionId));
+        if (existing is null)
+        {
+            _status = "Dimension no longer exists.";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var nextDimension = new SketchDimension(
+            existing.Id,
+            existing.Kind,
+            existing.ReferenceKeys,
+            value,
+            existing.Anchor,
+            isDriving: true);
+        ApplyDocumentChange(
+            SketchDimensionSolverService.ApplyDimension(_document, nextDimension),
+            $"Updated {FormatDimensionKind(existing.Kind)} dimension to {FormatNumber(value)}.");
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private bool TryGetLineIdForSplitTarget(string targetKey, out string lineEntityId)
@@ -1544,6 +1675,39 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         return EntityId.Create(candidate);
     }
 
+    private string CreateDimensionId()
+    {
+        _createdDimensionSequence++;
+        return CreateUniqueSketchId(
+            "dim",
+            _createdDimensionSequence,
+            _document.Dimensions.Select(dimension => dimension.Id));
+    }
+
+    private string CreateConstraintId(SketchConstraintKind kind)
+    {
+        _createdConstraintSequence++;
+        return CreateUniqueSketchId(
+            kind.ToString().ToLowerInvariant(),
+            _createdConstraintSequence,
+            _document.Constraints.Select(constraint => constraint.Id));
+    }
+
+    private static string CreateUniqueSketchId(string prefix, int sequence, IEnumerable<string> existingIds)
+    {
+        var stem = $"{prefix}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x}-{sequence:x}";
+        var existing = existingIds.ToHashSet(StringComparer.Ordinal);
+        var suffix = 0;
+        var candidate = stem;
+        while (existing.Contains(candidate))
+        {
+            suffix++;
+            candidate = $"{stem}-{suffix}";
+        }
+
+        return candidate;
+    }
+
     private static bool TryGetImplementedSketchTool(WorkbenchCommandId commandId, out WorkbenchTool tool)
     {
         switch (commandId)
@@ -1632,6 +1796,18 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         "threepointcircle" => "Three-point circle",
         "point" => "Point",
         _ => "Line"
+    };
+
+    private static string FormatDimensionKind(SketchDimensionKind kind) => kind switch
+    {
+        SketchDimensionKind.LinearDistance => "linear",
+        SketchDimensionKind.HorizontalDistance => "horizontal",
+        SketchDimensionKind.VerticalDistance => "vertical",
+        SketchDimensionKind.PointToLineDistance => "point-to-line",
+        SketchDimensionKind.Radius => "radius",
+        SketchDimensionKind.Diameter => "diameter",
+        SketchDimensionKind.Angle => "angle",
+        _ => kind.ToString()
     };
 
     private static string FormatDeleteStatus(SelectionDeleteResult result)

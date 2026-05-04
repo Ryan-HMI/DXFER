@@ -27,6 +27,26 @@ public sealed class SketchConstraintServiceTests
     }
 
     [Fact]
+    public void AppliesCoincidentConstraintToPointEntities()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new PointEntity(EntityId.Create("anchor"), new Point2(1, 2)),
+            new PointEntity(EntityId.Create("driven"), new Point2(5, 6))
+        });
+
+        var solved = SketchConstraintService.ApplyConstraint(
+            document,
+            Constraint("coincident", SketchConstraintKind.Coincident, "anchor", "driven"));
+
+        solved.Entities.OfType<PointEntity>()
+            .Single(point => point.Id.Value == "driven")
+            .Location.Should().Be(new Point2(1, 2));
+        solved.Constraints.Should().ContainSingle()
+            .Which.State.Should().Be(SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
     public void AppliesHorizontalLineConstraintAndPreservesConstruction()
     {
         var document = new DrawingDocument(new DrawingEntity[]
