@@ -11,6 +11,7 @@ public partial class DrawingCanvas : IAsyncDisposable
     private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js";
 
     private ElementReference _canvas;
+    private ElementReference _dimensionOverlay;
     private IJSObjectReference? _module;
     private IJSObjectReference? _canvasInstance;
     private DotNetObjectReference<DrawingCanvas>? _dotNetReference;
@@ -101,7 +102,7 @@ public partial class DrawingCanvas : IAsyncDisposable
 
         _dotNetReference = DotNetObjectReference.Create(this);
         _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", CanvasModulePath);
-        _canvasInstance = await _module.InvokeAsync<IJSObjectReference>("createDrawingCanvas", _canvas, _dotNetReference);
+        _canvasInstance = await _module.InvokeAsync<IJSObjectReference>("createDrawingCanvas", _canvas, _dotNetReference, _dimensionOverlay);
 
         _renderedSelectionResetToken = SelectionResetToken;
         await SetCanvasDocumentAsync();

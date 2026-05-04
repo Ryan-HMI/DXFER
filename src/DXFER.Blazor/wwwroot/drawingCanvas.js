@@ -11,7 +11,7 @@ const POINT_KEY_SEPARATOR = "|point|";
 const DYNAMIC_POINT_KEY_PREFIX = "__dynamic";
 const WORLD_GEOMETRY_TOLERANCE = 0.000001;
 
-export function createDrawingCanvas(canvas, dotnetRef) {
+export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) {
   const context = canvas.getContext("2d");
   if (!context) {
     throw new Error("DXFER drawing canvas requires a 2D rendering context.");
@@ -21,15 +21,14 @@ export function createDrawingCanvas(canvas, dotnetRef) {
     canvas,
     context,
     dotnetRef,
+    dimensionOverlay,
+    dimensionInputs: new Map(),
     document: null,
     showOriginAxes: false,
     grainDirection: "none",
     polarSnapIncrementDegrees: 45,
     activeTool: "select",
-    toolDraft: {
-      points: [],
-      previewPoint: null
-    },
+    toolDraft: createEmptyToolDraft(),
     acquiredSnapPoints: [],
     hoveredTarget: null,
     selectedKeys: new Set(),
@@ -85,6 +84,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
     setDocument(document, fitToDocument = false) {
       state.document = document || null;
       state.acquiredSnapPoints = [];
+      state.toolDraft = createEmptyToolDraft();
       pruneInteractionState(state, true);
       if (fitToDocument) {
         fitToExtents(state);
@@ -125,10 +125,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
 
     setActiveTool(toolName) {
       state.activeTool = normalizeToolName(toolName);
-      state.toolDraft = {
-        points: [],
-        previewPoint: null
-      };
+      state.toolDraft = createEmptyToolDraft();
       state.acquiredSnapPoints = [];
       state.canvas.dataset.activeTool = state.activeTool;
       updateDebugAttributes(state);
@@ -153,6 +150,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
       }
 
       state.canvas.style.touchAction = state.previousTouchAction;
+      clearDimensionInputs(state);
       setHoveredTarget(state, null);
       updateDebugAttributes(state);
     }
@@ -176,6 +174,14 @@ function resizeCanvas(state) {
 
   state.pixelRatio = pixelRatio;
   draw(state);
+}
+
+function createEmptyToolDraft() {
+  return {
+    points: [],
+    previewPoint: null,
+    dimensionValues: {}
+  };
 }
 
 function draw(state) {
@@ -210,8 +216,8 @@ function draw(state) {
     if (target) {
       const isActive = selectedKey === state.activeSelectionKey;
       drawTarget(state, target, {
-        strokeStyle: isActive ? "#7dd3fc" : "#38bdf8",
-        lineWidth: target.kind === "point" ? isActive ? 3 : 2 : isActive ? 5 : 4,
+        strokeStyle: isActive ? "#7dd3fc" : "#2d7898",
+        lineWidth: target.kind === "point" ? isActive ? 3 : 1.65 : isActive ? 4.5 : 2.4,
         lineDash: [],
         glow: isActive
       });
@@ -225,8 +231,8 @@ function draw(state) {
     const isSelected = state.selectedKeys.has(state.hoveredTarget.key);
     const isActive = state.hoveredTarget.key === state.activeSelectionKey;
     drawTarget(state, state.hoveredTarget, {
-      strokeStyle: isActive ? "#7dd3fc" : isSelected ? "#bae6fd" : "#f59e0b",
-      lineWidth: state.hoveredTarget.kind === "point" ? isActive ? 3 : 2 : isActive ? 4 : isSelected ? 2 : 3.5,
+      strokeStyle: isActive ? "#bae6fd" : isSelected ? "#38bdf8" : "#f59e0b",
+      lineWidth: state.hoveredTarget.kind === "point" ? isActive ? 3 : 1.8 : isActive ? 4.5 : isSelected ? 2.5 : 3.5,
       lineDash: isSelected ? [6, 4] : [],
       glow: isActive
     });
@@ -236,7 +242,11 @@ function draw(state) {
     drawSelectionBox(state);
   }
 
-  drawToolPreview(state);
+  const previewDimensions = drawToolPreview(state);
+  updateDimensionInputs(state, previewDimensions);
+  if (!state.dimensionOverlay) {
+    drawPreviewDimensionFallbackLabels(state, previewDimensions);
+  }
   drawGrainDirection(state, size);
 
   context.restore();
@@ -493,12 +503,13 @@ function drawSelectionBox(state) {
 function drawToolPreview(state) {
   const tool = getSketchCreationTool(state);
   if (!tool || !state.toolDraft || state.toolDraft.points.length === 0 || !state.toolDraft.previewPoint) {
-    return;
+    return [];
   }
 
   const first = state.toolDraft.points[0];
   const second = state.toolDraft.previewPoint;
   const { context } = state;
+  const dimensions = [];
 
   context.save();
   context.strokeStyle = "#facc15";
@@ -513,7 +524,7 @@ function drawToolPreview(state) {
     context.moveTo(start.x, start.y);
     context.lineTo(end.x, end.y);
     context.stroke();
-    drawLinearPreviewDimension(state, first, second);
+    addLinearPreviewDimension(dimensions, state, "length", "Length", first, second);
   } else if (tool === "midpointline") {
     const mirrored = mirrorPoint(first, second);
     const start = worldToScreen(state, mirrored);
@@ -522,13 +533,13 @@ function drawToolPreview(state) {
     context.moveTo(start.x, start.y);
     context.lineTo(end.x, end.y);
     context.stroke();
-    drawLinearPreviewDimension(state, mirrored, second);
+    addLinearPreviewDimension(dimensions, state, "length", "Length", mirrored, second);
   } else if (tool === "twopointrectangle") {
     const a = worldToScreen(state, first);
     const b = worldToScreen(state, second);
     const rect = normalizeScreenRect(a, b);
     context.strokeRect(rect.minX, rect.minY, rect.maxX - rect.minX, rect.maxY - rect.minY);
-    drawRectanglePreviewDimensions(state, first, second);
+    addRectanglePreviewDimensions(dimensions, state, first, second);
   } else if (tool === "centercircle") {
     const center = worldToScreen(state, first);
     const radius = distanceBetweenWorldPoints(first, second) * state.view.scale;
@@ -536,7 +547,7 @@ function drawToolPreview(state) {
       context.beginPath();
       context.arc(center.x, center.y, radius, 0, Math.PI * 2);
       context.stroke();
-      drawRadiusPreviewDimension(state, first, second);
+      addRadiusPreviewDimension(dimensions, state, first, second);
     }
   }
 
@@ -546,11 +557,12 @@ function drawToolPreview(state) {
   context.arc(marker.x, marker.y, 3.5, 0, Math.PI * 2);
   context.fill();
   context.restore();
+  return dimensions;
 }
 
-function drawLinearPreviewDimension(state, first, second) {
-  const label = formatDimensionValue(distanceBetweenWorldPoints(first, second));
-  if (!label) {
+function addLinearPreviewDimension(dimensions, state, key, label, first, second) {
+  const value = distanceBetweenWorldPoints(first, second);
+  if (!formatDimensionValue(value)) {
     return;
   }
 
@@ -558,13 +570,18 @@ function drawLinearPreviewDimension(state, first, second) {
   const end = worldToScreen(state, second);
   const midpointScreen = midpointScreenPoint(start, end);
   const normal = getScreenNormal(start, end);
-  drawFloatingDimensionLabel(state, label, {
-    x: midpointScreen.x + normal.x * 18,
-    y: midpointScreen.y + normal.y * 18
+  dimensions.push({
+    key,
+    label,
+    value,
+    point: {
+      x: midpointScreen.x + normal.x * 18,
+      y: midpointScreen.y + normal.y * 18
+    }
   });
 }
 
-function drawRectanglePreviewDimensions(state, first, second) {
+function addRectanglePreviewDimensions(dimensions, state, first, second) {
   const minX = Math.min(first.x, second.x);
   const maxX = Math.max(first.x, second.x);
   const minY = Math.min(first.y, second.y);
@@ -572,20 +589,37 @@ function drawRectanglePreviewDimensions(state, first, second) {
   const topLeft = worldToScreen(state, { x: minX, y: maxY });
   const topRight = worldToScreen(state, { x: maxX, y: maxY });
   const bottomLeft = worldToScreen(state, { x: minX, y: minY });
+  const width = maxX - minX;
+  const height = maxY - minY;
 
-  drawFloatingDimensionLabel(state, formatDimensionValue(maxX - minX), {
-    x: (topLeft.x + topRight.x) / 2,
-    y: topLeft.y - 20
-  });
-  drawFloatingDimensionLabel(state, formatDimensionValue(maxY - minY), {
-    x: bottomLeft.x - 28,
-    y: (topLeft.y + bottomLeft.y) / 2
-  });
+  if (formatDimensionValue(width)) {
+    dimensions.push({
+      key: "width",
+      label: "Width",
+      value: width,
+      point: {
+        x: (topLeft.x + topRight.x) / 2,
+        y: topLeft.y - 20
+      }
+    });
+  }
+
+  if (formatDimensionValue(height)) {
+    dimensions.push({
+      key: "height",
+      label: "Height",
+      value: height,
+      point: {
+        x: bottomLeft.x - 28,
+        y: (topLeft.y + bottomLeft.y) / 2
+      }
+    });
+  }
 }
 
-function drawRadiusPreviewDimension(state, center, edge) {
-  const label = formatDimensionValue(distanceBetweenWorldPoints(center, edge));
-  if (!label) {
+function addRadiusPreviewDimension(dimensions, state, center, edge) {
+  const value = distanceBetweenWorldPoints(center, edge);
+  if (!formatDimensionValue(value)) {
     return;
   }
 
@@ -593,10 +627,116 @@ function drawRadiusPreviewDimension(state, center, edge) {
   const edgeScreen = worldToScreen(state, edge);
   const midpointScreen = midpointScreenPoint(centerScreen, edgeScreen);
   const normal = getScreenNormal(centerScreen, edgeScreen);
-  drawFloatingDimensionLabel(state, label, {
-    x: midpointScreen.x + normal.x * 18,
-    y: midpointScreen.y + normal.y * 18
+  dimensions.push({
+    key: "radius",
+    label: "Radius",
+    value,
+    point: {
+      x: midpointScreen.x + normal.x * 18,
+      y: midpointScreen.y + normal.y * 18
+    }
   });
+}
+
+function drawPreviewDimensionFallbackLabels(state, dimensions) {
+  for (const dimension of dimensions) {
+    drawFloatingDimensionLabel(state, formatDimensionValue(dimension.value), dimension.point);
+  }
+}
+
+function updateDimensionInputs(state, dimensions) {
+  const overlay = state.dimensionOverlay;
+  if (!overlay) {
+    return;
+  }
+
+  const activeKeys = new Set(dimensions.map(dimension => dimension.key));
+  for (const key of Array.from(state.dimensionInputs.keys())) {
+    if (!activeKeys.has(key)) {
+      const input = state.dimensionInputs.get(key);
+      input.remove();
+      state.dimensionInputs.delete(key);
+    }
+  }
+
+  for (const dimension of dimensions) {
+    const input = getOrCreateDimensionInput(state, dimension);
+    const draftValue = state.toolDraft && state.toolDraft.dimensionValues
+      ? state.toolDraft.dimensionValues[dimension.key]
+      : null;
+    const displayValue = Number.isFinite(Number(draftValue))
+      ? formatDimensionValue(Number(draftValue))
+      : formatDimensionValue(dimension.value);
+
+    if (document.activeElement !== input) {
+      input.value = displayValue;
+    }
+
+    input.dataset.dimensionKey = dimension.key;
+    input.dataset.dimensionLabel = dimension.label;
+    input.style.left = `${dimension.point.x}px`;
+    input.style.top = `${dimension.point.y}px`;
+  }
+}
+
+function getOrCreateDimensionInput(state, dimension) {
+  let input = state.dimensionInputs.get(dimension.key);
+  if (input) {
+    return input;
+  }
+
+  input = document.createElement("input");
+  input.type = "number";
+  input.step = "0.001";
+  input.inputMode = "decimal";
+  input.className = "drawing-dimension-input";
+  input.title = dimension.label;
+  input.setAttribute("aria-label", dimension.label);
+  input.addEventListener("pointerdown", event => {
+    event.stopPropagation();
+  });
+  input.addEventListener("keydown", event => handleDimensionInputKeyDown(state, input, event));
+  input.addEventListener("change", () => commitDimensionInputValue(state, input));
+
+  state.dimensionOverlay.appendChild(input);
+  state.dimensionInputs.set(dimension.key, input);
+  return input;
+}
+
+function handleDimensionInputKeyDown(state, input, event) {
+  event.stopPropagation();
+
+  if (event.key === "Enter") {
+    commitDimensionInputValue(state, input);
+    state.canvas.focus({ preventScroll: true });
+    event.preventDefault();
+  } else if (event.key === "Escape") {
+    state.canvas.focus({ preventScroll: true });
+    event.preventDefault();
+  }
+}
+
+function commitDimensionInputValue(state, input) {
+  const value = Number(input.value);
+  if (!applyDraftDimensionValue(state, input.dataset.dimensionKey, value)) {
+    return false;
+  }
+
+  updateDebugAttributes(state);
+  draw(state);
+  return true;
+}
+
+function clearDimensionInputs(state) {
+  if (!state.dimensionInputs) {
+    return;
+  }
+
+  for (const input of state.dimensionInputs.values()) {
+    input.remove();
+  }
+
+  state.dimensionInputs.clear();
 }
 
 function drawFloatingDimensionLabel(state, label, point) {
@@ -754,6 +894,7 @@ function handlePointerMove(state, event) {
 
     if (state.toolDraft && state.toolDraft.points.length > 0) {
       state.toolDraft.previewPoint = getSketchWorldPoint(state, screenPoint, nearestTarget, event);
+      applyLockedDraftDimensions(state);
       updateDebugAttributes(state);
       draw(state);
     } else if (nearestTarget) {
@@ -809,7 +950,7 @@ function handlePointerDown(state, event) {
   focusCanvas(state.canvas);
   capturePointer(state.canvas, event.pointerId);
 
-  if (isPanPointerDown(event)) {
+  if (isPanPointerDownForTool(event, state.activeTool)) {
     state.panning = true;
     state.lastPointerScreen = screenPoint;
     state.clickCandidate = null;
@@ -915,25 +1056,30 @@ function handleSketchToolClick(state, screenPoint, event) {
     setHoveredTarget(state, clickTarget);
   }
 
-  const worldPoint = getSketchWorldPoint(state, screenPoint, clickTarget, event);
+  let worldPoint = getSketchWorldPoint(state, screenPoint, clickTarget, event);
   if (!state.toolDraft || state.toolDraft.points.length === 0) {
     state.toolDraft = {
       points: [worldPoint],
-      previewPoint: null
+      previewPoint: null,
+      dimensionValues: {}
     };
     setHoveredTarget(state, null);
     return;
   }
 
   const first = state.toolDraft.points[0];
+  state.toolDraft.previewPoint = worldPoint;
+  applyLockedDraftDimensions(state);
+  worldPoint = state.toolDraft.previewPoint;
+
   if (distanceBetweenWorldPoints(first, worldPoint) <= WORLD_GEOMETRY_TOLERANCE) {
     state.toolDraft.previewPoint = null;
     return;
   }
 
   state.toolDraft = tool === "line"
-    ? { points: [worldPoint], previewPoint: null }
-    : { points: [], previewPoint: null };
+    ? { points: [worldPoint], previewPoint: null, dimensionValues: {} }
+    : createEmptyToolDraft();
   setHoveredTarget(state, null);
   invokeDotNet(state, "OnSketchToolCommitted", tool, [first.x, first.y, worldPoint.x, worldPoint.y]);
 }
@@ -975,10 +1121,7 @@ function handleKeyDown(state, event) {
   const activeTool = normalizeToolName(state.activeTool);
   if (event.key === "Escape" && activeTool !== "select") {
     state.activeTool = "select";
-    state.toolDraft = {
-      points: [],
-      previewPoint: null
-    };
+    state.toolDraft = createEmptyToolDraft();
     state.acquiredSnapPoints = [];
     setHoveredTarget(state, null);
     invokeDotNet(state, "OnSketchToolCanceled");
@@ -1027,10 +1170,7 @@ function handleDoubleClick(state, event) {
   }
 
   if (getSketchCreationTool(state)) {
-    state.toolDraft = {
-      points: [],
-      previewPoint: null
-    };
+    state.toolDraft = createEmptyToolDraft();
     setHoveredTarget(state, null);
     updateDebugAttributes(state);
     draw(state);
@@ -2427,6 +2567,83 @@ export function syncActiveSelectionWithSelectedKeys(state) {
   return false;
 }
 
+export function applyDraftDimensionValue(state, dimensionKey, value) {
+  const dimension = String(dimensionKey || "").toLowerCase();
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
+  const tool = getSketchCreationTool(state);
+  if (!tool || !state.toolDraft || state.toolDraft.points.length === 0) {
+    return false;
+  }
+
+  const anchor = state.toolDraft.points[0];
+  const previewPoint = state.toolDraft.previewPoint || { x: anchor.x + 1, y: anchor.y };
+  let nextPreviewPoint = null;
+
+  if (tool === "line" && dimension === "length") {
+    nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
+  } else if (tool === "midpointline" && dimension === "length") {
+    nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue / 2);
+  } else if (tool === "centercircle" && dimension === "radius") {
+    nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
+  } else if (tool === "twopointrectangle" && (dimension === "width" || dimension === "height")) {
+    const width = dimension === "width" ? numericValue : Math.abs(previewPoint.x - anchor.x);
+    const height = dimension === "height" ? numericValue : Math.abs(previewPoint.y - anchor.y);
+    const signX = previewPoint.x < anchor.x ? -1 : 1;
+    const signY = previewPoint.y < anchor.y ? -1 : 1;
+    nextPreviewPoint = {
+      x: anchor.x + width * signX,
+      y: anchor.y + height * signY
+    };
+  }
+
+  if (!nextPreviewPoint) {
+    return false;
+  }
+
+  state.toolDraft.previewPoint = nextPreviewPoint;
+  state.toolDraft.dimensionValues = {
+    ...(state.toolDraft.dimensionValues || {}),
+    [dimension]: numericValue
+  };
+  return true;
+}
+
+export function applyLockedDraftDimensions(state) {
+  if (!state || !state.toolDraft || !state.toolDraft.dimensionValues) {
+    return false;
+  }
+
+  let changed = false;
+  for (const [dimension, value] of Object.entries(state.toolDraft.dimensionValues)) {
+    if (applyDraftDimensionValue(state, dimension, value)) {
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+function pointFromAnchorWithLength(anchor, referencePoint, length) {
+  const dx = referencePoint.x - anchor.x;
+  const dy = referencePoint.y - anchor.y;
+  const currentLength = Math.hypot(dx, dy);
+  if (currentLength <= WORLD_GEOMETRY_TOLERANCE) {
+    return {
+      x: anchor.x + length,
+      y: anchor.y
+    };
+  }
+
+  return {
+    x: anchor.x + dx / currentLength * length,
+    y: anchor.y + dy / currentLength * length
+  };
+}
+
 function clearSelectedTargets(state) {
   if (state.selectedKeys.size === 0 && !state.activeSelectionKey) {
     return false;
@@ -2607,7 +2824,11 @@ function getPointerScreenPoint(state, event) {
 }
 
 function isPanPointerDown(event) {
-  return event.button === 1 || event.button === 2 || (event.button === 0 && event.shiftKey);
+  return isPanPointerDownForTool(event, null);
+}
+
+export function isPanPointerDownForTool(event, toolName) {
+  return event.button === 1;
 }
 
 function isPrimaryPointerButton(event) {

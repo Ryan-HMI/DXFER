@@ -47,6 +47,7 @@
     flex: 1 1 auto;
     min-height: 0;
     background: #0a0d10;
+    overflow: hidden;
 }
 
 .drawing-canvas {
@@ -56,4 +57,40 @@
     background: #0a0d10;
     cursor: crosshair;
     touch-action: none;
+}
+
+.drawing-dimension-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.drawing-dimension-input {
+    position: absolute;
+    width: 4.8rem;
+    height: 1.35rem;
+    transform: translate(-50%, -50%);
+    padding: 0 0.34rem;
+    color: #dff7ff;
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid #38bdf8;
+    border-radius: 3px;
+    outline: none;
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.15);
+    font: 650 0.75rem/1.2 "Segoe UI", system-ui, sans-serif;
+    text-align: center;
+    pointer-events: auto;
+}
+
+.drawing-dimension-input:focus {
+    color: #ffffff;
+    background: #17212b;
+    border-color: #7dd3fc;
+    box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.24);
+}
+
+.drawing-dimension-input::-webkit-outer-spin-button,
+.drawing-dimension-input::-webkit-inner-spin-button {
+    margin: 0;
+    appearance: none;
 }
