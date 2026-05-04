@@ -32,7 +32,7 @@ public partial class DrawingWorkbench : IDisposable
     private WorkbenchTool? _activeTool;
     private bool _showOriginAxes = true;
     private bool _isToolPanelCollapsed;
-    private bool _isInspectorCollapsed;
+    private bool _isInspectorCollapsed = true;
     private int _toolPanelWidth = 220;
     private int _inspectorWidth = 280;
     private int _selectionResetToken;
@@ -225,6 +225,8 @@ public partial class DrawingWorkbench : IDisposable
             return $"X {FormatNumber(measurement.DeltaX)}, Y {FormatNumber(measurement.DeltaY)}, D {FormatNumber(measurement.Distance)}";
         }
     }
+
+    private IReadOnlyList<LiveReadoutItem> LiveMeasurementReadouts => BuildLiveMeasurementReadouts();
 
     private string MetadataJson
     {
@@ -638,6 +640,223 @@ public partial class DrawingWorkbench : IDisposable
         return DrawingPrepService.TryGetMeasurement(_document, wholeEntityIds, out measurement);
     }
 
+    private IReadOnlyList<LiveReadoutItem> BuildLiveMeasurementReadouts()
+    {
+        var items = new List<LiveReadoutItem>
+        {
+            new("Sel", _selectedEntityIds.Count == 0 ? "none" : _selectedEntityIds.Count.ToString(CultureInfo.InvariantCulture))
+        };
+
+        if (_activeTool is { } activeTool)
+        {
+            items.Add(new LiveReadoutItem("Tool", ActiveToolLabel));
+        }
+
+        if (TryGetTwoSelectedPoints(out var firstPoint, out var secondPoint))
+        {
+            AddPointDeltaReadouts(items, firstPoint, secondPoint);
+            return items;
+        }
+
+        var vectors = GetSelectedVectors().ToArray();
+        if (vectors.Length == 2)
+        {
+            items.Add(new LiveReadoutItem("Angle", $"{FormatNumber(GetUnsignedAngleBetween(vectors[0], vectors[1]))} deg"));
+            return items;
+        }
+
+        var entities = GetSelectedWholeEntities().ToArray();
+        if (entities.Length == 1)
+        {
+            AddEntityReadouts(items, entities[0]);
+            return items;
+        }
+
+        if (vectors.Length == 1)
+        {
+            AddVectorReadouts(items, vectors[0], "Length");
+            return items;
+        }
+
+        if (entities.Length > 1)
+        {
+            var bounds = Bounds2.FromPoints(entities.SelectMany(GetEntityReadoutPoints));
+            items.Add(new LiveReadoutItem("Bounds", FormatSize(bounds.Width, bounds.Height)));
+            items.Add(new LiveReadoutItem("Entities", entities.Length.ToString(CultureInfo.InvariantCulture)));
+            return items;
+        }
+
+        items.Add(new LiveReadoutItem("Hover", HoverText));
+        items.Add(new LiveReadoutItem("Bounds", FormatSize(Bounds.Width, Bounds.Height)));
+        return items;
+    }
+
+    private void AddEntityReadouts(ICollection<LiveReadoutItem> items, DrawingEntity entity)
+    {
+        switch (entity)
+        {
+            case LineEntity line:
+                AddVectorReadouts(items, new ReadoutVector(line.Start, line.End), "Length");
+                break;
+            case CircleEntity circle:
+                items.Add(new LiveReadoutItem("Radius", FormatNumber(circle.Radius)));
+                items.Add(new LiveReadoutItem("Diameter", FormatNumber(circle.Radius * 2)));
+                items.Add(new LiveReadoutItem("Area", FormatNumber(Math.PI * circle.Radius * circle.Radius)));
+                break;
+            case ArcEntity arc:
+                var sweep = GetArcSweepDegrees(arc);
+                items.Add(new LiveReadoutItem("Radius", FormatNumber(arc.Radius)));
+                items.Add(new LiveReadoutItem("Sweep", $"{FormatNumber(sweep)} deg"));
+                items.Add(new LiveReadoutItem("Arc Len", FormatNumber(arc.Radius * sweep * Math.PI / 180.0)));
+                break;
+            case PolylineEntity polyline:
+                AddPolylineReadouts(items, polyline.Vertices);
+                break;
+            case SplineEntity spline:
+                var samples = spline.GetSamplePoints();
+                items.Add(new LiveReadoutItem("Spline Len", FormatNumber(GetPathLength(samples))));
+                items.Add(new LiveReadoutItem("Ctrl", spline.ControlPoints.Count.ToString(CultureInfo.InvariantCulture)));
+                break;
+        }
+    }
+
+    private void AddPolylineReadouts(ICollection<LiveReadoutItem> items, IReadOnlyList<Point2> vertices)
+    {
+        var pathLength = GetPathLength(vertices);
+        if (IsClosedPath(vertices))
+        {
+            items.Add(new LiveReadoutItem("Perimeter", FormatNumber(pathLength)));
+            items.Add(new LiveReadoutItem("Area", FormatNumber(Math.Abs(GetSignedArea(vertices)))));
+            return;
+        }
+
+        items.Add(new LiveReadoutItem("Path Len", FormatNumber(pathLength)));
+        items.Add(new LiveReadoutItem("Segments", Math.Max(0, vertices.Count - 1).ToString(CultureInfo.InvariantCulture)));
+    }
+
+    private static void AddPointDeltaReadouts(ICollection<LiveReadoutItem> items, Point2 first, Point2 second)
+    {
+        var measurement = MeasurementService.Measure(first, second);
+        items.Add(new LiveReadoutItem("Delta X", FormatNumber(measurement.DeltaX)));
+        items.Add(new LiveReadoutItem("Delta Y", FormatNumber(measurement.DeltaY)));
+        items.Add(new LiveReadoutItem("Dist", FormatNumber(measurement.Distance)));
+    }
+
+    private static void AddVectorReadouts(ICollection<LiveReadoutItem> items, ReadoutVector vector, string lengthLabel)
+    {
+        var measurement = MeasurementService.Measure(vector.Start, vector.End);
+        items.Add(new LiveReadoutItem(lengthLabel, FormatNumber(measurement.Distance)));
+        items.Add(new LiveReadoutItem("Delta X", FormatNumber(measurement.DeltaX)));
+        items.Add(new LiveReadoutItem("Delta Y", FormatNumber(measurement.DeltaY)));
+        items.Add(new LiveReadoutItem("Angle", $"{FormatNumber(GetVectorAngleDegrees(vector))} deg"));
+    }
+
+    private IEnumerable<ReadoutVector> GetSelectedVectors()
+    {
+        foreach (var selectionKey in _selectedEntityIds)
+        {
+            if (TryParseSegmentSelectionKey(selectionKey, out var entityId, out var segmentIndex)
+                && FindEntity(entityId) is PolylineEntity polyline
+                && segmentIndex >= 0
+                && segmentIndex < polyline.Vertices.Count - 1)
+            {
+                yield return new ReadoutVector(polyline.Vertices[segmentIndex], polyline.Vertices[segmentIndex + 1]);
+                continue;
+            }
+
+            if (FindEntity(selectionKey) is LineEntity line)
+            {
+                yield return new ReadoutVector(line.Start, line.End);
+            }
+        }
+    }
+
+    private IEnumerable<DrawingEntity> GetSelectedWholeEntities() =>
+        _selectedEntityIds
+            .Where(selectionKey =>
+                !selectionKey.Contains(PointKeySeparator, StringComparison.Ordinal)
+                && !selectionKey.Contains(SegmentKeySeparator, StringComparison.Ordinal))
+            .Select(FindEntity)
+            .OfType<DrawingEntity>();
+
+    private static IEnumerable<Point2> GetEntityReadoutPoints(DrawingEntity entity) =>
+        entity switch
+        {
+            LineEntity line => new[] { line.Start, line.End },
+            CircleEntity circle => new[]
+            {
+                new Point2(circle.Center.X - circle.Radius, circle.Center.Y - circle.Radius),
+                new Point2(circle.Center.X + circle.Radius, circle.Center.Y + circle.Radius)
+            },
+            ArcEntity arc => arc.GetSamplePoints(32),
+            PolylineEntity polyline => polyline.Vertices,
+            SplineEntity spline => spline.GetSamplePoints(),
+            _ => Array.Empty<Point2>()
+        };
+
+    private static double GetPathLength(IReadOnlyList<Point2> points)
+    {
+        var length = 0d;
+        for (var index = 1; index < points.Count; index++)
+        {
+            length += MeasurementService.Measure(points[index - 1], points[index]).Distance;
+        }
+
+        return length;
+    }
+
+    private static bool IsClosedPath(IReadOnlyList<Point2> points) =>
+        points.Count > 2
+        && MeasurementService.Measure(points[0], points[^1]).Distance <= 0.000001;
+
+    private static double GetSignedArea(IReadOnlyList<Point2> points)
+    {
+        var area = 0d;
+        for (var index = 1; index < points.Count; index++)
+        {
+            area += points[index - 1].X * points[index].Y - points[index].X * points[index - 1].Y;
+        }
+
+        return area / 2.0;
+    }
+
+    private static double GetArcSweepDegrees(ArcEntity arc)
+    {
+        var sweep = arc.EndAngleDegrees - arc.StartAngleDegrees;
+        while (sweep < 0)
+        {
+            sweep += 360.0;
+        }
+
+        return sweep;
+    }
+
+    private static double GetUnsignedAngleBetween(ReadoutVector first, ReadoutVector second)
+    {
+        var firstAngle = GetVectorAngleDegrees(first);
+        var secondAngle = GetVectorAngleDegrees(second);
+        var delta = Math.Abs(NormalizeSignedDegrees(secondAngle - firstAngle));
+        return delta > 180 ? 360 - delta : delta;
+    }
+
+    private static double GetVectorAngleDegrees(ReadoutVector vector) =>
+        Math.Atan2(vector.End.Y - vector.Start.Y, vector.End.X - vector.Start.X) * 180.0 / Math.PI;
+
+    private static double NormalizeSignedDegrees(double angle)
+    {
+        var normalized = angle % 360.0;
+        if (normalized > 180.0)
+        {
+            normalized -= 360.0;
+        }
+        else if (normalized <= -180.0)
+        {
+            normalized += 360.0;
+        }
+
+        return normalized;
+    }
+
     private bool TryGetTwoSelectedPoints(out Point2 first, out Point2 second)
     {
         Point2? firstPoint = null;
@@ -955,6 +1174,10 @@ public partial class DrawingWorkbench : IDisposable
             ? "Deleted 1 polyline segment."
             : $"Deleted {result.DeletedSegments} polyline segments.";
     }
+
+    private sealed record LiveReadoutItem(string Label, string Value);
+
+    private readonly record struct ReadoutVector(Point2 Start, Point2 End);
 }
 
 internal enum DockResizeTarget

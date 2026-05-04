@@ -135,6 +135,46 @@
     cursor: col-resize;
 }
 
+.dxfer-live-readout {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 2rem;
+    padding: 0.25rem 0.55rem;
+    color: #dce7ed;
+    background: rgba(17, 24, 31, 0.94);
+    border-top: 1px solid #2d3841;
+    box-sizing: border-box;
+    overflow-x: auto;
+}
+
+.dxfer-live-readout-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+    min-width: max-content;
+    padding: 0.18rem 0.45rem;
+    background: #1d252d;
+    border: 1px solid #34414b;
+    border-radius: 4px;
+    font-size: 0.76rem;
+    line-height: 1.1;
+}
+
+.dxfer-live-readout-label {
+    color: #8fa4b2;
+    font-weight: 650;
+}
+
+.dxfer-live-readout-value {
+    color: #f2f7fa;
+}
+
 .dxfer-tool-section,
 .dxfer-inspector-section {
     display: grid;

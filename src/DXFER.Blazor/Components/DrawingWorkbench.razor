@@ -185,6 +185,16 @@
                 @onpointerdown:preventDefault="true" />
     }
 
+    <footer class="dxfer-live-readout" aria-label="Live measurement readout">
+        @foreach (var item in LiveMeasurementReadouts)
+        {
+            <div class="dxfer-live-readout-item">
+                <span class="dxfer-live-readout-label">@item.Label</span>
+                <span class="dxfer-live-readout-value">@item.Value</span>
+            </div>
+        }
+    </footer>
+
     @if (_resizeTarget is not DockResizeTarget.None)
     {
         <div class="dxfer-resize-capture"
