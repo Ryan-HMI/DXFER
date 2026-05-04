@@ -678,6 +678,18 @@ function drawToolPreview(state) {
         drawWorldPolyline(state, [second, third]);
       }
     }
+  } else if (tool === "tangentarc") {
+    if (points.length === 1) {
+      drawWorldPolyline(state, [first, third]);
+    } else {
+      const arc = getTangentArc(first, second, third);
+      if (arc) {
+        drawWorldArcPreview(state, arc);
+        addRadiusPreviewDimension(dimensions, state, arc.center, first);
+      } else {
+        drawWorldPolyline(state, [second, third]);
+      }
+    }
   } else if (tool === "centerpointarc") {
     if (points.length === 1) {
       drawWorldPolyline(state, [first, second]);
@@ -3732,6 +3744,58 @@ export function getCenterPointArc(center, startRadiusPoint, endAnglePoint) {
   };
 }
 
+export function getTangentArc(start, tangentPoint, end) {
+  const tangentLength = distanceBetweenWorldPoints(start, tangentPoint);
+  const chordLength = distanceBetweenWorldPoints(start, end);
+  if (tangentLength <= WORLD_GEOMETRY_TOLERANCE || chordLength <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const tangent = {
+    x: (tangentPoint.x - start.x) / tangentLength,
+    y: (tangentPoint.y - start.y) / tangentLength
+  };
+  const normal = { x: -tangent.y, y: tangent.x };
+  const chord = { x: start.x - end.x, y: start.y - end.y };
+  const denominator = 2 * dotPoints(normal, chord);
+  if (Math.abs(denominator) <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const offset = -dotPoints(chord, chord) / denominator;
+  const center = {
+    x: start.x + normal.x * offset,
+    y: start.y + normal.y * offset
+  };
+  const radius = distanceBetweenWorldPoints(center, start);
+  if (radius <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const startAngle = getPointAngleDegrees(center, start);
+  const endAngle = getPointAngleDegrees(center, end);
+  const radiusVector = { x: start.x - center.x, y: start.y - center.y };
+  const counterClockwiseTangent = {
+    x: -radiusVector.y / radius,
+    y: radiusVector.x / radius
+  };
+  if (dotPoints(counterClockwiseTangent, tangent) >= 0) {
+    return {
+      center,
+      radius,
+      startAngleDegrees: startAngle,
+      endAngleDegrees: startAngle + getCounterClockwiseDeltaDegrees(startAngle, endAngle)
+    };
+  }
+
+  return {
+    center,
+    radius,
+    startAngleDegrees: endAngle,
+    endAngleDegrees: endAngle + getCounterClockwiseDeltaDegrees(endAngle, startAngle)
+  };
+}
+
 function getPointAngleDegrees(center, point) {
   const angle = radiansToDegrees(Math.atan2(point.y - center.y, point.x - center.x));
   return angle < 0 ? angle + FULL_CIRCLE_DEGREES : angle;
@@ -3744,6 +3808,10 @@ function isSketchToolPointSetValid(tool, points) {
 
   if (tool === "threepointarc") {
     return getThreePointArc(points[0], points[1], points[2]) !== null;
+  }
+
+  if (tool === "tangentarc") {
+    return getTangentArc(points[0], points[1], points[2]) !== null;
   }
 
   if (tool === "centerpointarc") {
@@ -4081,6 +4149,8 @@ function getSketchCreationTool(state) {
       return "threepointcircle";
     case "threepointarc":
       return "threepointarc";
+    case "tangentarc":
+      return "tangentarc";
     case "centerpointarc":
       return "centerpointarc";
     default:
@@ -4095,6 +4165,7 @@ export function getSketchToolPointCount(tool) {
     case "alignedrectangle":
     case "threepointcircle":
     case "threepointarc":
+    case "tangentarc":
     case "centerpointarc":
       return 3;
     default:
