@@ -151,9 +151,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.MidpointLine, WorkbenchTool.MidpointLine, CadIconName.MidpointLine, "Midpoint line"),
             Command(WorkbenchCommandId.TwoPointRectangle, WorkbenchTool.TwoPointRectangle, CadIconName.Rectangle, "Two-point rectangle"),
             Command(WorkbenchCommandId.CenterRectangle, WorkbenchTool.CenterRectangle, CadIconName.CenterRectangle, "Center rectangle", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.AlignedRectangle, WorkbenchTool.AlignedRectangle, CadIconName.AlignedRectangle, "Aligned rectangle", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.AlignedRectangle, WorkbenchTool.AlignedRectangle, CadIconName.AlignedRectangle, "Aligned rectangle"),
             Command(WorkbenchCommandId.CenterCircle, WorkbenchTool.CenterCircle, CadIconName.Circle, "Center circle"),
-            Command(WorkbenchCommandId.ThreePointCircle, WorkbenchTool.ThreePointCircle, CadIconName.ThreePointCircle, "Three-point circle", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.ThreePointCircle, WorkbenchTool.ThreePointCircle, CadIconName.ThreePointCircle, "Three-point circle"),
             Command(WorkbenchCommandId.Ellipse, WorkbenchTool.Ellipse, CadIconName.Ellipse, "Ellipse", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.ThreePointArc, WorkbenchTool.ThreePointArc, CadIconName.Arc, "Three-point arc", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.TangentArc, WorkbenchTool.TangentArc, CadIconName.TangentArc, "Tangent arc", disabled: true, isFuture: true),
@@ -280,7 +280,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.Line => "Line: click start point, then end point. Shift: polar snap. Double-click: start a fresh line. Esc: cancel.",
         WorkbenchTool.MidpointLine => "Midpoint line: click midpoint, then endpoint. Shift: polar snap. Esc: cancel.",
         WorkbenchTool.TwoPointRectangle => "Corner rectangle: click first corner, then opposite corner. Shift: polar snap. Esc: cancel.",
+        WorkbenchTool.AlignedRectangle => "Aligned rectangle: click baseline start, baseline end, then depth. Esc: cancel.",
         WorkbenchTool.CenterCircle => "Center circle: click center, then radius point. Shift: polar snap. Esc: cancel.",
+        WorkbenchTool.ThreePointCircle => "Three-point circle: click three points on the circumference. Esc: cancel.",
         not null => $"{ActiveToolLabel}: follow canvas prompts. Esc: cancel.",
         null => "Selection: click to select and make active. Click active again to deselect. Box select adds; Ctrl-box deselects."
     };
@@ -414,7 +416,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             default:
                 if (TryGetImplementedSketchTool(commandId, out var tool))
                 {
-                    ActivateTool(tool, $"{FormatCommandName(commandId)} active. Pick two points on the canvas. Press Esc to cancel.");
+                    ActivateTool(tool, $"{FormatCommandName(commandId)} active. {GetToolPrompt(tool)} Press Esc to cancel.");
                     ResetSelection();
                     break;
                 }
@@ -431,9 +433,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        var first = ToPoint(points[0]);
-        var second = ToPoint(points[1]);
-        var newEntities = CreateEntitiesForTool(toolName, first, second).ToArray();
+        var toolPoints = points.Select(ToPoint).ToArray();
+        var newEntities = CreateEntitiesForTool(toolName, toolPoints).ToArray();
         if (newEntities.Length == 0)
         {
             return;
@@ -1087,9 +1088,16 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private static double Round(double value) => Math.Round(value, 4);
 
-    private IEnumerable<DrawingEntity> CreateEntitiesForTool(string toolName, Point2 first, Point2 second)
+    private IEnumerable<DrawingEntity> CreateEntitiesForTool(string toolName, IReadOnlyList<Point2> points)
     {
         var normalizedTool = NormalizeToolName(toolName);
+        if (points.Count < 2)
+        {
+            yield break;
+        }
+
+        var first = points[0];
+        var second = points[1];
         switch (normalizedTool)
         {
             case "line":
@@ -1107,6 +1115,17 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 yield return new LineEntity(CreateEntityId("rect"), second, oppositeB);
                 yield return new LineEntity(CreateEntityId("rect"), oppositeB, first);
                 break;
+            case "alignedrectangle" when points.Count >= 3:
+                var corners = GetAlignedRectangleCorners(first, second, points[2]);
+                if (corners is not null)
+                {
+                    yield return new LineEntity(CreateEntityId("rect"), corners[0], corners[1]);
+                    yield return new LineEntity(CreateEntityId("rect"), corners[1], corners[2]);
+                    yield return new LineEntity(CreateEntityId("rect"), corners[2], corners[3]);
+                    yield return new LineEntity(CreateEntityId("rect"), corners[3], corners[0]);
+                }
+
+                break;
             case "centercircle":
                 var radius = Math.Sqrt(Math.Pow(second.X - first.X, 2) + Math.Pow(second.Y - first.Y, 2));
                 if (radius > 0.000001)
@@ -1115,7 +1134,63 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 }
 
                 break;
+            case "threepointcircle" when points.Count >= 3:
+                var circle = GetThreePointCircle(first, second, points[2]);
+                if (circle is not null)
+                {
+                    yield return new CircleEntity(CreateEntityId("circle"), circle.Value.Center, circle.Value.Radius);
+                }
+
+                break;
         }
+    }
+
+    private static Point2[]? GetAlignedRectangleCorners(Point2 first, Point2 second, Point2 depthPoint)
+    {
+        var dx = second.X - first.X;
+        var dy = second.Y - first.Y;
+        var length = Math.Sqrt((dx * dx) + (dy * dy));
+        if (length <= 0.000001)
+        {
+            return null;
+        }
+
+        var normalX = -dy / length;
+        var normalY = dx / length;
+        var depth = ((depthPoint.X - second.X) * normalX) + ((depthPoint.Y - second.Y) * normalY);
+        var offset = new Point2(normalX * depth, normalY * depth);
+        return new[]
+        {
+            first,
+            second,
+            new Point2(second.X + offset.X, second.Y + offset.Y),
+            new Point2(first.X + offset.X, first.Y + offset.Y)
+        };
+    }
+
+    private static (Point2 Center, double Radius)? GetThreePointCircle(Point2 first, Point2 second, Point2 third)
+    {
+        var determinant = 2 * (
+            first.X * (second.Y - third.Y)
+            + second.X * (third.Y - first.Y)
+            + third.X * (first.Y - second.Y));
+        if (Math.Abs(determinant) <= 0.000001)
+        {
+            return null;
+        }
+
+        var firstSquared = (first.X * first.X) + (first.Y * first.Y);
+        var secondSquared = (second.X * second.X) + (second.Y * second.Y);
+        var thirdSquared = (third.X * third.X) + (third.Y * third.Y);
+        var center = new Point2(
+            (firstSquared * (second.Y - third.Y)
+                + secondSquared * (third.Y - first.Y)
+                + thirdSquared * (first.Y - second.Y)) / determinant,
+            (firstSquared * (third.X - second.X)
+                + secondSquared * (first.X - third.X)
+                + thirdSquared * (second.X - first.X)) / determinant);
+        var radius = Math.Sqrt(Math.Pow(center.X - first.X, 2) + Math.Pow(center.Y - first.Y, 2));
+        return radius > 0.000001 ? (center, radius) : null;
     }
 
     private WorkbenchToolCommand Command(
@@ -1218,14 +1293,27 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchCommandId.TwoPointRectangle:
                 tool = WorkbenchTool.TwoPointRectangle;
                 return true;
+            case WorkbenchCommandId.AlignedRectangle:
+                tool = WorkbenchTool.AlignedRectangle;
+                return true;
             case WorkbenchCommandId.CenterCircle:
                 tool = WorkbenchTool.CenterCircle;
+                return true;
+            case WorkbenchCommandId.ThreePointCircle:
+                tool = WorkbenchTool.ThreePointCircle;
                 return true;
             default:
                 tool = default;
                 return false;
         }
     }
+
+    private static string GetToolPrompt(WorkbenchTool tool) => tool switch
+    {
+        WorkbenchTool.AlignedRectangle => "Pick baseline start, baseline end, then depth.",
+        WorkbenchTool.ThreePointCircle => "Pick three points on the circle.",
+        _ => "Pick two points on the canvas."
+    };
 
     private static Point2 ToPoint(CanvasPointDto point) => new(point.X, point.Y);
 
@@ -1263,7 +1351,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         "midpointline" => "Midpoint line",
         "twopointrectangle" => "Two-point rectangle",
+        "alignedrectangle" => "Aligned rectangle",
         "centercircle" => "Center circle",
+        "threepointcircle" => "Three-point circle",
         _ => "Line"
     };
 
