@@ -21,8 +21,10 @@ import {
   getPersistentDimensionDescriptors,
   getRadialDimensionScreenGeometry,
   getRadialDimensionPreference,
+  getSketchToolDimensionLocks,
   getSketchChainContextFromCommittedTool,
   getSketchToolPointCount,
+  getPostCommitSketchToolState,
   getTangentArc,
   getNextDimensionKey,
   getSplitAtPointRequest,
@@ -393,6 +395,19 @@ test("committed tangent arc chain continues from the arc endpoint", () => {
   assert.ok(distanceBetweenTestPoints(arcDraft.points[0], arcDraft.points[1]) > 0);
 });
 
+test("auto tangent arc commit returns to line chain mode", () => {
+  const state = getPostCommitSketchToolState(
+    "tangentarc",
+    [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 2 }],
+    true
+  );
+
+  assert.equal(state.activeTool, "line");
+  assert.deepEqual(state.toolDraft.points, [{ x: 2, y: 2 }]);
+  assert.equal(state.toolDraft.previewPoint, null);
+  assert.equal(state.sketchChainVertexHovering, false);
+});
+
 test("locked draft dimensions reapply after cursor movement", () => {
   const state = {
     activeTool: "line",
@@ -407,6 +422,20 @@ test("locked draft dimensions reapply after cursor movement", () => {
 
   assert.equal(changed, true);
   assert.deepEqual(state.toolDraft.previewPoint, { x: 0, y: 10 });
+});
+
+test("sketch tool dimension locks only include finite positive values", () => {
+  const locks = getSketchToolDimensionLocks({
+    dimensionValues: {
+      length: 12.5,
+      height: 0,
+      ignored: Number.NaN,
+      width: "7"
+    }
+  });
+
+  assert.deepEqual(locks.keys, ["length", "width"]);
+  assert.deepEqual(locks.values, [12.5, 7]);
 });
 
 test("shift is polar snap instead of pan while sketch tools are active", () => {

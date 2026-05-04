@@ -548,7 +548,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
     }
 
-    private void OnToolCommitRequested(string toolName, IReadOnlyList<CanvasPointDto> points)
+    private void OnToolCommitRequested(
+        string toolName,
+        IReadOnlyList<CanvasPointDto> points,
+        IReadOnlyDictionary<string, double> dimensionValues)
     {
         var toolPoints = points.Select(ToPoint).ToArray();
         var newEntities = CreateEntitiesForTool(toolName, toolPoints).ToArray();
@@ -557,8 +560,17 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
+        var newDimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            toolName,
+            newEntities,
+            dimensionValues,
+            CreateDimensionId);
+
         ApplyDocumentChange(
-            new DrawingDocument(_document.Entities.Concat(newEntities)),
+            new DrawingDocument(
+                _document.Entities.Concat(newEntities),
+                _document.Dimensions.Concat(newDimensions),
+                _document.Constraints),
             $"{FormatCreatedToolName(toolName)} added.");
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);

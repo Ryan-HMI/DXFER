@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260504-dimension-modal";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260504-chain-dims";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -57,7 +57,7 @@ public partial class DrawingCanvas : IAsyncDisposable
     public Action<string?>? ActiveSelectionChanged { get; set; }
 
     [Parameter]
-    public Action<string, IReadOnlyList<CanvasPointDto>>? ToolCommitRequested { get; set; }
+    public Action<string, IReadOnlyList<CanvasPointDto>, IReadOnlyDictionary<string, double>>? ToolCommitRequested { get; set; }
 
     [Parameter]
     public Action<string>? ToolModeChanged { get; set; }
@@ -227,7 +227,11 @@ public partial class DrawingCanvas : IAsyncDisposable
     }
 
     [JSInvokable]
-    public Task OnSketchToolCommitted(string toolName, double[] coordinates)
+    public Task OnSketchToolCommitted(
+        string toolName,
+        double[] coordinates,
+        string[]? dimensionKeys = null,
+        double[]? dimensionValues = null)
     {
         var points = new List<CanvasPointDto>();
         for (var index = 0; index + 1 < coordinates.Length; index += 2)
@@ -235,8 +239,34 @@ public partial class DrawingCanvas : IAsyncDisposable
             points.Add(new CanvasPointDto(coordinates[index], coordinates[index + 1]));
         }
 
-        ToolCommitRequested?.Invoke(toolName, points);
+        ToolCommitRequested?.Invoke(toolName, points, BuildDimensionLocks(dimensionKeys, dimensionValues));
         return Task.CompletedTask;
+    }
+
+    private static IReadOnlyDictionary<string, double> BuildDimensionLocks(
+        IReadOnlyList<string>? dimensionKeys,
+        IReadOnlyList<double>? dimensionValues)
+    {
+        if (dimensionKeys is null || dimensionValues is null)
+        {
+            return new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var locks = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var count = Math.Min(dimensionKeys.Count, dimensionValues.Count);
+        for (var index = 0; index < count; index++)
+        {
+            var key = dimensionKeys[index];
+            var value = dimensionValues[index];
+            if (string.IsNullOrWhiteSpace(key) || !double.IsFinite(value) || value <= 0)
+            {
+                continue;
+            }
+
+            locks[key.Trim()] = value;
+        }
+
+        return locks;
     }
 
     [JSInvokable]

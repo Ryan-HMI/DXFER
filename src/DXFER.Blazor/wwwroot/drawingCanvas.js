@@ -46,6 +46,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     toolDraft: createEmptyToolDraft(),
     sketchChainContext: null,
     sketchChainVertexHovering: false,
+    sketchChainAutoTool: false,
     dimensionDraft: createEmptyDimensionDraft(),
     acquiredSnapPoints: [],
     hoveredTarget: null,
@@ -107,6 +108,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
         state.toolDraft = createEmptyToolDraft();
         state.sketchChainContext = null;
         state.sketchChainVertexHovering = false;
+        state.sketchChainAutoTool = false;
       }
       pruneInteractionState(state, true);
       if (fitToDocument) {
@@ -169,10 +171,12 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
       const draft = getChainedSketchToolDraft(previousTool, nextTool, state.sketchChainContext);
       if (!isChainableSketchTool(previousTool) || !isChainableSketchTool(nextTool)) {
         state.sketchChainContext = null;
+        state.sketchChainAutoTool = false;
       }
 
       state.activeTool = nextTool;
       state.toolDraft = draft;
+      state.sketchChainAutoTool = false;
       state.sketchChainVertexHovering = previousTool === nextTool && state.sketchChainContext
         ? state.sketchChainVertexHovering
         : false;
@@ -288,8 +292,19 @@ export function getSketchChainContextFromCommittedTool(tool, points) {
   return null;
 }
 
-function getPostCommitSketchToolDraft(tool, chainContext) {
-  return getChainedSketchToolDraft(tool, tool, chainContext);
+export function getPostCommitSketchToolState(tool, points, wasAutoChained = false) {
+  const normalizedTool = normalizeToolName(tool);
+  const chainContext = getSketchChainContextFromCommittedTool(normalizedTool, points);
+  const activeTool = normalizedTool === "tangentarc" && wasAutoChained && chainContext
+    ? "line"
+    : normalizedTool;
+
+  return {
+    activeTool,
+    toolDraft: getChainedSketchToolDraft(normalizedTool, activeTool, chainContext),
+    sketchChainContext: chainContext,
+    sketchChainVertexHovering: false
+  };
 }
 
 function getTangentArcChainContext(start, tangentPoint, end) {
@@ -399,9 +414,13 @@ export function tryToggleSketchChainToolAtPoint(state, screenPoint) {
   clearTransientDimensionInputs(state);
   state.activeTool = nextTool;
   state.toolDraft = draft;
+  state.sketchChainAutoTool = nextTool === "tangentarc";
   state.sketchChainVertexHovering = true;
   state.pendingDimensionFocusKey = null;
   state.acquiredSnapPoints = [];
+  if (state.canvas && state.canvas.dataset) {
+    state.canvas.dataset.activeTool = state.activeTool;
+  }
   if (state.dotnetRef) {
     invokeDotNet(state, "OnSketchToolModeChanged", nextTool);
   }
@@ -2937,12 +2956,31 @@ function commitSketchToolPoints(state, tool, points) {
     return false;
   }
 
-  state.sketchChainContext = getSketchChainContextFromCommittedTool(tool, points);
-  state.toolDraft = getPostCommitSketchToolDraft(tool, state.sketchChainContext);
-  state.sketchChainVertexHovering = Boolean(state.sketchChainContext);
+  const dimensionLocks = getSketchToolDimensionLocks(state.toolDraft);
+  const postCommitState = getPostCommitSketchToolState(tool, points, state.sketchChainAutoTool);
+  const nextTool = postCommitState.activeTool;
+  const toolModeChanged = normalizeToolName(state.activeTool) !== nextTool;
+  state.activeTool = nextTool;
+  if (state.canvas && state.canvas.dataset) {
+    state.canvas.dataset.activeTool = state.activeTool;
+  }
+  state.sketchChainContext = postCommitState.sketchChainContext;
+  state.toolDraft = postCommitState.toolDraft;
+  state.sketchChainAutoTool = false;
+  state.sketchChainVertexHovering = postCommitState.sketchChainVertexHovering;
   clearTransientDimensionInputs(state);
   setHoveredTarget(state, null);
-  invokeDotNet(state, "OnSketchToolCommitted", tool, flattenPointCoordinates(points));
+  invokeDotNet(
+    state,
+    "OnSketchToolCommitted",
+    tool,
+    flattenPointCoordinates(points),
+    dimensionLocks.keys,
+    dimensionLocks.values);
+  if (toolModeChanged) {
+    invokeDotNet(state, "OnSketchToolModeChanged", nextTool);
+  }
+
   return true;
 }
 
@@ -3008,6 +3046,7 @@ function cancelActiveTool(state) {
   state.toolDraft = createEmptyToolDraft();
   state.sketchChainContext = null;
   state.sketchChainVertexHovering = false;
+  state.sketchChainAutoTool = false;
   state.acquiredSnapPoints = [];
   state.dimensionDraft = createEmptyDimensionDraft();
   clearTransientDimensionInputs(state);
@@ -3055,6 +3094,7 @@ function handleDoubleClick(state, event) {
     state.toolDraft = createEmptyToolDraft();
     state.sketchChainContext = null;
     state.sketchChainVertexHovering = false;
+    state.sketchChainAutoTool = false;
     setHoveredTarget(state, null);
     updateDebugAttributes(state);
     draw(state);
@@ -4821,6 +4861,27 @@ export function applyLockedDraftDimensions(state) {
   }
 
   return changed;
+}
+
+export function getSketchToolDimensionLocks(toolDraft) {
+  const keys = [];
+  const values = [];
+  const dimensionValues = toolDraft && toolDraft.dimensionValues
+    ? toolDraft.dimensionValues
+    : {};
+
+  for (const [key, value] of Object.entries(dimensionValues)) {
+    const normalizedKey = String(key || "").trim().toLowerCase();
+    const numericValue = Number(value);
+    if (!normalizedKey || !Number.isFinite(numericValue) || numericValue <= WORLD_GEOMETRY_TOLERANCE) {
+      continue;
+    }
+
+    keys.push(normalizedKey);
+    values.push(numericValue);
+  }
+
+  return { keys, values };
 }
 
 export function isDynamicTargetCurrentToPointer(state, target) {
