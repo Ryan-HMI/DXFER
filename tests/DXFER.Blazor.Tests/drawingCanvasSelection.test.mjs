@@ -5,11 +5,14 @@ import {
   applyLockedDraftDimensions,
   applyDirectSelectionClick,
   applyPolarSnapIfRequested,
+  clampDimensionInputScreenPoint,
   getDefaultActiveDimensionKey,
   getNextDimensionKey,
   isDynamicTargetCurrentToPointer,
+  isInferenceGuideWithinScreenDistance,
   isPanPointerDownForTool,
   shouldAutoSelectDimensionInputValue,
+  shouldCommitDimensionInputOnChange,
   shouldCommitDimensionInputOnBlur,
   shouldRefreshDimensionInputValue,
   syncActiveSelectionWithSelectedKeys
@@ -219,6 +222,57 @@ test("focused dimension input keeps typed locks but refreshes live preview when 
   assert.equal(shouldAutoSelectDimensionInputValue(true, false, false, false), false);
   assert.equal(shouldCommitDimensionInputOnBlur(false), true);
   assert.equal(shouldCommitDimensionInputOnBlur(true), false);
+  assert.equal(shouldCommitDimensionInputOnBlur(false, true), false);
+  assert.equal(shouldCommitDimensionInputOnChange(false), true);
+  assert.equal(shouldCommitDimensionInputOnChange(true), false);
+});
+
+test("inference guides stop rendering after a maximum screen distance", () => {
+  const state = {
+    view: {
+      scale: 1,
+      offsetX: 0,
+      offsetY: 0
+    }
+  };
+
+  assert.equal(isInferenceGuideWithinScreenDistance(
+    state,
+    { orientation: "vertical", point: { x: 0, y: 0 } },
+    { x: 0, y: 100 },
+    120
+  ), true);
+  assert.equal(isInferenceGuideWithinScreenDistance(
+    state,
+    { orientation: "vertical", point: { x: 0, y: 0 } },
+    { x: 0, y: 200 },
+    120
+  ), false);
+  assert.equal(isInferenceGuideWithinScreenDistance(
+    state,
+    { orientation: "segment", start: { x: 0, y: 0 }, point: { x: 200, y: 0 } },
+    { x: 100, y: 0 },
+    120
+  ), true);
+  assert.equal(isInferenceGuideWithinScreenDistance(
+    state,
+    { orientation: "segment", start: { x: 0, y: 0 }, point: { x: 400, y: 0 } },
+    { x: 200, y: 0 },
+    120
+  ), false);
+});
+
+test("dimension input screen position is clamped inside the canvas", () => {
+  const state = {
+    canvas: {
+      getBoundingClientRect: () => ({ width: 300, height: 200 })
+    },
+    pixelRatio: 1
+  };
+
+  assert.deepEqual(clampDimensionInputScreenPoint(state, { x: 150, y: 100 }, 50, 20), { x: 150, y: 100 });
+  assert.deepEqual(clampDimensionInputScreenPoint(state, { x: -40, y: 250 }, 50, 20), { x: 50, y: 180 });
+  assert.deepEqual(clampDimensionInputScreenPoint(state, { x: 360, y: -25 }, 50, 20), { x: 250, y: 20 });
 });
 
 function assertApproxEqual(actual, expected, tolerance = 0.000001) {

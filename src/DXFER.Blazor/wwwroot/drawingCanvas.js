@@ -11,6 +11,9 @@ const POINT_KEY_SEPARATOR = "|point|";
 const DYNAMIC_POINT_KEY_PREFIX = "__dynamic";
 const WORLD_GEOMETRY_TOLERANCE = 0.000001;
 const ORTHO_POLAR_SNAP_TOLERANCE = 6;
+const MAX_INFERENCE_GUIDE_SCREEN_DISTANCE = 360;
+const DIMENSION_INPUT_SCREEN_MARGIN_X = 52;
+const DIMENSION_INPUT_SCREEN_MARGIN_Y = 18;
 
 export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) {
   const context = canvas.getContext("2d");
@@ -432,6 +435,10 @@ function drawInferenceGuides(state, size) {
   context.setLineDash([4, 4]);
 
   for (const guide of guides) {
+    if (!isInferenceGuideWithinScreenDistance(state, guide, state.hoveredTarget.point)) {
+      continue;
+    }
+
     const point = worldToScreen(state, guide.point);
     context.beginPath();
     if (guide.orientation === "segment" && guide.start) {
@@ -450,6 +457,29 @@ function drawInferenceGuides(state, size) {
   }
 
   context.restore();
+}
+
+export function isInferenceGuideWithinScreenDistance(state, guide, targetPoint, maxDistance = MAX_INFERENCE_GUIDE_SCREEN_DISTANCE) {
+  if (!state || !guide || !targetPoint || !Number.isFinite(maxDistance)) {
+    return false;
+  }
+
+  if (guide.orientation === "segment" && guide.start && guide.point) {
+    return isWorldPointWithinScreenDistance(state, guide.start, targetPoint, maxDistance)
+      && isWorldPointWithinScreenDistance(state, guide.point, targetPoint, maxDistance);
+  }
+
+  return guide.point
+    ? isWorldPointWithinScreenDistance(state, guide.point, targetPoint, maxDistance)
+    : true;
+}
+
+function isWorldPointWithinScreenDistance(state, first, second, maxDistance = MAX_INFERENCE_GUIDE_SCREEN_DISTANCE) {
+  if (!first || !second) {
+    return false;
+  }
+
+  return distanceBetweenScreenPoints(worldToScreen(state, first), worldToScreen(state, second)) <= maxDistance;
 }
 
 function drawPointTarget(state, point, style, marker = "point") {
@@ -693,8 +723,9 @@ function updateDimensionInputs(state, dimensions) {
 
     input.dataset.dimensionKey = dimension.key;
     input.dataset.dimensionLabel = dimension.label;
-    input.style.left = `${dimension.point.x}px`;
-    input.style.top = `${dimension.point.y}px`;
+    const inputPoint = clampDimensionInputScreenPoint(state, dimension.point);
+    input.style.left = `${inputPoint.x}px`;
+    input.style.top = `${inputPoint.y}px`;
     input.classList.toggle("drawing-dimension-input-active", input.dataset.dimensionKey === state.activeDimensionKey);
   }
 
@@ -744,8 +775,27 @@ export function shouldAutoSelectDimensionInputValue(isFocused, hasLockedValue, h
   return isFocused && isActiveDimension && !hasLockedValue && !hasTransientEdit;
 }
 
-export function shouldCommitDimensionInputOnBlur(suppressDimensionInputCommit = false) {
-  return !suppressDimensionInputCommit;
+export function shouldCommitDimensionInputOnBlur(suppressDimensionInputCommit = false, skipNextBlurCommit = false) {
+  return !suppressDimensionInputCommit && !skipNextBlurCommit;
+}
+
+export function shouldCommitDimensionInputOnChange(skipNextChangeCommit = false) {
+  return !skipNextChangeCommit;
+}
+
+export function clampDimensionInputScreenPoint(
+  state,
+  point,
+  marginX = DIMENSION_INPUT_SCREEN_MARGIN_X,
+  marginY = DIMENSION_INPUT_SCREEN_MARGIN_Y) {
+  const size = getCanvasCssSize(state);
+  const maxX = Math.max(marginX, size.width - marginX);
+  const maxY = Math.max(marginY, size.height - marginY);
+
+  return {
+    x: clamp(point.x, marginX, maxX),
+    y: clamp(point.y, marginY, maxY)
+  };
 }
 
 function focusActiveDimensionInputIfNeeded(state, dimensions) {
@@ -794,7 +844,9 @@ function getOrCreateDimensionInput(state, dimension) {
   });
   input.addEventListener("focus", () => setActiveDimensionInput(state, input));
   input.addEventListener("blur", () => {
-    if (shouldCommitDimensionInputOnBlur(state.suppressDimensionInputCommit)) {
+    const skipNextBlurCommit = input.dataset.skipNextBlurCommit === "true";
+    input.dataset.skipNextBlurCommit = "false";
+    if (shouldCommitDimensionInputOnBlur(state.suppressDimensionInputCommit, skipNextBlurCommit)) {
       commitDimensionInputValue(state, input);
     }
     if (state.activeDimensionKey === input.dataset.dimensionKey) {
@@ -804,7 +856,13 @@ function getOrCreateDimensionInput(state, dimension) {
   });
   input.addEventListener("input", () => commitDimensionInputValue(state, input));
   input.addEventListener("keydown", event => handleDimensionInputKeyDown(state, input, event));
-  input.addEventListener("change", () => commitDimensionInputValue(state, input));
+  input.addEventListener("change", () => {
+    const skipNextChangeCommit = input.dataset.skipNextChangeCommit === "true";
+    input.dataset.skipNextChangeCommit = "false";
+    if (shouldCommitDimensionInputOnChange(skipNextChangeCommit)) {
+      commitDimensionInputValue(state, input);
+    }
+  });
 
   state.dimensionOverlay.appendChild(input);
   state.dimensionInputs.set(dimension.key, input);
@@ -923,11 +981,23 @@ function focusDimensionInput(state, input, selectContents) {
 }
 
 function focusCanvasWithoutDimensionCommit(state) {
+  markDimensionInputsToSkipNextBlurCommit(state);
   state.suppressDimensionInputCommit = true;
   try {
     focusCanvas(state.canvas);
   } finally {
     state.suppressDimensionInputCommit = false;
+  }
+}
+
+function markDimensionInputsToSkipNextBlurCommit(state) {
+  if (!state.dimensionInputs) {
+    return;
+  }
+
+  for (const input of state.dimensionInputs.values()) {
+    input.dataset.skipNextBlurCommit = "true";
+    input.dataset.skipNextChangeCommit = "true";
   }
 }
 
@@ -1695,33 +1765,45 @@ function addAcquiredProjectionSnapCandidates(candidates, state, worldPoint) {
   if (state.acquiredSnapPoints.length === 2) {
     const first = state.acquiredSnapPoints[0];
     const second = state.acquiredSnapPoints[1];
-    addAcquiredIntersectionCandidate(candidates, first, second);
-    addAcquiredIntersectionCandidate(candidates, second, first);
-    addAcquiredMidpointCandidate(candidates, first, second);
+    addAcquiredIntersectionCandidate(candidates, state, first, second);
+    addAcquiredIntersectionCandidate(candidates, state, second, first);
+    addAcquiredMidpointCandidate(candidates, state, first, second);
   }
 
   for (const acquired of state.acquiredSnapPoints) {
-    candidates.push({
-      label: `project-v-${acquired.label}`,
-      point: { x: acquired.point.x, y: worldPoint.y },
-      guides: [{ orientation: "vertical", point: acquired.point }],
-      priority: 2
-    });
-    candidates.push({
-      label: `project-h-${acquired.label}`,
-      point: { x: worldPoint.x, y: acquired.point.y },
-      guides: [{ orientation: "horizontal", point: acquired.point }],
-      priority: 2
-    });
+    const verticalPoint = { x: acquired.point.x, y: worldPoint.y };
+    if (isWorldPointWithinScreenDistance(state, acquired.point, verticalPoint)) {
+      candidates.push({
+        label: `project-v-${acquired.label}`,
+        point: verticalPoint,
+        guides: [{ orientation: "vertical", point: acquired.point }],
+        priority: 2
+      });
+    }
+
+    const horizontalPoint = { x: worldPoint.x, y: acquired.point.y };
+    if (isWorldPointWithinScreenDistance(state, acquired.point, horizontalPoint)) {
+      candidates.push({
+        label: `project-h-${acquired.label}`,
+        point: horizontalPoint,
+        guides: [{ orientation: "horizontal", point: acquired.point }],
+        priority: 2
+      });
+    }
   }
 }
 
-function addAcquiredMidpointCandidate(candidates, first, second) {
+function addAcquiredMidpointCandidate(candidates, state, first, second) {
   if (distanceBetweenWorldPoints(first.point, second.point) <= WORLD_GEOMETRY_TOLERANCE) {
     return;
   }
 
   const point = midpoint(first.point, second.point);
+  if (!isWorldPointWithinScreenDistance(state, first.point, point)
+    || !isWorldPointWithinScreenDistance(state, second.point, point)) {
+    return;
+  }
+
   candidates.push({
     label: `midpoint-${first.label}-${second.label}`,
     point,
@@ -1730,18 +1812,24 @@ function addAcquiredMidpointCandidate(candidates, first, second) {
   });
 }
 
-function addAcquiredIntersectionCandidate(candidates, verticalSource, horizontalSource) {
+function addAcquiredIntersectionCandidate(candidates, state, verticalSource, horizontalSource) {
   if (Math.abs(verticalSource.point.x - horizontalSource.point.x) <= WORLD_GEOMETRY_TOLERANCE
     || Math.abs(verticalSource.point.y - horizontalSource.point.y) <= WORLD_GEOMETRY_TOLERANCE) {
     return;
   }
 
+  const point = {
+    x: verticalSource.point.x,
+    y: horizontalSource.point.y
+  };
+  if (!isWorldPointWithinScreenDistance(state, verticalSource.point, point)
+    || !isWorldPointWithinScreenDistance(state, horizontalSource.point, point)) {
+    return;
+  }
+
   candidates.push({
     label: `project-${verticalSource.label}-${horizontalSource.label}`,
-    point: {
-      x: verticalSource.point.x,
-      y: horizontalSource.point.y
-    },
+    point,
     guides: [
       { orientation: "vertical", point: verticalSource.point },
       { orientation: "horizontal", point: horizontalSource.point }
@@ -1762,6 +1850,10 @@ function addHighlightedGeometryOrthoSnapCandidates(candidates, state, highlighte
   for (const acquired of state.acquiredSnapPoints) {
     const points = getEntityOrthographicSnapPoints(highlightedTarget.entity, acquired.point, highlightedTarget.snapPoint);
     for (const snap of points) {
+      if (!isWorldPointWithinScreenDistance(state, acquired.point, snap.point)) {
+        continue;
+      }
+
       candidates.push({
         label: `project-${snap.orientation}-${acquired.label}-${entityId}-${snap.index}`,
         point: snap.point,
