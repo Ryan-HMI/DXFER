@@ -622,6 +622,29 @@ function drawToolPreview(state) {
       }
       drawWorldPolyline(state, [second, third]);
     }
+  } else if (tool === "threepointarc") {
+    if (points.length === 1) {
+      drawWorldPolyline(state, [first, third]);
+    } else {
+      const arc = getThreePointArc(first, second, third);
+      if (arc) {
+        drawWorldArcPreview(state, arc);
+        addRadiusPreviewDimension(dimensions, state, arc.center, first);
+      } else {
+        drawWorldPolyline(state, [second, third]);
+      }
+    }
+  } else if (tool === "centerpointarc") {
+    if (points.length === 1) {
+      drawWorldPolyline(state, [first, second]);
+      addRadiusPreviewDimension(dimensions, state, first, second);
+    } else {
+      const arc = getCenterPointArc(first, second, third);
+      if (arc) {
+        drawWorldArcPreview(state, arc);
+        addRadiusPreviewDimension(dimensions, state, first, second);
+      }
+    }
   }
 
   context.setLineDash([]);
@@ -648,6 +671,16 @@ function drawWorldPolyline(state, points) {
     state.context.lineTo(point.x, point.y);
   }
   state.context.stroke();
+}
+
+function drawWorldArcPreview(state, arc) {
+  drawWorldPolyline(state, getArcWorldPoints({
+    kind: "arc",
+    center: arc.center,
+    radius: arc.radius,
+    startAngleDegrees: arc.startAngleDegrees,
+    endAngleDegrees: arc.endAngleDegrees
+  }));
 }
 
 function addLinearPreviewDimension(dimensions, state, key, label, first, second) {
@@ -1501,11 +1534,19 @@ function commitCurrentSketchTool(state) {
     return false;
   }
 
+  if (!isSketchToolPointSetValid(tool, points)) {
+    return false;
+  }
+
   commitSketchToolPoints(state, tool, points);
   return true;
 }
 
 function commitSketchToolPoints(state, tool, points) {
+  if (!isSketchToolPointSetValid(tool, points)) {
+    return false;
+  }
+
   state.toolDraft = tool === "line"
     ? { points: [points[1]], previewPoint: null, dimensionValues: {} }
     : createEmptyToolDraft();
@@ -1515,6 +1556,7 @@ function commitSketchToolPoints(state, tool, points) {
   state.activeDimensionKey = null;
   setHoveredTarget(state, null);
   invokeDotNet(state, "OnSketchToolCommitted", tool, flattenPointCoordinates(points));
+  return true;
 }
 
 function handlePointerCancel(state, event) {
@@ -3060,6 +3102,15 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
     nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue / 2);
   } else if (tool === "centercircle" && dimension === "radius") {
     nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
+  } else if (tool === "centerpointarc" && dimension === "radius") {
+    if (points.length === 1) {
+      nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
+    } else {
+      const radiusPoint = points[1];
+      const nextRadiusPoint = pointFromAnchorWithLength(anchor, radiusPoint, numericValue);
+      state.toolDraft.points = [anchor, nextRadiusPoint];
+      nextPreviewPoint = previewPoint;
+    }
   } else if (tool === "twopointrectangle" && (dimension === "width" || dimension === "height")) {
     const width = dimension === "width" ? numericValue : Math.abs(previewPoint.x - anchor.x);
     const height = dimension === "height" ? numericValue : Math.abs(previewPoint.y - anchor.y);
@@ -3234,6 +3285,73 @@ export function getThreePointCircle(first, second, third) {
     center,
     radius: distanceBetweenWorldPoints(center, first)
   };
+}
+
+export function getThreePointArc(first, through, end) {
+  const circle = getThreePointCircle(first, through, end);
+  if (!circle || circle.radius <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const firstAngle = getPointAngleDegrees(circle.center, first);
+  const throughAngle = getPointAngleDegrees(circle.center, through);
+  const endAngle = getPointAngleDegrees(circle.center, end);
+  const throughDelta = getCounterClockwiseDeltaDegrees(firstAngle, throughAngle);
+  const endDelta = getCounterClockwiseDeltaDegrees(firstAngle, endAngle);
+
+  if (throughDelta <= endDelta + WORLD_GEOMETRY_TOLERANCE) {
+    return {
+      center: circle.center,
+      radius: circle.radius,
+      startAngleDegrees: firstAngle,
+      endAngleDegrees: firstAngle + endDelta
+    };
+  }
+
+  return {
+    center: circle.center,
+    radius: circle.radius,
+    startAngleDegrees: endAngle,
+    endAngleDegrees: endAngle + getCounterClockwiseDeltaDegrees(endAngle, firstAngle)
+  };
+}
+
+export function getCenterPointArc(center, startRadiusPoint, endAnglePoint) {
+  const radius = distanceBetweenWorldPoints(center, startRadiusPoint);
+  if (radius <= WORLD_GEOMETRY_TOLERANCE
+    || distanceBetweenWorldPoints(center, endAnglePoint) <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const startAngle = getPointAngleDegrees(center, startRadiusPoint);
+  const endAngle = getPointAngleDegrees(center, endAnglePoint);
+  return {
+    center,
+    radius,
+    startAngleDegrees: startAngle,
+    endAngleDegrees: startAngle + getCounterClockwiseDeltaDegrees(startAngle, endAngle)
+  };
+}
+
+function getPointAngleDegrees(center, point) {
+  const angle = radiansToDegrees(Math.atan2(point.y - center.y, point.x - center.x));
+  return angle < 0 ? angle + FULL_CIRCLE_DEGREES : angle;
+}
+
+function isSketchToolPointSetValid(tool, points) {
+  if (!points || points.length < getSketchToolPointCount(tool)) {
+    return false;
+  }
+
+  if (tool === "threepointarc") {
+    return getThreePointArc(points[0], points[1], points[2]) !== null;
+  }
+
+  if (tool === "centerpointarc") {
+    return getCenterPointArc(points[0], points[1], points[2]) !== null;
+  }
+
+  return true;
 }
 
 function clearSelectedTargets(state) {
@@ -3552,6 +3670,10 @@ function getSketchCreationTool(state) {
       return "centercircle";
     case "threepointcircle":
       return "threepointcircle";
+    case "threepointarc":
+      return "threepointarc";
+    case "centerpointarc":
+      return "centerpointarc";
     default:
       return null;
   }
@@ -3561,6 +3683,8 @@ function getSketchToolPointCount(tool) {
   switch (tool) {
     case "alignedrectangle":
     case "threepointcircle":
+    case "threepointarc":
+    case "centerpointarc":
       return 3;
     default:
       return 2;
