@@ -23,8 +23,10 @@
                            Label="Collapse tool palette"
                            OnClick="ToggleToolPanel" />
         </div>
-        <section class="dxfer-tool-section">
-            <div class="dxfer-section-title">File</div>
+        <details class="dxfer-tool-section dxfer-tool-section-collapsible" open>
+            <summary class="dxfer-tool-section-summary">
+                <span class="dxfer-section-title">File</span>
+            </summary>
             <div class="dxfer-command-strip" role="toolbar" aria-label="File tools">
                 <label class="dxfer-file-picker" title="Open DXF or DWG" aria-label="Open DXF or DWG">
                     <CadIcon Name="@CadIconName.FolderOpen" />
@@ -41,12 +43,14 @@
                                Disabled="@(!HasDocument)"
                                OnClick="@(() => InvokeWorkbenchCommand(WorkbenchCommandId.ExportDxfText))" />
             </div>
-        </section>
+        </details>
 
         <WorkbenchToolPalette Groups="@ToolGroups" OnCommandInvoked="InvokeWorkbenchCommand" />
 
-        <section class="dxfer-tool-section">
-            <div class="dxfer-section-title">Grain</div>
+        <details class="dxfer-tool-section dxfer-tool-section-collapsible" open>
+            <summary class="dxfer-tool-section-summary">
+                <span class="dxfer-section-title">Grain</span>
+            </summary>
             <label class="dxfer-radio">
                 <input type="radio" name="grain-direction" checked="@(_grainDirection == GrainDirection.None)" @onchange="() => SetGrainDirection(GrainDirection.None)" />
                 <span>No grain</span>
@@ -59,7 +63,7 @@
                 <input type="radio" name="grain-direction" checked="@(_grainDirection == GrainDirection.GlobalY)" @onchange="() => SetGrainDirection(GrainDirection.GlobalY)" />
                 <span>Global Y</span>
             </label>
-        </section>
+        </details>
 
         @if (IsParametricCommandActive)
         {

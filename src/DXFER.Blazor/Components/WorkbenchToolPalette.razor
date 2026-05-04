@@ -2,8 +2,10 @@
 
 @foreach (var group in Groups)
 {
-    <section class="dxfer-tool-section">
-        <div class="dxfer-section-title">@group.Name</div>
+    <details class="dxfer-tool-section dxfer-tool-section-collapsible" open>
+        <summary class="dxfer-tool-section-summary">
+            <span class="dxfer-section-title">@group.Name</span>
+        </summary>
         <div class="dxfer-command-strip" role="toolbar" aria-label="@($"{group.Name} tools")">
             @foreach (var command in group.Commands)
             {
@@ -16,7 +18,7 @@
                                OnClick="@(() => OnCommandInvoked.InvokeAsync(command.Id))" />
             }
         </div>
-    </section>
+    </details>
 }
 
 @code {

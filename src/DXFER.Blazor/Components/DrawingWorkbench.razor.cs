@@ -12,7 +12,7 @@ using Microsoft.AspNetCore.Components.Web;
 
 namespace DXFER.Blazor.Components;
 
-public partial class DrawingWorkbench
+public partial class DrawingWorkbench : IDisposable
 {
     private const long MaxDxfFileSize = 25 * 1024 * 1024;
     private const string SegmentKeySeparator = "|segment|";
@@ -45,6 +45,19 @@ public partial class DrawingWorkbench
     private readonly HashSet<string> _selectedEntityIds = new(StringComparer.Ordinal);
     private readonly Stack<DrawingDocument> _undoStack = new();
     private readonly Stack<DrawingDocument> _redoStack = new();
+
+    [Inject]
+    private WorkbenchMenuCommandService MenuCommandService { get; set; } = default!;
+
+    protected override void OnInitialized()
+    {
+        MenuCommandService.CommandRequested += InvokeWorkbenchCommand;
+    }
+
+    public void Dispose()
+    {
+        MenuCommandService.CommandRequested -= InvokeWorkbenchCommand;
+    }
 
     private bool HasDocument => _document.Entities.Count > 0;
 

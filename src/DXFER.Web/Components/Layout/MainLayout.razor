@@ -1,4 +1,6 @@
 @inherits LayoutComponentBase
+@using DXFER.Blazor.Components
+@inject WorkbenchMenuCommandService MenuCommands
 
 <div class="page">
     <header class="app-header">
@@ -9,22 +11,77 @@
                 <span class="app-menu-bar" aria-hidden="true"></span>
             </summary>
             <nav class="app-menu-panel" aria-label="Application menu">
-                <section class="app-menu-section" aria-labelledby="app-menu-file">
-                    <div id="app-menu-file" class="app-menu-section-title">File</div>
-                    <div class="app-menu-section-items">New, Open, Export</div>
-                </section>
-                <section class="app-menu-section" aria-labelledby="app-menu-edit">
-                    <div id="app-menu-edit" class="app-menu-section-title">Edit</div>
-                    <div class="app-menu-section-items">Undo, Redo, Delete</div>
-                </section>
-                <section class="app-menu-section" aria-labelledby="app-menu-view">
-                    <div id="app-menu-view" class="app-menu-section-title">View</div>
-                    <div class="app-menu-section-items">Fit, Zoom, Panels</div>
-                </section>
-                <section class="app-menu-section" aria-labelledby="app-menu-settings">
-                    <div id="app-menu-settings" class="app-menu-section-title">Settings</div>
-                    <div class="app-menu-section-items">Units, Theme, Preferences</div>
-                </section>
+                <div class="app-menu-group">
+                    <button type="button" class="app-menu-item app-menu-parent">
+                        <span>File</span>
+                        <span class="app-menu-arrow" aria-hidden="true">></span>
+                    </button>
+                    <div class="app-submenu" role="menu">
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.LoadSample)">New sample</button>
+                        <button type="button" class="app-menu-command" disabled>Open DXF/DWG...</button>
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.ExportDxfText)">Export DXF text</button>
+                    </div>
+                </div>
+                <div class="app-menu-group">
+                    <button type="button" class="app-menu-item app-menu-parent">
+                        <span>Edit</span>
+                        <span class="app-menu-arrow" aria-hidden="true">></span>
+                    </button>
+                    <div class="app-submenu" role="menu">
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.Undo)">Undo</button>
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.Redo)">Redo</button>
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.DeleteSelection)">Delete selection</button>
+                    </div>
+                </div>
+                <div class="app-menu-group">
+                    <button type="button" class="app-menu-item app-menu-parent">
+                        <span>View</span>
+                        <span class="app-menu-arrow" aria-hidden="true">></span>
+                    </button>
+                    <div class="app-submenu" role="menu">
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.FitExtents)">Fit extents</button>
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.OriginAxes)">Toggle origin axes</button>
+                        <button type="button" class="app-menu-command" disabled>Panels</button>
+                    </div>
+                </div>
+                <div class="app-menu-group">
+                    <button type="button" class="app-menu-item app-menu-parent">
+                        <span>Sketch</span>
+                        <span class="app-menu-arrow" aria-hidden="true">></span>
+                    </button>
+                    <div class="app-submenu" role="menu">
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.Line)">Line</button>
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.MidpointLine)">Midpoint line</button>
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.TwoPointRectangle)">Corner rectangle</button>
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.CenterCircle)">Center circle</button>
+                    </div>
+                </div>
+                <div class="app-menu-group">
+                    <button type="button" class="app-menu-item app-menu-parent">
+                        <span>Transform</span>
+                        <span class="app-menu-arrow" aria-hidden="true">></span>
+                    </button>
+                    <div class="app-submenu" role="menu">
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.Rotate90Clockwise)">Rotate 90 CW</button>
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.Rotate90CounterClockwise)">Rotate 90 CCW</button>
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.BoundsToOrigin)">Bounds to origin</button>
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.PointToOrigin)">Point to origin</button>
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.VectorToX)">Vector to X</button>
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.VectorToY)">Vector to Y</button>
+                    </div>
+                </div>
+                <div class="app-menu-separator"></div>
+                <div class="app-menu-group">
+                    <button type="button" class="app-menu-item app-menu-parent">
+                        <span>Settings</span>
+                        <span class="app-menu-arrow" aria-hidden="true">></span>
+                    </button>
+                    <div class="app-submenu" role="menu">
+                        <button type="button" class="app-menu-command" disabled>Units: document</button>
+                        <button type="button" class="app-menu-command" disabled>Polar snap: 45 deg</button>
+                        <button type="button" class="app-menu-command" disabled>Theme: dark</button>
+                    </div>
+                </div>
             </nav>
         </details>
         <div class="app-brand">
@@ -45,3 +102,8 @@
     <a href="" class="reload">Reload</a>
     <a class="dismiss">x</a>
 </div>
+
+@code {
+    private Task InvokeMenuCommand(WorkbenchCommandId commandId) =>
+        MenuCommands.InvokeAsync(commandId);
+}

@@ -143,6 +143,41 @@
     border-bottom: 1px solid #2d343b;
 }
 
+.dxfer-tool-section-collapsible {
+    display: block;
+}
+
+.dxfer-tool-section-summary {
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    gap: 0.4rem;
+    list-style: none;
+    min-height: 1.25rem;
+}
+
+.dxfer-tool-section-summary::-webkit-details-marker {
+    display: none;
+}
+
+.dxfer-tool-section-summary::before {
+    color: #91a4b0;
+    content: ">";
+    font-size: 0.74rem;
+    line-height: 1;
+    transform: rotate(0deg);
+    transition: transform 120ms ease;
+}
+
+.dxfer-tool-section-collapsible[open] > .dxfer-tool-section-summary::before {
+    transform: rotate(90deg);
+}
+
+.dxfer-tool-section-summary:hover .dxfer-section-title,
+.dxfer-tool-section-summary:focus-visible .dxfer-section-title {
+    color: #ffffff;
+}
+
 .dxfer-section-title {
     color: #f2f5f7;
     font-size: 0.78rem;
@@ -156,6 +191,7 @@
     flex-wrap: wrap;
     gap: 0.45rem;
     align-items: center;
+    margin-top: 0.58rem;
 }
 
 .dxfer-file-picker {

@@ -78,38 +78,78 @@ html, body {
     border-radius: 6px;
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.34);
     display: grid;
-    gap: 6px;
+    gap: 2px;
     left: 0;
-    padding: 8px;
+    padding: 5px;
     position: absolute;
     top: calc(100% + 8px);
-    width: 218px;
+    width: 184px;
     z-index: 50;
 }
 
-.app-menu-section {
-    border-bottom: 1px solid #2d3841;
+.app-menu-group {
+    position: relative;
+}
+
+.app-menu-item,
+.app-menu-command {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    color: #dce7ed;
+    display: flex;
+    font: 0.78rem/1.2 "Segoe UI", system-ui, sans-serif;
+    gap: 0.6rem;
+    height: 1.7rem;
+    justify-content: space-between;
+    padding: 0 0.55rem;
+    text-align: left;
+    width: 100%;
+}
+
+.app-menu-item:hover,
+.app-menu-item:focus-visible,
+.app-menu-command:hover:not(:disabled),
+.app-menu-command:focus-visible:not(:disabled),
+.app-menu-group:hover > .app-menu-item,
+.app-menu-group:focus-within > .app-menu-item {
+    background: #2b3741;
+    color: #f8fbfd;
+    outline: none;
+}
+
+.app-menu-command:disabled {
+    color: #657581;
+}
+
+.app-menu-arrow {
+    color: #8da0ad;
+    font-size: 0.75rem;
+}
+
+.app-submenu {
+    background: #1b232a;
+    border: 1px solid #35434e;
+    border-radius: 6px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.34);
+    display: none;
+    left: calc(100% - 2px);
+    min-width: 190px;
+    padding: 5px;
+    position: absolute;
+    top: -5px;
+}
+
+.app-menu-group:hover > .app-submenu,
+.app-menu-group:focus-within > .app-submenu {
     display: grid;
     gap: 2px;
-    padding: 0 0 6px;
 }
 
-.app-menu-section:last-child {
-    border-bottom: 0;
-    padding-bottom: 0;
-}
-
-.app-menu-section-title {
-    color: #f2f6f8;
-    font-size: 0.76rem;
-    font-weight: 700;
-    line-height: 1.2;
-}
-
-.app-menu-section-items {
-    color: #93a4b0;
-    font-size: 0.72rem;
-    line-height: 1.25;
+.app-menu-separator {
+    border-top: 1px solid #2d3841;
+    margin: 4px 2px;
 }
 
 .app-brand {
@@ -227,9 +267,9 @@ button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.45rem;
+    width: 2.15rem;
     height: 2.15rem;
-    padding: 0 0.6rem;
+    padding: 0;
     color: #edf3f7;
     background: #26323b;
     border: 1px solid #46545f;

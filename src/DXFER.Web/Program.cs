@@ -1,3 +1,4 @@
+using DXFER.Blazor.Components;
 using DXFER.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -8,6 +9,7 @@ builder.Services.AddRazorComponents()
     {
         options.DetailedErrors = builder.Environment.IsDevelopment();
     });
+builder.Services.AddScoped<WorkbenchMenuCommandService>();
 
 var app = builder.Build();
 
