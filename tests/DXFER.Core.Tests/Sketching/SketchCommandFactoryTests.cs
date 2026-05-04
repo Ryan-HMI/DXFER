@@ -32,6 +32,26 @@ public sealed class SketchCommandFactoryTests
     }
 
     [Fact]
+    public void BuildsDimensionWithExplicitAnchor()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(3, 4))
+        });
+
+        var result = SketchCommandFactory.TryBuildDimension(
+            document,
+            new[] { "edge" },
+            "dim-1",
+            out var dimension,
+            out _,
+            anchorOverride: new Point2(8, 9));
+
+        result.Should().BeTrue();
+        dimension.Anchor.Should().Be(new Point2(8, 9));
+    }
+
+    [Fact]
     public void BuildsPointToLineDimensionFromPointAndLine()
     {
         var document = new DrawingDocument(new DrawingEntity[]
@@ -55,7 +75,7 @@ public sealed class SketchCommandFactoryTests
     }
 
     [Fact]
-    public void BuildsRadiusDimensionFromCircle()
+    public void BuildsDiameterDimensionFromCircle()
     {
         var document = new DrawingDocument(new DrawingEntity[]
         {
@@ -70,10 +90,52 @@ public sealed class SketchCommandFactoryTests
             out _);
 
         result.Should().BeTrue();
-        dimension.Kind.Should().Be(SketchDimensionKind.Radius);
+        dimension.Kind.Should().Be(SketchDimensionKind.Diameter);
         dimension.ReferenceKeys.Should().Equal("hole");
-        dimension.Value.Should().Be(4);
+        dimension.Value.Should().Be(8);
         dimension.Anchor.Should().Be(new Point2(14, 20));
+    }
+
+    [Fact]
+    public void BuildsRadiusDimensionFromArcByDefault()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new ArcEntity(EntityId.Create("arc"), new Point2(10, 20), 4, 0, 90)
+        });
+
+        var result = SketchCommandFactory.TryBuildDimension(
+            document,
+            new[] { "arc" },
+            "dim-1",
+            out var dimension,
+            out _);
+
+        result.Should().BeTrue();
+        dimension.Kind.Should().Be(SketchDimensionKind.Radius);
+        dimension.ReferenceKeys.Should().Equal("arc");
+        dimension.Value.Should().Be(4);
+    }
+
+    [Fact]
+    public void BuildsDiameterDimensionFromArcWhenRequested()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new ArcEntity(EntityId.Create("arc"), new Point2(10, 20), 4, 0, 90)
+        });
+
+        var result = SketchCommandFactory.TryBuildDimension(
+            document,
+            new[] { "arc" },
+            "dim-1",
+            out var dimension,
+            out _,
+            radialDiameter: true);
+
+        result.Should().BeTrue();
+        dimension.Kind.Should().Be(SketchDimensionKind.Diameter);
+        dimension.Value.Should().Be(8);
     }
 
     [Fact]

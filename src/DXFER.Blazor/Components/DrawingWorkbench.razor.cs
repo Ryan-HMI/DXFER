@@ -181,14 +181,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         {
             Command(WorkbenchCommandId.Measure, WorkbenchTool.Measure, CadIconName.Measure, "Measure"),
             Command(WorkbenchCommandId.FitExtents, null, CadIconName.Fit, "Fit extents", !HasDocument),
-            Command(WorkbenchCommandId.OriginAxes, null, CadIconName.OriginAxes, "Origin axes", pressed: _showOriginAxes)
+            Command(WorkbenchCommandId.OriginAxes, null, CadIconName.OriginAxes, "Origin axes", pressed: _showOriginAxes),
+            Command(WorkbenchCommandId.ToolHotkeys, null, CadIconName.Hotkeys, "Tool hotkeys")
         }),
         new WorkbenchToolGroup("Sketch", new[]
         {
             Command(WorkbenchCommandId.Line, WorkbenchTool.Line, CadIconName.Line, "Line"),
             Command(WorkbenchCommandId.MidpointLine, WorkbenchTool.MidpointLine, CadIconName.MidpointLine, "Midpoint line"),
             Command(WorkbenchCommandId.TwoPointRectangle, WorkbenchTool.TwoPointRectangle, CadIconName.Rectangle, "Two-point rectangle"),
-            Command(WorkbenchCommandId.CenterRectangle, WorkbenchTool.CenterRectangle, CadIconName.CenterRectangle, "Center rectangle", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.CenterRectangle, WorkbenchTool.CenterRectangle, CadIconName.CenterRectangle, "Center rectangle"),
             Command(WorkbenchCommandId.AlignedRectangle, WorkbenchTool.AlignedRectangle, CadIconName.AlignedRectangle, "Aligned rectangle"),
             Command(WorkbenchCommandId.CenterCircle, WorkbenchTool.CenterCircle, CadIconName.Circle, "Center circle"),
             Command(WorkbenchCommandId.ThreePointCircle, WorkbenchTool.ThreePointCircle, CadIconName.ThreePointCircle, "Three-point circle"),
@@ -224,7 +225,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.Offset, WorkbenchTool.Offset, CadIconName.Offset, "Offset", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Fillet, WorkbenchTool.Fillet, CadIconName.Fillet, "Fillet", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Chamfer, WorkbenchTool.Chamfer, CadIconName.Chamfer, "Chamfer", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Dimension, null, CadIconName.Dimension, "Dimension", !CanCreateSketchDimension)
+            Command(WorkbenchCommandId.Dimension, WorkbenchTool.Dimension, CadIconName.Dimension, "Dimension")
         }),
         new WorkbenchToolGroup("Transform", new[]
         {
@@ -311,6 +312,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.PowerTrim => "Power trim/extend",
         WorkbenchTool.ThreePointArc => "Three-point arc",
         WorkbenchTool.SplitAtPoint => "Split at point",
+        WorkbenchTool.Dimension => "Dimension",
         WorkbenchTool.LinearPattern => "Linear pattern",
         WorkbenchTool.CircularPattern => "Circular pattern",
         _ => _activeTool?.ToString() ?? "Selection"
@@ -326,6 +328,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.Line => "Line: click start point, then end point. Shift: polar snap. Double-click: start a fresh line. Esc: cancel.",
         WorkbenchTool.MidpointLine => "Midpoint line: click midpoint, then endpoint. Shift: polar snap. Esc: cancel.",
         WorkbenchTool.TwoPointRectangle => "Corner rectangle: click first corner, then opposite corner. Shift: polar snap. Esc: cancel.",
+        WorkbenchTool.CenterRectangle => "Center rectangle: click center, then corner. Shift: polar snap. Esc: cancel.",
         WorkbenchTool.AlignedRectangle => "Aligned rectangle: click baseline start, baseline end, then depth. Esc: cancel.",
         WorkbenchTool.CenterCircle => "Center circle: click center, then radius point. Shift: polar snap. Esc: cancel.",
         WorkbenchTool.ThreePointCircle => "Three-point circle: click three points on the circumference. Esc: cancel.",
@@ -334,6 +337,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.CenterPointArc => "Center point arc: click center, start radius point, then end angle point. Esc: cancel.",
         WorkbenchTool.Point => "Point: click to place a persistent sketch point. Esc: cancel.",
         WorkbenchTool.SplitAtPoint => "Split at point: click a line, or select one line and one point before invoking. Esc: cancel.",
+        WorkbenchTool.Dimension => "Dimension: click geometry or points, move to place, then click to set. Shift: diameter for arcs. Esc: cancel.",
         not null => $"{ActiveToolLabel}: follow canvas prompts. Esc: cancel.",
         null => _constructionMode
             ? "Selection: construction creation is enabled. Click Construction to disable, or select whole geometry and click it to convert. Box select adds; Ctrl-box deselects."
@@ -467,8 +471,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
                 break;
             case WorkbenchCommandId.Dimension:
-                await SyncSelectionFromCanvasAsync();
-                AddSketchDimension();
+                ActivateTool(
+                    WorkbenchTool.Dimension,
+                    "Dimension active. Click geometry or points, move to place, then click to set. Shift: diameter for arcs. Esc to cancel.");
                 break;
             case WorkbenchCommandId.Coincident:
                 await SyncSelectionFromCanvasAsync();
@@ -526,6 +531,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 break;
             case WorkbenchCommandId.Rotate90CounterClockwise:
                 RotateDocumentAboutBoundsCenter(90, "Rotated drawing 90 degrees counterclockwise.");
+                break;
+            case WorkbenchCommandId.ToolHotkeys:
+                MenuCommandService.OpenHotkeyOptions();
                 break;
             default:
                 if (TryGetImplementedSketchTool(commandId, out var tool))
@@ -739,6 +747,31 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         ApplyDocumentChange(SketchDimensionSolverService.ApplyDimension(_document, dimension), status);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnSketchDimensionPlacementRequested(
+        IReadOnlyList<string> selectionKeys,
+        CanvasPointDto anchor,
+        bool radialDiameter)
+    {
+        if (!SketchCommandFactory.TryBuildDimension(
+                _document,
+                selectionKeys,
+                CreateDimensionId(),
+                out var dimension,
+                out var status,
+                anchorOverride: ToPoint(anchor),
+                radialDiameter: radialDiameter))
+        {
+            _status = status;
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        ApplyDocumentChange(SketchDimensionSolverService.ApplyDimension(_document, dimension), status);
+        _activeTool = null;
+        ResetSelection();
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -1444,6 +1477,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 yield return new LineEntity(CreateEntityId("rect"), second, oppositeB, isConstruction);
                 yield return new LineEntity(CreateEntityId("rect"), oppositeB, first, isConstruction);
                 break;
+            case "centerrectangle":
+                var centerCorners = SketchRectangleGeometry.GetCenterRectangleCorners(first, second);
+                yield return new LineEntity(CreateEntityId("rect"), centerCorners[0], centerCorners[1], isConstruction);
+                yield return new LineEntity(CreateEntityId("rect"), centerCorners[1], centerCorners[2], isConstruction);
+                yield return new LineEntity(CreateEntityId("rect"), centerCorners[2], centerCorners[3], isConstruction);
+                yield return new LineEntity(CreateEntityId("rect"), centerCorners[3], centerCorners[0], isConstruction);
+                break;
             case "alignedrectangle" when points.Count >= 3:
                 var corners = GetAlignedRectangleCorners(first, second, points[2]);
                 if (corners is not null)
@@ -1564,6 +1604,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         id is WorkbenchCommandId.Line
             or WorkbenchCommandId.MidpointLine
             or WorkbenchCommandId.TwoPointRectangle
+            or WorkbenchCommandId.CenterRectangle
             or WorkbenchCommandId.CenterCircle
             or WorkbenchCommandId.ThreePointArc
             or WorkbenchCommandId.TangentArc
@@ -1686,6 +1727,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchCommandId.TwoPointRectangle:
                 tool = WorkbenchTool.TwoPointRectangle;
                 return true;
+            case WorkbenchCommandId.CenterRectangle:
+                tool = WorkbenchTool.CenterRectangle;
+                return true;
             case WorkbenchCommandId.AlignedRectangle:
                 tool = WorkbenchTool.AlignedRectangle;
                 return true;
@@ -1715,6 +1759,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private static string GetToolPrompt(WorkbenchTool tool) => tool switch
     {
+        WorkbenchTool.CenterRectangle => "Pick center, then corner.",
         WorkbenchTool.AlignedRectangle => "Pick baseline start, baseline end, then depth.",
         WorkbenchTool.ThreePointCircle => "Pick three points on the circle.",
         WorkbenchTool.ThreePointArc => "Pick start point, through point, then end point.",
@@ -1754,6 +1799,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchCommandId.CircularPattern => "Circular pattern",
         WorkbenchCommandId.Rotate90Clockwise => "Rotate 90 CW",
         WorkbenchCommandId.Rotate90CounterClockwise => "Rotate 90 CCW",
+        WorkbenchCommandId.ToolHotkeys => "Tool hotkeys",
         _ => commandId.ToString()
     };
 
@@ -1761,6 +1807,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         "midpointline" => "Midpoint line",
         "twopointrectangle" => "Two-point rectangle",
+        "centerrectangle" => "Center rectangle",
         "alignedrectangle" => "Aligned rectangle",
         "centercircle" => "Center circle",
         "threepointcircle" => "Three-point circle",

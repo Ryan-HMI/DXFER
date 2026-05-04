@@ -12,10 +12,38 @@ public static class ToolHotkeyResolver
     public static IReadOnlyList<WorkbenchCommandId> ToolCommandIds { get; } = new[]
     {
         WorkbenchCommandId.Measure,
+        WorkbenchCommandId.FitExtents,
+        WorkbenchCommandId.OriginAxes,
         WorkbenchCommandId.Line,
         WorkbenchCommandId.MidpointLine,
         WorkbenchCommandId.TwoPointRectangle,
-        WorkbenchCommandId.CenterCircle
+        WorkbenchCommandId.CenterRectangle,
+        WorkbenchCommandId.AlignedRectangle,
+        WorkbenchCommandId.CenterCircle,
+        WorkbenchCommandId.ThreePointCircle,
+        WorkbenchCommandId.ThreePointArc,
+        WorkbenchCommandId.TangentArc,
+        WorkbenchCommandId.CenterPointArc,
+        WorkbenchCommandId.Point,
+        WorkbenchCommandId.Construction,
+        WorkbenchCommandId.DeleteSelection,
+        WorkbenchCommandId.SplitAtPoint,
+        WorkbenchCommandId.Dimension,
+        WorkbenchCommandId.Rotate90Clockwise,
+        WorkbenchCommandId.Rotate90CounterClockwise,
+        WorkbenchCommandId.BoundsToOrigin,
+        WorkbenchCommandId.PointToOrigin,
+        WorkbenchCommandId.VectorToX,
+        WorkbenchCommandId.VectorToY,
+        WorkbenchCommandId.Coincident,
+        WorkbenchCommandId.Concentric,
+        WorkbenchCommandId.Parallel,
+        WorkbenchCommandId.Horizontal,
+        WorkbenchCommandId.Vertical,
+        WorkbenchCommandId.Perpendicular,
+        WorkbenchCommandId.Equal,
+        WorkbenchCommandId.Midpoint,
+        WorkbenchCommandId.Fix
     };
 
     public static IReadOnlyList<ToolHotkeyBinding> GetDefaultBindings() => new[]
@@ -138,9 +166,25 @@ public static class ToolHotkeyResolver
 
     public static string FormatCommandName(WorkbenchCommandId commandId) => commandId switch
     {
+        WorkbenchCommandId.FitExtents => "Fit extents",
+        WorkbenchCommandId.OriginAxes => "Origin axes",
         WorkbenchCommandId.MidpointLine => "Midpoint line",
         WorkbenchCommandId.TwoPointRectangle => "Two-point rectangle",
+        WorkbenchCommandId.CenterRectangle => "Center rectangle",
+        WorkbenchCommandId.AlignedRectangle => "Aligned rectangle",
         WorkbenchCommandId.CenterCircle => "Center circle",
+        WorkbenchCommandId.ThreePointCircle => "Three-point circle",
+        WorkbenchCommandId.ThreePointArc => "Three-point arc",
+        WorkbenchCommandId.TangentArc => "Tangent arc",
+        WorkbenchCommandId.CenterPointArc => "Center point arc",
+        WorkbenchCommandId.DeleteSelection => "Delete selected geometry",
+        WorkbenchCommandId.SplitAtPoint => "Split at point",
+        WorkbenchCommandId.Rotate90Clockwise => "Rotate 90 CW",
+        WorkbenchCommandId.Rotate90CounterClockwise => "Rotate 90 CCW",
+        WorkbenchCommandId.BoundsToOrigin => "Bounds to origin",
+        WorkbenchCommandId.PointToOrigin => "Point to origin",
+        WorkbenchCommandId.VectorToX => "Vector to X",
+        WorkbenchCommandId.VectorToY => "Vector to Y",
         _ => commandId.ToString()
     };
 

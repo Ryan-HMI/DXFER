@@ -64,5 +64,6 @@ public enum WorkbenchCommandId
     PointToOrigin,
     OriginAxes,
     VectorToX,
-    VectorToY
+    VectorToY,
+    ToolHotkeys
 }

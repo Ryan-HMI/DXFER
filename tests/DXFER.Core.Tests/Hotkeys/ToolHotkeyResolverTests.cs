@@ -5,6 +5,42 @@ namespace DXFER.Core.Tests.Hotkeys;
 
 public sealed class ToolHotkeyResolverTests
 {
+    [Fact]
+    public void ExposesImplementedWorkbenchToolsForHotkeyEditing()
+    {
+        ToolHotkeyResolver.ToolCommandIds.Should().ContainInOrder(
+            WorkbenchCommandId.Measure,
+            WorkbenchCommandId.Line,
+            WorkbenchCommandId.MidpointLine,
+            WorkbenchCommandId.TwoPointRectangle,
+            WorkbenchCommandId.CenterRectangle,
+            WorkbenchCommandId.AlignedRectangle,
+            WorkbenchCommandId.CenterCircle,
+            WorkbenchCommandId.ThreePointCircle,
+            WorkbenchCommandId.ThreePointArc,
+            WorkbenchCommandId.TangentArc,
+            WorkbenchCommandId.CenterPointArc,
+            WorkbenchCommandId.Point,
+            WorkbenchCommandId.Construction,
+            WorkbenchCommandId.SplitAtPoint,
+            WorkbenchCommandId.Dimension);
+    }
+
+    [Theory]
+    [InlineData(WorkbenchCommandId.AlignedRectangle, "Aligned rectangle")]
+    [InlineData(WorkbenchCommandId.CenterRectangle, "Center rectangle")]
+    [InlineData(WorkbenchCommandId.ThreePointCircle, "Three-point circle")]
+    [InlineData(WorkbenchCommandId.ThreePointArc, "Three-point arc")]
+    [InlineData(WorkbenchCommandId.TangentArc, "Tangent arc")]
+    [InlineData(WorkbenchCommandId.CenterPointArc, "Center point arc")]
+    [InlineData(WorkbenchCommandId.SplitAtPoint, "Split at point")]
+    public void FormatsImplementedToolNamesForHotkeyEditing(
+        WorkbenchCommandId commandId,
+        string expectedName)
+    {
+        ToolHotkeyResolver.FormatCommandName(commandId).Should().Be(expectedName);
+    }
+
     [Theory]
     [InlineData("M", WorkbenchCommandId.MidpointLine)]
     [InlineData("r", WorkbenchCommandId.TwoPointRectangle)]

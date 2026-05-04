@@ -5,6 +5,7 @@ public enum CadIconName
     FolderOpen,
     Sample,
     Export,
+    Hotkeys,
     CollapseLeft,
     CollapseRight,
     Measure,

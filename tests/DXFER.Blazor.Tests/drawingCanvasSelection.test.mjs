@@ -5,13 +5,17 @@ import {
   applyLockedDraftDimensions,
   applyDirectSelectionClick,
   applyPolarSnapIfRequested,
+  clearTransientDimensionInputs,
   clampDimensionInputScreenPoint,
   getAlignedRectangleCorners,
+  getCenterRectangleCorners,
   getConstraintGlyphText,
   getDefaultActiveDimensionKey,
   getDynamicSketchSnapHit,
   getCenterPointArc,
+  getDimensionPlacementRequest,
   getPersistentDimensionDescriptors,
+  getRadialDimensionPreference,
   getSketchToolPointCount,
   getTangentArc,
   getNextDimensionKey,
@@ -186,6 +190,20 @@ test("aligned rectangle corners project depth perpendicular to baseline", () => 
   ]);
 });
 
+test("center rectangle corners mirror the corner across center", () => {
+  const corners = getCenterRectangleCorners(
+    { x: 10, y: 10 },
+    { x: 13, y: 14 }
+  );
+
+  assert.deepEqual(corners, [
+    { x: 7, y: 6 },
+    { x: 13, y: 6 },
+    { x: 13, y: 14 },
+    { x: 7, y: 14 }
+  ]);
+});
+
 test("three point circle returns circumcenter and radius", () => {
   const circle = getThreePointCircle(
     { x: 0, y: 1 },
@@ -252,6 +270,31 @@ test("center point arc uses start radius and end angle", () => {
   assertApproxEqual(arc.center.x, 0);
   assertApproxEqual(arc.center.y, 0);
   assertApproxEqual(arc.radius, 2);
+  assertApproxEqual(arc.startAngleDegrees, 0);
+  assertApproxEqual(arc.endAngleDegrees, 90);
+});
+
+test("center point arc chooses clockwise shortest visual sweep", () => {
+  const arc = getCenterPointArc(
+    { x: 0, y: 0 },
+    { x: 2, y: 0 },
+    { x: 0, y: -5 }
+  );
+
+  assertApproxEqual(arc.center.x, 0);
+  assertApproxEqual(arc.center.y, 0);
+  assertApproxEqual(arc.radius, 2);
+  assertApproxEqual(arc.startAngleDegrees, 270);
+  assertApproxEqual(arc.endAngleDegrees, 360);
+});
+
+test("center point arc uses clockwise shortest visual sweep past zero", () => {
+  const arc = getCenterPointArc(
+    { x: 0, y: 0 },
+    { x: 0, y: 2 },
+    { x: 5, y: 0 }
+  );
+
   assertApproxEqual(arc.startAngleDegrees, 0);
   assertApproxEqual(arc.endAngleDegrees, 90);
 });
@@ -468,6 +511,60 @@ test("dimension input screen position is clamped inside the canvas", () => {
   assert.deepEqual(clampDimensionInputScreenPoint(state, { x: 360, y: -25 }, 50, 20), { x: 250, y: 20 });
 });
 
+test("transient dimension cleanup removes live draft inputs", () => {
+  const removed = [];
+  const lengthInput = {
+    dataset: {},
+    remove: () => removed.push("length")
+  };
+  const heightInput = {
+    dataset: {},
+    remove: () => removed.push("height")
+  };
+  const state = {
+    activeDimensionKey: "length",
+    dimensionInputs: new Map([
+      ["length", lengthInput],
+      ["height", heightInput]
+    ])
+  };
+
+  clearTransientDimensionInputs(state);
+
+  assert.deepEqual(removed, ["length", "height"]);
+  assert.equal(state.dimensionInputs.size, 0);
+  assert.equal(state.activeDimensionKey, null);
+  assert.equal(lengthInput.dataset.skipNextBlurCommit, "true");
+  assert.equal(heightInput.dataset.skipNextChangeCommit, "true");
+});
+
+test("dimension placement request returns selected references and anchor point", () => {
+  const state = {
+    activeTool: "dimension",
+    dimensionDraft: {
+      selectionKeys: ["edge"],
+      radialDiameter: false
+    },
+    view: {
+      scale: 2,
+      offsetX: 10,
+      offsetY: 30
+    }
+  };
+
+  const request = getDimensionPlacementRequest(state, { x: 14, y: 22 });
+
+  assert.deepEqual(request.selectionKeys, ["edge"]);
+  assert.deepEqual(request.anchor, { x: 2, y: 4 });
+  assert.equal(request.radialDiameter, false);
+});
+
+test("radial dimension preference defaults circles to diameter and arcs to radius", () => {
+  assert.equal(getRadialDimensionPreference({ entity: { kind: "circle" } }, {}), true);
+  assert.equal(getRadialDimensionPreference({ entity: { kind: "arc" } }, {}), false);
+  assert.equal(getRadialDimensionPreference({ entity: { kind: "arc" } }, { shiftKey: true }), true);
+});
+
 test("persistent dimension descriptors resolve line references to overlay positions", () => {
   const state = {
     document: {
@@ -543,6 +640,7 @@ test("constraint glyphs use compact CAD relation markers", () => {
 test("point sketch tool needs one click", () => {
   assert.equal(getSketchToolPointCount("point"), 1);
   assert.equal(getSketchToolPointCount("tangentarc"), 3);
+  assert.equal(getSketchToolPointCount("centerrectangle"), 2);
 });
 
 test("persistent point entity is selected by id and exposes a snap point", () => {

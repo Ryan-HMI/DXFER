@@ -6,6 +6,7 @@ public sealed class WorkbenchMenuCommandService
 {
     public event Func<WorkbenchCommandId, Task>? CommandRequested;
     public event Func<IBrowserFile, Task>? FileOpenRequested;
+    public event Action? HotkeyOptionsRequested;
 
     public async Task InvokeAsync(WorkbenchCommandId commandId)
     {
@@ -26,4 +27,6 @@ public sealed class WorkbenchMenuCommandService
 
         await handler(file);
     }
+
+    public void OpenHotkeyOptions() => HotkeyOptionsRequested?.Invoke();
 }

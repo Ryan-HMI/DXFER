@@ -5,6 +5,7 @@ namespace DXFER.Blazor.Components;
 internal static class SketchArcGeometry
 {
     private const double GeometryTolerance = 0.000001;
+    private const double FullCircleDegrees = 360.0;
 
     public static (Point2 Center, double Radius)? GetThreePointCircle(Point2 first, Point2 second, Point2 third)
     {
@@ -73,7 +74,8 @@ internal static class SketchArcGeometry
 
         var startAngle = GetPointAngleDegrees(center, startRadiusPoint);
         var endAngle = GetPointAngleDegrees(center, endAnglePoint);
-        return (center, radius, startAngle, startAngle + GetCounterClockwiseDeltaDegrees(startAngle, endAngle));
+        var sweep = GetShortestVisualSweep(startAngle, endAngle);
+        return (center, radius, sweep.StartAngleDegrees, sweep.EndAngleDegrees);
     }
 
     public static (Point2 Center, double Radius, double StartAngleDegrees, double EndAngleDegrees)? GetTangentArc(
@@ -133,7 +135,20 @@ internal static class SketchArcGeometry
 
     private static double GetCounterClockwiseDeltaDegrees(double startAngleDegrees, double angleDegrees)
     {
-        var delta = (angleDegrees - startAngleDegrees) % 360.0;
-        return delta < 0 ? delta + 360.0 : delta;
+        var delta = (angleDegrees - startAngleDegrees) % FullCircleDegrees;
+        return delta < 0 ? delta + FullCircleDegrees : delta;
+    }
+
+    private static (double StartAngleDegrees, double EndAngleDegrees) GetShortestVisualSweep(
+        double startAngleDegrees,
+        double endAngleDegrees)
+    {
+        var counterClockwiseDelta = GetCounterClockwiseDeltaDegrees(startAngleDegrees, endAngleDegrees);
+        if (counterClockwiseDelta <= FullCircleDegrees / 2.0)
+        {
+            return (startAngleDegrees, startAngleDegrees + counterClockwiseDelta);
+        }
+
+        return (endAngleDegrees, endAngleDegrees + (FullCircleDegrees - counterClockwiseDelta));
     }
 }

@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260504-parametric";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260504-dimension-modal";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -70,6 +70,9 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public Action<string, double>? SketchDimensionValueChanged { get; set; }
+
+    [Parameter]
+    public Action<IReadOnlyList<string>, CanvasPointDto, bool>? SketchDimensionPlacementRequested { get; set; }
 
     protected string? HoveredEntityId { get; private set; }
 
@@ -265,6 +268,13 @@ public partial class DrawingCanvas : IAsyncDisposable
     public Task OnSketchDimensionValueChanged(string dimensionId, double value)
     {
         SketchDimensionValueChanged?.Invoke(dimensionId, value);
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnSketchDimensionPlacementRequested(string[] selectionKeys, double x, double y, bool radialDiameter)
+    {
+        SketchDimensionPlacementRequested?.Invoke(selectionKeys, new CanvasPointDto(x, y), radialDiameter);
         return Task.CompletedTask;
     }
 

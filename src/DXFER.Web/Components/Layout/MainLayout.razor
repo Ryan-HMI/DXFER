@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @using DXFER.Blazor.Components
 @using Microsoft.AspNetCore.Components.Forms
 @inject WorkbenchMenuCommandService MenuCommands
@@ -80,6 +81,8 @@
                         </div>
                     </div>
                     <div class="app-menu-separator"></div>
+                    <button type="button" class="app-menu-command" @onclick="OpenHotkeyOptions">Tool hotkeys...</button>
+                    <div class="app-menu-separator"></div>
                     <div class="app-menu-group">
                         <button type="button" class="app-menu-item app-menu-parent">
                             <span>Settings</span>
@@ -120,6 +123,16 @@
     private bool _isHotkeyOptionsOpen;
 
     private string AppMenuClass => _isAppMenuOpen ? "app-menu app-menu-open" : "app-menu";
+
+    protected override void OnInitialized()
+    {
+        MenuCommands.HotkeyOptionsRequested += OpenHotkeyOptions;
+    }
+
+    public void Dispose()
+    {
+        MenuCommands.HotkeyOptionsRequested -= OpenHotkeyOptions;
+    }
 
     private void ToggleAppMenu() => _isAppMenuOpen = !_isAppMenuOpen;
 

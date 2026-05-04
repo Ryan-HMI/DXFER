@@ -14,7 +14,9 @@ public static class SketchCommandFactory
         string id,
         out SketchDimension dimension,
         out string status,
-        string? activeSelectionKey = null)
+        string? activeSelectionKey = null,
+        Point2? anchorOverride = null,
+        bool radialDiameter = false)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(selectionKeys);
@@ -34,7 +36,7 @@ public static class SketchCommandFactory
                 SketchDimensionKind.LinearDistance,
                 new[] { $"{key}:start", $"{key}:end" },
                 value,
-                Midpoint(line.Start, line.End),
+                anchorOverride ?? Midpoint(line.Start, line.End),
                 isDriving: true);
             status = "Added line length dimension.";
             return true;
@@ -42,14 +44,22 @@ public static class SketchCommandFactory
 
         if (selections.Length == 1 && selections[0].CircleLike is { } circleLike)
         {
+            var kind = circleLike.IsFullCircle || radialDiameter
+                ? SketchDimensionKind.Diameter
+                : SketchDimensionKind.Radius;
+            var value = kind == SketchDimensionKind.Diameter
+                ? circleLike.Radius * 2.0
+                : circleLike.Radius;
             dimension = new SketchDimension(
                 id,
-                SketchDimensionKind.Radius,
+                kind,
                 new[] { selections[0].Key },
-                circleLike.Radius,
-                new Point2(circleLike.Center.X + circleLike.Radius, circleLike.Center.Y),
+                value,
+                anchorOverride ?? new Point2(circleLike.Center.X + circleLike.Radius, circleLike.Center.Y),
                 isDriving: true);
-            status = "Added radius dimension.";
+            status = kind == SketchDimensionKind.Diameter
+                ? "Added diameter dimension."
+                : "Added radius dimension.";
             return true;
         }
 
@@ -67,7 +77,7 @@ public static class SketchCommandFactory
                     SketchDimensionKind.LinearDistance,
                     new[] { pointSelections[0].Key, pointSelections[1].Key },
                     Distance(firstPoint, secondPoint),
-                    Midpoint(firstPoint, secondPoint),
+                    anchorOverride ?? Midpoint(firstPoint, secondPoint),
                     isDriving: true);
                 status = "Added point-to-point distance dimension.";
                 return true;
@@ -83,7 +93,7 @@ public static class SketchCommandFactory
                     SketchDimensionKind.PointToLineDistance,
                     new[] { lineSelection.Key, pointSelections[0].Key },
                     Distance(point, projection),
-                    Midpoint(point, projection),
+                    anchorOverride ?? Midpoint(point, projection),
                     isDriving: true);
                 status = "Added point-to-line distance dimension.";
                 return true;
@@ -96,7 +106,7 @@ public static class SketchCommandFactory
                     SketchDimensionKind.Angle,
                     new[] { lineSelections[0].Key, lineSelections[1].Key },
                     AngleBetweenLines(lineSelections[0].Line!, lineSelections[1].Line!),
-                    Midpoint(
+                    anchorOverride ?? Midpoint(
                         Midpoint(lineSelections[0].Line!.Start, lineSelections[0].Line!.End),
                         Midpoint(lineSelections[1].Line!.Start, lineSelections[1].Line!.End)),
                     isDriving: true);
@@ -247,10 +257,10 @@ public static class SketchCommandFactory
         switch (entity)
         {
             case CircleEntity circle:
-                circleLike = new CircleLikeSelection(circle.Center, circle.Radius);
+                circleLike = new CircleLikeSelection(circle.Center, circle.Radius, IsFullCircle: true);
                 return true;
             case ArcEntity arc:
-                circleLike = new CircleLikeSelection(arc.Center, arc.Radius);
+                circleLike = new CircleLikeSelection(arc.Center, arc.Radius, IsFullCircle: false);
                 return true;
             default:
                 circleLike = default;
@@ -308,5 +318,5 @@ public static class SketchCommandFactory
         LineEntity? Line,
         CircleLikeSelection? CircleLike);
 
-    private readonly record struct CircleLikeSelection(Point2 Center, double Radius);
+    private readonly record struct CircleLikeSelection(Point2 Center, double Radius, bool IsFullCircle);
 }
