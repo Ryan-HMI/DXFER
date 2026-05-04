@@ -10,6 +10,7 @@ builder.Services.AddRazorComponents()
         options.DetailedErrors = builder.Environment.IsDevelopment();
     });
 builder.Services.AddScoped<WorkbenchMenuCommandService>();
+builder.Services.AddScoped<ToolHotkeyService>();
 
 var app = builder.Build();
 
