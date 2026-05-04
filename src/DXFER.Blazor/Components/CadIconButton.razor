@@ -8,6 +8,10 @@
         disabled="@Disabled"
         @onclick="OnClick">
     <CadIcon Name="@Icon" />
+    @if (!string.IsNullOrWhiteSpace(Hotkey))
+    {
+        <kbd class="dxfer-icon-button-hotkey">@Hotkey</kbd>
+    }
     @if (ShowLabel)
     {
         <span class="dxfer-icon-button-label">@Label</span>
@@ -23,6 +27,9 @@
 
     [Parameter]
     public string? Tooltip { get; set; }
+
+    [Parameter]
+    public string? Hotkey { get; set; }
 
     [Parameter]
     public bool Disabled { get; set; }

@@ -8,7 +8,8 @@ public sealed record WorkbenchToolCommand(
     bool Disabled = false,
     bool? Pressed = null,
     bool IsFuture = false,
-    string? Tooltip = null)
+    string? Tooltip = null,
+    string? Hotkey = null)
 {
     public string TooltipText => string.IsNullOrWhiteSpace(Tooltip)
         ? Label

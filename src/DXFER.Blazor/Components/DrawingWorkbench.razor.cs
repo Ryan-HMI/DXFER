@@ -9,11 +9,13 @@ using DXFER.Core.Operations;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.JSInterop;
 
 namespace DXFER.Blazor.Components;
 
-public partial class DrawingWorkbench : IDisposable
+public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 {
+    private const string HotkeyModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js";
     private const long MaxDxfFileSize = 25 * 1024 * 1024;
     private const string SegmentKeySeparator = "|segment|";
     private const string PointKeySeparator = "|point|";
@@ -46,20 +48,74 @@ public partial class DrawingWorkbench : IDisposable
     private readonly HashSet<string> _selectedEntityIds = new(StringComparer.Ordinal);
     private readonly Stack<DrawingDocument> _undoStack = new();
     private readonly Stack<DrawingDocument> _redoStack = new();
+    private IJSObjectReference? _hotkeyModule;
+    private IJSObjectReference? _hotkeyListener;
+    private DotNetObjectReference<DrawingWorkbench>? _hotkeyDotNetReference;
 
     [Inject]
     private WorkbenchMenuCommandService MenuCommandService { get; set; } = default!;
+
+    [Inject]
+    private ToolHotkeyService ToolHotkeys { get; set; } = default!;
+
+    [Inject]
+    private IJSRuntime JsRuntime { get; set; } = default!;
 
     protected override void OnInitialized()
     {
         MenuCommandService.CommandRequested += InvokeWorkbenchCommand;
         MenuCommandService.FileOpenRequested += OpenFileAsync;
+        ToolHotkeys.BindingsChanged += OnToolHotkeysChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _hotkeyDotNetReference = DotNetObjectReference.Create(this);
+        _hotkeyModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", HotkeyModulePath);
+        _hotkeyListener = await _hotkeyModule.InvokeAsync<IJSObjectReference>(
+            "createToolHotkeyListener",
+            _hotkeyDotNetReference);
     }
 
     public void Dispose()
     {
         MenuCommandService.CommandRequested -= InvokeWorkbenchCommand;
         MenuCommandService.FileOpenRequested -= OpenFileAsync;
+        ToolHotkeys.BindingsChanged -= OnToolHotkeysChanged;
+        _hotkeyDotNetReference?.Dispose();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hotkeyListener is not null)
+        {
+            try
+            {
+                await _hotkeyListener.InvokeVoidAsync("dispose");
+                await _hotkeyListener.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+
+        if (_hotkeyModule is not null)
+        {
+            try
+            {
+                await _hotkeyModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+
+        Dispose();
     }
 
     private bool HasDocument => _document.Entities.Count > 0;
@@ -1079,7 +1135,8 @@ public partial class DrawingWorkbench : IDisposable
             disabled,
             ResolvePressedState(tool, disabled, pressed),
             isFuture,
-            tooltip ?? BuildTooltip(label, tool, isFuture));
+            tooltip ?? BuildTooltip(id, label, tool, isFuture),
+            ToolHotkeys.GetKey(id));
 
     private bool? ResolvePressedState(WorkbenchTool? tool, bool disabled, bool? pressed)
     {
@@ -1096,16 +1153,40 @@ public partial class DrawingWorkbench : IDisposable
         return _activeTool == tool;
     }
 
-    private static string BuildTooltip(string label, WorkbenchTool? tool, bool isFuture)
+    private string BuildTooltip(WorkbenchCommandId id, string label, WorkbenchTool? tool, bool isFuture)
     {
+        var hotkey = ToolHotkeys.GetKey(id);
+        var hotkeyText = hotkey is null ? string.Empty : $" Hotkey: {hotkey}.";
+
         if (isFuture)
         {
             return $"{label}. Not implemented yet.";
         }
 
         return tool.HasValue
-            ? $"{label}. Enters a modal tool; press Esc to return to selection."
-            : label;
+            ? $"{label}.{hotkeyText} Enters a modal tool; press Esc to return to selection."
+            : $"{label}.{hotkeyText}".TrimEnd();
+    }
+
+    private void OnToolHotkeysChanged() => _ = InvokeAsync(StateHasChanged);
+
+    [JSInvokable]
+    public async Task<bool> OnToolHotkeyPressed(
+        string key,
+        bool ctrlKey,
+        bool altKey,
+        bool shiftKey,
+        bool metaKey,
+        bool isEditableTarget)
+    {
+        var press = new ToolHotkeyPress(key, ctrlKey, altKey, shiftKey, metaKey, isEditableTarget);
+        if (!ToolHotkeys.TryResolve(press, out var commandId))
+        {
+            return false;
+        }
+
+        await InvokeWorkbenchCommand(commandId);
+        return true;
     }
 
     private EntityId CreateEntityId(string prefix)

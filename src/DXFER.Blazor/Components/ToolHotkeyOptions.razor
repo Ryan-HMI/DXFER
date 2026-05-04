@@ -1,0 +1,141 @@
+@namespace DXFER.Blazor.Components
+@using System.Text.Json
+@implements IAsyncDisposable
+@inject IJSRuntime JsRuntime
+@inject ToolHotkeyService ToolHotkeys
+
+@if (IsOpen)
+{
+    <div class="dxfer-options-backdrop" @onclick="CloseAsync">
+        <section class="dxfer-options-panel"
+                 aria-label="Tool hotkey settings"
+                 @onclick:stopPropagation="true">
+            <header class="dxfer-options-header">
+                <div>
+                    <div class="dxfer-section-title">Tool Hotkeys</div>
+                    <div class="dxfer-options-subtitle">Single-key CAD command activation</div>
+                </div>
+                <button type="button"
+                        class="dxfer-options-icon-button"
+                        title="Close"
+                        aria-label="Close tool hotkey settings"
+                        @onclick="CloseAsync">x</button>
+            </header>
+
+            <div class="dxfer-hotkey-grid">
+                @foreach (var commandId in ToolHotkeyResolver.ToolCommandIds)
+                {
+                    <label class="dxfer-hotkey-row">
+                        <span>@ToolHotkeyResolver.FormatCommandName(commandId)</span>
+                        <input value="@GetKey(commandId)"
+                               maxlength="1"
+                               autocomplete="off"
+                               spellcheck="false"
+                               aria-label="@($"{ToolHotkeyResolver.FormatCommandName(commandId)} hotkey")"
+                               @onchange="args => ChangeHotkeyAsync(commandId, args.Value?.ToString() ?? string.Empty)" />
+                    </label>
+                }
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_error))
+            {
+                <div class="dxfer-options-error">@_error</div>
+            }
+
+            <footer class="dxfer-options-footer">
+                <button type="button" class="dxfer-options-command" @onclick="ResetAsync">Reset</button>
+                <button type="button" class="dxfer-options-command" @onclick="CloseAsync">Close</button>
+            </footer>
+        </section>
+    </div>
+}
+
+@code {
+    private const string ModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js";
+    private const string StorageKey = "dxfer.toolHotkeys.v1";
+    private IJSObjectReference? _module;
+    private bool _loaded;
+    private string? _error;
+
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _loaded)
+        {
+            return;
+        }
+
+        _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", ModulePath);
+        var json = await _module.InvokeAsync<string?>("getStoredToolHotkeys", StorageKey);
+        if (!string.IsNullOrWhiteSpace(json))
+        {
+            var bindings = JsonSerializer.Deserialize<IReadOnlyList<ToolHotkeyBinding>>(json);
+            ToolHotkeys.Load(bindings);
+        }
+
+        _loaded = true;
+        StateHasChanged();
+    }
+
+    private string GetKey(WorkbenchCommandId commandId) => ToolHotkeys.GetKey(commandId) ?? string.Empty;
+
+    private async Task ChangeHotkeyAsync(WorkbenchCommandId commandId, string key)
+    {
+        _error = null;
+
+        try
+        {
+            ToolHotkeys.SetBinding(commandId, key);
+            await PersistAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+        }
+    }
+
+    private async Task ResetAsync()
+    {
+        _error = null;
+        ToolHotkeys.ResetToDefaults();
+
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("clearStoredToolHotkeys", StorageKey);
+        }
+    }
+
+    private async Task PersistAsync()
+    {
+        if (_module is null)
+        {
+            return;
+        }
+
+        var json = JsonSerializer.Serialize(ToolHotkeys.Bindings);
+        await _module.InvokeVoidAsync("setStoredToolHotkeys", StorageKey, json);
+    }
+
+    private async Task CloseAsync() => await OnClose.InvokeAsync();
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+}

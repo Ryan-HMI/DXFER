@@ -83,6 +83,7 @@
                             <span class="app-menu-arrow" aria-hidden="true">></span>
                         </button>
                         <div class="app-submenu" role="menu">
+                            <button type="button" class="app-menu-command" @onclick="OpenHotkeyOptions">Tool hotkeys...</button>
                             <button type="button" class="app-menu-command" disabled>Units: document</button>
                             <button type="button" class="app-menu-command" disabled>Polar snap: 45 deg</button>
                             <button type="button" class="app-menu-command" disabled>Theme: dark</button>
@@ -109,14 +110,25 @@
     <a class="dismiss">x</a>
 </div>
 
+<ToolHotkeyOptions IsOpen="_isHotkeyOptionsOpen" OnClose="CloseHotkeyOptions" />
+
 @code {
     private bool _isAppMenuOpen;
+    private bool _isHotkeyOptionsOpen;
 
     private string AppMenuClass => _isAppMenuOpen ? "app-menu app-menu-open" : "app-menu";
 
     private void ToggleAppMenu() => _isAppMenuOpen = !_isAppMenuOpen;
 
     private void CloseAppMenu() => _isAppMenuOpen = false;
+
+    private void OpenHotkeyOptions()
+    {
+        _isAppMenuOpen = false;
+        _isHotkeyOptionsOpen = true;
+    }
+
+    private void CloseHotkeyOptions() => _isHotkeyOptionsOpen = false;
 
     private async Task InvokeMenuCommand(WorkbenchCommandId commandId)
     {
