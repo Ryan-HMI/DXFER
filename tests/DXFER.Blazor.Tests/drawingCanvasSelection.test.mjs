@@ -11,6 +11,7 @@ import {
   getDynamicSketchSnapHit,
   getCenterPointArc,
   getSketchToolPointCount,
+  getTangentArc,
   getNextDimensionKey,
   getSplitAtPointRequest,
   getThreePointCircle,
@@ -261,6 +262,28 @@ test("center point arc rejects degenerate radius", () => {
   ), null);
 });
 
+test("tangent arc uses start tangent and endpoint", () => {
+  const arc = getTangentArc(
+    { x: 0, y: 0 },
+    { x: 1, y: 0 },
+    { x: 2, y: 2 }
+  );
+
+  assertApproxEqual(arc.center.x, 0);
+  assertApproxEqual(arc.center.y, 2);
+  assertApproxEqual(arc.radius, 2);
+  assertApproxEqual(arc.startAngleDegrees, 270);
+  assertApproxEqual(arc.endAngleDegrees, 360);
+});
+
+test("tangent arc rejects parallel tangent and chord", () => {
+  assert.equal(getTangentArc(
+    { x: 0, y: 0 },
+    { x: 1, y: 0 },
+    { x: 2, y: 0 }
+  ), null);
+});
+
 test("locked draft dimensions reapply after cursor movement", () => {
   const state = {
     activeTool: "line",
@@ -445,6 +468,7 @@ test("dimension input screen position is clamped inside the canvas", () => {
 
 test("point sketch tool needs one click", () => {
   assert.equal(getSketchToolPointCount("point"), 1);
+  assert.equal(getSketchToolPointCount("tangentarc"), 3);
 });
 
 test("persistent point entity is selected by id and exposes a snap point", () => {
