@@ -39,7 +39,7 @@ public static class DrawingConstructionService
             .ToArray();
 
         return new ConstructionToggleResult(
-            new DrawingDocument(nextEntities),
+            new DrawingDocument(nextEntities, document.Dimensions, document.Constraints),
             changedCount,
             targetConstructionState);
     }

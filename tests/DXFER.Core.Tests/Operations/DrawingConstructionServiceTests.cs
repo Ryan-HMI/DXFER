@@ -1,6 +1,7 @@
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
 using DXFER.Core.Operations;
+using DXFER.Core.Sketching;
 using FluentAssertions;
 
 namespace DXFER.Core.Tests.Operations;
@@ -42,5 +43,34 @@ public sealed class DrawingConstructionServiceTests
 
         result.ChangedCount.Should().Be(2);
         result.Document.Entities.Should().OnlyContain(entity => !entity.IsConstruction);
+    }
+
+    [Fact]
+    public void ToggleSelectedEntitiesPreservesSketchData()
+    {
+        var lineId = EntityId.Create("line-a");
+        var dimension = new SketchDimension(
+            "dim-1",
+            SketchDimensionKind.LinearDistance,
+            new[] { "line-a:start", "line-a:end" },
+            1);
+        var constraint = new SketchConstraint(
+            "constraint-1",
+            SketchConstraintKind.Horizontal,
+            new[] { "line-a" });
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(lineId, new Point2(0, 0), new Point2(1, 0))
+            },
+            new[] { dimension },
+            new[] { constraint });
+
+        var result = DrawingConstructionService.ToggleSelected(document, new[] { lineId.Value });
+
+        result.Document.Dimensions.Should().ContainSingle()
+            .Which.Should().BeSameAs(dimension);
+        result.Document.Constraints.Should().ContainSingle()
+            .Which.Should().BeSameAs(constraint);
     }
 }

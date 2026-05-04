@@ -1,6 +1,7 @@
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
 using DXFER.Core.Operations;
+using DXFER.Core.Sketching;
 using FluentAssertions;
 
 namespace DXFER.Core.Tests.Operations;
@@ -127,5 +128,33 @@ public sealed class DrawingPrepServiceTests
         measurement.DeltaX.Should().Be(6);
         measurement.DeltaY.Should().Be(8);
         measurement.Distance.Should().BeApproximately(10, 0.0001);
+    }
+
+    [Fact]
+    public void TransformPreservesSketchData()
+    {
+        var dimension = new SketchDimension(
+            "dim-1",
+            SketchDimensionKind.LinearDistance,
+            new[] { "edge:start", "edge:end" },
+            10);
+        var constraint = new SketchConstraint(
+            "constraint-1",
+            SketchConstraintKind.Horizontal,
+            new[] { "edge" });
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(10, 0))
+            },
+            new[] { dimension },
+            new[] { constraint });
+
+        var transformed = DrawingPrepService.Transform(document, Transform2.Translation(1, 2));
+
+        transformed.Dimensions.Should().ContainSingle()
+            .Which.Should().BeSameAs(dimension);
+        transformed.Constraints.Should().ContainSingle()
+            .Which.Should().BeSameAs(constraint);
     }
 }

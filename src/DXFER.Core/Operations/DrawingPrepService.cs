@@ -26,7 +26,10 @@ public static class DrawingPrepService
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        return new DrawingDocument(document.Entities.Select(entity => entity.Transform(transform)));
+        return new DrawingDocument(
+            document.Entities.Select(entity => entity.Transform(transform)),
+            document.Dimensions,
+            document.Constraints);
     }
 
     public static DrawingDocument TransformSelected(
@@ -45,7 +48,9 @@ public static class DrawingPrepService
 
         return new DrawingDocument(
             document.Entities.Select(entity =>
-                selected.Contains(entity.Id.Value) ? entity.Transform(transform) : entity));
+                selected.Contains(entity.Id.Value) ? entity.Transform(transform) : entity),
+            document.Dimensions,
+            document.Constraints);
     }
 
     public static DrawingDocument RotateAboutBoundsCenter(DrawingDocument document, double degrees)
