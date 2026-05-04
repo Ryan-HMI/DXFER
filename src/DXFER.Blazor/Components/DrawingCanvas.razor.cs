@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260504-dimension-modal";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260504-dimension-tool";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -58,6 +58,9 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public Action<string, IReadOnlyList<CanvasPointDto>>? ToolCommitRequested { get; set; }
+
+    [Parameter]
+    public Action<string>? ToolModeChanged { get; set; }
 
     [Parameter]
     public Action<string, CanvasPointDto>? SplitAtPointRequested { get; set; }
@@ -230,6 +233,14 @@ public partial class DrawingCanvas : IAsyncDisposable
         }
 
         ToolCommitRequested?.Invoke(toolName, points);
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnSketchToolModeChanged(string toolName)
+    {
+        ToolModeChanged?.Invoke(toolName);
+        _ = InvokeAsync(StateHasChanged);
         return Task.CompletedTask;
     }
 

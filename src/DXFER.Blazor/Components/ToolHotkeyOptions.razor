@@ -8,6 +8,7 @@
 {
     <div class="dxfer-options-backdrop" @onclick="CloseAsync">
         <section class="dxfer-options-panel"
+                 @ref="_panel"
                  aria-label="Tool hotkey settings"
                  @onclick:stopPropagation="true">
             <header class="dxfer-options-header">
@@ -29,8 +30,10 @@
                         <span>@ToolHotkeyResolver.FormatCommandName(commandId)</span>
                         <input value="@GetKey(commandId)"
                                maxlength="32"
+                               readonly
                                autocomplete="off"
                                spellcheck="false"
+                               data-dxfer-hotkey-input="true"
                                aria-label="@($"{ToolHotkeyResolver.FormatCommandName(commandId)} hotkey")"
                                @onchange="args => ChangeHotkeyAsync(commandId, args.Value?.ToString() ?? string.Empty)" />
                     </label>
@@ -54,6 +57,7 @@
     private const string ModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js";
     private const string StorageKey = "dxfer.toolHotkeys.v2";
     private IJSObjectReference? _module;
+    private ElementReference _panel;
     private bool _loaded;
     private string? _error;
 
@@ -65,21 +69,28 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _loaded)
+        if (_module is null)
         {
-            return;
+            _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", ModulePath);
         }
 
-        _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", ModulePath);
-        var json = await _module.InvokeAsync<string?>("getStoredToolHotkeys", StorageKey);
-        if (!string.IsNullOrWhiteSpace(json))
+        if (!_loaded)
         {
-            var bindings = JsonSerializer.Deserialize<IReadOnlyList<ToolHotkeyBinding>>(json);
-            ToolHotkeys.Load(bindings);
+            var json = await _module.InvokeAsync<string?>("getStoredToolHotkeys", StorageKey);
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                var bindings = JsonSerializer.Deserialize<IReadOnlyList<ToolHotkeyBinding>>(json);
+                ToolHotkeys.Load(bindings);
+            }
+
+            _loaded = true;
+            StateHasChanged();
         }
 
-        _loaded = true;
-        StateHasChanged();
+        if (IsOpen)
+        {
+            await _module.InvokeVoidAsync("enableToolHotkeyRecorders", _panel);
+        }
     }
 
     private string GetKey(WorkbenchCommandId commandId) => ToolHotkeys.GetKey(commandId) ?? string.Empty;

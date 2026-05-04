@@ -564,6 +564,25 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _ = InvokeAsync(StateHasChanged);
     }
 
+    private void OnCanvasToolModeChanged(string toolName)
+    {
+        var tool = NormalizeToolName(toolName) switch
+        {
+            "line" => WorkbenchTool.Line,
+            "tangentarc" => WorkbenchTool.TangentArc,
+            _ => (WorkbenchTool?)null
+        };
+
+        if (tool is null || _activeTool == tool)
+        {
+            return;
+        }
+
+        _activeTool = tool.Value;
+        _status = $"{ActiveToolLabel} active. {GetToolPrompt(tool.Value)} Press Esc to cancel.";
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     private void OnSplitAtPointRequested(string targetKey, CanvasPointDto point)
     {
         if (!TryGetLineIdForSplitTarget(targetKey, out var lineEntityId))
@@ -1759,11 +1778,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private static string GetToolPrompt(WorkbenchTool tool) => tool switch
     {
+        WorkbenchTool.Line => "Pick points. Hover the last vertex to switch to tangent arc.",
         WorkbenchTool.CenterRectangle => "Pick center, then corner.",
         WorkbenchTool.AlignedRectangle => "Pick baseline start, baseline end, then depth.",
         WorkbenchTool.ThreePointCircle => "Pick three points on the circle.",
         WorkbenchTool.ThreePointArc => "Pick start point, through point, then end point.",
-        WorkbenchTool.TangentArc => "Pick start point, tangent direction point, then end point.",
+        WorkbenchTool.TangentArc => "Pick start, tangent direction, then endpoint. In a chain, hover the last vertex to switch back to line.",
         WorkbenchTool.CenterPointArc => "Pick center, start radius point, then end angle point.",
         WorkbenchTool.Point => "Pick a point on the canvas.",
         _ => "Pick two points on the canvas."

@@ -5,17 +5,21 @@ import {
   applyLockedDraftDimensions,
   applyDirectSelectionClick,
   applyPolarSnapIfRequested,
+  canExtendDimensionSelection,
   clearTransientDimensionInputs,
   clampDimensionInputScreenPoint,
   getAlignedRectangleCorners,
   getCenterRectangleCorners,
   getConstraintGlyphText,
   getDefaultActiveDimensionKey,
+  getVisibleDimensionDescriptors,
   getDynamicSketchSnapHit,
   getCenterPointArc,
+  getChainedSketchToolDraft,
   getDimensionPlacementRequest,
   getPersistentDimensionDescriptors,
   getRadialDimensionPreference,
+  getSketchChainContextFromCommittedTool,
   getSketchToolPointCount,
   getTangentArc,
   getNextDimensionKey,
@@ -23,6 +27,7 @@ import {
   getThreePointCircle,
   getThreePointArc,
   findNearestTarget,
+  resolveActiveDimensionKey,
   isDynamicTargetCurrentToPointer,
   isInferenceGuideWithinScreenDistance,
   isPanPointerDownForTool,
@@ -30,7 +35,8 @@ import {
   shouldCommitDimensionInputOnChange,
   shouldCommitDimensionInputOnBlur,
   shouldRefreshDimensionInputValue,
-  syncActiveSelectionWithSelectedKeys
+  syncActiveSelectionWithSelectedKeys,
+  tryToggleSketchChainToolAtPoint
 } from "../../src/DXFER.Blazor/wwwroot/drawingCanvas.js";
 
 test("direct click selects an unselected target and makes it active", () => {
@@ -329,6 +335,60 @@ test("tangent arc rejects parallel tangent and chord", () => {
   ), null);
 });
 
+test("line chain hover toggles to a tangent arc draft and back to a line draft", () => {
+  const chainContext = getSketchChainContextFromCommittedTool(
+    "line",
+    [{ x: 0, y: 0 }, { x: 4, y: 0 }]
+  );
+  const state = {
+    activeTool: "line",
+    sketchChainContext: chainContext,
+    sketchChainVertexHovering: false,
+    toolDraft: {
+      points: [{ x: 4, y: 0 }],
+      previewPoint: { x: 6, y: 0 }
+    },
+    dimensionInputs: new Map(),
+    acquiredSnapPoints: [{ label: "end", point: { x: 4, y: 0 } }],
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 100
+    }
+  };
+
+  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 40, y: 100 }), true);
+  assert.equal(state.activeTool, "tangentarc");
+  assert.deepEqual(state.toolDraft.points, [{ x: 4, y: 0 }, { x: 8, y: 0 }]);
+  assert.equal(state.toolDraft.previewPoint, null);
+  assert.equal(state.sketchChainVertexHovering, true);
+  assert.deepEqual(state.acquiredSnapPoints, []);
+
+  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 40, y: 100 }), false);
+  assert.equal(state.activeTool, "tangentarc");
+  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 80, y: 100 }), false);
+  assert.equal(state.sketchChainVertexHovering, false);
+
+  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 40, y: 100 }), true);
+  assert.equal(state.activeTool, "line");
+  assert.deepEqual(state.toolDraft.points, [{ x: 4, y: 0 }]);
+});
+
+test("committed tangent arc chain continues from the arc endpoint", () => {
+  const chainContext = getSketchChainContextFromCommittedTool(
+    "tangentarc",
+    [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 2 }]
+  );
+
+  const lineDraft = getChainedSketchToolDraft("tangentarc", "line", chainContext);
+  assert.deepEqual(lineDraft.points, [{ x: 2, y: 2 }]);
+
+  const arcDraft = getChainedSketchToolDraft("line", "tangentarc", chainContext);
+  assert.equal(arcDraft.points.length, 2);
+  assert.deepEqual(arcDraft.points[0], { x: 2, y: 2 });
+  assert.ok(distanceBetweenTestPoints(arcDraft.points[0], arcDraft.points[1]) > 0);
+});
+
 test("locked draft dimensions reapply after cursor movement", () => {
   const state = {
     activeTool: "line",
@@ -373,6 +433,67 @@ test("dynamic inferred target is hidden when cursor moves away from it", () => {
   assert.equal(isDynamicTargetCurrentToPointer(state, { dynamic: false, point: { x: 0, y: 0 } }), true);
 });
 
+test("three point circle snaps the third point to line tangency", () => {
+  const state = createHitTestState([
+    {
+      id: "edge",
+      kind: "line",
+      points: [{ x: -10, y: 2 }, { x: 10, y: 2 }]
+    }
+  ]);
+  state.activeTool = "threepointcircle";
+  state.toolDraft = {
+    points: [{ x: 0, y: 0 }, { x: 4, y: 0 }],
+    previewPoint: null
+  };
+
+  const target = findNearestTarget(state, { x: 20, y: 80 });
+
+  assert.equal(target.dynamic, true);
+  assert.equal(target.label.startsWith("circle-tangent-edge"), true);
+  assertApproxEqual(target.point.x, 2);
+  assertApproxEqual(target.point.y, 2);
+});
+
+test("three point circle snaps the third point to curve tangency", () => {
+  const tangentPoint = { x: Math.SQRT1_2, y: Math.SQRT1_2 };
+  const newCircleCenter = { x: 3 * Math.SQRT1_2, y: 3 * Math.SQRT1_2 };
+  const perpendicular = { x: -Math.SQRT1_2, y: Math.SQRT1_2 };
+  const state = createHitTestState([
+    {
+      id: "hole",
+      kind: "circle",
+      center: { x: 0, y: 0 },
+      radius: 1
+    }
+  ]);
+  state.view.scale = 20;
+  state.activeTool = "threepointcircle";
+  state.toolDraft = {
+    points: [
+      {
+        x: newCircleCenter.x + (2 * perpendicular.x),
+        y: newCircleCenter.y + (2 * perpendicular.y)
+      },
+      {
+        x: newCircleCenter.x - (2 * perpendicular.x),
+        y: newCircleCenter.y - (2 * perpendicular.y)
+      }
+    ],
+    previewPoint: null
+  };
+
+  const target = findNearestTarget(state, {
+    x: tangentPoint.x * state.view.scale,
+    y: state.view.offsetY - (tangentPoint.y * state.view.scale)
+  });
+
+  assert.equal(target.dynamic, true);
+  assert.equal(target.label.startsWith("circle-tangent-hole"), true);
+  assertApproxEqual(target.point.x, tangentPoint.x);
+  assertApproxEqual(target.point.y, tangentPoint.y);
+});
+
 test("line polar snap is ortho only near an ortho axis by default", () => {
   const state = {
     polarSnapIncrementDegrees: 15,
@@ -407,6 +528,52 @@ test("dimension active key defaults and cycles through all visible dimensions", 
   assert.equal(getNextDimensionKey(dimensions, "width", false), "height");
   assert.equal(getNextDimensionKey(dimensions, "height", false), "width");
   assert.equal(getNextDimensionKey(dimensions, "width", true), "height");
+});
+
+test("pending dimension focus waits until requested key becomes visible", () => {
+  const pending = resolveActiveDimensionKey([], null, "depth");
+
+  assert.deepEqual(pending, {
+    activeKey: null,
+    pendingKey: "depth"
+  });
+
+  assert.deepEqual(
+    resolveActiveDimensionKey([{ key: "length" }, { key: "depth" }], null, pending.pendingKey),
+    {
+      activeKey: "depth",
+      pendingKey: null
+    });
+});
+
+test("focused dimension key stays active when no pending focus is waiting", () => {
+  assert.deepEqual(
+    resolveActiveDimensionKey([{ key: "length" }, { key: "depth" }], "length", null, "depth"),
+    {
+      activeKey: "depth",
+      pendingKey: null
+    });
+});
+
+test("pending dimension focus wins over stale focused key during command phase change", () => {
+  assert.deepEqual(
+    resolveActiveDimensionKey([{ key: "length" }, { key: "depth" }], "length", "depth", "length"),
+    {
+      activeKey: "depth",
+      pendingKey: null
+    });
+});
+
+test("visible dimension descriptors preserve drawn order instead of map insertion order", () => {
+  const state = {
+    visibleDimensionKeys: ["length", "depth"],
+    dimensionInputs: new Map([
+      ["depth", {}],
+      ["length", {}]
+    ])
+  };
+
+  assert.deepEqual(getVisibleDimensionDescriptors(state), [{ key: "length" }, { key: "depth" }]);
 });
 
 test("focused dimension input keeps typed locks but refreshes live preview when unlocked", () => {
@@ -559,6 +726,58 @@ test("dimension placement request returns selected references and anchor point",
   assert.equal(request.radialDiameter, false);
 });
 
+test("dimension tool can extend a selected line to an angle dimension", () => {
+  const state = createHitTestState([
+    {
+      id: "horizontal",
+      kind: "line",
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+    },
+    {
+      id: "vertical",
+      kind: "line",
+      points: [{ x: 0, y: 0 }, { x: 0, y: 10 }]
+    }
+  ]);
+
+  assert.equal(canExtendDimensionSelection(state, ["horizontal"], "vertical"), true);
+});
+
+test("dimension tool can extend a selected line to a point-line dimension", () => {
+  const state = createHitTestState([
+    {
+      id: "edge",
+      kind: "line",
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+    },
+    {
+      id: "marker",
+      kind: "point",
+      points: [{ x: 3, y: 4 }]
+    }
+  ]);
+
+  assert.equal(canExtendDimensionSelection(state, ["edge"], "marker"), true);
+});
+
+test("dimension tool does not extend a selected circle with unrelated geometry", () => {
+  const state = createHitTestState([
+    {
+      id: "hole",
+      kind: "circle",
+      center: { x: 0, y: 0 },
+      radius: 3
+    },
+    {
+      id: "edge",
+      kind: "line",
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+    }
+  ]);
+
+  assert.equal(canExtendDimensionSelection(state, ["hole"], "edge"), false);
+});
+
 test("radial dimension preference defaults circles to diameter and arcs to radius", () => {
   assert.equal(getRadialDimensionPreference({ entity: { kind: "circle" } }, {}), true);
   assert.equal(getRadialDimensionPreference({ entity: { kind: "arc" } }, {}), false);
@@ -678,6 +897,10 @@ test("split at point request projects clicked line point", () => {
 
 function assertApproxEqual(actual, expected, tolerance = 0.000001) {
   assert.ok(Math.abs(actual - expected) <= tolerance, `expected ${actual} to equal ${expected}`);
+}
+
+function distanceBetweenTestPoints(first, second) {
+  return Math.hypot(first.x - second.x, first.y - second.y);
 }
 
 function createHitTestState(entities) {

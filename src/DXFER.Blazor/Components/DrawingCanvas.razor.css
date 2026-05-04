@@ -93,6 +93,9 @@
 
 ::deep .drawing-dimension-input-active {
     border-color: #bae6fd;
+    background: #102b3b;
+    outline: 1px solid rgba(186, 230, 253, 0.78);
+    outline-offset: 1px;
     box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.32), 0 0 16px rgba(56, 189, 248, 0.5);
 }
 
