@@ -210,9 +210,10 @@ function draw(state) {
     if (target) {
       const isActive = selectedKey === state.activeSelectionKey;
       drawTarget(state, target, {
-        strokeStyle: isActive ? "#facc15" : "#38bdf8",
+        strokeStyle: isActive ? "#7dd3fc" : "#38bdf8",
         lineWidth: target.kind === "point" ? isActive ? 3 : 2 : isActive ? 5 : 4,
-        lineDash: []
+        lineDash: [],
+        glow: isActive
       });
     }
   }
@@ -224,9 +225,10 @@ function draw(state) {
     const isSelected = state.selectedKeys.has(state.hoveredTarget.key);
     const isActive = state.hoveredTarget.key === state.activeSelectionKey;
     drawTarget(state, state.hoveredTarget, {
-      strokeStyle: isActive ? "#facc15" : isSelected ? "#fde68a" : "#f59e0b",
+      strokeStyle: isActive ? "#7dd3fc" : isSelected ? "#bae6fd" : "#f59e0b",
       lineWidth: state.hoveredTarget.kind === "point" ? isActive ? 3 : 2 : isActive ? 4 : isSelected ? 2 : 3.5,
-      lineDash: isSelected ? [6, 4] : []
+      lineDash: isSelected ? [6, 4] : [],
+      glow: isActive
     });
   }
 
@@ -249,6 +251,10 @@ function drawEntity(state, entity, style) {
   context.lineCap = "round";
   context.lineJoin = "round";
   context.setLineDash(style.lineDash || []);
+  if (style.glow) {
+    context.shadowColor = "rgba(125, 211, 252, 0.55)";
+    context.shadowBlur = 9;
+  }
 
   const hasPath = buildEntityPath(state, entity);
   if (hasPath) {
@@ -433,6 +439,10 @@ function drawPointTarget(state, point, style, marker = "point") {
   context.fillStyle = style.strokeStyle;
   context.lineWidth = 1;
   context.setLineDash([]);
+  if (style.glow) {
+    context.shadowColor = "rgba(125, 211, 252, 0.55)";
+    context.shadowBlur = 8;
+  }
   if (marker === "midpoint") {
     drawMidpointTargetPath(context, screenPoint);
   } else {
