@@ -67,15 +67,13 @@ public partial class DrawingWorkbench
 
     private IReadOnlyList<WorkbenchToolGroup> ToolGroups => new[]
     {
-        new WorkbenchToolGroup("Navigate", new[]
+        new WorkbenchToolGroup("View", new[]
         {
             Command(WorkbenchCommandId.Measure, WorkbenchTool.Measure, CadIconName.Measure, "Measure"),
-            Command(WorkbenchCommandId.Undo, null, CadIconName.Undo, "Undo", !CanUndo),
-            Command(WorkbenchCommandId.Redo, null, CadIconName.Redo, "Redo", !CanRedo),
             Command(WorkbenchCommandId.FitExtents, null, CadIconName.Fit, "Fit extents", !HasDocument),
             Command(WorkbenchCommandId.OriginAxes, null, CadIconName.OriginAxes, "Origin axes", pressed: _showOriginAxes)
         }),
-        new WorkbenchToolGroup("Geometry", new[]
+        new WorkbenchToolGroup("Sketch", new[]
         {
             Command(WorkbenchCommandId.Line, WorkbenchTool.Line, CadIconName.Line, "Line"),
             Command(WorkbenchCommandId.MidpointLine, WorkbenchTool.MidpointLine, CadIconName.MidpointLine, "Midpoint line"),
@@ -99,8 +97,10 @@ public partial class DrawingWorkbench
             Command(WorkbenchCommandId.Text, WorkbenchTool.Text, CadIconName.Text, "Text", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Slot, WorkbenchTool.Slot, CadIconName.Slot, "Slot", disabled: true, isFuture: true)
         }),
-        new WorkbenchToolGroup("Edit", new[]
+        new WorkbenchToolGroup("Modify", new[]
         {
+            Command(WorkbenchCommandId.Undo, null, CadIconName.Undo, "Undo", !CanUndo),
+            Command(WorkbenchCommandId.Redo, null, CadIconName.Redo, "Redo", !CanRedo),
             Command(WorkbenchCommandId.Construction, WorkbenchTool.Construction, CadIconName.Construction, "Construction", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.DeleteSelection, null, CadIconName.Delete, "Delete selected geometry", !CanDeleteSelection),
             Command(WorkbenchCommandId.PowerTrim, WorkbenchTool.PowerTrim, CadIconName.PowerTrim, "Power trim/extend", disabled: true, isFuture: true),
@@ -807,8 +807,44 @@ public partial class DrawingWorkbench
         string label,
         bool disabled = false,
         bool? pressed = null,
-        bool isFuture = false) =>
-        new(id, tool, icon, label, disabled, pressed, isFuture);
+        bool isFuture = false,
+        string? tooltip = null) =>
+        new(
+            id,
+            tool,
+            icon,
+            label,
+            disabled,
+            ResolvePressedState(tool, disabled, pressed),
+            isFuture,
+            tooltip ?? BuildTooltip(label, tool, isFuture));
+
+    private bool? ResolvePressedState(WorkbenchTool? tool, bool disabled, bool? pressed)
+    {
+        if (pressed.HasValue)
+        {
+            return pressed;
+        }
+
+        if (tool is null || disabled)
+        {
+            return null;
+        }
+
+        return _activeTool == tool;
+    }
+
+    private static string BuildTooltip(string label, WorkbenchTool? tool, bool isFuture)
+    {
+        if (isFuture)
+        {
+            return $"{label}. Not implemented yet.";
+        }
+
+        return tool.HasValue
+            ? $"{label}. Enters a modal tool; press Esc to return to selection."
+            : label;
+    }
 
     private EntityId CreateEntityId(string prefix)
     {

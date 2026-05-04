@@ -163,9 +163,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.45rem;
+    width: 2.15rem;
     height: 2.15rem;
-    padding: 0 0.6rem;
+    padding: 0;
     color: #edf3f7;
     background: #26323b;
     border: 1px solid #46545f;

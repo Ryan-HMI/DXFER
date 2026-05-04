@@ -26,9 +26,8 @@
         <section class="dxfer-tool-section">
             <div class="dxfer-section-title">File</div>
             <div class="dxfer-command-strip" role="toolbar" aria-label="File tools">
-                <label class="dxfer-file-picker" title="Open DXF or DWG">
+                <label class="dxfer-file-picker" title="Open DXF or DWG" aria-label="Open DXF or DWG">
                     <CadIcon Name="@CadIconName.FolderOpen" />
-                    <span>Open</span>
                     <InputFile OnChange="OpenFileAsync"
                                accept=".dxf,.dwg"
                                class="dxfer-file-input"

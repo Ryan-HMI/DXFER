@@ -7,4 +7,10 @@ public sealed record WorkbenchToolCommand(
     string Label,
     bool Disabled = false,
     bool? Pressed = null,
-    bool IsFuture = false);
+    bool IsFuture = false,
+    string? Tooltip = null)
+{
+    public string TooltipText => string.IsNullOrWhiteSpace(Tooltip)
+        ? Label
+        : Tooltip;
+}

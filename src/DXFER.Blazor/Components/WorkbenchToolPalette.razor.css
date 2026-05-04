@@ -1,7 +1,7 @@
 .dxfer-tool-section {
     display: grid;
-    gap: 0.58rem;
-    padding: 0.85rem;
+    gap: 0.48rem;
+    padding: 0.68rem 0.72rem;
     border-bottom: 1px solid #2d343b;
 }
 
@@ -11,4 +11,11 @@
     font-weight: 700;
     letter-spacing: 0.02em;
     text-transform: uppercase;
+}
+
+.dxfer-command-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 2.15rem);
+    gap: 0.36rem;
+    align-items: center;
 }
