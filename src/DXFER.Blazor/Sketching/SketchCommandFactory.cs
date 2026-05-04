@@ -195,6 +195,12 @@ public static class SketchCommandFactory
 
         foreach (var key in orderedKeys)
         {
+            if (TryCreateCanvasPointSelection(document, key, out var canvasPointSelection))
+            {
+                selections.Add(canvasPointSelection);
+                continue;
+            }
+
             if (!SketchReference.TryParse(key, out var reference)
                 || !TryFindEntity(document, reference.EntityId, out var entity))
             {
@@ -214,6 +220,28 @@ public static class SketchCommandFactory
         }
 
         return selections.ToArray();
+    }
+
+    private static bool TryCreateCanvasPointSelection(
+        DrawingDocument document,
+        string key,
+        out SketchSelection selection)
+    {
+        if (!SketchReference.TryParseCanvasPointCoordinates(key, out var entityId, out _, out var point)
+            || !TryFindEntity(document, entityId, out _))
+        {
+            selection = default!;
+            return false;
+        }
+
+        selection = new SketchSelection(
+            key,
+            point,
+            point,
+            null,
+            null,
+            null);
+        return true;
     }
 
     private static string NormalizeSelectionKey(string? selectionKey)

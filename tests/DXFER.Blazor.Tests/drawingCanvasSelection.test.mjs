@@ -16,8 +16,10 @@ import {
   getDynamicSketchSnapHit,
   getCenterPointArc,
   getChainedSketchToolDraft,
+  getDimensionAnchorUpdateRequest,
   getDimensionPlacementRequest,
   getPersistentDimensionDescriptors,
+  getRadialDimensionScreenGeometry,
   getRadialDimensionPreference,
   getSketchChainContextFromCommittedTool,
   getSketchToolPointCount,
@@ -27,10 +29,12 @@ import {
   getThreePointCircle,
   getThreePointArc,
   findNearestTarget,
+  releaseDimensionDraftSelection,
   resolveActiveDimensionKey,
   isDynamicTargetCurrentToPointer,
   isInferenceGuideWithinScreenDistance,
   isPanPointerDownForTool,
+  prepareSelectionForToolEntry,
   shouldAutoSelectDimensionInputValue,
   shouldCommitDimensionInputOnChange,
   shouldCommitDimensionInputOnBlur,
@@ -726,6 +730,51 @@ test("dimension placement request returns selected references and anchor point",
   assert.equal(request.radialDiameter, false);
 });
 
+test("dimension tool entry clears existing canvas selection", () => {
+  const state = {
+    selectedKeys: new Set(["edge-a", "edge-b"]),
+    activeSelectionKey: "edge-b"
+  };
+
+  const changed = prepareSelectionForToolEntry(state, "dimension", "select");
+
+  assert.equal(changed, true);
+  assert.equal(state.selectedKeys.size, 0);
+  assert.equal(state.activeSelectionKey, null);
+});
+
+test("dimension tool entry does not clear when already dimensioning", () => {
+  const state = {
+    selectedKeys: new Set(["edge-a"]),
+    activeSelectionKey: "edge-a"
+  };
+
+  const changed = prepareSelectionForToolEntry(state, "dimension", "dimension");
+
+  assert.equal(changed, false);
+  assert.deepEqual(Array.from(state.selectedKeys), ["edge-a"]);
+  assert.equal(state.activeSelectionKey, "edge-a");
+});
+
+test("right mouse dimension release backs out the latest picked reference", () => {
+  const state = {
+    dimensionDraft: {
+      selectionKeys: ["edge", "marker|point|mid|2|3"],
+      complete: true,
+      radialDiameter: false,
+      anchorPoint: { x: 4, y: 5 }
+    },
+    dimensionInputs: new Map()
+  };
+
+  const changed = releaseDimensionDraftSelection(state);
+
+  assert.equal(changed, true);
+  assert.deepEqual(state.dimensionDraft.selectionKeys, ["edge"]);
+  assert.equal(state.dimensionDraft.complete, false);
+  assert.equal(state.dimensionDraft.anchorPoint, null);
+});
+
 test("dimension tool can extend a selected line to an angle dimension", () => {
   const state = createHitTestState([
     {
@@ -782,6 +831,39 @@ test("radial dimension preference defaults circles to diameter and arcs to radiu
   assert.equal(getRadialDimensionPreference({ entity: { kind: "circle" } }, {}), true);
   assert.equal(getRadialDimensionPreference({ entity: { kind: "arc" } }, {}), false);
   assert.equal(getRadialDimensionPreference({ entity: { kind: "arc" } }, { shiftKey: true }), true);
+});
+
+test("diameter dimension uses an outside leader instead of crossing the circle", () => {
+  const geometry = getRadialDimensionScreenGeometry(
+    { x: 100, y: 100 },
+    30,
+    { x: 160, y: 100 },
+    true
+  );
+
+  assert.deepEqual(geometry.segments, [
+    { start: { x: 130, y: 100 }, end: { x: 160, y: 100 } }
+  ]);
+  assert.deepEqual(geometry.arrows, [
+    { point: { x: 130, y: 100 }, toward: { x: 100, y: 100 } }
+  ]);
+});
+
+test("dimension anchor drag request converts screen point to world anchor", () => {
+  const state = {
+    view: {
+      scale: 2,
+      offsetX: 10,
+      offsetY: 30
+    }
+  };
+
+  const request = getDimensionAnchorUpdateRequest(state, "dim-a", { x: 14, y: 22 });
+
+  assert.deepEqual(request, {
+    dimensionId: "dim-a",
+    anchor: { x: 2, y: 4 }
+  });
 });
 
 test("persistent dimension descriptors resolve line references to overlay positions", () => {

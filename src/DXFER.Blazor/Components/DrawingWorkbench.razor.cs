@@ -843,6 +843,34 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _ = InvokeAsync(StateHasChanged);
     }
 
+    private void OnSketchDimensionAnchorChanged(string dimensionId, CanvasPointDto anchor)
+    {
+        var existing = _document.Dimensions.FirstOrDefault(
+            dimension => StringComparer.Ordinal.Equals(dimension.Id, dimensionId));
+        if (existing is null)
+        {
+            _status = "Dimension no longer exists.";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var nextAnchor = ToPoint(anchor);
+        var nextDimension = new SketchDimension(
+            existing.Id,
+            existing.Kind,
+            existing.ReferenceKeys,
+            existing.Value,
+            nextAnchor,
+            existing.IsDriving);
+        var nextDimensions = _document.Dimensions
+            .Select(dimension => StringComparer.Ordinal.Equals(dimension.Id, dimensionId) ? nextDimension : dimension)
+            .ToArray();
+        ApplyDocumentChange(
+            new DrawingDocument(_document.Entities, nextDimensions, _document.Constraints),
+            "Moved dimension.");
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     private bool TryGetLineIdForSplitTarget(string targetKey, out string lineEntityId)
     {
         if (FindEntity(targetKey) is LineEntity)

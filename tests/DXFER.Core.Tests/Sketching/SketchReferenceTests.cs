@@ -57,4 +57,21 @@ public sealed class SketchReferenceTests
         SketchReferenceResolver.TryGetEntity(document, "line-a", out var entity).Should().BeTrue();
         entity.Should().BeOfType<LineEntity>();
     }
+
+    [Fact]
+    public void ResolverResolvesCanvasSnapPointCoordinates()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("line-a"), new Point2(0, 0), new Point2(10, 0))
+        });
+
+        var result = SketchReferenceResolver.TryGetPoint(
+            document,
+            "line-a|point|mid|5|0",
+            out var midpoint);
+
+        result.Should().BeTrue();
+        midpoint.Should().Be(new Point2(5, 0));
+    }
 }

@@ -1,3 +1,6 @@
+using System.Globalization;
+using DXFER.Core.Geometry;
+
 namespace DXFER.Core.Sketching;
 
 public readonly record struct SketchReference
@@ -62,6 +65,48 @@ public readonly record struct SketchReference
 
         normalized = string.Empty;
         return false;
+    }
+
+    public static bool TryParseCanvasPointCoordinates(
+        string key,
+        out string entityId,
+        out string label,
+        out Point2 point)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            entityId = string.Empty;
+            label = string.Empty;
+            point = default;
+            return false;
+        }
+
+        var trimmed = key.Trim();
+        var separatorIndex = trimmed.IndexOf(CanvasPointSeparator, StringComparison.Ordinal);
+        if (separatorIndex <= 0)
+        {
+            entityId = string.Empty;
+            label = string.Empty;
+            point = default;
+            return false;
+        }
+
+        entityId = trimmed[..separatorIndex];
+        var tail = trimmed[(separatorIndex + CanvasPointSeparator.Length)..];
+        var parts = tail.Split('|', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 3
+            || !double.TryParse(parts[^2], NumberStyles.Float, CultureInfo.InvariantCulture, out var x)
+            || !double.TryParse(parts[^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var y))
+        {
+            entityId = string.Empty;
+            label = string.Empty;
+            point = default;
+            return false;
+        }
+
+        label = string.Join("|", parts[..^2]);
+        point = new Point2(x, y);
+        return true;
     }
 
     public override string ToString() =>

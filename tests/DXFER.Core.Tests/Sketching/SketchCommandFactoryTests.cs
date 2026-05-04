@@ -75,6 +75,52 @@ public sealed class SketchCommandFactoryTests
     }
 
     [Fact]
+    public void BuildsPointToPointDimensionFromCanvasSnapPoints()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("bottom"), new Point2(0, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("side"), new Point2(10, 0), new Point2(10, 6))
+        });
+
+        var result = SketchCommandFactory.TryBuildDimension(
+            document,
+            new[] { "bottom|point|mid|5|0", "side|point|mid|10|3" },
+            "dim-1",
+            out var dimension,
+            out _);
+
+        result.Should().BeTrue();
+        dimension.Kind.Should().Be(SketchDimensionKind.LinearDistance);
+        dimension.ReferenceKeys.Should().Equal("bottom|point|mid|5|0", "side|point|mid|10|3");
+        dimension.Value.Should().Be(Math.Sqrt(34));
+        dimension.Anchor.Should().Be(new Point2(7.5, 1.5));
+    }
+
+    [Fact]
+    public void BuildsPointToLineDimensionFromCanvasSnapPointAndLine()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(10, 0)),
+            new CircleEntity(EntityId.Create("hole"), new Point2(4, 3), 2)
+        });
+
+        var result = SketchCommandFactory.TryBuildDimension(
+            document,
+            new[] { "edge", "hole|point|quadrant-90|4|5" },
+            "dim-1",
+            out var dimension,
+            out _);
+
+        result.Should().BeTrue();
+        dimension.Kind.Should().Be(SketchDimensionKind.PointToLineDistance);
+        dimension.ReferenceKeys.Should().Equal("edge", "hole|point|quadrant-90|4|5");
+        dimension.Value.Should().Be(5);
+        dimension.Anchor.Should().Be(new Point2(4, 2.5));
+    }
+
+    [Fact]
     public void BuildsDiameterDimensionFromCircle()
     {
         var document = new DrawingDocument(new DrawingEntity[]

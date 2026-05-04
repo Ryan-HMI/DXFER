@@ -29,6 +29,12 @@ public static class SketchReferenceResolver
             return true;
         }
 
+        if (SketchReference.TryParseCanvasPointCoordinates(key, out var entityId, out _, out point)
+            && SketchGeometryEditor.TryFindEntity(document.Entities, entityId, out _, out _))
+        {
+            return true;
+        }
+
         point = default;
         return false;
     }

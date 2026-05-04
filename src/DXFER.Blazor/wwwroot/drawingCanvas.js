@@ -14,6 +14,9 @@ const ORTHO_POLAR_SNAP_TOLERANCE = 6;
 const MAX_INFERENCE_GUIDE_SCREEN_DISTANCE = 360;
 const DIMENSION_INPUT_SCREEN_MARGIN_X = 52;
 const DIMENSION_INPUT_SCREEN_MARGIN_Y = 18;
+const DIMENSION_LAYER_STROKE_STYLE = "#8fa1b6";
+const DIMENSION_LAYER_TEXT_STYLE = "#a7b6c8";
+const DIMENSION_PREVIEW_STROKE_STYLE = "#facc15";
 
 export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) {
   const context = canvas.getContext("2d");
@@ -28,9 +31,11 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     dimensionOverlay,
     dimensionInputs: new Map(),
     persistentDimensionInputs: new Map(),
+    dimensionAnchorOverrides: new Map(),
     activeDimensionKey: null,
     pendingDimensionFocusKey: null,
     visibleDimensionKeys: [],
+    dimensionDrag: null,
     suppressDimensionInputCommit: false,
     document: null,
     showOriginAxes: false,
@@ -160,6 +165,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
       clearTransientDimensionInputs(state);
       const previousTool = normalizeToolName(state.activeTool);
       const nextTool = normalizeToolName(toolName);
+      const selectionCleared = prepareSelectionForToolEntry(state, nextTool, previousTool);
       const draft = getChainedSketchToolDraft(previousTool, nextTool, state.sketchChainContext);
       if (!isChainableSketchTool(previousTool) || !isChainableSketchTool(nextTool)) {
         state.sketchChainContext = null;
@@ -173,6 +179,10 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
       state.dimensionDraft = createEmptyDimensionDraft();
       state.acquiredSnapPoints = [];
       state.canvas.dataset.activeTool = state.activeTool;
+      if (selectionCleared) {
+        invokeDotNet(state, "OnSelectionCleared");
+      }
+
       updateDebugAttributes(state);
       draw(state);
     },
@@ -1098,7 +1108,7 @@ function getPersistentDimensionDescriptor(state, dimension) {
     return null;
   }
 
-  const anchorPoint = anchor || getDimensionAnchorPoint(state, kind, referenceKeys);
+  const anchorPoint = getDimensionAnchorOverride(state, id) || anchor || getDimensionAnchorPoint(state, kind, referenceKeys);
   if (!anchorPoint) {
     return null;
   }
@@ -1116,9 +1126,18 @@ function getPersistentDimensionDescriptor(state, dimension) {
 }
 
 function drawPersistentDimensions(state, dimensions) {
+  state.context.save();
+  state.context.globalCompositeOperation = "source-over";
   for (const dimension of dimensions) {
     drawDimensionGraphics(state, dimension, false);
   }
+  state.context.restore();
+}
+
+function getDimensionAnchorOverride(state, id) {
+  return state.dimensionAnchorOverrides && state.dimensionAnchorOverrides.has(id)
+    ? state.dimensionAnchorOverrides.get(id)
+    : null;
 }
 
 function drawDimensionToolPreview(state) {
@@ -1355,11 +1374,12 @@ function drawLinearDimensionGraphics(state, dimension, isPreview) {
   const dimensionEnd = { x: anchor.x + vector.x * endOffset, y: anchor.y + vector.y * endOffset };
 
   const { context } = state;
+  const style = getDimensionRenderStyle(isPreview);
   context.save();
-  context.strokeStyle = isPreview ? "#facc15" : "#e5e7eb";
-  context.fillStyle = isPreview ? "#facc15" : "#e5e7eb";
+  context.strokeStyle = style.strokeStyle;
+  context.fillStyle = style.strokeStyle;
   context.lineWidth = 1.15;
-  context.setLineDash(isPreview ? [5, 4] : []);
+  context.setLineDash(style.lineDash);
 
   drawScreenLine(context, start, dimensionStart);
   drawScreenLine(context, end, dimensionEnd);
@@ -1375,35 +1395,53 @@ function drawRadialDimensionGraphics(state, dimension, isPreview) {
   const geometry = dimension.geometry;
   const center = worldToScreen(state, geometry.center);
   const anchor = worldToScreen(state, geometry.anchorPoint);
-  const direction = normalizeScreenVector({
-    x: anchor.x - center.x,
-    y: anchor.y - center.y
-  }) || { x: 1, y: 0 };
   const radius = geometry.radius * state.view.scale;
+  const radialGeometry = getRadialDimensionScreenGeometry(center, radius, anchor, geometry.diameter);
   const { context } = state;
+  const style = getDimensionRenderStyle(isPreview);
 
   context.save();
-  context.strokeStyle = isPreview ? "#facc15" : "#e5e7eb";
-  context.fillStyle = isPreview ? "#facc15" : "#e5e7eb";
+  context.strokeStyle = style.strokeStyle;
+  context.fillStyle = style.strokeStyle;
   context.lineWidth = 1.15;
-  context.setLineDash(isPreview ? [5, 4] : []);
+  context.setLineDash(style.lineDash);
 
-  if (geometry.diameter) {
-    const first = { x: center.x - direction.x * radius, y: center.y - direction.y * radius };
-    const second = { x: center.x + direction.x * radius, y: center.y + direction.y * radius };
-    drawScreenLine(context, first, second);
-    drawScreenLine(context, second, anchor);
-    drawArrowhead(context, first, second);
-    drawArrowhead(context, second, first);
-  } else {
-    const edge = { x: center.x + direction.x * radius, y: center.y + direction.y * radius };
-    drawScreenLine(context, center, edge);
-    drawScreenLine(context, edge, anchor);
-    drawArrowhead(context, edge, center);
+  for (const segment of radialGeometry.segments) {
+    drawScreenLine(context, segment.start, segment.end);
+  }
+
+  for (const arrow of radialGeometry.arrows) {
+    drawArrowhead(context, arrow.point, arrow.toward);
   }
 
   context.restore();
   drawDimensionCanvasText(state, dimension, isPreview);
+}
+
+export function getRadialDimensionScreenGeometry(center, radius, anchor, diameter = false) {
+  const direction = normalizeScreenVector({
+    x: anchor.x - center.x,
+    y: anchor.y - center.y
+  }) || { x: 1, y: 0 };
+  const edge = {
+    x: center.x + direction.x * radius,
+    y: center.y + direction.y * radius
+  };
+
+  if (diameter) {
+    return {
+      segments: [{ start: edge, end: anchor }],
+      arrows: [{ point: edge, toward: center }]
+    };
+  }
+
+  return {
+    segments: [
+      { start: center, end: edge },
+      { start: edge, end: anchor }
+    ],
+    arrows: [{ point: edge, toward: center }]
+  };
 }
 
 function drawAngleDimensionGraphics(state, dimension, isPreview) {
@@ -1428,11 +1466,12 @@ function drawAngleDimensionGraphics(state, dimension, isPreview) {
   };
 
   const { context } = state;
+  const style = getDimensionRenderStyle(isPreview);
   context.save();
-  context.strokeStyle = isPreview ? "#facc15" : "#e5e7eb";
-  context.fillStyle = isPreview ? "#facc15" : "#e5e7eb";
+  context.strokeStyle = style.strokeStyle;
+  context.fillStyle = style.strokeStyle;
   context.lineWidth = 1.15;
-  context.setLineDash(isPreview ? [5, 4] : []);
+  context.setLineDash(style.lineDash);
   drawScreenLine(context, anchor, firstRayEnd);
   drawScreenLine(context, anchor, secondRayEnd);
   context.beginPath();
@@ -1482,6 +1521,14 @@ function drawDimensionCanvasText(state, dimension, isPreview) {
   }
 
   drawFloatingDimensionLabel(state, text, dimension.point);
+}
+
+function getDimensionRenderStyle(isPreview) {
+  return {
+    strokeStyle: isPreview ? DIMENSION_PREVIEW_STROKE_STYLE : DIMENSION_LAYER_STROKE_STYLE,
+    textStyle: isPreview ? DIMENSION_PREVIEW_STROKE_STYLE : DIMENSION_LAYER_TEXT_STYLE,
+    lineDash: isPreview ? [5, 4] : []
+  };
 }
 
 function getDimensionDisplayText(dimension) {
@@ -1536,6 +1583,14 @@ function updatePersistentDimensionInputs(state, dimensions) {
     }
   }
 
+  if (state.dimensionAnchorOverrides) {
+    for (const id of Array.from(state.dimensionAnchorOverrides.keys())) {
+      if (!activeIds.has(id)) {
+        state.dimensionAnchorOverrides.delete(id);
+      }
+    }
+  }
+
   for (const dimension of dimensions) {
     const input = getOrCreatePersistentDimensionInput(state, dimension);
     const isFocused = document.activeElement === input;
@@ -1546,6 +1601,8 @@ function updatePersistentDimensionInputs(state, dimensions) {
 
     input.dataset.dimensionId = dimension.id;
     input.dataset.dimensionLabel = dimension.label;
+    input.dataset.dimensionKind = dimension.kind;
+    input.dataset.dimensionEditing = isEditing ? "true" : "false";
     const inputPoint = clampDimensionInputScreenPoint(state, dimension.point);
     input.style.left = `${inputPoint.x}px`;
     input.style.top = `${inputPoint.y}px`;
@@ -1568,15 +1625,14 @@ function getOrCreatePersistentDimensionInput(state, dimension) {
   input.title = dimension.label;
   input.setAttribute("aria-label", dimension.label);
   input.dataset.dimensionId = dimension.id;
-  input.addEventListener("pointerdown", event => {
-    event.stopPropagation();
-    focusElement(input);
-    selectInputText(input);
-  });
-  input.addEventListener("pointerup", event => event.stopPropagation());
+  input.addEventListener("pointerdown", event => handlePersistentDimensionPointerDown(state, input, event));
+  input.addEventListener("pointermove", event => handlePersistentDimensionPointerMove(state, input, event));
+  input.addEventListener("pointerup", event => handlePersistentDimensionPointerUp(state, input, event));
+  input.addEventListener("pointercancel", event => handlePersistentDimensionPointerCancel(state, input, event));
   input.addEventListener("click", event => event.stopPropagation());
   input.addEventListener("focus", () => {
     input.dataset.dimensionEditing = "true";
+    input.dataset.dimensionDragging = "false";
     input.classList.add("drawing-dimension-input-active");
     selectInputText(input);
   });
@@ -1591,6 +1647,97 @@ function getOrCreatePersistentDimensionInput(state, dimension) {
   state.dimensionOverlay.appendChild(input);
   state.persistentDimensionInputs.set(dimension.id, input);
   return input;
+}
+
+function handlePersistentDimensionPointerDown(state, input, event) {
+  event.stopPropagation();
+  if (!isPrimaryPointerButton(event)) {
+    return;
+  }
+
+  const screenPoint = getPointerScreenPoint(state, event);
+  state.dimensionDrag = {
+    dimensionId: input.dataset.dimensionId,
+    pointerId: event.pointerId,
+    startScreenPoint: screenPoint,
+    currentScreenPoint: screenPoint,
+    moved: false
+  };
+  input.dataset.dimensionDragging = "false";
+  capturePointer(input, event.pointerId);
+  event.preventDefault();
+}
+
+function handlePersistentDimensionPointerMove(state, input, event) {
+  const drag = state.dimensionDrag;
+  if (!drag || drag.pointerId !== event.pointerId || drag.dimensionId !== input.dataset.dimensionId) {
+    return;
+  }
+
+  const screenPoint = getPointerScreenPoint(state, event);
+  drag.currentScreenPoint = screenPoint;
+  if (drag.moved || distanceBetweenScreenPoints(screenPoint, drag.startScreenPoint) > CLICK_MOVE_TOLERANCE) {
+    drag.moved = true;
+    input.dataset.dimensionDragging = "true";
+    const request = getDimensionAnchorUpdateRequest(state, drag.dimensionId, screenPoint);
+    if (request && state.dimensionAnchorOverrides) {
+      state.dimensionAnchorOverrides.set(request.dimensionId, request.anchor);
+      draw(state);
+    }
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function handlePersistentDimensionPointerUp(state, input, event) {
+  const drag = state.dimensionDrag;
+  if (!drag || drag.pointerId !== event.pointerId || drag.dimensionId !== input.dataset.dimensionId) {
+    event.stopPropagation();
+    return;
+  }
+
+  releasePointer(input, event.pointerId);
+  state.dimensionDrag = null;
+  input.dataset.dimensionDragging = "false";
+
+  if (drag.moved) {
+    const request = getDimensionAnchorUpdateRequest(state, drag.dimensionId, drag.currentScreenPoint);
+    if (request) {
+      invokeDotNet(state, "OnSketchDimensionAnchorChanged", request.dimensionId, request.anchor.x, request.anchor.y);
+    }
+
+    focusCanvasWithoutDimensionCommit(state);
+  } else {
+    focusElement(input);
+    selectInputText(input);
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function handlePersistentDimensionPointerCancel(state, input, event) {
+  const drag = state.dimensionDrag;
+  if (drag && drag.pointerId === event.pointerId) {
+    state.dimensionDrag = null;
+  }
+
+  input.dataset.dimensionDragging = "false";
+  releasePointer(input, event.pointerId);
+  event.stopPropagation();
+}
+
+export function getDimensionAnchorUpdateRequest(state, dimensionId, screenPoint) {
+  const id = String(dimensionId || "");
+  if (!id || !screenPoint) {
+    return null;
+  }
+
+  return {
+    dimensionId: id,
+    anchor: screenToWorld(state, screenPoint)
+  };
 }
 
 function handlePersistentDimensionInputKeyDown(state, input, event) {
@@ -2419,6 +2566,18 @@ function handlePointerDown(state, event) {
     return;
   }
 
+  if (isSecondaryPointerButton(event) && isDimensionTool(state)) {
+    if (releaseDimensionDraftSelection(state)) {
+      setHoveredTarget(state, findNearestTarget(state, screenPoint));
+      updateDebugAttributes(state);
+      draw(state);
+    }
+
+    releasePointer(state.canvas, event.pointerId);
+    event.preventDefault();
+    return;
+  }
+
   if (isPrimaryPointerButton(event)) {
     state.clickCandidate = {
       screenPoint,
@@ -2659,6 +2818,26 @@ function canAddDimensionSelection(state, selectionKeys, selectionKey) {
   return nextKeys.length < 2 || getDimensionModelFromReferences(state, nextKeys) !== null;
 }
 
+export function releaseDimensionDraftSelection(state) {
+  const draft = state.dimensionDraft || createEmptyDimensionDraft();
+  const selectionKeys = Array.isArray(draft.selectionKeys)
+    ? draft.selectionKeys.filter(key => Boolean(key))
+    : [];
+  if (selectionKeys.length === 0) {
+    return false;
+  }
+
+  const nextSelectionKeys = selectionKeys.slice(0, -1);
+  clearTransientDimensionInputs(state);
+  state.dimensionDraft = {
+    selectionKeys: nextSelectionKeys,
+    complete: false,
+    radialDiameter: nextSelectionKeys.length > 0 && Boolean(draft.radialDiameter),
+    anchorPoint: null
+  };
+  return true;
+}
+
 export function canExtendDimensionSelection(state, selectionKeys, selectionKey) {
   const existingKeys = Array.isArray(selectionKeys) ? selectionKeys.filter(key => Boolean(key)) : [];
   return existingKeys.length === 1 && canAddDimensionSelection(state, existingKeys, selectionKey);
@@ -2830,6 +3009,7 @@ function cancelActiveTool(state) {
   state.sketchChainContext = null;
   state.sketchChainVertexHovering = false;
   state.acquiredSnapPoints = [];
+  state.dimensionDraft = createEmptyDimensionDraft();
   clearTransientDimensionInputs(state);
   setHoveredTarget(state, null);
   invokeDotNet(state, "OnSketchToolCanceled");
@@ -4900,6 +5080,16 @@ function clearSelectedTargets(state) {
   return true;
 }
 
+export function prepareSelectionForToolEntry(state, nextTool, previousTool = null) {
+  const normalizedNextTool = normalizeToolName(nextTool);
+  const normalizedPreviousTool = normalizeToolName(previousTool);
+  if (normalizedNextTool !== "dimension" || normalizedPreviousTool === "dimension") {
+    return false;
+  }
+
+  return clearSelectedTargets(state);
+}
+
 function notifySelectionChanged(state) {
   invokeDotNet(state, "OnSelectionChangedFromCanvas", Array.from(state.selectedKeys), state.activeSelectionKey || null);
 }
@@ -5087,6 +5277,10 @@ export function isPanPointerDownForTool(event, toolName) {
 
 function isPrimaryPointerButton(event) {
   return event.button === 0 || event.buttons === 1;
+}
+
+function isSecondaryPointerButton(event) {
+  return event.button === 2 || event.buttons === 2;
 }
 
 function isEditableKeyTarget(target) {

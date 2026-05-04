@@ -100,13 +100,25 @@
 }
 
 ::deep .drawing-persistent-dimension-input {
-    color: #f8fafc;
-    background: rgba(30, 41, 59, 0.88);
-    border-color: #cbd5e1;
-    box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.18);
+    color: #a7b6c8;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    cursor: grab;
+}
+
+::deep .drawing-persistent-dimension-input:hover {
+    color: #c3d0de;
+}
+
+::deep .drawing-persistent-dimension-input[data-dimension-dragging="true"] {
+    cursor: grabbing;
 }
 
 ::deep .drawing-persistent-dimension-input:focus {
+    cursor: text;
+    color: #ffffff;
+    background: #17212b;
     border-color: #7dd3fc;
     box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.3), 0 0 16px rgba(56, 189, 248, 0.42);
 }
