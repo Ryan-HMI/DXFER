@@ -5,6 +5,8 @@ import {
   applyLockedDraftDimensions,
   applyDirectSelectionClick,
   applyPolarSnapIfRequested,
+  getDefaultActiveDimensionKey,
+  getNextDimensionKey,
   isDynamicTargetCurrentToPointer,
   isPanPointerDownForTool,
   syncActiveSelectionWithSelectedKeys
@@ -166,23 +168,40 @@ test("dynamic inferred target is hidden when cursor moves away from it", () => {
   assert.equal(isDynamicTargetCurrentToPointer(state, { dynamic: false, point: { x: 0, y: 0 } }), true);
 });
 
-test("line polar snap is ortho by default and fine increment with shift", () => {
+test("line polar snap is ortho only near an ortho axis by default", () => {
   const state = {
     polarSnapIncrementDegrees: 15,
+    view: {
+      scale: 1
+    },
     toolDraft: {
       points: [{ x: 0, y: 0 }]
     }
   };
-  const point = { x: 10, y: 3 };
-  const radius = Math.hypot(point.x, point.y);
+  const nearHorizontal = { x: 10, y: 3 };
+  const nearRadius = Math.hypot(nearHorizontal.x, nearHorizontal.y);
 
-  const ortho = applyPolarSnapIfRequested(state, point, "line", { shiftKey: false });
-  assertApproxEqual(ortho.x, radius);
+  const ortho = applyPolarSnapIfRequested(state, nearHorizontal, "line", { shiftKey: false });
+  assertApproxEqual(ortho.x, nearRadius);
   assertApproxEqual(ortho.y, 0);
 
-  const fine = applyPolarSnapIfRequested(state, point, "line", { shiftKey: true });
-  assertApproxEqual(fine.x, Math.cos(Math.PI / 12) * radius);
-  assertApproxEqual(fine.y, Math.sin(Math.PI / 12) * radius);
+  const free = applyPolarSnapIfRequested(state, { x: 10, y: 8 }, "line", { shiftKey: false });
+  assert.deepEqual(free, { x: 10, y: 8 });
+
+  const fine = applyPolarSnapIfRequested(state, nearHorizontal, "line", { shiftKey: true });
+  assertApproxEqual(fine.x, Math.cos(Math.PI / 12) * nearRadius);
+  assertApproxEqual(fine.y, Math.sin(Math.PI / 12) * nearRadius);
+});
+
+test("dimension active key defaults and cycles through all visible dimensions", () => {
+  const dimensions = [{ key: "width" }, { key: "height" }];
+
+  assert.equal(getDefaultActiveDimensionKey(dimensions, null), "width");
+  assert.equal(getDefaultActiveDimensionKey(dimensions, "height"), "height");
+  assert.equal(getDefaultActiveDimensionKey(dimensions, "radius"), "width");
+  assert.equal(getNextDimensionKey(dimensions, "width", false), "height");
+  assert.equal(getNextDimensionKey(dimensions, "height", false), "width");
+  assert.equal(getNextDimensionKey(dimensions, "width", true), "height");
 });
 
 function assertApproxEqual(actual, expected, tolerance = 0.000001) {

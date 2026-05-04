@@ -10,6 +10,7 @@ const SEGMENT_KEY_SEPARATOR = "|segment|";
 const POINT_KEY_SEPARATOR = "|point|";
 const DYNAMIC_POINT_KEY_PREFIX = "__dynamic";
 const WORLD_GEOMETRY_TOLERANCE = 0.000001;
+const ORTHO_POLAR_SNAP_TOLERANCE = 6;
 
 export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) {
   const context = canvas.getContext("2d");
@@ -86,6 +87,9 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     setDocument(document, fitToDocument = false) {
       state.document = document || null;
       state.acquiredSnapPoints = [];
+      if (fitToDocument) {
+        state.toolDraft = createEmptyToolDraft();
+      }
       pruneInteractionState(state, true);
       if (fitToDocument) {
         fitToExtents(state);
@@ -666,6 +670,8 @@ function updateDimensionInputs(state, dimensions) {
     }
   }
 
+  state.activeDimensionKey = getDefaultActiveDimensionKey(dimensions, state.activeDimensionKey);
+
   for (const dimension of dimensions) {
     const input = getOrCreateDimensionInput(state, dimension);
     const draftValue = state.toolDraft && state.toolDraft.dimensionValues
@@ -683,8 +689,64 @@ function updateDimensionInputs(state, dimensions) {
     input.dataset.dimensionLabel = dimension.label;
     input.style.left = `${dimension.point.x}px`;
     input.style.top = `${dimension.point.y}px`;
-    input.classList.toggle("drawing-dimension-input-active", document.activeElement === input);
+    input.classList.toggle("drawing-dimension-input-active", input.dataset.dimensionKey === state.activeDimensionKey);
   }
+
+  focusActiveDimensionInputIfNeeded(state, dimensions);
+}
+
+export function getDefaultActiveDimensionKey(dimensions, requestedKey) {
+  if (!Array.isArray(dimensions) || dimensions.length === 0) {
+    return null;
+  }
+
+  const keys = dimensions
+    .map(dimension => dimension && dimension.key)
+    .filter(key => Boolean(key));
+  if (keys.length === 0) {
+    return null;
+  }
+
+  return keys.includes(requestedKey)
+    ? requestedKey
+    : keys[0];
+}
+
+export function getNextDimensionKey(dimensions, currentKey, reverse = false) {
+  if (!Array.isArray(dimensions) || dimensions.length === 0) {
+    return null;
+  }
+
+  const keys = dimensions
+    .map(dimension => dimension && dimension.key)
+    .filter(key => Boolean(key));
+  if (keys.length === 0) {
+    return null;
+  }
+
+  const currentIndex = Math.max(0, keys.indexOf(currentKey));
+  const offset = reverse ? -1 : 1;
+  const nextIndex = (currentIndex + offset + keys.length) % keys.length;
+  return keys[nextIndex];
+}
+
+function focusActiveDimensionInputIfNeeded(state, dimensions) {
+  const activeKey = getDefaultActiveDimensionKey(dimensions, state.activeDimensionKey);
+  if (!activeKey) {
+    return;
+  }
+
+  const activeInput = state.dimensionInputs.get(activeKey);
+  if (!activeInput || document.activeElement === activeInput) {
+    return;
+  }
+
+  const focusedInput = getFocusedDimensionInput(state);
+  if (focusedInput && state.dimensionInputs.has(focusedInput.dataset.dimensionKey)) {
+    return;
+  }
+
+  focusDimensionInput(state, activeInput, true);
 }
 
 function getOrCreateDimensionInput(state, dimension) {
@@ -704,7 +766,7 @@ function getOrCreateDimensionInput(state, dimension) {
   input.setAttribute("aria-label", dimension.label);
   input.addEventListener("pointerdown", event => {
     event.stopPropagation();
-    focusElement(input);
+    focusDimensionInput(state, input, false);
   });
   input.addEventListener("pointerup", event => {
     event.stopPropagation();
@@ -734,13 +796,26 @@ function handleDimensionInputKeyDown(state, input, event) {
 
   if (event.key === "Enter") {
     commitDimensionInputValue(state, input);
-    focusCanvas(state.canvas);
+    const dimensions = getVisibleDimensionDescriptors(state);
+    if (isLastDimensionInput(dimensions, input)) {
+      commitCurrentSketchTool(state);
+      focusCanvas(state.canvas);
+      updateDebugAttributes(state);
+      draw(state);
+    } else {
+      focusDimensionInputByKey(state, getNextDimensionKey(dimensions, input.dataset.dimensionKey, false), true);
+    }
     event.preventDefault();
   } else if (event.key === "Escape") {
     focusCanvas(state.canvas);
     event.preventDefault();
   } else if (event.key === "Tab") {
     commitDimensionInputValue(state, input);
+    focusDimensionInputByKey(
+      state,
+      getNextDimensionKey(getVisibleDimensionDescriptors(state), input.dataset.dimensionKey, event.shiftKey),
+      true);
+    event.preventDefault();
   }
 }
 
@@ -765,6 +840,62 @@ function setActiveDimensionInput(state, input) {
   for (const candidate of state.dimensionInputs.values()) {
     candidate.classList.toggle("drawing-dimension-input-active", candidate === input);
   }
+  selectInputText(input);
+}
+
+function getFocusedDimensionInput(state) {
+  const activeElement = document.activeElement;
+  if (!activeElement || !activeElement.dataset) {
+    return null;
+  }
+
+  return state.dimensionInputs.get(activeElement.dataset.dimensionKey) === activeElement
+    ? activeElement
+    : null;
+}
+
+function focusDimensionInputByKey(state, key, selectContents) {
+  const input = key ? state.dimensionInputs.get(key) : null;
+  if (input) {
+    focusDimensionInput(state, input, selectContents);
+  }
+}
+
+function focusDimensionInput(state, input, selectContents) {
+  if (!input) {
+    return;
+  }
+
+  state.activeDimensionKey = input.dataset.dimensionKey || null;
+  focusElement(input);
+  if (selectContents) {
+    selectInputText(input);
+  }
+  setActiveDimensionInput(state, input);
+}
+
+function selectInputText(input) {
+  if (!input || typeof input.select !== "function") {
+    return;
+  }
+
+  try {
+    input.select();
+  } catch {
+  }
+}
+
+function getVisibleDimensionDescriptors(state) {
+  return Array.from(state.dimensionInputs.keys()).map(key => ({ key }));
+}
+
+function isLastDimensionInput(dimensions, input) {
+  if (!input || !Array.isArray(dimensions) || dimensions.length === 0) {
+    return false;
+  }
+
+  const key = input.dataset.dimensionKey;
+  return dimensions[dimensions.length - 1].key === key;
 }
 
 function clearDimensionInputs(state) {
@@ -1121,11 +1252,31 @@ function handleSketchToolClick(state, screenPoint, event) {
     return;
   }
 
+  commitSketchToolPoints(state, tool, first, worldPoint);
+}
+
+function commitCurrentSketchTool(state) {
+  const tool = getSketchCreationTool(state);
+  if (!tool || !state.toolDraft || state.toolDraft.points.length === 0 || !state.toolDraft.previewPoint) {
+    return false;
+  }
+
+  const first = state.toolDraft.points[0];
+  const second = state.toolDraft.previewPoint;
+  if (distanceBetweenWorldPoints(first, second) <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
+  commitSketchToolPoints(state, tool, first, second);
+  return true;
+}
+
+function commitSketchToolPoints(state, tool, first, second) {
   state.toolDraft = tool === "line"
-    ? { points: [worldPoint], previewPoint: null, dimensionValues: {} }
+    ? { points: [second], previewPoint: null, dimensionValues: {} }
     : createEmptyToolDraft();
   setHoveredTarget(state, null);
-  invokeDotNet(state, "OnSketchToolCommitted", tool, [first.x, first.y, worldPoint.x, worldPoint.y]);
+  invokeDotNet(state, "OnSketchToolCommitted", tool, [first.x, first.y, second.x, second.y]);
 }
 
 function handlePointerCancel(state, event) {
@@ -3293,10 +3444,22 @@ export function applyPolarSnapIfRequested(state, point, tool, event) {
     return point;
   }
 
-  const increment = event && event.shiftKey
-    ? normalizePolarSnapIncrement(state.polarSnapIncrementDegrees)
-    : 90;
   const rawAngle = radiansToDegrees(Math.atan2(point.y - anchor.y, point.x - anchor.x));
+  if (!event || !event.shiftKey) {
+    const scale = Math.max(MIN_VIEW_SCALE, Number(state.view && state.view.scale) || 1);
+    const horizontalDistance = Math.abs(point.y - anchor.y) * scale;
+    const verticalDistance = Math.abs(point.x - anchor.x) * scale;
+    if (Math.min(horizontalDistance, verticalDistance) > ORTHO_POLAR_SNAP_TOLERANCE) {
+      return point;
+    }
+
+    const snappedAngle = horizontalDistance <= verticalDistance
+      ? (point.x >= anchor.x ? 0 : 180)
+      : (point.y >= anchor.y ? 90 : -90);
+    return pointOnCircle(anchor, distance, snappedAngle);
+  }
+
+  const increment = normalizePolarSnapIncrement(state.polarSnapIncrementDegrees);
   const snappedAngle = Math.round(rawAngle / increment) * increment;
   return pointOnCircle(anchor, distance, snappedAngle);
 }
