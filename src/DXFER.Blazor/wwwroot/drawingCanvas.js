@@ -24,6 +24,7 @@ export function createDrawingCanvas(canvas, dotnetRef) {
     document: null,
     showOriginAxes: false,
     grainDirection: "none",
+    polarSnapIncrementDegrees: 45,
     activeTool: "select",
     toolDraft: {
       points: [],
@@ -99,6 +100,12 @@ export function createDrawingCanvas(canvas, dotnetRef) {
 
     setGrainDirection(direction) {
       state.grainDirection = normalizeGrainDirection(direction);
+      updateDebugAttributes(state);
+      draw(state);
+    },
+
+    setPolarSnapIncrementDegrees(incrementDegrees) {
+      state.polarSnapIncrementDegrees = normalizePolarSnapIncrement(incrementDegrees);
       updateDebugAttributes(state);
       draw(state);
     },
@@ -419,19 +426,13 @@ function drawPointTarget(state, point, style) {
   const screenPoint = worldToScreen(state, point);
 
   context.save();
-  context.strokeStyle = style.strokeStyle;
-  context.fillStyle = "#0f172a";
-  context.lineWidth = style.lineWidth;
+  context.strokeStyle = "#0f172a";
+  context.fillStyle = style.strokeStyle;
+  context.lineWidth = 1;
   context.setLineDash([]);
   context.beginPath();
-  context.arc(screenPoint.x, screenPoint.y, 5, 0, Math.PI * 2);
+  context.arc(screenPoint.x, screenPoint.y, 3.5, 0, Math.PI * 2);
   context.fill();
-  context.stroke();
-  context.beginPath();
-  context.moveTo(screenPoint.x - 8, screenPoint.y);
-  context.lineTo(screenPoint.x + 8, screenPoint.y);
-  context.moveTo(screenPoint.x, screenPoint.y - 8);
-  context.lineTo(screenPoint.x, screenPoint.y + 8);
   context.stroke();
   context.restore();
 }
@@ -636,7 +637,7 @@ function handlePointerMove(state, event) {
     setHoveredTarget(state, nearestTarget);
 
     if (state.toolDraft && state.toolDraft.points.length > 0) {
-      state.toolDraft.previewPoint = getSketchWorldPoint(state, screenPoint, nearestTarget);
+      state.toolDraft.previewPoint = getSketchWorldPoint(state, screenPoint, nearestTarget, event);
       updateDebugAttributes(state);
       draw(state);
     } else if (nearestTarget) {
@@ -761,7 +762,7 @@ function handlePointerUp(state, event) {
     const moveDistance = distanceBetweenScreenPoints(screenPoint, candidate.screenPoint);
     if (moveDistance <= CLICK_MOVE_TOLERANCE) {
       if (getSketchCreationTool(state)) {
-        handleSketchToolClick(state, screenPoint);
+        handleSketchToolClick(state, screenPoint, event);
         updateDebugAttributes(state);
         draw(state);
         releasePointer(state.canvas, event.pointerId);
@@ -786,7 +787,7 @@ function handlePointerUp(state, event) {
   releasePointer(state.canvas, event.pointerId);
 }
 
-function handleSketchToolClick(state, screenPoint) {
+function handleSketchToolClick(state, screenPoint, event) {
   const tool = getSketchCreationTool(state);
   if (!tool) {
     return;
@@ -797,7 +798,7 @@ function handleSketchToolClick(state, screenPoint) {
     setHoveredTarget(state, clickTarget);
   }
 
-  const worldPoint = getSketchWorldPoint(state, screenPoint, clickTarget);
+  const worldPoint = getSketchWorldPoint(state, screenPoint, clickTarget, event);
   if (!state.toolDraft || state.toolDraft.points.length === 0) {
     state.toolDraft = {
       points: [worldPoint],
@@ -978,16 +979,17 @@ function screenToWorld(state, point) {
   };
 }
 
-function getSketchWorldPoint(state, screenPoint, target = state.hoveredTarget) {
+function getSketchWorldPoint(state, screenPoint, target = state.hoveredTarget, event = null) {
+  const tool = getSketchCreationTool(state);
   if (target && target.kind === "point" && target.point) {
-    return target.point;
+    return applyPolarSnapIfRequested(state, target.point, tool, event);
   }
 
   if (target && target.snapPoint) {
-    return target.snapPoint;
+    return applyPolarSnapIfRequested(state, target.snapPoint, tool, event);
   }
 
-  return screenToWorld(state, screenPoint);
+  return applyPolarSnapIfRequested(state, screenToWorld(state, screenPoint), tool, event);
 }
 
 function findNearestTarget(state, screenPoint) {
@@ -1093,24 +1095,28 @@ function getDynamicSketchSnapHit(state, screenPoint) {
   addAcquiredProjectionSnapCandidates(candidates, state, worldPoint);
   addDynamicTangentSnapCandidates(candidates, state, tool);
 
-  let nearest = null;
+  const hits = [];
   for (const candidate of candidates) {
     const screenCandidate = worldToScreen(state, candidate.point);
     const distance = distanceBetweenScreenPoints(screenPoint, screenCandidate);
     const priority = Number(candidate.priority || 0);
-    const nearestPriority = nearest ? Number(nearest.priority || 0) : 0;
-    if (!nearest
-      || distance < nearest.distance
-      || (Math.abs(distance - nearest.distance) <= 0.000001 && priority > nearestPriority)) {
-      nearest = {
+    if (distance <= SNAP_POINT_TOLERANCE) {
+      hits.push({
         target: createDynamicPointTarget(candidate.label, candidate.point, candidate.guides),
         distance,
         priority
-      };
+      });
     }
   }
 
-  return nearest;
+  if (hits.length === 0) {
+    return null;
+  }
+
+  hits.sort((first, second) =>
+    second.priority - first.priority
+    || first.distance - second.distance);
+  return hits[0];
 }
 
 function addAcquiredProjectionSnapCandidates(candidates, state, worldPoint) {
@@ -1488,6 +1494,7 @@ function getLineSnapPoints(entity, entities) {
     { label: "mid", point: midpoint(points[0], points[1]) }
   ];
 
+  addIntersectionSnapPoints(snapPoints, entity, entities);
   addTangentSnapPointsForLinearEntity(snapPoints, entity, getLinearSegments(entity), entities);
   return snapPoints;
 }
@@ -1504,6 +1511,7 @@ function getPolylineSnapPoints(entity, entities) {
     snapPoints.push({ label: `mid-${index - 1}`, point: midpoint(points[index - 1], points[index]) });
   }
 
+  addIntersectionSnapPoints(snapPoints, entity, entities);
   addTangentSnapPointsForLinearEntity(snapPoints, entity, getLinearSegments(entity), entities);
   return snapPoints;
 }
@@ -1523,6 +1531,7 @@ function getCircleSnapPoints(entity, entities) {
     { label: "quadrant-270", point: pointOnCircle(center, radius, 270) }
   ];
 
+  addIntersectionSnapPoints(snapPoints, entity, entities);
   addTangentSnapPointsForCurveEntity(snapPoints, entity, entities);
   return snapPoints;
 }
@@ -1553,8 +1562,28 @@ function getArcSnapPoints(entity, entities) {
     }
   }
 
+  addIntersectionSnapPoints(snapPoints, entity, entities);
   addTangentSnapPointsForCurveEntity(snapPoints, entity, entities);
   return snapPoints;
+}
+
+function addIntersectionSnapPoints(snapPoints, entity, entities) {
+  const entityId = getEntityId(entity);
+  if (!entityId || !Array.isArray(entities)) {
+    return;
+  }
+
+  for (const otherEntity of entities) {
+    const otherId = getEntityId(otherEntity);
+    if (!otherId || otherId === entityId) {
+      continue;
+    }
+
+    const intersections = getEntityIntersections(entity, otherEntity);
+    for (let index = 0; index < intersections.length; index += 1) {
+      addUniqueSnapPoint(snapPoints, `intersection-${otherId}-${index}`, intersections[index], 9);
+    }
+  }
 }
 
 function addTangentSnapPointsForLinearEntity(snapPoints, entity, segments, entities) {
@@ -1693,14 +1722,214 @@ function getLinearSegments(entity) {
   return segments;
 }
 
-function addUniqueSnapPoint(snapPoints, label, point) {
+function getEntityIntersections(firstEntity, secondEntity) {
+  const intersections = [];
+  const firstPrimitives = getIntersectionPrimitives(firstEntity);
+  const secondPrimitives = getIntersectionPrimitives(secondEntity);
+
+  for (const first of firstPrimitives) {
+    for (const second of secondPrimitives) {
+      for (const point of getPrimitiveIntersections(first, second)) {
+        addUniquePoint(intersections, point);
+      }
+    }
+  }
+
+  return intersections;
+}
+
+function getIntersectionPrimitives(entity) {
+  const kind = getEntityKind(entity);
+
+  if (kind === "line" || kind === "polyline") {
+    return getLinearSegments(entity).map(segment => ({
+      kind: "segment",
+      start: segment.start,
+      end: segment.end
+    }));
+  }
+
+  const center = getEntityCenter(entity);
+  const radius = getEntityRadius(entity);
+  if (!center || !isFinitePositive(radius)) {
+    return [];
+  }
+
+  if (kind === "circle") {
+    return [{
+      kind: "curve",
+      center,
+      radius,
+      startAngle: null,
+      endAngle: null
+    }];
+  }
+
+  if (kind === "arc") {
+    return [{
+      kind: "curve",
+      center,
+      radius,
+      startAngle: getEntityStartAngle(entity),
+      endAngle: getEntityEndAngle(entity)
+    }];
+  }
+
+  return [];
+}
+
+function getPrimitiveIntersections(first, second) {
+  if (first.kind === "segment" && second.kind === "segment") {
+    return getSegmentSegmentIntersections(first, second);
+  }
+
+  if (first.kind === "segment" && second.kind === "curve") {
+    return getSegmentCurveIntersections(first, second);
+  }
+
+  if (first.kind === "curve" && second.kind === "segment") {
+    return getSegmentCurveIntersections(second, first);
+  }
+
+  if (first.kind === "curve" && second.kind === "curve") {
+    return getCurveCurveIntersections(first, second);
+  }
+
+  return [];
+}
+
+function getSegmentSegmentIntersections(first, second) {
+  const r = subtractPoints(first.end, first.start);
+  const s = subtractPoints(second.end, second.start);
+  const denominator = crossPoints(r, s);
+  const delta = subtractPoints(second.start, first.start);
+
+  if (Math.abs(denominator) <= WORLD_GEOMETRY_TOLERANCE) {
+    if (Math.abs(crossPoints(delta, r)) > WORLD_GEOMETRY_TOLERANCE) {
+      return [];
+    }
+
+    const points = [];
+    for (const point of [first.start, first.end]) {
+      if (isPointOnSegmentPrimitive(point, second)) {
+        addUniquePoint(points, point);
+      }
+    }
+
+    for (const point of [second.start, second.end]) {
+      if (isPointOnSegmentPrimitive(point, first)) {
+        addUniquePoint(points, point);
+      }
+    }
+
+    return points;
+  }
+
+  const t = crossPoints(delta, s) / denominator;
+  const u = crossPoints(delta, r) / denominator;
+  if (!isUnitParameter(t) || !isUnitParameter(u)) {
+    return [];
+  }
+
+  return [{
+    x: first.start.x + r.x * t,
+    y: first.start.y + r.y * t
+  }];
+}
+
+function getSegmentCurveIntersections(segment, curve) {
+  const direction = subtractPoints(segment.end, segment.start);
+  const offset = subtractPoints(segment.start, curve.center);
+  const a = dotPoints(direction, direction);
+  if (a <= WORLD_GEOMETRY_TOLERANCE * WORLD_GEOMETRY_TOLERANCE) {
+    return [];
+  }
+
+  const b = 2 * dotPoints(offset, direction);
+  const c = dotPoints(offset, offset) - curve.radius * curve.radius;
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < -WORLD_GEOMETRY_TOLERANCE) {
+    return [];
+  }
+
+  const parameters = [];
+  if (Math.abs(discriminant) <= WORLD_GEOMETRY_TOLERANCE) {
+    parameters.push(-b / (2 * a));
+  } else {
+    const root = Math.sqrt(Math.max(0, discriminant));
+    parameters.push((-b - root) / (2 * a));
+    parameters.push((-b + root) / (2 * a));
+  }
+
+  const points = [];
+  for (const parameter of parameters) {
+    if (!isUnitParameter(parameter)) {
+      continue;
+    }
+
+    const point = {
+      x: segment.start.x + direction.x * parameter,
+      y: segment.start.y + direction.y * parameter
+    };
+    if (isPointOnCurvePrimitive(point, curve)) {
+      addUniquePoint(points, point);
+    }
+  }
+
+  return points;
+}
+
+function getCurveCurveIntersections(first, second) {
+  const distance = distanceBetweenWorldPoints(first.center, second.center);
+  if (distance <= WORLD_GEOMETRY_TOLERANCE) {
+    return [];
+  }
+
+  if (distance > first.radius + second.radius + WORLD_GEOMETRY_TOLERANCE
+    || distance < Math.abs(first.radius - second.radius) - WORLD_GEOMETRY_TOLERANCE) {
+    return [];
+  }
+
+  const a = (first.radius * first.radius - second.radius * second.radius + distance * distance) / (2 * distance);
+  const hSquared = first.radius * first.radius - a * a;
+  if (hSquared < -WORLD_GEOMETRY_TOLERANCE) {
+    return [];
+  }
+
+  const direction = {
+    x: (second.center.x - first.center.x) / distance,
+    y: (second.center.y - first.center.y) / distance
+  };
+  const base = {
+    x: first.center.x + direction.x * a,
+    y: first.center.y + direction.y * a
+  };
+  const h = Math.sqrt(Math.max(0, hSquared));
+  const candidates = Math.abs(h) <= WORLD_GEOMETRY_TOLERANCE
+    ? [base]
+    : [
+      { x: base.x - direction.y * h, y: base.y + direction.x * h },
+      { x: base.x + direction.y * h, y: base.y - direction.x * h }
+    ];
+
+  const points = [];
+  for (const point of candidates) {
+    if (isPointOnCurvePrimitive(point, first) && isPointOnCurvePrimitive(point, second)) {
+      addUniquePoint(points, point);
+    }
+  }
+
+  return points;
+}
+
+function addUniqueSnapPoint(snapPoints, label, point, priority = null) {
   const isTangent = String(label).startsWith("tangent-");
   const duplicate = snapPoints.some(existing =>
     Math.abs(existing.point.x - point.x) <= WORLD_GEOMETRY_TOLERANCE
     && Math.abs(existing.point.y - point.y) <= WORLD_GEOMETRY_TOLERANCE);
 
   if (!duplicate || isTangent) {
-    snapPoints.push({ label, point, priority: isTangent ? 10 : 0 });
+    snapPoints.push({ label, point, priority: priority === null ? (isTangent ? 10 : 0) : priority });
   }
 }
 
@@ -1863,6 +2092,7 @@ function clearSelectedTargets(state) {
 }
 
 function setHoveredTarget(state, target) {
+  const previousTarget = state.hoveredTarget;
   const previousKey = state.hoveredTarget ? state.hoveredTarget.key : null;
   const previousNotifyKey = state.hoveredTarget && !state.hoveredTarget.dynamic
     ? previousKey
@@ -1872,7 +2102,7 @@ function setHoveredTarget(state, target) {
     ? nextKey
     : null;
 
-  if (previousKey === nextKey) {
+  if (previousKey === nextKey && sameOptionalWorldPoint(previousTarget && previousTarget.snapPoint, target && target.snapPoint)) {
     return false;
   }
 
@@ -1884,6 +2114,18 @@ function setHoveredTarget(state, target) {
 
   updateDebugAttributes(state);
   return true;
+}
+
+function sameOptionalWorldPoint(first, second) {
+  if (!first && !second) {
+    return true;
+  }
+
+  if (!first || !second) {
+    return false;
+  }
+
+  return distanceBetweenWorldPoints(first, second) <= WORLD_GEOMETRY_TOLERANCE;
 }
 
 function rememberAcquiredSnapPoint(state, target) {
@@ -1944,6 +2186,9 @@ function updateDebugAttributes(state) {
   state.canvas.dataset.selectedKeys = Array.from(state.selectedKeys).join(",");
   state.canvas.dataset.hoveredId = state.hoveredTarget ? state.hoveredTarget.key : "";
   state.canvas.dataset.hoveredKind = state.hoveredTarget ? state.hoveredTarget.kind : "";
+  state.canvas.dataset.hoveredSnapPoint = state.hoveredTarget && state.hoveredTarget.snapPoint
+    ? `${formatKeyNumber(state.hoveredTarget.snapPoint.x)},${formatKeyNumber(state.hoveredTarget.snapPoint.y)}`
+    : "";
   state.canvas.dataset.acquiredSnapCount = String(state.acquiredSnapPoints.length);
   state.canvas.dataset.selectionBoxMode = state.selectionBox
     ? `${state.selectionBox.operation}:${isCrossingSelection(state.selectionBox) ? "crossing" : "window"}`
@@ -1951,6 +2196,7 @@ function updateDebugAttributes(state) {
   state.canvas.dataset.originAxes = state.showOriginAxes ? "true" : "false";
   state.canvas.dataset.grainDirection = normalizeGrainDirection(state.grainDirection);
   state.canvas.dataset.activeTool = normalizeToolName(state.activeTool);
+  state.canvas.dataset.polarSnapIncrement = String(normalizePolarSnapIncrement(state.polarSnapIncrementDegrees));
   state.canvas.dataset.toolDraftPointCount = state.toolDraft ? String(state.toolDraft.points.length) : "0";
   state.canvas.dataset.scale = String(state.view.scale);
   state.canvas.dataset.offsetX = String(state.view.offsetX);
@@ -2110,6 +2356,15 @@ function normalizeWheelDelta(event) {
 function normalizeGrainDirection(direction) {
   const normalized = String(direction || "none").toLowerCase();
   return normalized === "globalx" || normalized === "globaly" ? normalized : "none";
+}
+
+function normalizePolarSnapIncrement(incrementDegrees) {
+  const parsed = Number(incrementDegrees);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 180) {
+    return 45;
+  }
+
+  return parsed;
 }
 
 function normalizeToolName(toolName) {
@@ -2385,6 +2640,27 @@ function getArcEndpointWorldPoints(entity) {
   ];
 }
 
+function applyPolarSnapIfRequested(state, point, tool, event) {
+  if (!event
+    || !event.shiftKey
+    || (tool !== "line" && tool !== "midpointline")
+    || !state.toolDraft
+    || state.toolDraft.points.length === 0) {
+    return point;
+  }
+
+  const anchor = state.toolDraft.points[0];
+  const distance = distanceBetweenWorldPoints(anchor, point);
+  if (distance <= WORLD_GEOMETRY_TOLERANCE) {
+    return point;
+  }
+
+  const increment = normalizePolarSnapIncrement(state.polarSnapIncrementDegrees);
+  const rawAngle = radiansToDegrees(Math.atan2(point.y - anchor.y, point.x - anchor.x));
+  const snappedAngle = Math.round(rawAngle / increment) * increment;
+  return pointOnCircle(anchor, distance, snappedAngle);
+}
+
 function pointOnCircle(center, radius, angleDegrees) {
   const radians = degreesToRadians(angleDegrees);
   return {
@@ -2405,6 +2681,56 @@ function mirrorPoint(center, point) {
     x: (2 * center.x) - point.x,
     y: (2 * center.y) - point.y
   };
+}
+
+function subtractPoints(first, second) {
+  return {
+    x: first.x - second.x,
+    y: first.y - second.y
+  };
+}
+
+function dotPoints(first, second) {
+  return first.x * second.x + first.y * second.y;
+}
+
+function crossPoints(first, second) {
+  return first.x * second.y - first.y * second.x;
+}
+
+function addUniquePoint(points, point) {
+  const duplicate = points.some(existing =>
+    distanceBetweenWorldPoints(existing, point) <= WORLD_GEOMETRY_TOLERANCE);
+
+  if (!duplicate) {
+    points.push(point);
+  }
+}
+
+function isUnitParameter(parameter) {
+  return parameter >= -WORLD_GEOMETRY_TOLERANCE && parameter <= 1 + WORLD_GEOMETRY_TOLERANCE;
+}
+
+function isPointOnSegmentPrimitive(point, segment) {
+  const projection = closestPointOnWorldSegment(point, segment.start, segment.end);
+  return projection
+    && isUnitParameter(projection.parameter)
+    && projection.distance <= WORLD_GEOMETRY_TOLERANCE;
+}
+
+function isPointOnCurvePrimitive(point, curve) {
+  const distance = distanceBetweenWorldPoints(point, curve.center);
+  const radialTolerance = Math.max(WORLD_GEOMETRY_TOLERANCE, curve.radius * 0.000001);
+  if (Math.abs(distance - curve.radius) > radialTolerance) {
+    return false;
+  }
+
+  if (curve.startAngle === null || curve.endAngle === null) {
+    return true;
+  }
+
+  const angleDegrees = radiansToDegrees(Math.atan2(point.y - curve.center.y, point.x - curve.center.x));
+  return isAngleOnArc(angleDegrees, curve.startAngle, curve.endAngle);
 }
 
 function isAngleOnArc(angleDegrees, startAngleDegrees, endAngleDegrees) {
