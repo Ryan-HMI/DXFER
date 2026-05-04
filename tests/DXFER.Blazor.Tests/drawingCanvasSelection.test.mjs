@@ -9,8 +9,10 @@ import {
   getAlignedRectangleCorners,
   getDefaultActiveDimensionKey,
   getDynamicSketchSnapHit,
+  getCenterPointArc,
   getNextDimensionKey,
   getThreePointCircle,
+  getThreePointArc,
   isDynamicTargetCurrentToPointer,
   isInferenceGuideWithinScreenDistance,
   isPanPointerDownForTool,
@@ -195,6 +197,64 @@ test("three point circle rejects collinear points", () => {
     { x: 0, y: 0 },
     { x: 1, y: 1 },
     { x: 2, y: 2 }
+  ), null);
+});
+
+test("three point arc returns arc through the selected through point", () => {
+  const arc = getThreePointArc(
+    { x: 1, y: 0 },
+    { x: 0, y: 1 },
+    { x: -1, y: 0 }
+  );
+
+  assertApproxEqual(arc.center.x, 0);
+  assertApproxEqual(arc.center.y, 0);
+  assertApproxEqual(arc.radius, 1);
+  assertApproxEqual(arc.startAngleDegrees, 0);
+  assertApproxEqual(arc.endAngleDegrees, 180);
+});
+
+test("three point arc chooses the sweep containing the through point", () => {
+  const arc = getThreePointArc(
+    { x: 1, y: 0 },
+    { x: 0, y: -1 },
+    { x: -1, y: 0 }
+  );
+
+  assertApproxEqual(arc.center.x, 0);
+  assertApproxEqual(arc.center.y, 0);
+  assertApproxEqual(arc.radius, 1);
+  assertApproxEqual(arc.startAngleDegrees, 180);
+  assertApproxEqual(arc.endAngleDegrees, 360);
+});
+
+test("three point arc rejects collinear points", () => {
+  assert.equal(getThreePointArc(
+    { x: 0, y: 0 },
+    { x: 1, y: 1 },
+    { x: 2, y: 2 }
+  ), null);
+});
+
+test("center point arc uses start radius and end angle", () => {
+  const arc = getCenterPointArc(
+    { x: 0, y: 0 },
+    { x: 2, y: 0 },
+    { x: 0, y: 5 }
+  );
+
+  assertApproxEqual(arc.center.x, 0);
+  assertApproxEqual(arc.center.y, 0);
+  assertApproxEqual(arc.radius, 2);
+  assertApproxEqual(arc.startAngleDegrees, 0);
+  assertApproxEqual(arc.endAngleDegrees, 90);
+});
+
+test("center point arc rejects degenerate radius", () => {
+  assert.equal(getCenterPointArc(
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 5 }
   ), null);
 });
 

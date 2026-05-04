@@ -155,9 +155,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.CenterCircle, WorkbenchTool.CenterCircle, CadIconName.Circle, "Center circle"),
             Command(WorkbenchCommandId.ThreePointCircle, WorkbenchTool.ThreePointCircle, CadIconName.ThreePointCircle, "Three-point circle"),
             Command(WorkbenchCommandId.Ellipse, WorkbenchTool.Ellipse, CadIconName.Ellipse, "Ellipse", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.ThreePointArc, WorkbenchTool.ThreePointArc, CadIconName.Arc, "Three-point arc", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.ThreePointArc, WorkbenchTool.ThreePointArc, CadIconName.Arc, "Three-point arc"),
             Command(WorkbenchCommandId.TangentArc, WorkbenchTool.TangentArc, CadIconName.TangentArc, "Tangent arc", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.CenterPointArc, WorkbenchTool.CenterPointArc, CadIconName.CenterPointArc, "Center point arc", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.CenterPointArc, WorkbenchTool.CenterPointArc, CadIconName.CenterPointArc, "Center point arc"),
             Command(WorkbenchCommandId.EllipticalArc, WorkbenchTool.EllipticalArc, CadIconName.EllipticalArc, "Elliptical arc", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Conic, WorkbenchTool.Conic, CadIconName.Conic, "Conic", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.InscribedPolygon, WorkbenchTool.InscribedPolygon, CadIconName.InscribedPolygon, "Inscribed polygon", disabled: true, isFuture: true),
@@ -283,6 +283,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.AlignedRectangle => "Aligned rectangle: click baseline start, baseline end, then depth. Esc: cancel.",
         WorkbenchTool.CenterCircle => "Center circle: click center, then radius point. Shift: polar snap. Esc: cancel.",
         WorkbenchTool.ThreePointCircle => "Three-point circle: click three points on the circumference. Esc: cancel.",
+        WorkbenchTool.ThreePointArc => "Three-point arc: click start point, through point, then end point. Esc: cancel.",
+        WorkbenchTool.CenterPointArc => "Center point arc: click center, start radius point, then end angle point. Esc: cancel.",
         not null => $"{ActiveToolLabel}: follow canvas prompts. Esc: cancel.",
         null => "Selection: click to select and make active. Click active again to deselect. Box select adds; Ctrl-box deselects."
     };
@@ -1142,6 +1144,32 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 }
 
                 break;
+            case "threepointarc" when points.Count >= 3:
+                var threePointArc = GetThreePointArc(first, second, points[2]);
+                if (threePointArc is not null)
+                {
+                    yield return new ArcEntity(
+                        CreateEntityId("arc"),
+                        threePointArc.Value.Center,
+                        threePointArc.Value.Radius,
+                        threePointArc.Value.StartAngleDegrees,
+                        threePointArc.Value.EndAngleDegrees);
+                }
+
+                break;
+            case "centerpointarc" when points.Count >= 3:
+                var centerPointArc = GetCenterPointArc(first, second, points[2]);
+                if (centerPointArc is not null)
+                {
+                    yield return new ArcEntity(
+                        CreateEntityId("arc"),
+                        centerPointArc.Value.Center,
+                        centerPointArc.Value.Radius,
+                        centerPointArc.Value.StartAngleDegrees,
+                        centerPointArc.Value.EndAngleDegrees);
+                }
+
+                break;
         }
     }
 
@@ -1191,6 +1219,66 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 + thirdSquared * (second.X - first.X)) / determinant);
         var radius = Math.Sqrt(Math.Pow(center.X - first.X, 2) + Math.Pow(center.Y - first.Y, 2));
         return radius > 0.000001 ? (center, radius) : null;
+    }
+
+    private static (Point2 Center, double Radius, double StartAngleDegrees, double EndAngleDegrees)? GetThreePointArc(
+        Point2 first,
+        Point2 through,
+        Point2 end)
+    {
+        var circle = GetThreePointCircle(first, through, end);
+        if (circle is null)
+        {
+            return null;
+        }
+
+        var startAngle = GetPointAngleDegrees(circle.Value.Center, first);
+        var throughAngle = GetPointAngleDegrees(circle.Value.Center, through);
+        var endAngle = GetPointAngleDegrees(circle.Value.Center, end);
+        var throughDelta = GetCounterClockwiseDeltaDegrees(startAngle, throughAngle);
+        var endDelta = GetCounterClockwiseDeltaDegrees(startAngle, endAngle);
+
+        if (throughDelta <= endDelta + 0.000001)
+        {
+            return (circle.Value.Center, circle.Value.Radius, startAngle, startAngle + endDelta);
+        }
+
+        return (
+            circle.Value.Center,
+            circle.Value.Radius,
+            endAngle,
+            endAngle + GetCounterClockwiseDeltaDegrees(endAngle, startAngle));
+    }
+
+    private static (Point2 Center, double Radius, double StartAngleDegrees, double EndAngleDegrees)? GetCenterPointArc(
+        Point2 center,
+        Point2 startRadiusPoint,
+        Point2 endAnglePoint)
+    {
+        var radius = Distance(center, startRadiusPoint);
+        if (radius <= 0.000001 || Distance(center, endAnglePoint) <= 0.000001)
+        {
+            return null;
+        }
+
+        var startAngle = GetPointAngleDegrees(center, startRadiusPoint);
+        var endAngle = GetPointAngleDegrees(center, endAnglePoint);
+        return (center, radius, startAngle, startAngle + GetCounterClockwiseDeltaDegrees(startAngle, endAngle));
+    }
+
+    private static double Distance(Point2 first, Point2 second) =>
+        Math.Sqrt(Math.Pow(second.X - first.X, 2) + Math.Pow(second.Y - first.Y, 2));
+
+    private static double GetPointAngleDegrees(Point2 center, Point2 point)
+    {
+        var angle = Math.Atan2(point.Y - center.Y, point.X - center.X) * 180.0 / Math.PI;
+        return angle < 0 ? angle + 360.0 : angle;
+    }
+
+    private static double GetCounterClockwiseDeltaDegrees(double startAngleDegrees, double angleDegrees)
+    {
+        var delta = (angleDegrees - startAngleDegrees) % 360.0;
+        return delta < 0 ? delta + 360.0 : delta;
     }
 
     private WorkbenchToolCommand Command(
@@ -1306,6 +1394,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchCommandId.ThreePointCircle:
                 tool = WorkbenchTool.ThreePointCircle;
                 return true;
+            case WorkbenchCommandId.ThreePointArc:
+                tool = WorkbenchTool.ThreePointArc;
+                return true;
+            case WorkbenchCommandId.CenterPointArc:
+                tool = WorkbenchTool.CenterPointArc;
+                return true;
             default:
                 tool = default;
                 return false;
@@ -1316,6 +1410,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         WorkbenchTool.AlignedRectangle => "Pick baseline start, baseline end, then depth.",
         WorkbenchTool.ThreePointCircle => "Pick three points on the circle.",
+        WorkbenchTool.ThreePointArc => "Pick start point, through point, then end point.",
+        WorkbenchTool.CenterPointArc => "Pick center, start radius point, then end angle point.",
         _ => "Pick two points on the canvas."
     };
 
