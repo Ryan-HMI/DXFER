@@ -335,7 +335,7 @@ function drawTarget(state, target, style) {
   const { context } = state;
 
   if (target.kind === "point") {
-    drawPointTarget(state, target.point, style);
+    drawPointTarget(state, target.point, style, getPointTargetMarker(target));
     return;
   }
 
@@ -421,7 +421,7 @@ function drawInferenceGuides(state, size) {
   context.restore();
 }
 
-function drawPointTarget(state, point, style) {
+function drawPointTarget(state, point, style, marker = "point") {
   const { context } = state;
   const screenPoint = worldToScreen(state, point);
 
@@ -430,11 +430,25 @@ function drawPointTarget(state, point, style) {
   context.fillStyle = style.strokeStyle;
   context.lineWidth = 1;
   context.setLineDash([]);
-  context.beginPath();
-  context.arc(screenPoint.x, screenPoint.y, 3.5, 0, Math.PI * 2);
+  if (marker === "midpoint") {
+    drawMidpointTargetPath(context, screenPoint);
+  } else {
+    context.beginPath();
+    context.arc(screenPoint.x, screenPoint.y, 3.5, 0, Math.PI * 2);
+  }
+
   context.fill();
   context.stroke();
   context.restore();
+}
+
+function drawMidpointTargetPath(context, screenPoint) {
+  const size = 5.6;
+  context.beginPath();
+  context.moveTo(screenPoint.x, screenPoint.y - size);
+  context.lineTo(screenPoint.x + size, screenPoint.y + size * 0.72);
+  context.lineTo(screenPoint.x - size, screenPoint.y + size * 0.72);
+  context.closePath();
 }
 
 function drawSelectionBox(state) {
@@ -1012,7 +1026,7 @@ function findNearestTarget(state, screenPoint) {
     return nearestPointHit.target;
   }
 
-  const dynamicPointHit = getDynamicSketchSnapHit(state, screenPoint);
+  const dynamicPointHit = getDynamicSketchSnapHit(state, screenPoint, nearestEdgeHit ? nearestEdgeHit.target : null);
   if (dynamicPointHit && dynamicPointHit.distance <= SNAP_POINT_TOLERANCE) {
     return dynamicPointHit.target;
   }
@@ -1084,7 +1098,7 @@ function getEntityEdgeHit(state, entity, screenPoint) {
   }
 }
 
-function getDynamicSketchSnapHit(state, screenPoint) {
+function getDynamicSketchSnapHit(state, screenPoint, highlightedTarget = null) {
   const tool = getSketchCreationTool(state);
   if (!tool) {
     return null;
@@ -1093,6 +1107,7 @@ function getDynamicSketchSnapHit(state, screenPoint) {
   const worldPoint = screenToWorld(state, screenPoint);
   const candidates = [];
   addAcquiredProjectionSnapCandidates(candidates, state, worldPoint);
+  addHighlightedGeometryOrthoSnapCandidates(candidates, state, highlightedTarget);
   addDynamicTangentSnapCandidates(candidates, state, tool);
 
   const hits = [];
@@ -1180,6 +1195,28 @@ function addAcquiredIntersectionCandidate(candidates, verticalSource, horizontal
     ],
     priority: 5
   });
+}
+
+function addHighlightedGeometryOrthoSnapCandidates(candidates, state, highlightedTarget) {
+  if (state.acquiredSnapPoints.length === 0
+    || !highlightedTarget
+    || !highlightedTarget.entity
+    || !highlightedTarget.snapPoint) {
+    return;
+  }
+
+  const entityId = getEntityId(highlightedTarget.entity) || "entity";
+  for (const acquired of state.acquiredSnapPoints) {
+    const points = getEntityOrthographicSnapPoints(highlightedTarget.entity, acquired.point, highlightedTarget.snapPoint);
+    for (const snap of points) {
+      candidates.push({
+        label: `project-${snap.orientation}-${acquired.label}-${entityId}-${snap.index}`,
+        point: snap.point,
+        guides: [{ orientation: snap.orientation === "vertical" ? "vertical" : "horizontal", point: acquired.point }],
+        priority: 7
+      });
+    }
+  }
 }
 
 function addDynamicTangentSnapCandidates(candidates, state, tool) {
@@ -1694,6 +1731,109 @@ function getPointCurveTangentPoints(point, curveEntity) {
   return points;
 }
 
+function getEntityOrthographicSnapPoints(entity, sourcePoint, highlightedPoint) {
+  const kind = getEntityKind(entity);
+  const points = [];
+
+  if (kind === "line" || kind === "polyline") {
+    for (const segment of getLinearSegments(entity)) {
+      addSegmentOrthographicSnapPoints(points, segment, sourcePoint, highlightedPoint);
+    }
+  } else if (kind === "circle" || kind === "arc") {
+    const center = getEntityCenter(entity);
+    const radius = getEntityRadius(entity);
+    if (center && isFinitePositive(radius)) {
+      const curve = {
+        kind: "curve",
+        center,
+        radius,
+        startAngle: kind === "arc" ? getEntityStartAngle(entity) : null,
+        endAngle: kind === "arc" ? getEntityEndAngle(entity) : null
+      };
+      addCurveOrthographicSnapPoints(points, curve, sourcePoint, highlightedPoint);
+    }
+  }
+
+  return points.map((snap, index) => ({ ...snap, index }));
+}
+
+function addSegmentOrthographicSnapPoints(points, segment, sourcePoint, highlightedPoint) {
+  const dx = segment.end.x - segment.start.x;
+  const dy = segment.end.y - segment.start.y;
+
+  if (Math.abs(dx) <= WORLD_GEOMETRY_TOLERANCE) {
+    if (Math.abs(sourcePoint.x - segment.start.x) <= WORLD_GEOMETRY_TOLERANCE
+      && isPointOnSegmentPrimitive(highlightedPoint, segment)) {
+      addUniqueOrthoSnapPoint(points, "vertical", highlightedPoint);
+    }
+  } else {
+    const parameter = (sourcePoint.x - segment.start.x) / dx;
+    if (isUnitParameter(parameter)) {
+      addUniqueOrthoSnapPoint(points, "vertical", {
+        x: sourcePoint.x,
+        y: segment.start.y + dy * parameter
+      });
+    }
+  }
+
+  if (Math.abs(dy) <= WORLD_GEOMETRY_TOLERANCE) {
+    if (Math.abs(sourcePoint.y - segment.start.y) <= WORLD_GEOMETRY_TOLERANCE
+      && isPointOnSegmentPrimitive(highlightedPoint, segment)) {
+      addUniqueOrthoSnapPoint(points, "horizontal", highlightedPoint);
+    }
+  } else {
+    const parameter = (sourcePoint.y - segment.start.y) / dy;
+    if (isUnitParameter(parameter)) {
+      addUniqueOrthoSnapPoint(points, "horizontal", {
+        x: segment.start.x + dx * parameter,
+        y: sourcePoint.y
+      });
+    }
+  }
+}
+
+function addCurveOrthographicSnapPoints(points, curve, sourcePoint, highlightedPoint) {
+  const dx = sourcePoint.x - curve.center.x;
+  const verticalRemainder = curve.radius * curve.radius - dx * dx;
+  if (verticalRemainder >= -WORLD_GEOMETRY_TOLERANCE) {
+    const offset = Math.sqrt(Math.max(0, verticalRemainder));
+    for (const y of [curve.center.y + offset, curve.center.y - offset]) {
+      const point = { x: sourcePoint.x, y };
+      if (isPointOnCurvePrimitive(point, curve)) {
+        addUniqueOrthoSnapPoint(points, "vertical", point);
+      }
+    }
+  } else if (Math.abs(highlightedPoint.x - sourcePoint.x) <= WORLD_GEOMETRY_TOLERANCE
+    && isPointOnCurvePrimitive(highlightedPoint, curve)) {
+    addUniqueOrthoSnapPoint(points, "vertical", highlightedPoint);
+  }
+
+  const dy = sourcePoint.y - curve.center.y;
+  const horizontalRemainder = curve.radius * curve.radius - dy * dy;
+  if (horizontalRemainder >= -WORLD_GEOMETRY_TOLERANCE) {
+    const offset = Math.sqrt(Math.max(0, horizontalRemainder));
+    for (const x of [curve.center.x + offset, curve.center.x - offset]) {
+      const point = { x, y: sourcePoint.y };
+      if (isPointOnCurvePrimitive(point, curve)) {
+        addUniqueOrthoSnapPoint(points, "horizontal", point);
+      }
+    }
+  } else if (Math.abs(highlightedPoint.y - sourcePoint.y) <= WORLD_GEOMETRY_TOLERANCE
+    && isPointOnCurvePrimitive(highlightedPoint, curve)) {
+    addUniqueOrthoSnapPoint(points, "horizontal", highlightedPoint);
+  }
+}
+
+function addUniqueOrthoSnapPoint(points, orientation, point) {
+  const duplicate = points.some(existing =>
+    existing.orientation === orientation
+    && distanceBetweenWorldPoints(existing.point, point) <= WORLD_GEOMETRY_TOLERANCE);
+
+  if (!duplicate) {
+    points.push({ orientation, point });
+  }
+}
+
 function getLinearSegments(entity) {
   const kind = getEntityKind(entity);
   const points = getEntityPoints(entity);
@@ -1999,6 +2139,13 @@ function createDynamicPointTarget(label, point, guides = []) {
     dynamic: true,
     guides
   };
+}
+
+function getPointTargetMarker(target) {
+  const label = String(target && target.label ? target.label : "").toLowerCase();
+  return label === "mid" || label.startsWith("mid-") || label.startsWith("midpoint-")
+    ? "midpoint"
+    : "point";
 }
 
 function withSnapPoint(target, snapPoint) {
