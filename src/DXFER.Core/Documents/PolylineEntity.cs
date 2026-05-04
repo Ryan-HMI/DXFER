@@ -4,8 +4,8 @@ namespace DXFER.Core.Documents;
 
 public sealed record PolylineEntity : DrawingEntity
 {
-    public PolylineEntity(EntityId id, IEnumerable<Point2> vertices)
-        : base(id)
+    public PolylineEntity(EntityId id, IEnumerable<Point2> vertices, bool isConstruction = false)
+        : base(id, isConstruction)
     {
         var points = vertices.ToArray();
         if (points.Length < 2)
@@ -23,5 +23,8 @@ public sealed record PolylineEntity : DrawingEntity
     public override Bounds2 GetBounds() => Bounds2.FromPoints(Vertices);
 
     public override DrawingEntity Transform(Transform2 transform) =>
-        new PolylineEntity(Id, Vertices.Select(point => point.Transform(transform)));
+        new PolylineEntity(Id, Vertices.Select(point => point.Transform(transform)), IsConstruction);
+
+    public override DrawingEntity WithConstruction(bool isConstruction) =>
+        new PolylineEntity(Id, Vertices, isConstruction);
 }

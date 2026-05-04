@@ -102,4 +102,18 @@ public sealed class BoundsTests
         translated.Center.Should().Be(new Point2(-3, 10));
         translated.Radius.Should().Be(4);
     }
+
+    [Fact]
+    public void TransformPreservesConstructionState()
+    {
+        var line = new LineEntity(
+            EntityId.Create("construction-line"),
+            new Point2(0, 0),
+            new Point2(1, 0),
+            IsConstruction: true);
+
+        var transformed = (LineEntity)line.Transform(Transform2.Translation(10, 5));
+
+        transformed.IsConstruction.Should().BeTrue();
+    }
 }

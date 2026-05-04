@@ -7,7 +7,8 @@ public sealed record ArcEntity(
     Point2 Center,
     double Radius,
     double StartAngleDegrees,
-    double EndAngleDegrees) : DrawingEntity(Id)
+    double EndAngleDegrees,
+    bool IsConstruction = false) : DrawingEntity(Id, IsConstruction)
 {
     private const int BoundsSampleSegments = 72;
 
@@ -24,8 +25,12 @@ public sealed record ArcEntity(
             Center.Transform(transform),
             Radius,
             StartAngleDegrees + angleOffset,
-            EndAngleDegrees + angleOffset);
+            EndAngleDegrees + angleOffset,
+            IsConstruction);
     }
+
+    public override DrawingEntity WithConstruction(bool isConstruction) =>
+        this with { IsConstruction = isConstruction };
 
     public IReadOnlyList<Point2> GetSamplePoints(int segmentCount)
     {

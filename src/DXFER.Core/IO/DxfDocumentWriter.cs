@@ -17,6 +17,11 @@ public static class DxfDocumentWriter
 
         foreach (var entity in document.Entities)
         {
+            if (entity.IsConstruction)
+            {
+                continue;
+            }
+
             switch (entity)
             {
                 case LineEntity line:

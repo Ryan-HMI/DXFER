@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260504-construction";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -40,6 +40,9 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public GrainDirection GrainDirection { get; set; } = GrainDirection.None;
+
+    [Parameter]
+    public bool ConstructionMode { get; set; }
 
     [Parameter]
     public int SelectionResetToken { get; set; }
@@ -90,6 +93,7 @@ public partial class DrawingCanvas : IAsyncDisposable
 
             await SetOriginAxesVisibilityAsync();
             await SetGrainDirectionAsync();
+            await SetConstructionModeAsync();
         }
     }
 
@@ -109,6 +113,7 @@ public partial class DrawingCanvas : IAsyncDisposable
         await SetActiveToolAsync();
         await SetOriginAxesVisibilityAsync();
         await SetGrainDirectionAsync();
+        await SetConstructionModeAsync();
     }
 
     public async Task FitToExtentsAsync()
@@ -119,6 +124,18 @@ public partial class DrawingCanvas : IAsyncDisposable
         }
 
         await _canvasInstance.InvokeVoidAsync("fitToExtents");
+    }
+
+    public async Task SyncSelectionFromCanvasAsync()
+    {
+        if (_canvasInstance is null)
+        {
+            return;
+        }
+
+        var selectedKeys = await _canvasInstance.InvokeAsync<string[]>("getSelectedKeys");
+        var activeSelectionKey = await _canvasInstance.InvokeAsync<string?>("getActiveSelectionKey");
+        ApplySelectionState(selectedKeys, activeSelectionKey);
     }
 
     [JSInvokable]
@@ -158,6 +175,13 @@ public partial class DrawingCanvas : IAsyncDisposable
     [JSInvokable]
     public Task OnSelectionChangedFromCanvas(string[] selectionKeys, string? activeSelectionKey)
     {
+        ApplySelectionState(selectionKeys, activeSelectionKey);
+        _ = InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
+    }
+
+    private void ApplySelectionState(IEnumerable<string> selectionKeys, string? activeSelectionKey)
+    {
         SelectedEntityIds.Clear();
         foreach (var selectionKey in selectionKeys)
         {
@@ -169,8 +193,6 @@ public partial class DrawingCanvas : IAsyncDisposable
             : null;
         SelectionChanged?.Invoke(SelectedEntityIds);
         ActiveSelectionChanged?.Invoke(ActiveSelectionKey);
-        _ = InvokeAsync(StateHasChanged);
-        return Task.CompletedTask;
     }
 
     [JSInvokable]
@@ -313,6 +335,16 @@ public partial class DrawingCanvas : IAsyncDisposable
         }
 
         await _canvasInstance.InvokeVoidAsync("setGrainDirection", GrainDirection.ToString());
+    }
+
+    private async Task SetConstructionModeAsync()
+    {
+        if (_canvasInstance is null)
+        {
+            return;
+        }
+
+        await _canvasInstance.InvokeVoidAsync("setConstructionMode", ConstructionMode);
     }
 
     private async Task ClearSelectionStateAsync()

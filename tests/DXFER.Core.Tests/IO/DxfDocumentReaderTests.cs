@@ -175,4 +175,23 @@ EOF
         roundTripped.GetBounds().MinX.Should().BeApproximately(0, 0.0001);
         roundTripped.GetBounds().MaxX.Should().BeGreaterThan(9.9);
     }
+
+    [Fact]
+    public void SkipsConstructionGeometryWhenWritingCutDxf()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("cut-line"), new Point2(0, 0), new Point2(10, 0)),
+            new LineEntity(
+                EntityId.Create("construction-line"),
+                new Point2(0, 5),
+                new Point2(10, 5),
+                IsConstruction: true)
+        });
+
+        var dxf = DxfDocumentWriter.Write(document);
+
+        dxf.Should().Contain("cut-line");
+        dxf.Should().NotContain("construction-line");
+    }
 }

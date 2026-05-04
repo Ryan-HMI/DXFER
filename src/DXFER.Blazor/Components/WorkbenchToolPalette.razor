@@ -15,7 +15,7 @@
                                Hotkey="@command.Hotkey"
                                Disabled="@command.Disabled"
                                Pressed="@command.Pressed"
-                               Class="@(command.IsFuture ? "dxfer-icon-button-future" : null)"
+                               Class="@BuildCommandClass(command)"
                                OnClick="@(() => OnCommandInvoked.InvokeAsync(command.Id))" />
             }
         </div>
@@ -28,4 +28,20 @@
 
     [Parameter]
     public EventCallback<WorkbenchCommandId> OnCommandInvoked { get; set; }
+
+    private static string? BuildCommandClass(WorkbenchToolCommand command)
+    {
+        var classes = new List<string>();
+        if (command.IsFuture)
+        {
+            classes.Add("dxfer-icon-button-future");
+        }
+
+        if (command.IsConfirmedWorking)
+        {
+            classes.Add("dxfer-icon-button-confirmed");
+        }
+
+        return classes.Count == 0 ? null : string.Join(" ", classes);
+    }
 }

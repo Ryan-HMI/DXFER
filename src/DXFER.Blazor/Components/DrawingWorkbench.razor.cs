@@ -34,6 +34,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private GrainDirection _grainDirection = GrainDirection.None;
     private WorkbenchTool? _activeTool;
     private bool _showOriginAxes = true;
+    private bool _constructionMode;
     private bool _isToolPanelCollapsed;
     private bool _isInspectorCollapsed = true;
     private int _toolPanelWidth = 220;
@@ -173,7 +174,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         {
             Command(WorkbenchCommandId.Undo, null, CadIconName.Undo, "Undo", !CanUndo),
             Command(WorkbenchCommandId.Redo, null, CadIconName.Redo, "Redo", !CanRedo),
-            Command(WorkbenchCommandId.Construction, WorkbenchTool.Construction, CadIconName.Construction, "Construction", disabled: true, isFuture: true),
+            Command(
+                WorkbenchCommandId.Construction,
+                null,
+                CadIconName.Construction,
+                "Construction",
+                pressed: _constructionMode,
+                tooltip: "Construction. Toggles construction creation when nothing is selected; converts selected whole geometry otherwise."),
             Command(WorkbenchCommandId.DeleteSelection, null, CadIconName.Delete, "Delete selected geometry", !CanDeleteSelection),
             Command(WorkbenchCommandId.PowerTrim, WorkbenchTool.PowerTrim, CadIconName.PowerTrim, "Power trim/extend", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.SplitAtPoint, WorkbenchTool.SplitAtPoint, CadIconName.Split, "Split at point", disabled: true, isFuture: true),
@@ -286,7 +293,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.ThreePointArc => "Three-point arc: click start point, through point, then end point. Esc: cancel.",
         WorkbenchTool.CenterPointArc => "Center point arc: click center, start radius point, then end angle point. Esc: cancel.",
         not null => $"{ActiveToolLabel}: follow canvas prompts. Esc: cancel.",
-        null => "Selection: click to select and make active. Click active again to deselect. Box select adds; Ctrl-box deselects."
+        null => _constructionMode
+            ? "Selection: construction creation is enabled. Click Construction to disable, or select whole geometry and click it to convert. Box select adds; Ctrl-box deselects."
+            : "Selection: click to select and make active. Click active again to deselect. Box select adds; Ctrl-box deselects."
     };
 
     private string MeasurementText
@@ -395,18 +404,26 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 ToggleOriginAxes();
                 break;
             case WorkbenchCommandId.DeleteSelection:
+                await SyncSelectionFromCanvasAsync();
                 DeleteSelectedGeometry();
+                break;
+            case WorkbenchCommandId.Construction:
+                await SyncSelectionFromCanvasAsync();
+                ToggleConstructionModeOrSelection();
                 break;
             case WorkbenchCommandId.BoundsToOrigin:
                 MoveBoundsToOrigin();
                 break;
             case WorkbenchCommandId.PointToOrigin:
+                await SyncSelectionFromCanvasAsync();
                 MoveSelectedPointToOrigin();
                 break;
             case WorkbenchCommandId.VectorToX:
+                await SyncSelectionFromCanvasAsync();
                 AlignSelectedVectorToX();
                 break;
             case WorkbenchCommandId.VectorToY:
+                await SyncSelectionFromCanvasAsync();
                 AlignSelectedVectorToY();
                 break;
             case WorkbenchCommandId.Rotate90Clockwise:
@@ -531,6 +548,46 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         OnSelectionChanged(selectedEntityIds);
         DeleteSelectedGeometry();
+    }
+
+    private void ToggleConstructionModeOrSelection()
+    {
+        var selectedWholeEntityIds = GetWholeEntityIdsForOperations().ToArray();
+        if (selectedWholeEntityIds.Length == 0)
+        {
+            if (_selectedEntityIds.Count > 0)
+            {
+                _status = "Construction conversion needs whole selected geometry. Clear selection to toggle construction creation.";
+                return;
+            }
+
+            _constructionMode = !_constructionMode;
+            _status = _constructionMode
+                ? "Construction creation enabled. New sketch geometry will be dashed and excluded from DXF export."
+                : "Construction creation disabled.";
+            return;
+        }
+
+        var result = DrawingConstructionService.ToggleSelected(_document, selectedWholeEntityIds);
+        if (result.ChangedCount == 0)
+        {
+            _status = "Select whole geometry before converting construction state.";
+            return;
+        }
+
+        ApplyDocumentChange(
+            result.Document,
+            result.IsConstruction
+                ? $"Converted {result.ChangedCount} selected entities to construction geometry."
+                : $"Converted {result.ChangedCount} selected entities to normal geometry.");
+    }
+
+    private async Task SyncSelectionFromCanvasAsync()
+    {
+        if (_canvas is not null)
+        {
+            await _canvas.SyncSelectionFromCanvasAsync();
+        }
     }
 
     private void MoveSelectedPointToOrigin()
@@ -734,7 +791,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         {
             new("Sel", _selectedEntityIds.Count == 0 ? "none" : _selectedEntityIds.Count.ToString(CultureInfo.InvariantCulture)),
             new("Active", ActiveSelectionText),
-            new("Affects", "Drawing")
+            new("Affects", "Drawing"),
+            new("Construction", _constructionMode ? "on" : "off")
         };
 
         if (_activeTool is { } activeTool)
@@ -1100,31 +1158,32 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         var first = points[0];
         var second = points[1];
+        var isConstruction = _constructionMode;
         switch (normalizedTool)
         {
             case "line":
-                yield return new LineEntity(CreateEntityId("line"), first, second);
+                yield return new LineEntity(CreateEntityId("line"), first, second, isConstruction);
                 break;
             case "midpointline":
                 var mirroredEndpoint = new Point2((2 * first.X) - second.X, (2 * first.Y) - second.Y);
-                yield return new LineEntity(CreateEntityId("line"), mirroredEndpoint, second);
+                yield return new LineEntity(CreateEntityId("line"), mirroredEndpoint, second, isConstruction);
                 break;
             case "twopointrectangle":
                 var oppositeA = new Point2(second.X, first.Y);
                 var oppositeB = new Point2(first.X, second.Y);
-                yield return new LineEntity(CreateEntityId("rect"), first, oppositeA);
-                yield return new LineEntity(CreateEntityId("rect"), oppositeA, second);
-                yield return new LineEntity(CreateEntityId("rect"), second, oppositeB);
-                yield return new LineEntity(CreateEntityId("rect"), oppositeB, first);
+                yield return new LineEntity(CreateEntityId("rect"), first, oppositeA, isConstruction);
+                yield return new LineEntity(CreateEntityId("rect"), oppositeA, second, isConstruction);
+                yield return new LineEntity(CreateEntityId("rect"), second, oppositeB, isConstruction);
+                yield return new LineEntity(CreateEntityId("rect"), oppositeB, first, isConstruction);
                 break;
             case "alignedrectangle" when points.Count >= 3:
                 var corners = GetAlignedRectangleCorners(first, second, points[2]);
                 if (corners is not null)
                 {
-                    yield return new LineEntity(CreateEntityId("rect"), corners[0], corners[1]);
-                    yield return new LineEntity(CreateEntityId("rect"), corners[1], corners[2]);
-                    yield return new LineEntity(CreateEntityId("rect"), corners[2], corners[3]);
-                    yield return new LineEntity(CreateEntityId("rect"), corners[3], corners[0]);
+                    yield return new LineEntity(CreateEntityId("rect"), corners[0], corners[1], isConstruction);
+                    yield return new LineEntity(CreateEntityId("rect"), corners[1], corners[2], isConstruction);
+                    yield return new LineEntity(CreateEntityId("rect"), corners[2], corners[3], isConstruction);
+                    yield return new LineEntity(CreateEntityId("rect"), corners[3], corners[0], isConstruction);
                 }
 
                 break;
@@ -1132,7 +1191,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 var radius = Math.Sqrt(Math.Pow(second.X - first.X, 2) + Math.Pow(second.Y - first.Y, 2));
                 if (radius > 0.000001)
                 {
-                    yield return new CircleEntity(CreateEntityId("circle"), first, radius);
+                    yield return new CircleEntity(CreateEntityId("circle"), first, radius, isConstruction);
                 }
 
                 break;
@@ -1140,7 +1199,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 var circle = GetThreePointCircle(first, second, points[2]);
                 if (circle is not null)
                 {
-                    yield return new CircleEntity(CreateEntityId("circle"), circle.Value.Center, circle.Value.Radius);
+                    yield return new CircleEntity(CreateEntityId("circle"), circle.Value.Center, circle.Value.Radius, isConstruction);
                 }
 
                 break;
@@ -1153,7 +1212,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                         threePointArc.Value.Center,
                         threePointArc.Value.Radius,
                         threePointArc.Value.StartAngleDegrees,
-                        threePointArc.Value.EndAngleDegrees);
+                        threePointArc.Value.EndAngleDegrees,
+                        isConstruction);
                 }
 
                 break;
@@ -1166,7 +1226,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                         centerPointArc.Value.Center,
                         centerPointArc.Value.Radius,
                         centerPointArc.Value.StartAngleDegrees,
-                        centerPointArc.Value.EndAngleDegrees);
+                        centerPointArc.Value.EndAngleDegrees,
+                        isConstruction);
                 }
 
                 break;
@@ -1298,8 +1359,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             disabled,
             ResolvePressedState(tool, disabled, pressed),
             isFuture,
+            IsConfirmedWorkingCommand(id),
             tooltip ?? BuildTooltip(id, label, tool, isFuture),
             ToolHotkeys.GetKey(id));
+
+    private static bool IsConfirmedWorkingCommand(WorkbenchCommandId id) =>
+        id is WorkbenchCommandId.Line
+            or WorkbenchCommandId.MidpointLine
+            or WorkbenchCommandId.TwoPointRectangle
+            or WorkbenchCommandId.CenterCircle;
 
     private bool? ResolvePressedState(WorkbenchTool? tool, bool disabled, bool? pressed)
     {

@@ -8,6 +8,7 @@ public sealed record WorkbenchToolCommand(
     bool Disabled = false,
     bool? Pressed = null,
     bool IsFuture = false,
+    bool IsConfirmedWorking = false,
     string? Tooltip = null,
     string? Hotkey = null)
 {

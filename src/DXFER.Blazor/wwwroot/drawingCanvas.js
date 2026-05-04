@@ -32,6 +32,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     document: null,
     showOriginAxes: false,
     grainDirection: "none",
+    constructionMode: false,
     polarSnapIncrementDegrees: 15,
     activeTool: "select",
     toolDraft: createEmptyToolDraft(),
@@ -114,6 +115,13 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
       draw(state);
     },
 
+    setConstructionMode(enabled) {
+      state.constructionMode = Boolean(enabled);
+      state.canvas.dataset.constructionMode = state.constructionMode ? "true" : "false";
+      updateDebugAttributes(state);
+      draw(state);
+    },
+
     setPolarSnapIncrementDegrees(incrementDegrees) {
       state.polarSnapIncrementDegrees = normalizePolarSnapIncrement(incrementDegrees);
       updateDebugAttributes(state);
@@ -124,6 +132,14 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
       clearInteractionState(state);
       updateDebugAttributes(state);
       draw(state);
+    },
+
+    getSelectedKeys() {
+      return Array.from(state.selectedKeys);
+    },
+
+    getActiveSelectionKey() {
+      return state.activeSelectionKey || null;
     },
 
     setOriginAxesVisible(visible) {
@@ -214,9 +230,9 @@ function draw(state) {
   const entities = getDocumentEntities(state.document);
   for (const entity of entities) {
     drawEntity(state, entity, {
-      strokeStyle: "#94a3b8",
-      lineWidth: 1.5,
-      lineDash: []
+      strokeStyle: entity.isConstruction ? "#64748b" : "#94a3b8",
+      lineWidth: entity.isConstruction ? 1.1 : 1.5,
+      lineDash: entity.isConstruction ? [8, 5] : []
     });
   }
 
@@ -556,10 +572,10 @@ function drawToolPreview(state) {
   const dimensions = [];
 
   context.save();
-  context.strokeStyle = "#facc15";
-  context.fillStyle = "#facc15";
+  context.strokeStyle = state.constructionMode ? "#67e8f9" : "#facc15";
+  context.fillStyle = state.constructionMode ? "#67e8f9" : "#facc15";
   context.lineWidth = 1.5;
-  context.setLineDash([6, 4]);
+  context.setLineDash(state.constructionMode ? [3, 5] : [6, 4]);
 
   if (tool === "line") {
     const start = worldToScreen(state, first);
@@ -3476,6 +3492,7 @@ function updateDebugAttributes(state) {
     : "";
   state.canvas.dataset.originAxes = state.showOriginAxes ? "true" : "false";
   state.canvas.dataset.grainDirection = normalizeGrainDirection(state.grainDirection);
+  state.canvas.dataset.constructionMode = state.constructionMode ? "true" : "false";
   state.canvas.dataset.activeTool = normalizeToolName(state.activeTool);
   state.canvas.dataset.polarSnapIncrement = String(normalizePolarSnapIncrement(state.polarSnapIncrementDegrees));
   state.canvas.dataset.toolDraftPointCount = state.toolDraft ? String(state.toolDraft.points.length) : "0";

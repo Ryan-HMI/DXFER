@@ -34,7 +34,8 @@ public sealed record CanvasDocumentDto(
                 null,
                 null,
                 null,
-                null),
+                null,
+                line.IsConstruction),
             CircleEntity circle => new CanvasEntityDto(
                 id,
                 kind,
@@ -42,7 +43,8 @@ public sealed record CanvasDocumentDto(
                 FromPoint(circle.Center),
                 circle.Radius,
                 null,
-                null),
+                null,
+                circle.IsConstruction),
             ArcEntity arc => new CanvasEntityDto(
                 id,
                 kind,
@@ -50,7 +52,8 @@ public sealed record CanvasDocumentDto(
                 FromPoint(arc.Center),
                 arc.Radius,
                 arc.StartAngleDegrees,
-                arc.EndAngleDegrees),
+                arc.EndAngleDegrees,
+                arc.IsConstruction),
             PolylineEntity polyline => new CanvasEntityDto(
                 id,
                 kind,
@@ -58,7 +61,8 @@ public sealed record CanvasDocumentDto(
                 null,
                 null,
                 null,
-                null),
+                null,
+                polyline.IsConstruction),
             SplineEntity spline => new CanvasEntityDto(
                 id,
                 kind,
@@ -66,7 +70,8 @@ public sealed record CanvasDocumentDto(
                 null,
                 null,
                 null,
-                null),
+                null,
+                spline.IsConstruction),
             _ => new CanvasEntityDto(
                 id,
                 kind,
@@ -74,7 +79,8 @@ public sealed record CanvasDocumentDto(
                 null,
                 null,
                 null,
-                null)
+                null,
+                entity.IsConstruction)
         };
     }
 
@@ -91,7 +97,8 @@ public sealed record CanvasEntityDto(
     [property: JsonPropertyName("center")] CanvasPointDto? Center,
     [property: JsonPropertyName("radius")] double? Radius,
     [property: JsonPropertyName("startAngleDegrees")] double? StartAngleDegrees,
-    [property: JsonPropertyName("endAngleDegrees")] double? EndAngleDegrees);
+    [property: JsonPropertyName("endAngleDegrees")] double? EndAngleDegrees,
+    [property: JsonPropertyName("isConstruction")] bool IsConstruction);
 
 public sealed record CanvasPointDto(
     [property: JsonPropertyName("x")] double X,

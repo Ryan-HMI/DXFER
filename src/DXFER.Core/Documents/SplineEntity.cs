@@ -13,8 +13,9 @@ public sealed record SplineEntity : DrawingEntity
         int degree,
         IEnumerable<Point2> controlPoints,
         IEnumerable<double> knots,
-        IEnumerable<double>? weights = null)
-        : base(id)
+        IEnumerable<double>? weights = null,
+        bool isConstruction = false)
+        : base(id, isConstruction)
     {
         ArgumentNullException.ThrowIfNull(controlPoints);
         ArgumentNullException.ThrowIfNull(knots);
@@ -57,7 +58,11 @@ public sealed record SplineEntity : DrawingEntity
             Degree,
             ControlPoints.Select(point => point.Transform(transform)),
             Knots,
-            Weights);
+            Weights,
+            IsConstruction);
+
+    public override DrawingEntity WithConstruction(bool isConstruction) =>
+        new SplineEntity(Id, Degree, ControlPoints, Knots, Weights, isConstruction);
 
     public IReadOnlyList<Point2> GetSamplePoints()
     {
