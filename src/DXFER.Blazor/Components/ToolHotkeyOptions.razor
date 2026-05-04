@@ -13,7 +13,7 @@
             <header class="dxfer-options-header">
                 <div>
                     <div class="dxfer-section-title">Tool Hotkeys</div>
-                    <div class="dxfer-options-subtitle">Single-key CAD command activation</div>
+                    <div class="dxfer-options-subtitle">CAD command chords such as Shift+A</div>
                 </div>
                 <button type="button"
                         class="dxfer-options-icon-button"
@@ -28,7 +28,7 @@
                     <label class="dxfer-hotkey-row">
                         <span>@ToolHotkeyResolver.FormatCommandName(commandId)</span>
                         <input value="@GetKey(commandId)"
-                               maxlength="1"
+                               maxlength="32"
                                autocomplete="off"
                                spellcheck="false"
                                aria-label="@($"{ToolHotkeyResolver.FormatCommandName(commandId)} hotkey")"
@@ -52,7 +52,7 @@
 
 @code {
     private const string ModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js";
-    private const string StorageKey = "dxfer.toolHotkeys.v1";
+    private const string StorageKey = "dxfer.toolHotkeys.v2";
     private IJSObjectReference? _module;
     private bool _loaded;
     private string? _error;

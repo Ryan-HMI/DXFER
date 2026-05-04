@@ -1260,7 +1260,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return false;
         }
 
-        await InvokeWorkbenchCommand(commandId);
+        await InvokeAsync(async () =>
+        {
+            await InvokeWorkbenchCommand(commandId);
+            StateHasChanged();
+        });
         return true;
     }
 

@@ -8,6 +8,7 @@ import {
   clampDimensionInputScreenPoint,
   getAlignedRectangleCorners,
   getDefaultActiveDimensionKey,
+  getDynamicSketchSnapHit,
   getNextDimensionKey,
   getThreePointCircle,
   isDynamicTargetCurrentToPointer,
@@ -327,6 +328,43 @@ test("inference guides stop rendering after a maximum screen distance", () => {
     { x: 200, y: 0 },
     120
   ), false);
+});
+
+test("two acquired ortho projection keeps both guides when it lands on highlighted geometry", () => {
+  const state = {
+    activeTool: "line",
+    document: {
+      entities: [
+        {
+          id: "horizontal",
+          kind: "line",
+          points: [{ x: 0, y: 10 }, { x: 30, y: 10 }]
+        }
+      ]
+    },
+    acquiredSnapPoints: [
+      { label: "lower", point: { x: 20, y: 0 } },
+      { label: "left", point: { x: 0, y: 10 } }
+    ],
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 200
+    },
+    toolDraft: {
+      points: [{ x: -5, y: -5 }]
+    }
+  };
+  const highlightedTarget = {
+    entity: state.document.entities[0],
+    snapPoint: { x: 20, y: 10 }
+  };
+
+  const hit = getDynamicSketchSnapHit(state, { x: 200, y: 100 }, highlightedTarget);
+
+  assert.equal(hit.target.point.x, 20);
+  assert.equal(hit.target.point.y, 10);
+  assert.deepEqual(hit.target.guides.map(guide => guide.orientation).sort(), ["horizontal", "vertical"]);
 });
 
 test("dimension input screen position is clamped inside the canvas", () => {

@@ -1,5 +1,6 @@
 .superpowers/
 .worktrees/
 .codex-run/
+artifacts/
 bin/
 obj/

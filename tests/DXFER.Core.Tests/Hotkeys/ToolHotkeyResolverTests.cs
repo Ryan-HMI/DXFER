@@ -6,7 +6,6 @@ namespace DXFER.Core.Tests.Hotkeys;
 public sealed class ToolHotkeyResolverTests
 {
     [Theory]
-    [InlineData("l", WorkbenchCommandId.Line)]
     [InlineData("M", WorkbenchCommandId.MidpointLine)]
     [InlineData("r", WorkbenchCommandId.TwoPointRectangle)]
     [InlineData("C", WorkbenchCommandId.CenterCircle)]
@@ -17,6 +16,21 @@ public sealed class ToolHotkeyResolverTests
         ToolHotkeyResolver.TryResolve(bindings, ToolHotkeyPress.Plain(key), out var commandId)
             .Should().BeTrue();
         commandId.Should().Be(expectedCommand);
+    }
+
+    [Fact]
+    public void DefaultLineHotkeyUsesShiftA()
+    {
+        var bindings = ToolHotkeyResolver.GetDefaultBindings();
+
+        ToolHotkeyResolver.TryResolve(
+                bindings,
+                new ToolHotkeyPress("A", ShiftKey: true),
+                out var commandId)
+            .Should().BeTrue();
+        commandId.Should().Be(WorkbenchCommandId.Line);
+        ToolHotkeyResolver.TryResolve(bindings, ToolHotkeyPress.Plain("A"), out _)
+            .Should().BeFalse();
     }
 
     [Fact]
@@ -32,33 +46,25 @@ public sealed class ToolHotkeyResolverTests
         resolved.Should().BeFalse();
     }
 
-    [Theory]
-    [InlineData(true, false, false)]
-    [InlineData(false, true, false)]
-    [InlineData(false, false, true)]
-    public void IgnoresModifierChords(bool ctrlKey, bool altKey, bool metaKey)
-    {
-        var bindings = ToolHotkeyResolver.GetDefaultBindings();
-
-        var resolved = ToolHotkeyResolver.TryResolve(
-            bindings,
-            new ToolHotkeyPress("L", CtrlKey: ctrlKey, AltKey: altKey, MetaKey: metaKey),
-            out _);
-
-        resolved.Should().BeFalse();
-    }
-
     [Fact]
-    public void AllowsShiftForLetterCaseWithoutChangingResolution()
+    public void ResolvesCustomModifierChord()
     {
-        var bindings = ToolHotkeyResolver.GetDefaultBindings();
+        var bindings = ToolHotkeyResolver.UpdateBinding(
+            ToolHotkeyResolver.GetDefaultBindings(),
+            WorkbenchCommandId.Line,
+            "ctrl+shift+l");
 
         ToolHotkeyResolver.TryResolve(
                 bindings,
-                new ToolHotkeyPress("L", ShiftKey: true),
+                new ToolHotkeyPress("l", CtrlKey: true, ShiftKey: true),
                 out var commandId)
             .Should().BeTrue();
         commandId.Should().Be(WorkbenchCommandId.Line);
+        ToolHotkeyResolver.TryResolve(bindings, ToolHotkeyPress.Plain("L"), out _)
+            .Should().BeFalse();
+
+        bindings.Single(binding => binding.CommandId == WorkbenchCommandId.Line)
+            .Key.Should().Be("Ctrl+Shift+L");
     }
 
     [Fact]
@@ -84,7 +90,7 @@ public sealed class ToolHotkeyResolverTests
         var update = () => ToolHotkeyResolver.UpdateBinding(
             ToolHotkeyResolver.GetDefaultBindings(),
             WorkbenchCommandId.CenterCircle,
-            "L");
+            "shift+a");
 
         update.Should().Throw<InvalidOperationException>()
             .WithMessage("*already assigned*");

@@ -5,10 +5,7 @@ export function createToolHotkeyListener(dotNetReference) {
 
         if (event.defaultPrevented
             || key.length !== 1
-            || editableTarget
-            || event.ctrlKey
-            || event.altKey
-            || event.metaKey) {
+            || editableTarget) {
             return;
         }
 

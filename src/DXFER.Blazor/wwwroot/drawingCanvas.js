@@ -1509,7 +1509,10 @@ function commitSketchToolPoints(state, tool, points) {
   state.toolDraft = tool === "line"
     ? { points: [points[1]], previewPoint: null, dimensionValues: {} }
     : createEmptyToolDraft();
+  markDimensionInputsToSkipNextBlurCommit(state);
   clearDimensionInputEditState(state);
+  clearDimensionInputs(state);
+  state.activeDimensionKey = null;
   setHoveredTarget(state, null);
   invokeDotNet(state, "OnSketchToolCommitted", tool, flattenPointCoordinates(points));
 }
@@ -1810,7 +1813,7 @@ function getEntityEdgeHit(state, entity, screenPoint) {
   }
 }
 
-function getDynamicSketchSnapHit(state, screenPoint, highlightedTarget = null) {
+export function getDynamicSketchSnapHit(state, screenPoint, highlightedTarget = null) {
   const tool = getSketchCreationTool(state);
   if (!tool) {
     return null;
@@ -1923,7 +1926,7 @@ function addAcquiredIntersectionCandidate(candidates, state, verticalSource, hor
       { orientation: "vertical", point: verticalSource.point },
       { orientation: "horizontal", point: horizontalSource.point }
     ],
-    priority: 5
+    priority: 9
   });
 }
 
