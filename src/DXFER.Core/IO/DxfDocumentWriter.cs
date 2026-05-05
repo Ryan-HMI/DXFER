@@ -33,6 +33,9 @@ public static class DxfDocumentWriter
                 case ArcEntity arc:
                     WriteArc(builder, arc);
                     break;
+                case EllipseEntity ellipse:
+                    WriteEllipse(builder, ellipse);
+                    break;
                 case PointEntity point:
                     WritePointEntity(builder, point);
                     break;
@@ -74,6 +77,17 @@ public static class DxfDocumentWriter
         WritePair(builder, 40, Format(arc.Radius));
         WritePair(builder, 50, Format(arc.StartAngleDegrees));
         WritePair(builder, 51, Format(arc.EndAngleDegrees));
+    }
+
+    private static void WriteEllipse(StringBuilder builder, EllipseEntity ellipse)
+    {
+        WritePair(builder, 0, "ELLIPSE");
+        WritePair(builder, 5, ellipse.Id.Value);
+        WritePoint(builder, ellipse.Center, 10, 20);
+        WritePoint(builder, ellipse.MajorAxisEndPoint, 11, 21);
+        WritePair(builder, 40, Format(ellipse.MinorRadiusRatio));
+        WritePair(builder, 41, Format(DegreesToRadians(ellipse.StartParameterDegrees)));
+        WritePair(builder, 42, Format(DegreesToRadians(ellipse.EndParameterDegrees)));
     }
 
     private static void WritePointEntity(StringBuilder builder, PointEntity point)
@@ -138,4 +152,6 @@ public static class DxfDocumentWriter
     }
 
     private static string Format(double value) => value.ToString("0.##########", CultureInfo.InvariantCulture);
+
+    private static double DegreesToRadians(double degrees) => degrees * Math.PI / 180.0;
 }

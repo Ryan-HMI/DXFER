@@ -81,5 +81,28 @@ public sealed class SketchCreationDimensionFactoryTests
                 && dimension.IsDriving);
     }
 
+    [Fact]
+    public void CreatesEllipseAxisDimensionsFromTypedValues()
+    {
+        var entities = new DrawingEntity[]
+        {
+            new EllipseEntity(EntityId.Create("ellipse-a"), new Point2(0, 0), new Point2(4, 0), 0.5)
+        };
+
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            "ellipse",
+            entities,
+            new Dictionary<string, double> { ["major"] = 4, ["minor"] = 2 },
+            CreateDimensionId);
+
+        dimensions.Should().HaveCount(2);
+        dimensions.Should().OnlyContain(dimension =>
+            dimension.Kind == SketchDimensionKind.LinearDistance
+            && dimension.ReferenceKeys.All(key => key.Contains("|point|", StringComparison.Ordinal))
+            && dimension.IsDriving);
+        dimensions.Should().Contain(dimension => dimension.Value == 4);
+        dimensions.Should().Contain(dimension => dimension.Value == 2);
+    }
+
     private static string CreateDimensionId() => Guid.NewGuid().ToString("N");
 }

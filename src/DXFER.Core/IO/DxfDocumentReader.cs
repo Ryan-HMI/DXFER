@@ -54,6 +54,16 @@ public static class DxfDocumentReader
 
                     break;
 
+                case "ELLIPSE":
+                    if (TryReadEntityPairs(pairs, index + 1, out var ellipsePairs, out var nextEllipseIndex)
+                        && TryCreateEllipse(ellipsePairs, CreateId(ellipsePairs, "ellipse", ref generatedId), out var ellipse))
+                    {
+                        entities.Add(ellipse);
+                        index = nextEllipseIndex - 1;
+                    }
+
+                    break;
+
                 case "POINT":
                     if (TryReadEntityPairs(pairs, index + 1, out var pointPairs, out var nextPointIndex)
                         && TryCreatePoint(pointPairs, CreateId(pointPairs, "point", ref generatedId), out var point))
@@ -207,6 +217,27 @@ public static class DxfDocumentReader
         }
 
         arc = default!;
+        return false;
+    }
+
+    private static bool TryCreateEllipse(IReadOnlyList<DxfPair> pairs, EntityId id, out EllipseEntity ellipse)
+    {
+        if (TryReadPoint(pairs, 10, 20, out var center)
+            && TryReadPoint(pairs, 11, 21, out var majorAxisEndPoint)
+            && TryReadDouble(pairs, 40, out var minorRatio)
+            && minorRatio > 0)
+        {
+            var startParameterDegrees = TryReadDouble(pairs, 41, out var startRadians)
+                ? RadiansToDegrees(startRadians)
+                : 0;
+            var endParameterDegrees = TryReadDouble(pairs, 42, out var endRadians)
+                ? RadiansToDegrees(endRadians)
+                : 360;
+            ellipse = new EllipseEntity(id, center, majorAxisEndPoint, minorRatio, startParameterDegrees, endParameterDegrees);
+            return true;
+        }
+
+        ellipse = default!;
         return false;
     }
 
@@ -372,4 +403,6 @@ public static class DxfDocumentReader
     }
 
     private sealed record DxfPair(int Code, string Value);
+
+    private static double RadiansToDegrees(double radians) => radians * 180.0 / Math.PI;
 }

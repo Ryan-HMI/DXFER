@@ -75,6 +75,89 @@ public static class SketchCreationDimensionFactory
                 }
 
                 break;
+            case "ellipse":
+            case "ellipticalarc":
+                if (createdEntities.OfType<EllipseEntity>().FirstOrDefault() is { } ellipse)
+                {
+                    if (TryGetPositiveValue(dimensionValues, "major", out var major))
+                    {
+                        var majorPoint = new Point2(
+                            ellipse.Center.X + ellipse.MajorAxisEndPoint.X,
+                            ellipse.Center.Y + ellipse.MajorAxisEndPoint.Y);
+                        dimensions.Add(CreatePointDistanceDimension(
+                            createDimensionId(),
+                            ellipse.Id,
+                            "major",
+                            ellipse.Center,
+                            majorPoint,
+                            major));
+                    }
+
+                    if (TryGetPositiveValue(dimensionValues, "minor", out var minor))
+                    {
+                        var minorPoint = GetEllipseMinorPoint(ellipse);
+                        dimensions.Add(CreatePointDistanceDimension(
+                            createDimensionId(),
+                            ellipse.Id,
+                            "minor",
+                            ellipse.Center,
+                            minorPoint,
+                            minor));
+                    }
+                }
+
+                break;
+            case "inscribedpolygon":
+                if (TryGetPositiveValue(dimensionValues, "radius", out var polygonRadius)
+                    && TryGetPolygonCenter(lines, out var polygonCenter)
+                    && lines.FirstOrDefault() is { } polygonLine)
+                {
+                    dimensions.Add(CreatePointDistanceDimension(
+                        createDimensionId(),
+                        polygonLine.Id,
+                        "radius",
+                        polygonCenter,
+                        polygonLine.End,
+                        polygonRadius));
+                }
+
+                break;
+            case "circumscribedpolygon":
+                if (TryGetPositiveValue(dimensionValues, "apothem", out var apothem)
+                    && TryGetPolygonCenter(lines, out var circumscribedCenter)
+                    && lines.FirstOrDefault() is { } circumscribedLine)
+                {
+                    var sideMidpoint = Midpoint(circumscribedLine.Start, circumscribedLine.End);
+                    dimensions.Add(CreatePointDistanceDimension(
+                        createDimensionId(),
+                        circumscribedLine.Id,
+                        "apothem",
+                        circumscribedCenter,
+                        sideMidpoint,
+                        apothem));
+                }
+
+                break;
+            case "slot":
+                if (TryGetPositiveValue(dimensionValues, "length", out var slotLength)
+                    && createdEntities.OfType<ArcEntity>().Take(2).ToArray() is { Length: >= 2 } slotArcs)
+                {
+                    dimensions.Add(CreatePointDistanceDimension(
+                        createDimensionId(),
+                        slotArcs[0].Id,
+                        "length",
+                        slotArcs[0].Center,
+                        slotArcs[1].Center,
+                        slotLength));
+                }
+
+                if (TryGetPositiveValue(dimensionValues, "radius", out var slotRadius)
+                    && createdEntities.OfType<ArcEntity>().FirstOrDefault() is { } slotArc)
+                {
+                    dimensions.Add(CreateRadialDimension(createDimensionId(), slotArc, slotRadius));
+                }
+
+                break;
             case "threepointarc":
             case "tangentarc":
             case "centerpointarc":
@@ -89,6 +172,42 @@ public static class SketchCreationDimensionFactory
 
         return dimensions;
     }
+
+    private static SketchDimension CreatePointDistanceDimension(
+        string id,
+        EntityId entityId,
+        string label,
+        Point2 first,
+        Point2 second,
+        double value) =>
+        new(
+            id,
+            SketchDimensionKind.LinearDistance,
+            new[] { CreateCanvasPointReference(entityId, $"{label}-start", first), CreateCanvasPointReference(entityId, $"{label}-end", second) },
+            value,
+            GetLineDimensionAnchor(new LineEntity(entityId, first, second)),
+            isDriving: true);
+
+    private static Point2 GetEllipseMinorPoint(EllipseEntity ellipse)
+    {
+        var majorLength = Distance(ellipse.Center, new Point2(
+            ellipse.Center.X + ellipse.MajorAxisEndPoint.X,
+            ellipse.Center.Y + ellipse.MajorAxisEndPoint.Y));
+        if (majorLength <= GeometryTolerance)
+        {
+            return ellipse.Center;
+        }
+
+        var minorLength = majorLength * ellipse.MinorRadiusRatio;
+        var minorUnit = new Point2(-ellipse.MajorAxisEndPoint.Y / majorLength, ellipse.MajorAxisEndPoint.X / majorLength);
+        return new Point2(ellipse.Center.X + minorUnit.X * minorLength, ellipse.Center.Y + minorUnit.Y * minorLength);
+    }
+
+    private static string CreateCanvasPointReference(EntityId entityId, string label, Point2 point) =>
+        $"{entityId.Value}|point|{label}|{FormatReferenceNumber(point.X)}|{FormatReferenceNumber(point.Y)}";
+
+    private static string FormatReferenceNumber(double value) =>
+        value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
 
     private static void AddLineDimensionForValue(
         ICollection<SketchDimension> dimensions,
@@ -149,6 +268,20 @@ public static class SketchCreationDimensionFactory
             .OrderByDescending(candidate => candidate.Length)
             .Select(candidate => candidate.Line)
             .FirstOrDefault();
+    }
+
+    private static bool TryGetPolygonCenter(IReadOnlyList<LineEntity> lines, out Point2 center)
+    {
+        if (lines.Count < 3)
+        {
+            center = default;
+            return false;
+        }
+
+        center = new Point2(
+            lines.Average(line => line.Start.X),
+            lines.Average(line => line.Start.Y));
+        return true;
     }
 
     private static Point2 GetLineDimensionAnchor(LineEntity line)

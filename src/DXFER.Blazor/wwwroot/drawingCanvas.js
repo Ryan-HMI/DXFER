@@ -985,6 +985,17 @@ function drawToolPreview(state) {
       }
       drawWorldPolyline(state, [second, third]);
     }
+  } else if (tool === "ellipse") {
+    if (points.length === 1) {
+      drawWorldPolyline(state, [first, second]);
+      addLinearPreviewDimension(dimensions, state, "major", "Major", first, second);
+    } else {
+      const ellipse = getEllipseFromPoints(first, second, third);
+      if (ellipse) {
+        drawWorldPolyline(state, getEllipseWorldPoints(ellipse));
+        addEllipsePreviewDimensions(dimensions, state, ellipse);
+      }
+    }
   } else if (tool === "threepointarc") {
     if (points.length === 1) {
       drawWorldPolyline(state, [first, third]);
@@ -1020,6 +1031,54 @@ function drawToolPreview(state) {
       if (arc) {
         drawWorldArcPreview(state, arc);
         addCenterPointArcSweepPreviewDimension(dimensions, state, first, second, third);
+      }
+    }
+  } else if (tool === "ellipticalarc") {
+    if (points.length === 1) {
+      drawWorldPolyline(state, [first, second]);
+      addLinearPreviewDimension(dimensions, state, "major", "Major", first, second);
+    } else if (points.length === 2) {
+      const ellipse = getEllipseFromPoints(first, second, third);
+      if (ellipse) {
+        drawWorldPolyline(state, getEllipseWorldPoints(ellipse));
+        addEllipsePreviewDimensions(dimensions, state, ellipse);
+      }
+    } else {
+      const ellipse = getEllipseFromPoints(first, second, points[2], third);
+      if (ellipse) {
+        drawWorldPolyline(state, getEllipseWorldPoints(ellipse));
+        addEllipsePreviewDimensions(dimensions, state, ellipse);
+      }
+    }
+  } else if (tool === "conic") {
+    if (points.length === 1) {
+      drawWorldPolyline(state, [first, third]);
+    } else {
+      drawWorldPolyline(state, getQuadraticBezierWorldPoints(first, second, third));
+      drawWorldPolyline(state, [first, second, third]);
+    }
+  } else if (tool === "inscribedpolygon" || tool === "circumscribedpolygon") {
+    const polygonPoints = getPolygonWorldPoints(first, second, tool === "circumscribedpolygon");
+    drawWorldPolyline(state, polygonPoints.concat(polygonPoints[0]));
+    addPolygonPreviewDimension(dimensions, state, first, second, tool === "circumscribedpolygon");
+  } else if (tool === "spline" || tool === "bezier" || tool === "splinecontrolpoint") {
+    const draftPoints = points.concat(third).slice(0, getSketchToolPointCount(tool));
+    if (draftPoints.length < 3) {
+      drawWorldPolyline(state, draftPoints);
+    } else {
+      drawWorldPolyline(state, getCubicBezierWorldPoints(draftPoints));
+      drawWorldPolyline(state, draftPoints);
+    }
+  } else if (tool === "slot") {
+    if (points.length === 1) {
+      drawWorldPolyline(state, [first, second]);
+      addLinearPreviewDimension(dimensions, state, "length", "Length", first, second);
+    } else {
+      const slot = getSlotPreviewGeometry(first, second, third);
+      if (slot) {
+        drawWorldPolyline(state, slot.points.concat(slot.points[0]));
+        addLinearPreviewDimension(dimensions, state, "length", "Length", first, second);
+        addRadiusPreviewDimension(dimensions, state, first, slot.radiusPoint);
       }
     }
   }
@@ -1178,6 +1237,22 @@ function addRadiusPreviewDimension(dimensions, state, center, edge) {
       y: midpointScreen.y + normal.y * 18
     }
   });
+}
+
+function addEllipsePreviewDimensions(dimensions, state, ellipse) {
+  addLinearPreviewDimension(dimensions, state, "major", "Major", ellipse.center, ellipse.majorPoint);
+  const minorPoint = getEllipsePointAtParameter(ellipse, 90);
+  addLinearPreviewDimension(dimensions, state, "minor", "Minor", ellipse.center, minorPoint);
+}
+
+function addPolygonPreviewDimension(dimensions, state, center, radiusPoint, circumscribed) {
+  addLinearPreviewDimension(
+    dimensions,
+    state,
+    circumscribed ? "apothem" : "radius",
+    circumscribed ? "Apothem" : "Radius",
+    center,
+    radiusPoint);
 }
 
 export function getThreePointArcPreviewDimensions(state, first, through, end) {
@@ -2777,6 +2852,8 @@ function buildEntityPath(state, entity) {
       return buildCirclePath(state, entity);
     case "arc":
       return buildArcPath(state, entity);
+    case "ellipse":
+      return buildEllipsePath(state, entity);
     default:
       return false;
   }
@@ -2848,6 +2925,24 @@ function buildCirclePath(state, entity) {
 
 function buildArcPath(state, entity) {
   const points = getArcWorldPoints(entity);
+  if (points.length < 2) {
+    return false;
+  }
+
+  const first = worldToScreen(state, points[0]);
+  state.context.beginPath();
+  state.context.moveTo(first.x, first.y);
+
+  for (let index = 1; index < points.length; index += 1) {
+    const screenPoint = worldToScreen(state, points[index]);
+    state.context.lineTo(screenPoint.x, screenPoint.y);
+  }
+
+  return true;
+}
+
+function buildEllipsePath(state, entity) {
+  const points = getEllipseWorldPointsFromEntity(entity);
   if (points.length < 2) {
     return false;
   }
@@ -3950,6 +4045,8 @@ function getEntityEdgeHit(state, entity, screenPoint) {
       return getCircleEdgeHit(state, entity, screenPoint);
     case "arc":
       return getArcEdgeHit(state, entity, screenPoint);
+    case "ellipse":
+      return getSampledCurveEdgeHit(state, entity, screenPoint);
     default:
       return null;
   }
@@ -4689,6 +4786,10 @@ function getEntityScreenSamplePoints(state, entity) {
     return getArcWorldPoints(entity).map(point => worldToScreen(state, point));
   }
 
+  if (kind === "ellipse") {
+    return getEllipseWorldPointsFromEntity(entity).map(point => worldToScreen(state, point));
+  }
+
   return [];
 }
 
@@ -4708,6 +4809,8 @@ function getSnapPoints(entity, entities) {
       return getCircleSnapPoints(entity, entities);
     case "arc":
       return getArcSnapPoints(entity, entities);
+    case "ellipse":
+      return getEllipseSnapPoints(entity, entities);
     default:
       return [];
   }
@@ -4816,6 +4919,35 @@ function getArcSnapPoints(entity, entities) {
 
   addIntersectionSnapPoints(snapPoints, entity, entities);
   addTangentSnapPointsForCurveEntity(snapPoints, entity, entities);
+  return snapPoints;
+}
+
+function getEllipseSnapPoints(entity, entities) {
+  const ellipse = getEllipseFromEntity(entity);
+  if (!ellipse) {
+    return [];
+  }
+
+  const startParameter = getEntityStartAngle(entity);
+  const endParameter = getEntityEndAngle(entity);
+  const sweep = getPositiveSweepDegrees(startParameter, endParameter);
+  const snapPoints = [
+    { label: "center", point: ellipse.center },
+    { label: "start", point: getEllipsePointAtParameter(ellipse, startParameter) },
+    { label: "end", point: getEllipsePointAtParameter(ellipse, endParameter) },
+    { label: "mid", point: getEllipsePointAtParameter(ellipse, startParameter + sweep / 2) }
+  ];
+
+  for (const parameter of [0, 90, 180, 270]) {
+    if (isAngleOnArc(parameter, startParameter, endParameter)) {
+      snapPoints.push({
+        label: `quadrant-${parameter}`,
+        point: getEllipsePointAtParameter(ellipse, parameter)
+      });
+    }
+  }
+
+  addIntersectionSnapPoints(snapPoints, entity, entities);
   return snapPoints;
 }
 
@@ -5844,6 +5976,35 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
     nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue / 2);
   } else if (tool === "centercircle" && dimension === "radius") {
     nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
+  } else if ((tool === "ellipse" || tool === "ellipticalarc") && dimension === "major") {
+    if (points.length === 1) {
+      nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
+    } else {
+      const nextMajorPoint = pointFromAnchorWithLength(anchor, points[1], numericValue);
+      const minorPoint = points.length >= 3 ? points[2] : previewPoint;
+      const nextMinorPoint = getEllipseMinorPointWithLength(anchor, nextMajorPoint, minorPoint, getEllipseMinorLength(anchor, points[1], minorPoint));
+      state.toolDraft.points = points.length >= 3
+        ? [anchor, nextMajorPoint, nextMinorPoint]
+        : [anchor, nextMajorPoint];
+      nextPreviewPoint = points.length >= 3 ? previewPoint : nextMinorPoint;
+    }
+  } else if ((tool === "ellipse" || tool === "ellipticalarc") && dimension === "minor" && points.length >= 2) {
+    nextPreviewPoint = getEllipseMinorPointWithLength(anchor, points[1], previewPoint, numericValue);
+  } else if (tool === "inscribedpolygon" && dimension === "radius") {
+    nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
+  } else if (tool === "circumscribedpolygon" && dimension === "apothem") {
+    nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
+  } else if (tool === "slot" && dimension === "length") {
+    if (points.length === 1) {
+      nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
+    } else {
+      const nextEnd = pointFromAnchorWithLength(anchor, points[1], numericValue);
+      const radius = getSlotRadius(anchor, points[1], previewPoint);
+      state.toolDraft.points = [anchor, nextEnd];
+      nextPreviewPoint = getSlotRadiusPointWithLength(anchor, nextEnd, previewPoint, radius);
+    }
+  } else if (tool === "slot" && dimension === "radius" && points.length >= 2) {
+    nextPreviewPoint = getSlotRadiusPointWithLength(anchor, points[1], previewPoint, numericValue);
   } else if (tool === "centerpointarc" && dimension === "radius") {
     if (points.length === 1) {
       nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
@@ -6309,6 +6470,30 @@ function isSketchToolPointSetValid(tool, points) {
     return getCenterPointArc(points[0], points[1], points[2]) !== null;
   }
 
+  if (tool === "ellipse") {
+    return getEllipseFromPoints(points[0], points[1], points[2]) !== null;
+  }
+
+  if (tool === "ellipticalarc") {
+    return getEllipseFromPoints(points[0], points[1], points[2], points[3]) !== null;
+  }
+
+  if (tool === "inscribedpolygon" || tool === "circumscribedpolygon") {
+    return distanceBetweenWorldPoints(points[0], points[1]) > WORLD_GEOMETRY_TOLERANCE;
+  }
+
+  if (tool === "conic") {
+    return distanceBetweenWorldPoints(points[0], points[2]) > WORLD_GEOMETRY_TOLERANCE;
+  }
+
+  if (tool === "spline" || tool === "bezier" || tool === "splinecontrolpoint") {
+    return points.slice(1).some(point => distanceBetweenWorldPoints(points[0], point) > WORLD_GEOMETRY_TOLERANCE);
+  }
+
+  if (tool === "slot") {
+    return getSlotPreviewGeometry(points[0], points[1], points[2]) !== null;
+  }
+
   return true;
 }
 
@@ -6655,12 +6840,30 @@ function getSketchCreationTool(state) {
       return "centercircle";
     case "threepointcircle":
       return "threepointcircle";
+    case "ellipse":
+      return "ellipse";
     case "threepointarc":
       return "threepointarc";
     case "tangentarc":
       return "tangentarc";
     case "centerpointarc":
       return "centerpointarc";
+    case "ellipticalarc":
+      return "ellipticalarc";
+    case "conic":
+      return "conic";
+    case "inscribedpolygon":
+      return "inscribedpolygon";
+    case "circumscribedpolygon":
+      return "circumscribedpolygon";
+    case "spline":
+      return "spline";
+    case "bezier":
+      return "bezier";
+    case "splinecontrolpoint":
+      return "splinecontrolpoint";
+    case "slot":
+      return "slot";
     default:
       return null;
   }
@@ -6670,11 +6873,19 @@ export function getSketchToolPointCount(tool) {
   switch (tool) {
     case "point":
       return 1;
+    case "ellipticalarc":
+    case "spline":
+    case "bezier":
+    case "splinecontrolpoint":
+      return 4;
     case "alignedrectangle":
     case "threepointcircle":
+    case "ellipse":
     case "threepointarc":
     case "tangentarc":
     case "centerpointarc":
+    case "conic":
+    case "slot":
       return 3;
     default:
       return 2;
@@ -6869,6 +7080,10 @@ function getEntityBoundsPoints(entity) {
     return getArcWorldPoints(entity);
   }
 
+  if (kind === "ellipse") {
+    return getEllipseWorldPointsFromEntity(entity);
+  }
+
   return [];
 }
 
@@ -6953,6 +7168,14 @@ function getEntityRadius(entity) {
   return Number(readProperty(entity, "radius", "Radius"));
 }
 
+function getEntityMajorAxisEndPoint(entity) {
+  return readPoint(readProperty(entity, "majorAxisEndPoint", "MajorAxisEndPoint"));
+}
+
+function getEntityMinorRadiusRatio(entity) {
+  return Number(readProperty(entity, "minorRadiusRatio", "MinorRadiusRatio"));
+}
+
 function getSketchItemId(item) {
   const id = readProperty(item, "id", "Id");
   return id === null || id === undefined ? "" : String(id);
@@ -7025,6 +7248,7 @@ function resolveSketchReferencePoint(state, referenceKey) {
     }
     case "circle":
     case "arc":
+    case "ellipse":
       return reference.target === "center" ? getEntityCenter(entity) : null;
     default:
       return null;
@@ -7105,6 +7329,7 @@ function resolveSketchEntityAnchorPoint(state, referenceKey) {
     }
     case "circle":
     case "arc":
+    case "ellipse":
       return getEntityCenter(entity);
     default:
       return null;
@@ -7320,6 +7545,263 @@ function pointOnCircle(center, radius, angleDegrees) {
   return {
     x: center.x + Math.cos(radians) * radius,
     y: center.y + Math.sin(radians) * radius
+  };
+}
+
+export function getEllipseFromPoints(center, majorPoint, minorPoint, endParameterPoint = null) {
+  if (!center || !majorPoint || !minorPoint) {
+    return null;
+  }
+
+  const majorVector = subtractPoints(majorPoint, center);
+  const majorLength = Math.hypot(majorVector.x, majorVector.y);
+  if (majorLength <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const majorUnit = {
+    x: majorVector.x / majorLength,
+    y: majorVector.y / majorLength
+  };
+  const minorUnit = {
+    x: -majorUnit.y,
+    y: majorUnit.x
+  };
+  const minorOffset = subtractPoints(minorPoint, center);
+  const minorLength = Math.abs(dotPoints(minorOffset, minorUnit));
+  if (minorLength <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const ellipse = {
+    center,
+    majorPoint,
+    majorVector,
+    majorUnit,
+    majorLength,
+    minorUnit,
+    minorLength,
+    minorRadiusRatio: minorLength / majorLength,
+    startParameterDegrees: 0,
+    endParameterDegrees: 360
+  };
+
+  if (endParameterPoint) {
+    ellipse.endParameterDegrees = getEllipseParameterDegrees(ellipse, endParameterPoint);
+  }
+
+  return ellipse;
+}
+
+function getEllipseFromEntity(entity) {
+  const center = getEntityCenter(entity);
+  const majorAxisEndPoint = getEntityMajorAxisEndPoint(entity);
+  const minorRatio = getEntityMinorRadiusRatio(entity);
+  if (!center || !majorAxisEndPoint || !Number.isFinite(minorRatio) || minorRatio <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const majorPoint = {
+    x: center.x + majorAxisEndPoint.x,
+    y: center.y + majorAxisEndPoint.y
+  };
+  const majorLength = Math.hypot(majorAxisEndPoint.x, majorAxisEndPoint.y);
+  if (majorLength <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const majorUnit = {
+    x: majorAxisEndPoint.x / majorLength,
+    y: majorAxisEndPoint.y / majorLength
+  };
+  return {
+    center,
+    majorPoint,
+    majorVector: majorAxisEndPoint,
+    majorUnit,
+    majorLength,
+    minorUnit: {
+      x: -majorUnit.y,
+      y: majorUnit.x
+    },
+    minorLength: majorLength * minorRatio,
+    minorRadiusRatio: minorRatio,
+    startParameterDegrees: getEntityStartAngle(entity),
+    endParameterDegrees: getEntityEndAngle(entity)
+  };
+}
+
+function getEllipsePointAtParameter(ellipse, parameterDegrees) {
+  const radians = degreesToRadians(parameterDegrees);
+  return {
+    x: ellipse.center.x
+      + ellipse.majorUnit.x * ellipse.majorLength * Math.cos(radians)
+      + ellipse.minorUnit.x * ellipse.minorLength * Math.sin(radians),
+    y: ellipse.center.y
+      + ellipse.majorUnit.y * ellipse.majorLength * Math.cos(radians)
+      + ellipse.minorUnit.y * ellipse.minorLength * Math.sin(radians)
+  };
+}
+
+function getEllipseWorldPoints(ellipse) {
+  const sweep = getPositiveSweepDegrees(ellipse.startParameterDegrees, ellipse.endParameterDegrees);
+  const segmentCount = Math.max(12, Math.ceil(sweep / 8));
+  const points = [];
+  for (let index = 0; index <= segmentCount; index += 1) {
+    const parameter = ellipse.startParameterDegrees + sweep * index / segmentCount;
+    points.push(getEllipsePointAtParameter(ellipse, parameter));
+  }
+
+  return points;
+}
+
+function getEllipseWorldPointsFromEntity(entity) {
+  const ellipse = getEllipseFromEntity(entity);
+  return ellipse ? getEllipseWorldPoints(ellipse) : [];
+}
+
+function getEllipseParameterDegrees(ellipse, point) {
+  const offset = subtractPoints(point, ellipse.center);
+  const x = dotPoints(offset, ellipse.majorUnit) / ellipse.majorLength;
+  const y = dotPoints(offset, ellipse.minorUnit) / ellipse.minorLength;
+  let degrees = radiansToDegrees(Math.atan2(y, x));
+  if (degrees <= WORLD_GEOMETRY_TOLERANCE) {
+    degrees += FULL_CIRCLE_DEGREES;
+  }
+
+  return degrees;
+}
+
+function getEllipseMinorLength(center, majorPoint, minorPoint) {
+  const ellipse = getEllipseFromPoints(center, majorPoint, minorPoint);
+  return ellipse ? ellipse.minorLength : distanceBetweenWorldPoints(center, minorPoint);
+}
+
+function getEllipseMinorPointWithLength(center, majorPoint, referencePoint, length) {
+  const majorVector = subtractPoints(majorPoint, center);
+  const majorLength = Math.hypot(majorVector.x, majorVector.y);
+  if (majorLength <= WORLD_GEOMETRY_TOLERANCE) {
+    return referencePoint;
+  }
+
+  const minorUnit = {
+    x: -majorVector.y / majorLength,
+    y: majorVector.x / majorLength
+  };
+  const sign = dotPoints(subtractPoints(referencePoint, center), minorUnit) < 0 ? -1 : 1;
+  return {
+    x: center.x + minorUnit.x * length * sign,
+    y: center.y + minorUnit.y * length * sign
+  };
+}
+
+export function getPolygonWorldPoints(center, radiusPoint, circumscribed = false, sideCount = 6) {
+  const radius = distanceBetweenWorldPoints(center, radiusPoint);
+  if (!Number.isFinite(radius) || radius <= WORLD_GEOMETRY_TOLERANCE || sideCount < 3) {
+    return [];
+  }
+
+  let vertexRadius = radius;
+  let angle = Math.atan2(radiusPoint.y - center.y, radiusPoint.x - center.x);
+  if (circumscribed) {
+    vertexRadius = radius / Math.cos(Math.PI / sideCount);
+    angle += Math.PI / sideCount;
+  }
+
+  return Array.from({ length: sideCount }, (_, index) => ({
+    x: center.x + Math.cos(angle + index * Math.PI * 2 / sideCount) * vertexRadius,
+    y: center.y + Math.sin(angle + index * Math.PI * 2 / sideCount) * vertexRadius
+  }));
+}
+
+function getQuadraticBezierWorldPoints(start, control, end, segmentCount = 32) {
+  return Array.from({ length: segmentCount + 1 }, (_, index) => {
+    const t = index / segmentCount;
+    const inverse = 1 - t;
+    return {
+      x: inverse * inverse * start.x + 2 * inverse * t * control.x + t * t * end.x,
+      y: inverse * inverse * start.y + 2 * inverse * t * control.y + t * t * end.y
+    };
+  });
+}
+
+function getCubicBezierWorldPoints(points, segmentCount = 40) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return [];
+  }
+
+  if (points.length < 4) {
+    return getQuadraticBezierWorldPoints(points[0], points[1], points[2] || points[1], segmentCount);
+  }
+
+  return Array.from({ length: segmentCount + 1 }, (_, index) => {
+    const t = index / segmentCount;
+    const inverse = 1 - t;
+    return {
+      x: inverse * inverse * inverse * points[0].x
+        + 3 * inverse * inverse * t * points[1].x
+        + 3 * inverse * t * t * points[2].x
+        + t * t * t * points[3].x,
+      y: inverse * inverse * inverse * points[0].y
+        + 3 * inverse * inverse * t * points[1].y
+        + 3 * inverse * t * t * points[2].y
+        + t * t * t * points[3].y
+    };
+  });
+}
+
+function getSlotPreviewGeometry(startCenter, endCenter, radiusPoint) {
+  const axis = subtractPoints(endCenter, startCenter);
+  const axisLength = Math.hypot(axis.x, axis.y);
+  if (axisLength <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const normal = {
+    x: -axis.y / axisLength,
+    y: axis.x / axisLength
+  };
+  const radius = Math.abs(dotPoints(subtractPoints(radiusPoint, startCenter), normal));
+  if (radius <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const radiusPointOnNormal = {
+    x: startCenter.x + normal.x * radius,
+    y: startCenter.y + normal.y * radius
+  };
+  return {
+    radius,
+    radiusPoint: radiusPointOnNormal,
+    points: [
+      { x: startCenter.x + normal.x * radius, y: startCenter.y + normal.y * radius },
+      { x: endCenter.x + normal.x * radius, y: endCenter.y + normal.y * radius },
+      { x: endCenter.x - normal.x * radius, y: endCenter.y - normal.y * radius },
+      { x: startCenter.x - normal.x * radius, y: startCenter.y - normal.y * radius }
+    ]
+  };
+}
+
+function getSlotRadius(startCenter, endCenter, radiusPoint) {
+  const slot = getSlotPreviewGeometry(startCenter, endCenter, radiusPoint);
+  return slot ? slot.radius : distanceBetweenWorldPoints(startCenter, radiusPoint);
+}
+
+function getSlotRadiusPointWithLength(startCenter, endCenter, referencePoint, radius) {
+  const axis = subtractPoints(endCenter, startCenter);
+  const axisLength = Math.hypot(axis.x, axis.y);
+  if (axisLength <= WORLD_GEOMETRY_TOLERANCE) {
+    return referencePoint;
+  }
+
+  const normal = {
+    x: -axis.y / axisLength,
+    y: axis.x / axisLength
+  };
+  const sign = dotPoints(subtractPoints(referencePoint, startCenter), normal) < 0 ? -1 : 1;
+  return {
+    x: startCenter.x + normal.x * radius * sign,
+    y: startCenter.y + normal.y * radius * sign
   };
 }
 

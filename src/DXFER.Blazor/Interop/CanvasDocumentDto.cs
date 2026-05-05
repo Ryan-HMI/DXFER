@@ -61,6 +61,17 @@ public sealed record CanvasDocumentDto(
                 arc.StartAngleDegrees,
                 arc.EndAngleDegrees,
                 arc.IsConstruction),
+            EllipseEntity ellipse => new CanvasEntityDto(
+                id,
+                kind,
+                Array.Empty<CanvasPointDto>(),
+                FromPoint(ellipse.Center),
+                null,
+                ellipse.StartParameterDegrees,
+                ellipse.EndParameterDegrees,
+                ellipse.IsConstruction,
+                FromPoint(ellipse.MajorAxisEndPoint),
+                ellipse.MinorRadiusRatio),
             PointEntity point => new CanvasEntityDto(
                 id,
                 kind,
@@ -130,7 +141,9 @@ public sealed record CanvasEntityDto(
     [property: JsonPropertyName("radius")] double? Radius,
     [property: JsonPropertyName("startAngleDegrees")] double? StartAngleDegrees,
     [property: JsonPropertyName("endAngleDegrees")] double? EndAngleDegrees,
-    [property: JsonPropertyName("isConstruction")] bool IsConstruction);
+    [property: JsonPropertyName("isConstruction")] bool IsConstruction,
+    [property: JsonPropertyName("majorAxisEndPoint")] CanvasPointDto? MajorAxisEndPoint = null,
+    [property: JsonPropertyName("minorRadiusRatio")] double? MinorRadiusRatio = null);
 
 public sealed record CanvasPointDto(
     [property: JsonPropertyName("x")] double X,

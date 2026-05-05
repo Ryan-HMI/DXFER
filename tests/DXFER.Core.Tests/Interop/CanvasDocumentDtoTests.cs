@@ -69,4 +69,24 @@ public sealed class CanvasDocumentDtoTests
                 && constraint.ReferenceKeys.SequenceEqual(new[] { "edge" })
                 && constraint.State == "Satisfied");
     }
+
+    [Fact]
+    public void ExposesEllipseAxesForRendering()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new EllipseEntity(EntityId.Create("ellipse-a"), new Point2(1, 2), new Point2(4, 0), 0.5, 0, 90)
+        });
+
+        var dto = CanvasDocumentDto.FromDocument(document);
+
+        dto.Entities.Should().ContainSingle()
+            .Which.Should().Match<CanvasEntityDto>(entity =>
+                entity.Kind == "ellipse"
+                && entity.Center == new CanvasPointDto(1, 2)
+                && entity.MajorAxisEndPoint == new CanvasPointDto(4, 0)
+                && entity.MinorRadiusRatio == 0.5
+                && entity.StartAngleDegrees == 0
+                && entity.EndAngleDegrees == 90);
+    }
 }
