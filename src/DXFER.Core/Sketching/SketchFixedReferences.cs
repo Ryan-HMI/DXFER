@@ -40,24 +40,35 @@ internal sealed class SketchFixedReferences
             return true;
         }
 
+        if (reference.Target != SketchReferenceTarget.Entity
+            && reference.SegmentIndex.HasValue
+            && fixedReferences.Contains(new SketchReference(
+                reference.EntityId,
+                SketchReferenceTarget.Entity,
+                reference.SegmentIndex).ToString()))
+        {
+            return true;
+        }
+
         return reference.Target != SketchReferenceTarget.Entity
             && fixedReferences.Contains(reference.EntityId);
     }
 
     public bool IsWholeEntityFixed(SketchReference reference) =>
-        fixedReferences.Contains(reference.EntityId);
+        fixedReferences.Contains(reference.EntityId)
+        || (reference.SegmentIndex.HasValue && fixedReferences.Contains(reference.ToString()));
 
     public bool CanMovePoint(SketchReference reference) =>
         !IsFixed(reference);
 
     public bool CanMoveWholeLine(SketchReference reference) =>
         !IsWholeEntityFixed(reference)
-        && !IsFixed(new SketchReference(reference.EntityId, SketchReferenceTarget.Start))
-        && !IsFixed(new SketchReference(reference.EntityId, SketchReferenceTarget.End));
+        && !IsFixed(new SketchReference(reference.EntityId, SketchReferenceTarget.Start, reference.SegmentIndex))
+        && !IsFixed(new SketchReference(reference.EntityId, SketchReferenceTarget.End, reference.SegmentIndex));
 
     public bool CanChangeLineEndpoint(SketchReference lineReference, SketchReferenceTarget endpoint) =>
         !IsWholeEntityFixed(lineReference)
-        && !IsFixed(new SketchReference(lineReference.EntityId, endpoint));
+        && !IsFixed(new SketchReference(lineReference.EntityId, endpoint, lineReference.SegmentIndex));
 
     public bool CanMoveCircleLikeCenter(SketchReference reference) =>
         !IsWholeEntityFixed(reference)

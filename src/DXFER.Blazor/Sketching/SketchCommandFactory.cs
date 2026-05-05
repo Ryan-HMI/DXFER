@@ -282,6 +282,12 @@ public static class SketchCommandFactory
             return false;
         }
 
+        if (reference.SegmentIndex.HasValue)
+        {
+            circleLike = default;
+            return false;
+        }
+
         switch (entity)
         {
             case CircleEntity circle:

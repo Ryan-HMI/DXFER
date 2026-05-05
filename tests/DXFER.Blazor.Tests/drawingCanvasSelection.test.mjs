@@ -18,6 +18,7 @@ import {
   getCenterPointArc,
   getChainedSketchToolDraft,
   getDimensionAnchorUpdateRequest,
+  getDimensionDisplayText,
   getDimensionPlacementRequest,
   getPersistentDimensionDescriptors,
   getPersistentDimensionCommitValue,
@@ -481,6 +482,66 @@ test("tangent arc commit stays in arc mode until the next last vertex hover", ()
   assert.deepEqual(state.toolDraft.points[0], { x: 2, y: 2 });
   assert.equal(state.toolDraft.previewPoint, null);
   assert.equal(state.sketchChainVertexHovering, false);
+  assert.equal(state.sketchChainToggleRequiresExit, true);
+});
+
+test("chain tool toggle is suppressed until the pointer leaves the committed vertex", () => {
+  const state = {
+    ...getPostCommitSketchToolState(
+      "line",
+      [{ x: 0, y: 0 }, { x: 4, y: 0 }]
+    ),
+    dimensionInputs: new Map(),
+    acquiredSnapPoints: [],
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 100
+    }
+  };
+  const chainVertexTarget = {
+    kind: "point",
+    point: { x: 4, y: 0 },
+    label: "end"
+  };
+
+  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 40, y: 100 }, chainVertexTarget), false);
+  assert.equal(state.activeTool, "line");
+  assert.equal(state.sketchChainToggleRequiresExit, true);
+
+  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 70, y: 100 }), false);
+  assert.equal(state.sketchChainToggleRequiresExit, false);
+
+  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 40, y: 100 }, chainVertexTarget), true);
+  assert.equal(state.activeTool, "tangentarc");
+});
+
+test("line after tangent arc snaps along the arc endpoint tangent", () => {
+  const chainContext = getSketchChainContextFromCommittedTool(
+    "tangentarc",
+    [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 2 }]
+  );
+  const state = {
+    activeTool: "line",
+    document: { entities: [] },
+    acquiredSnapPoints: [],
+    sketchChainContext: chainContext,
+    toolDraft: {
+      points: [{ x: 2, y: 2 }]
+    },
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 100
+    }
+  };
+
+  const hit = getDynamicSketchSnapHit(state, { x: 20.5, y: 50 });
+
+  assert.equal(hit.target.label, "tangent-chain");
+  assert.equal(getPointTargetMarker(hit.target), "tangent");
+  assertApproxEqual(hit.target.point.x, 2);
+  assertApproxEqual(hit.target.point.y, 5);
 });
 
 test("locked draft dimensions reapply after cursor movement", () => {
@@ -945,19 +1006,37 @@ test("radial dimension preference defaults circles to diameter and arcs to radiu
   assert.equal(getRadialDimensionPreference({ entity: { kind: "arc" } }, { shiftKey: true }), true);
 });
 
-test("diameter dimension uses an outside leader instead of crossing the circle", () => {
+test("dimension display text prefixes diameter and radius dimensions", () => {
+  assert.equal(getDimensionDisplayText({ kind: "diameter", value: 6 }), "\u23006");
+  assert.equal(getDimensionDisplayText({ kind: "radius", value: 3 }), "R3");
+});
+
+test("diameter dimension uses an outside leader with a text gap", () => {
   const geometry = getRadialDimensionScreenGeometry(
     { x: 100, y: 100 },
     30,
-    { x: 160, y: 100 },
+    { x: 200, y: 100 },
     true
   );
 
   assert.deepEqual(geometry.segments, [
-    { start: { x: 130, y: 100 }, end: { x: 160, y: 100 } }
+    { start: { x: 130, y: 100 }, end: { x: 188, y: 100 } }
   ]);
   assert.deepEqual(geometry.arrows, [
     { point: { x: 130, y: 100 }, toward: { x: 100, y: 100 } }
+  ]);
+});
+
+test("radial dimension arrow flips when the text anchor is inside", () => {
+  const geometry = getRadialDimensionScreenGeometry(
+    { x: 100, y: 100 },
+    30,
+    { x: 115, y: 100 },
+    false
+  );
+
+  assert.deepEqual(geometry.arrows, [
+    { point: { x: 130, y: 100 }, toward: { x: 131, y: 100 } }
   ]);
 });
 
@@ -969,12 +1048,45 @@ test("linear dimension graphics leave a text gap and extend past the dimension l
     24);
 
   assert.equal(geometry.dimensionSegments.length, 2);
-  assert.deepEqual(geometry.dimensionSegments[0], { start: { x: 0, y: 0 }, end: { x: 34, y: 0 } });
-  assert.deepEqual(geometry.dimensionSegments[1], { start: { x: 66, y: 0 }, end: { x: 100, y: 0 } });
+  assert.deepEqual(geometry.dimensionSegments[0], { start: { x: 0, y: 0 }, end: { x: 33, y: 0 } });
+  assert.deepEqual(geometry.dimensionSegments[1], { start: { x: 67, y: 0 }, end: { x: 100, y: 0 } });
   assert.deepEqual(geometry.extensionSegments[0].end, { x: 0, y: -6 });
   assert.deepEqual(geometry.extensionSegments[1].end, { x: 100, y: -6 });
   assert.deepEqual(geometry.arrows[0], { point: { x: 0, y: 0 }, toward: { x: -1, y: 0 } });
   assert.deepEqual(geometry.arrows[1], { point: { x: 100, y: 0 }, toward: { x: 101, y: 0 } });
+});
+
+test("linear dimension graphics center the gap on the dragged text anchor", () => {
+  const geometry = getLinearDimensionScreenGeometry(
+    { x: 0, y: 20 },
+    { x: 100, y: 20 },
+    { x: 70, y: 0 },
+    24);
+
+  assert.deepEqual(geometry.dimensionSegments[0], { start: { x: 0, y: 0 }, end: { x: 53, y: 0 } });
+  assert.deepEqual(geometry.dimensionSegments[1], { start: { x: 87, y: 0 }, end: { x: 100, y: 0 } });
+});
+
+test("linear dimension arrows flip outside when text cannot fit inside", () => {
+  const geometry = getLinearDimensionScreenGeometry(
+    { x: 0, y: 20 },
+    { x: 24, y: 20 },
+    { x: 12, y: 0 },
+    28);
+
+  assert.deepEqual(geometry.arrows[0], { point: { x: 0, y: 0 }, toward: { x: 1, y: 0 } });
+  assert.deepEqual(geometry.arrows[1], { point: { x: 24, y: 0 }, toward: { x: 23, y: 0 } });
+});
+
+test("persistent dimension commit accepts displayed prefixes", () => {
+  assert.deepEqual(getPersistentDimensionCommitValue("R3.5", 1), {
+    shouldCommit: true,
+    value: 3.5
+  });
+  assert.deepEqual(getPersistentDimensionCommitValue("\u23006", 1), {
+    shouldCommit: true,
+    value: 6
+  });
 });
 
 test("dimension anchor drag request converts screen point to world anchor", () => {
@@ -1028,6 +1140,41 @@ test("persistent dimension descriptors resolve line references to overlay positi
   assert.equal(descriptors[0].label, "Distance");
   assert.equal(descriptors[0].value, 5);
   assert.deepEqual(descriptors[0].point, { x: 115, y: 180 });
+});
+
+test("persistent dimension descriptors resolve polyline segment endpoints", () => {
+  const state = {
+    document: {
+      entities: [
+        {
+          id: "poly-a",
+          kind: "polyline",
+          points: [{ x: 0, y: 0 }, { x: 3, y: 0 }, { x: 3, y: 4 }]
+        }
+      ],
+      dimensions: [
+        {
+          id: "dim-segment",
+          kind: "LinearDistance",
+          referenceKeys: ["poly-a|segment|1:start", "poly-a|segment|1:end"],
+          value: 4,
+          anchor: { x: 4, y: 2 }
+        }
+      ]
+    },
+    dimensionAnchorOverrides: new Map(),
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 100
+    }
+  };
+
+  const descriptors = getPersistentDimensionDescriptors(state);
+
+  assert.equal(descriptors.length, 1);
+  assert.deepEqual(descriptors[0].geometry.start, { x: 3, y: 0 });
+  assert.deepEqual(descriptors[0].geometry.end, { x: 3, y: 4 });
 });
 
 test("persistent dimension descriptors prefer explicit anchors", () => {

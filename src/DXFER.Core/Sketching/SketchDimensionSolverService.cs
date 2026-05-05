@@ -235,7 +235,7 @@ public static class SketchDimensionSolverService
         SketchFixedReferences fixedReferences)
     {
         if (fixedReferences.IsWholeEntityFixed(lineReference)
-            || !SketchGeometryEditor.TryGetLine(entities, lineReference, out var index, out var line)
+            || !SketchGeometryEditor.TryGetLine(entities, lineReference, out _, out var line)
             || !SketchGeometryEditor.TryGetLineDirection(line, out _, out _, out var length))
         {
             return false;
@@ -246,20 +246,24 @@ public static class SketchDimensionSolverService
 
         if (fixedReferences.CanChangeLineEndpoint(lineReference, SketchReferenceTarget.End))
         {
-            entities[index] = line with
-            {
-                End = new Point2(line.Start.X + delta.X, line.Start.Y + delta.Y)
-            };
-            return true;
+            return SketchGeometryEditor.TrySetLine(
+                entities,
+                lineReference,
+                line with
+                {
+                    End = new Point2(line.Start.X + delta.X, line.Start.Y + delta.Y)
+                });
         }
 
         if (fixedReferences.CanChangeLineEndpoint(lineReference, SketchReferenceTarget.Start))
         {
-            entities[index] = line with
-            {
-                Start = new Point2(line.End.X - delta.X, line.End.Y - delta.Y)
-            };
-            return true;
+            return SketchGeometryEditor.TrySetLine(
+                entities,
+                lineReference,
+                line with
+                {
+                    Start = new Point2(line.End.X - delta.X, line.End.Y - delta.Y)
+                });
         }
 
         return false;
@@ -272,7 +276,7 @@ public static class SketchDimensionSolverService
         SketchFixedReferences fixedReferences)
     {
         if (fixedReferences.IsWholeEntityFixed(lineReference)
-            || !SketchGeometryEditor.TryGetLine(entities, lineReference, out var index, out var line)
+            || !SketchGeometryEditor.TryGetLine(entities, lineReference, out _, out var line)
             || !SketchGeometryEditor.TryGetLineDirection(line, out var unitX, out var unitY, out _))
         {
             return false;
@@ -280,20 +284,24 @@ public static class SketchDimensionSolverService
 
         if (fixedReferences.CanChangeLineEndpoint(lineReference, SketchReferenceTarget.End))
         {
-            entities[index] = line with
-            {
-                End = new Point2(line.Start.X + unitX * length, line.Start.Y + unitY * length)
-            };
-            return true;
+            return SketchGeometryEditor.TrySetLine(
+                entities,
+                lineReference,
+                line with
+                {
+                    End = new Point2(line.Start.X + unitX * length, line.Start.Y + unitY * length)
+                });
         }
 
         if (fixedReferences.CanChangeLineEndpoint(lineReference, SketchReferenceTarget.Start))
         {
-            entities[index] = line with
-            {
-                Start = new Point2(line.End.X - unitX * length, line.End.Y - unitY * length)
-            };
-            return true;
+            return SketchGeometryEditor.TrySetLine(
+                entities,
+                lineReference,
+                line with
+                {
+                    Start = new Point2(line.End.X - unitX * length, line.End.Y - unitY * length)
+                });
         }
 
         return false;

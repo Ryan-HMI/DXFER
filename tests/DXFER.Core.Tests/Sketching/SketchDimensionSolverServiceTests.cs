@@ -209,6 +209,34 @@ public sealed class SketchDimensionSolverServiceTests
     }
 
     [Fact]
+    public void AppliesPolylineSegmentLinearDistanceByMovingSegmentEndVertex()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new PolylineEntity(
+                EntityId.Create("poly"),
+                new[] { new Point2(0, 0), new Point2(3, 0), new Point2(3, 4) },
+                isConstruction: true)
+        });
+
+        var solved = SketchDimensionSolverService.ApplyDimension(
+            document,
+            DrivingDimension(
+                "segment",
+                SketchDimensionKind.LinearDistance,
+                8,
+                "poly|segment|1:start",
+                "poly|segment|1:end"));
+
+        var polyline = solved.Entities[0].Should().BeOfType<PolylineEntity>().Subject;
+        polyline.Vertices.Should().Equal(
+            new Point2(0, 0),
+            new Point2(3, 0),
+            new Point2(3, 8));
+        polyline.IsConstruction.Should().BeTrue();
+    }
+
+    [Fact]
     public void FixedLastReferenceForcesLinearDimensionToMoveFirstReference()
     {
         var fix = new SketchConstraint(

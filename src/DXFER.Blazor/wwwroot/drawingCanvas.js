@@ -17,6 +17,11 @@ const DIMENSION_INPUT_SCREEN_MARGIN_Y = 18;
 const DIMENSION_LAYER_STROKE_STYLE = "#8fa1b6";
 const DIMENSION_LAYER_TEXT_STYLE = "#a7b6c8";
 const DIMENSION_PREVIEW_STROKE_STYLE = "#facc15";
+const DIMENSION_ARROWHEAD_SIZE = 15;
+const DIMENSION_TEXT_GAP_PADDING = 5;
+const DIMENSION_INPUT_LEADER_GAP = 12;
+const SKETCH_CHAIN_TOGGLE_REARM_TOLERANCE = SNAP_POINT_TOLERANCE + 5;
+const SKETCH_CHAIN_DIMENSION_SUPPRESS_TOLERANCE = SNAP_POINT_TOLERANCE * 3;
 
 export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) {
   const context = canvas.getContext("2d");
@@ -47,6 +52,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     sketchChainContext: null,
     sketchChainVertexHovering: false,
     sketchChainAutoTool: false,
+    sketchChainToggleRequiresExit: false,
     dimensionDraft: createEmptyDimensionDraft(),
     acquiredSnapPoints: [],
     hoveredTarget: null,
@@ -109,6 +115,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
         state.sketchChainContext = null;
         state.sketchChainVertexHovering = false;
         state.sketchChainAutoTool = false;
+        state.sketchChainToggleRequiresExit = false;
       }
       pruneInteractionState(state, true);
       if (fitToDocument) {
@@ -172,6 +179,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
       if (!isChainableSketchTool(previousTool) || !isChainableSketchTool(nextTool)) {
         state.sketchChainContext = null;
         state.sketchChainAutoTool = false;
+        state.sketchChainToggleRequiresExit = false;
       }
 
       state.activeTool = nextTool;
@@ -179,6 +187,9 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
       state.sketchChainAutoTool = false;
       state.sketchChainVertexHovering = previousTool === nextTool && state.sketchChainContext
         ? state.sketchChainVertexHovering
+        : false;
+      state.sketchChainToggleRequiresExit = previousTool === nextTool && state.sketchChainContext
+        ? state.sketchChainToggleRequiresExit
         : false;
       state.dimensionDraft = createEmptyDimensionDraft();
       state.acquiredSnapPoints = [];
@@ -282,7 +293,8 @@ export function getSketchChainContextFromCommittedTool(tool, points) {
     return createSketchChainContext(
       end,
       subtractPoints(end, start),
-      distanceBetweenWorldPoints(start, end));
+      distanceBetweenWorldPoints(start, end),
+      false);
   }
 
   if (tool === "tangentarc" && points.length >= 3) {
@@ -300,7 +312,8 @@ export function getPostCommitSketchToolState(tool, points, wasAutoChained = fals
     activeTool: normalizedTool,
     toolDraft: getChainedSketchToolDraft(normalizedTool, normalizedTool, chainContext),
     sketchChainContext: chainContext,
-    sketchChainVertexHovering: false
+    sketchChainVertexHovering: false,
+    sketchChainToggleRequiresExit: Boolean(chainContext)
   };
 }
 
@@ -338,10 +351,11 @@ function getTangentArcChainContext(start, tangentPoint, end) {
   return createSketchChainContext(
     end,
     endTangent,
-    distanceBetweenWorldPoints(start, tangentPoint));
+    distanceBetweenWorldPoints(start, tangentPoint),
+    true);
 }
 
-function createSketchChainContext(point, tangentVector, tangentLength = 1) {
+function createSketchChainContext(point, tangentVector, tangentLength = 1, isTangentContinuation = false) {
   const tangent = normalizeWorldVector(tangentVector);
   if (!point || !tangent) {
     return null;
@@ -356,7 +370,8 @@ function createSketchChainContext(point, tangentVector, tangentLength = 1) {
     tangentPoint: {
       x: point.x + tangent.x * controlLength,
       y: point.y + tangent.y * controlLength
-    }
+    },
+    isTangentContinuation: Boolean(isTangentContinuation)
   };
 }
 
@@ -379,13 +394,26 @@ export function tryToggleSketchChainToolAtPoint(state, screenPoint, target = nul
   if (!nextTool || !state.sketchChainContext || !state.sketchChainContext.point) {
     if (state) {
       state.sketchChainVertexHovering = false;
+      state.sketchChainToggleRequiresExit = false;
     }
     return false;
   }
 
   const chainPoint = state.sketchChainContext.point;
-  if (!isSketchChainVertexTarget(target, chainPoint)) {
+  const chainScreenPoint = worldToScreen(state, chainPoint);
+  const chainDistance = distanceBetweenScreenPoints(screenPoint, chainScreenPoint);
+  if (chainDistance > SKETCH_CHAIN_TOGGLE_REARM_TOLERANCE) {
     state.sketchChainVertexHovering = false;
+    state.sketchChainToggleRequiresExit = false;
+    return false;
+  }
+
+  if (state.sketchChainToggleRequiresExit) {
+    state.sketchChainVertexHovering = true;
+    return false;
+  }
+
+  if (!isSketchChainVertexTarget(target, chainPoint)) {
     return false;
   }
 
@@ -397,9 +425,7 @@ export function tryToggleSketchChainToolAtPoint(state, screenPoint, target = nul
     return false;
   }
 
-  const chainScreenPoint = worldToScreen(state, chainPoint);
-  const isHoveringChainPoint = distanceBetweenScreenPoints(screenPoint, chainScreenPoint) <= SNAP_POINT_TOLERANCE;
-  if (!isHoveringChainPoint) {
+  if (chainDistance > SNAP_POINT_TOLERANCE) {
     state.sketchChainVertexHovering = false;
     return false;
   }
@@ -876,6 +902,7 @@ function drawToolPreview(state) {
   const third = state.toolDraft.previewPoint;
   const { context } = state;
   const dimensions = [];
+  const suppressChainDimensions = shouldSuppressSketchChainPreviewDimensions(state);
 
   context.save();
   context.strokeStyle = state.constructionMode ? "#67e8f9" : "#facc15";
@@ -890,7 +917,9 @@ function drawToolPreview(state) {
     context.moveTo(start.x, start.y);
     context.lineTo(end.x, end.y);
     context.stroke();
-    addLinearPreviewDimension(dimensions, state, "length", "Length", first, second);
+    if (!suppressChainDimensions) {
+      addLinearPreviewDimension(dimensions, state, "length", "Length", first, second);
+    }
   } else if (tool === "midpointline") {
     const mirrored = mirrorPoint(first, second);
     const start = worldToScreen(state, mirrored);
@@ -918,7 +947,9 @@ function drawToolPreview(state) {
       context.moveTo(start.x, start.y);
       context.lineTo(end.x, end.y);
       context.stroke();
-      addLinearPreviewDimension(dimensions, state, "length", "Length", first, second);
+      if (!suppressChainDimensions) {
+        addLinearPreviewDimension(dimensions, state, "length", "Length", first, second);
+      }
     } else {
       const corners = getAlignedRectangleCorners(first, second, third);
       drawWorldPolyline(state, corners.concat(corners[0]));
@@ -967,7 +998,9 @@ function drawToolPreview(state) {
       const arc = getTangentArc(first, second, third);
       if (arc) {
         drawWorldArcPreview(state, arc);
-        addRadiusPreviewDimension(dimensions, state, arc.center, first);
+        if (!suppressChainDimensions) {
+          addRadiusPreviewDimension(dimensions, state, arc.center, first);
+        }
       } else {
         drawWorldPolyline(state, [second, third]);
       }
@@ -994,6 +1027,23 @@ function drawToolPreview(state) {
   }
   context.restore();
   return dimensions;
+}
+
+function shouldSuppressSketchChainPreviewDimensions(state) {
+  if (!state
+    || !state.sketchChainContext
+    || !state.sketchChainContext.point
+    || !state.pointerScreenPoint
+    || !state.toolDraft
+    || !Array.isArray(state.toolDraft.points)
+    || state.toolDraft.points.length === 0
+    || !sameOptionalWorldPoint(state.toolDraft.points[0], state.sketchChainContext.point)) {
+    return false;
+  }
+
+  return distanceBetweenScreenPoints(
+    state.pointerScreenPoint,
+    worldToScreen(state, state.sketchChainContext.point)) <= SKETCH_CHAIN_DIMENSION_SUPPRESS_TOLERANCE;
 }
 
 function drawWorldPolyline(state, points) {
@@ -1258,16 +1308,15 @@ function getDimensionModelFromReferences(state, referenceKeys, radialDiameter = 
     const reference = parseSketchReference(referenceKeys[0]);
     const entity = reference ? findDocumentEntity(state, reference.entityId) : null;
     const kind = entity ? getEntityKind(entity) : "";
+    const line = resolveSketchLineReference(state, referenceKeys[0]);
 
-    if (kind === "line") {
-      const points = getEntityPoints(entity);
-      return points.length >= 2
-        ? {
-          kind: "lineardistance",
-          referenceKeys: [`${reference.entityId}:start`, `${reference.entityId}:end`],
-          value: distanceBetweenWorldPoints(points[0], points[1])
-        }
-        : null;
+    if (line) {
+      const baseKey = getSketchReferenceBaseKey(reference);
+      return {
+        kind: "lineardistance",
+        referenceKeys: [`${baseKey}:start`, `${baseKey}:end`],
+        value: distanceBetweenWorldPoints(line.start, line.end)
+      };
     }
 
     if (kind === "circle" || kind === "arc") {
@@ -1454,7 +1503,7 @@ function drawLinearDimensionGraphics(state, dimension, isPreview) {
   }
 
   for (const arrow of screenGeometry.arrows) {
-    drawArrowhead(context, arrow.point, arrow.toward);
+    drawArrowhead(context, arrow.point, arrow.toward, DIMENSION_ARROWHEAD_SIZE);
   }
 
   context.restore();
@@ -1473,29 +1522,12 @@ export function getLinearDimensionScreenGeometry(start, end, anchor, textWidth =
   const dimensionStart = { x: anchor.x + vector.x * startOffset, y: anchor.y + vector.y * startOffset };
   const dimensionEnd = { x: anchor.x + vector.x * endOffset, y: anchor.y + vector.y * endOffset };
   const dimensionLength = distanceBetweenScreenPoints(dimensionStart, dimensionEnd);
-  const textGapHalfWidth = Math.min(dimensionLength / 2, Math.max(12, textWidth / 2 + 4));
-  const dimensionMidpoint = midpointScreenPoint(dimensionStart, dimensionEnd);
-  const gapStart = {
-    x: dimensionMidpoint.x - vector.x * textGapHalfWidth,
-    y: dimensionMidpoint.y - vector.y * textGapHalfWidth
-  };
-  const gapEnd = {
-    x: dimensionMidpoint.x + vector.x * textGapHalfWidth,
-    y: dimensionMidpoint.y + vector.y * textGapHalfWidth
-  };
+  const textGapHalfWidth = Math.min(dimensionLength / 2, Math.max(14, textWidth / 2 + DIMENSION_TEXT_GAP_PADDING));
   const firstExtension = getExtensionSegmentPastDimensionLine(start, dimensionStart);
   const secondExtension = getExtensionSegmentPastDimensionLine(end, dimensionEnd);
-
-  return {
-    extensionSegments: [
-      { start, end: firstExtension },
-      { start: end, end: secondExtension }
-    ],
-    dimensionSegments: [
-      { start: dimensionStart, end: gapStart },
-      { start: gapEnd, end: dimensionEnd }
-    ],
-    arrows: [
+  const useInsideArrows = dimensionLength >= Math.max(36, textWidth + (DIMENSION_ARROWHEAD_SIZE * 4));
+  const arrows = useInsideArrows
+    ? [
       {
         point: dimensionStart,
         toward: { x: dimensionStart.x - vector.x, y: dimensionStart.y - vector.y }
@@ -1505,6 +1537,24 @@ export function getLinearDimensionScreenGeometry(start, end, anchor, textWidth =
         toward: { x: dimensionEnd.x + vector.x, y: dimensionEnd.y + vector.y }
       }
     ]
+    : [
+      {
+        point: dimensionStart,
+        toward: { x: dimensionStart.x + vector.x, y: dimensionStart.y + vector.y }
+      },
+      {
+        point: dimensionEnd,
+        toward: { x: dimensionEnd.x - vector.x, y: dimensionEnd.y - vector.y }
+      }
+    ];
+
+  return {
+    extensionSegments: [
+      { start, end: firstExtension },
+      { start: end, end: secondExtension }
+    ],
+    dimensionSegments: getSegmentPartsAroundPoint(dimensionStart, dimensionEnd, anchor, textGapHalfWidth),
+    arrows
   };
 }
 
@@ -1525,7 +1575,9 @@ function drawRadialDimensionGraphics(state, dimension, isPreview) {
   const center = worldToScreen(state, geometry.center);
   const anchor = worldToScreen(state, geometry.anchorPoint);
   const radius = geometry.radius * state.view.scale;
-  const radialGeometry = getRadialDimensionScreenGeometry(center, radius, anchor, geometry.diameter);
+  const text = getDimensionDisplayText(dimension);
+  const textWidth = text ? measureDimensionCanvasText(state, text) : 0;
+  const radialGeometry = getRadialDimensionScreenGeometry(center, radius, anchor, geometry.diameter, textWidth);
   const { context } = state;
   const style = getDimensionRenderStyle(isPreview);
 
@@ -1540,37 +1592,115 @@ function drawRadialDimensionGraphics(state, dimension, isPreview) {
   }
 
   for (const arrow of radialGeometry.arrows) {
-    drawArrowhead(context, arrow.point, arrow.toward);
+    drawArrowhead(context, arrow.point, arrow.toward, DIMENSION_ARROWHEAD_SIZE);
   }
 
   context.restore();
   drawDimensionCanvasText(state, dimension, isPreview);
 }
 
-export function getRadialDimensionScreenGeometry(center, radius, anchor, diameter = false) {
+export function getRadialDimensionScreenGeometry(center, radius, anchor, diameter = false, textWidth = 0) {
   const direction = normalizeScreenVector({
     x: anchor.x - center.x,
     y: anchor.y - center.y
   }) || { x: 1, y: 0 };
+  const anchorDistance = distanceBetweenScreenPoints(center, anchor);
+  const isInside = anchorDistance < radius;
+  const textGap = Math.max(DIMENSION_INPUT_LEADER_GAP, textWidth / 2 + DIMENSION_TEXT_GAP_PADDING);
   const edge = {
     x: center.x + direction.x * radius,
     y: center.y + direction.y * radius
   };
 
   if (diameter) {
+    if (isInside) {
+      const oppositeEdge = {
+        x: center.x - direction.x * radius,
+        y: center.y - direction.y * radius
+      };
+      return {
+        segments: getSegmentPartsAroundPoint(oppositeEdge, edge, anchor, textGap),
+        arrows: [
+          { point: oppositeEdge, toward: { x: oppositeEdge.x - direction.x, y: oppositeEdge.y - direction.y } },
+          { point: edge, toward: { x: edge.x + direction.x, y: edge.y + direction.y } }
+        ]
+      };
+    }
+
     return {
-      segments: [{ start: edge, end: anchor }],
+      segments: getLeaderSegmentsToAnchor(edge, anchor, textGap),
       arrows: [{ point: edge, toward: center }]
     };
   }
 
+  if (isInside) {
+    return {
+      segments: getSegmentPartsAroundPoint(center, edge, anchor, textGap),
+      arrows: [{ point: edge, toward: { x: edge.x + direction.x, y: edge.y + direction.y } }]
+    };
+  }
+
   return {
-    segments: [
-      { start: center, end: edge },
-      { start: edge, end: anchor }
-    ],
+    segments: getLeaderSegmentsToAnchor(edge, anchor, textGap),
     arrows: [{ point: edge, toward: center }]
   };
+}
+
+function getLeaderSegmentsToAnchor(start, anchor, textGap) {
+  const directionToStart = normalizeScreenVector({
+    x: start.x - anchor.x,
+    y: start.y - anchor.y
+  });
+  if (!directionToStart) {
+    return [];
+  }
+
+  const distance = distanceBetweenScreenPoints(start, anchor);
+  const gap = Math.min(Math.max(0, distance - 2), textGap);
+  const leaderEnd = {
+    x: anchor.x + directionToStart.x * gap,
+    y: anchor.y + directionToStart.y * gap
+  };
+  return distance > gap + WORLD_GEOMETRY_TOLERANCE
+    ? [{ start, end: leaderEnd }]
+    : [];
+}
+
+function getSegmentPartsAroundPoint(start, end, gapCenter, textGap) {
+  const direction = normalizeScreenVector({
+    x: end.x - start.x,
+    y: end.y - start.y
+  });
+  if (!direction) {
+    return [];
+  }
+
+  const totalLength = distanceBetweenScreenPoints(start, end);
+  const centerOffset = clamp(
+    dotScreenPoints(subtractScreenPoints(gapCenter, start), direction),
+    0,
+    totalLength);
+  const gap = Math.min(textGap, totalLength / 2);
+  const gapStartOffset = clamp(centerOffset - gap, 0, totalLength);
+  const gapEndOffset = clamp(centerOffset + gap, 0, totalLength);
+  const gapStart = {
+    x: start.x + direction.x * gapStartOffset,
+    y: start.y + direction.y * gapStartOffset
+  };
+  const gapEnd = {
+    x: start.x + direction.x * gapEndOffset,
+    y: start.y + direction.y * gapEndOffset
+  };
+  const segments = [];
+  if (gapStartOffset > WORLD_GEOMETRY_TOLERANCE) {
+    segments.push({ start, end: gapStart });
+  }
+
+  if (totalLength - gapEndOffset > WORLD_GEOMETRY_TOLERANCE) {
+    segments.push({ start: gapEnd, end });
+  }
+
+  return segments;
 }
 
 function drawAngleDimensionGraphics(state, dimension, isPreview) {
@@ -1673,17 +1803,17 @@ function getDimensionRenderStyle(isPreview) {
   };
 }
 
-function getDimensionDisplayText(dimension) {
-  const value = formatDimensionValue(dimension.value);
+export function getDimensionDisplayText(dimension) {
+  const value = formatDimensionValue(dimension && dimension.value);
   if (!value) {
     return "";
   }
 
-  switch (dimension.kind) {
+  switch (String(dimension && dimension.kind || "").toLowerCase()) {
     case "radius":
       return `R${value}`;
     case "diameter":
-      return `⌀${value}`;
+      return `\u2300${value}`;
     case "angle":
       return `${value} deg`;
     default:
@@ -1738,7 +1868,7 @@ function updatePersistentDimensionInputs(state, dimensions) {
     const isFocused = document.activeElement === input;
     const isEditing = input.dataset.dimensionEditing === "true";
     if (!isFocused && !isEditing) {
-      input.value = formatDimensionValue(dimension.value);
+      input.value = getDimensionDisplayText(dimension);
     }
 
     input.dataset.dimensionId = dimension.id;
@@ -1759,7 +1889,7 @@ function getOrCreatePersistentDimensionInput(state, dimension) {
   }
 
   input = document.createElement("input");
-  input.type = "number";
+  input.type = "text";
   input.step = "0.001";
   input.inputMode = "decimal";
   input.className = "drawing-dimension-input drawing-persistent-dimension-input";
@@ -1920,7 +2050,10 @@ function commitPersistentDimensionInputValue(state, input) {
   const commit = getPersistentDimensionCommitValue(input.value, input.dataset.dimensionValue);
   input.dataset.dimensionEditing = "false";
   if (!id || !commit.shouldCommit) {
-    input.value = formatDimensionValue(commit.value);
+    input.value = getDimensionDisplayText({
+      kind: input.dataset.dimensionKind,
+      value: commit.value
+    });
     return false;
   }
 
@@ -1931,7 +2064,7 @@ function commitPersistentDimensionInputValue(state, input) {
 export function getPersistentDimensionCommitValue(text, fallbackValue) {
   const fallback = Number(fallbackValue);
   const safeFallback = Number.isFinite(fallback) ? fallback : 0;
-  const value = Number(String(text || "").trim());
+  const value = parseDimensionInputNumber(text);
   if (!Number.isFinite(value) || value <= WORLD_GEOMETRY_TOLERANCE) {
     return {
       shouldCommit: false,
@@ -1943,6 +2076,13 @@ export function getPersistentDimensionCommitValue(text, fallbackValue) {
     shouldCommit: true,
     value
   };
+}
+
+function parseDimensionInputNumber(text) {
+  const match = String(text || "")
+    .trim()
+    .match(/[+-]?(?:\d+(?:\.\d*)?|\.\d+)/);
+  return match ? Number(match[0]) : Number.NaN;
 }
 
 function clearPersistentDimensionInputs(state) {
@@ -3060,6 +3200,10 @@ function getDimensionSelectionKey(target) {
       : null;
   }
 
+  if (target.kind === "segment" && target.entityId && Number.isInteger(target.segmentIndex)) {
+    return target.key;
+  }
+
   return null;
 }
 
@@ -3072,12 +3216,12 @@ function isDimensionReferenceSetComplete(state, selectionKeys, lastTarget) {
     return getDimensionModelFromReferences(state, selectionKeys) !== null;
   }
 
-  if (!lastTarget || lastTarget.kind !== "entity") {
+  if (!lastTarget || (lastTarget.kind !== "entity" && lastTarget.kind !== "segment")) {
     return false;
   }
 
   const kind = getEntityKind(lastTarget.entity);
-  return kind === "line" || kind === "circle" || kind === "arc";
+  return lastTarget.kind === "segment" || kind === "line" || kind === "circle" || kind === "arc";
 }
 
 export function getRadialDimensionPreference(target, event = {}) {
@@ -3131,6 +3275,7 @@ function commitSketchToolPoints(state, tool, points) {
   state.toolDraft = postCommitState.toolDraft;
   state.sketchChainAutoTool = false;
   state.sketchChainVertexHovering = postCommitState.sketchChainVertexHovering;
+  state.sketchChainToggleRequiresExit = postCommitState.sketchChainToggleRequiresExit;
   clearTransientDimensionInputs(state);
   setHoveredTarget(state, null);
   invokeDotNet(
@@ -3154,6 +3299,7 @@ function handlePointerCancel(state, event) {
   state.clickCandidate = null;
   state.selectionBox = null;
   state.sketchChainVertexHovering = false;
+  state.sketchChainToggleRequiresExit = false;
   releasePointer(state.canvas, event.pointerId);
 
   if (setHoveredTarget(state, null)) {
@@ -3168,6 +3314,7 @@ function handlePointerLeave(state) {
 
   state.pointerScreenPoint = null;
   state.sketchChainVertexHovering = false;
+  state.sketchChainToggleRequiresExit = false;
 
   if (state.selectionBox) {
     state.selectionBox = null;
@@ -3210,6 +3357,7 @@ function cancelActiveTool(state) {
   state.sketchChainContext = null;
   state.sketchChainVertexHovering = false;
   state.sketchChainAutoTool = false;
+  state.sketchChainToggleRequiresExit = false;
   state.acquiredSnapPoints = [];
   state.dimensionDraft = createEmptyDimensionDraft();
   clearTransientDimensionInputs(state);
@@ -3258,6 +3406,7 @@ function handleDoubleClick(state, event) {
     state.sketchChainContext = null;
     state.sketchChainVertexHovering = false;
     state.sketchChainAutoTool = false;
+    state.sketchChainToggleRequiresExit = false;
     setHoveredTarget(state, null);
     updateDebugAttributes(state);
     draw(state);
@@ -3468,7 +3617,7 @@ export function getDynamicSketchSnapHit(state, screenPoint, highlightedTarget = 
   const candidates = [];
   addAcquiredProjectionSnapCandidates(candidates, state, worldPoint);
   addHighlightedGeometryOrthoSnapCandidates(candidates, state, highlightedTarget);
-  addDynamicTangentSnapCandidates(candidates, state, tool, highlightedTarget);
+  addDynamicTangentSnapCandidates(candidates, state, tool, highlightedTarget, worldPoint);
 
   const hits = [];
   for (const candidate of candidates) {
@@ -3601,7 +3750,7 @@ function addHighlightedGeometryOrthoSnapCandidates(candidates, state, highlighte
   }
 }
 
-function addDynamicTangentSnapCandidates(candidates, state, tool, highlightedTarget = null) {
+function addDynamicTangentSnapCandidates(candidates, state, tool, highlightedTarget = null, worldPoint = null) {
   if (tool === "threepointcircle") {
     addThreePointCircleTangentSnapCandidates(candidates, state, highlightedTarget);
     return;
@@ -3616,6 +3765,8 @@ function addDynamicTangentSnapCandidates(candidates, state, tool, highlightedTar
   }
 
   const anchor = state.toolDraft.points[0];
+  addSketchChainTangentSnapCandidate(candidates, state, anchor, worldPoint);
+
   for (const entity of getDocumentEntities(state.document)) {
     if (!isCurveEntity(entity)) {
       continue;
@@ -3632,6 +3783,39 @@ function addDynamicTangentSnapCandidates(candidates, state, tool, highlightedTar
       });
     }
   }
+}
+
+function addSketchChainTangentSnapCandidate(candidates, state, anchor, worldPoint) {
+  const chainContext = state && state.sketchChainContext;
+  if (!chainContext
+    || !chainContext.isTangentContinuation
+    || !chainContext.point
+    || !chainContext.tangentPoint
+    || !worldPoint
+    || !sameOptionalWorldPoint(anchor, chainContext.point)) {
+    return;
+  }
+
+  const tangent = normalizeWorldVector(subtractPoints(chainContext.tangentPoint, chainContext.point));
+  if (!tangent) {
+    return;
+  }
+
+  const along = dotPoints(subtractPoints(worldPoint, chainContext.point), tangent);
+  if (along <= WORLD_GEOMETRY_TOLERANCE) {
+    return;
+  }
+
+  const point = {
+    x: chainContext.point.x + tangent.x * along,
+    y: chainContext.point.y + tangent.y * along
+  };
+  candidates.push({
+    label: "tangent-chain",
+    point,
+    guides: [{ orientation: "segment", start: chainContext.point, point }],
+    priority: 10
+  });
 }
 
 function addThreePointCircleTangentSnapCandidates(candidates, state, highlightedTarget) {
@@ -6067,6 +6251,23 @@ function resolveSketchReferencePoint(state, referenceKey) {
     return null;
   }
 
+  if (Number.isInteger(reference.segmentIndex)) {
+    const points = getEntityPoints(entity);
+    if (reference.segmentIndex < 0 || reference.segmentIndex >= points.length - 1) {
+      return null;
+    }
+
+    if (reference.target === "start") {
+      return points[reference.segmentIndex] || null;
+    }
+
+    if (reference.target === "end") {
+      return points[reference.segmentIndex + 1] || null;
+    }
+
+    return null;
+  }
+
   switch (getEntityKind(entity)) {
     case "point":
       return getPointEntityLocation(entity);
@@ -6097,7 +6298,23 @@ function resolveSketchLineReference(state, referenceKey) {
   }
 
   const entity = findDocumentEntity(state, reference.entityId);
-  if (!entity || getEntityKind(entity) !== "line") {
+  if (!entity) {
+    return null;
+  }
+
+  if (Number.isInteger(reference.segmentIndex)) {
+    if (reference.target !== "entity") {
+      return null;
+    }
+
+    const points = getEntityPoints(entity);
+    const segmentIndex = reference.segmentIndex;
+    return segmentIndex >= 0 && segmentIndex < points.length - 1
+      ? { start: points[segmentIndex], end: points[segmentIndex + 1] }
+      : null;
+  }
+
+  if (getEntityKind(entity) !== "line") {
     return null;
   }
 
@@ -6116,6 +6333,11 @@ function resolveSketchEntityAnchorPoint(state, referenceKey) {
   const entity = findDocumentEntity(state, reference.entityId);
   if (!entity) {
     return null;
+  }
+
+  if (Number.isInteger(reference.segmentIndex)) {
+    const line = resolveSketchLineReference(state, referenceKey);
+    return line ? midpoint(line.start, line.end) : null;
   }
 
   switch (getEntityKind(entity)) {
@@ -6151,7 +6373,7 @@ function resolveSketchEntityAnchorPoint(state, referenceKey) {
 
 function resolveSketchCircleLikeReference(state, referenceKey) {
   const reference = parseSketchReference(referenceKey);
-  if (!reference || reference.target !== "entity") {
+  if (!reference || reference.target !== "entity" || Number.isInteger(reference.segmentIndex)) {
     return null;
   }
 
@@ -6185,10 +6407,25 @@ function parseSketchReference(referenceKey) {
   }
 
   const targetSeparatorIndex = key.lastIndexOf(":");
+  const baseKey = targetSeparatorIndex > 0 && targetSeparatorIndex < key.length - 1
+    ? key.slice(0, targetSeparatorIndex)
+    : key;
+  const segmentReference = parseSegmentReferenceKey(baseKey);
+  const target = targetSeparatorIndex > 0 && targetSeparatorIndex < key.length - 1
+    ? normalizeSketchReferenceTarget(key.slice(targetSeparatorIndex + 1))
+    : "entity";
+  if (segmentReference) {
+    return {
+      entityId: segmentReference.entityId,
+      segmentIndex: segmentReference.segmentIndex,
+      target
+    };
+  }
+
   if (targetSeparatorIndex > 0 && targetSeparatorIndex < key.length - 1) {
     return {
       entityId: key.slice(0, targetSeparatorIndex),
-      target: normalizeSketchReferenceTarget(key.slice(targetSeparatorIndex + 1))
+      target
     };
   }
 
@@ -6196,6 +6433,31 @@ function parseSketchReference(referenceKey) {
     entityId: key,
     target: "entity"
   };
+}
+
+function parseSegmentReferenceKey(key) {
+  const separatorIndex = String(key || "").indexOf(SEGMENT_KEY_SEPARATOR);
+  if (separatorIndex < 0) {
+    return null;
+  }
+
+  const entityId = key.slice(0, separatorIndex);
+  const segmentIndex = Number(key.slice(separatorIndex + SEGMENT_KEY_SEPARATOR.length));
+  if (!entityId || !Number.isInteger(segmentIndex)) {
+    return null;
+  }
+
+  return { entityId, segmentIndex };
+}
+
+function getSketchReferenceBaseKey(reference) {
+  if (!reference) {
+    return "";
+  }
+
+  return Number.isInteger(reference.segmentIndex)
+    ? `${reference.entityId}${SEGMENT_KEY_SEPARATOR}${reference.segmentIndex}`
+    : reference.entityId;
 }
 
 function normalizeSketchReferenceTarget(target) {

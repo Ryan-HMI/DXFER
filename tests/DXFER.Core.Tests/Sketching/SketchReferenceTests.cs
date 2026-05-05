@@ -18,12 +18,15 @@ public sealed class SketchReferenceTests
     [InlineData("line-a|point|start|0|0", "line-a:start", SketchReferenceTarget.Start)]
     [InlineData("line-a|point|end|10|0", "line-a:end", SketchReferenceTarget.End)]
     [InlineData("circle-a|point|center|20|20", "circle-a:center", SketchReferenceTarget.Center)]
+    [InlineData("poly-a|segment|1", "poly-a|segment|1", SketchReferenceTarget.Entity)]
+    [InlineData("poly-a|segment|1:start", "poly-a|segment|1:start", SketchReferenceTarget.Start)]
+    [InlineData("poly-a|segment|1:end", "poly-a|segment|1:end", SketchReferenceTarget.End)]
     public void ParserNormalizesSupportedReferences(string key, string normalized, SketchReferenceTarget target)
     {
         var result = SketchReference.TryParse(key, out var reference);
 
         result.Should().BeTrue();
-        reference.EntityId.Should().Be(normalized.Split(':')[0]);
+        reference.EntityId.Should().Be(normalized.Split(new[] { "|segment|", ":" }, StringSplitOptions.None)[0]);
         reference.Target.Should().Be(target);
         reference.ToString().Should().Be(normalized);
     }
@@ -36,7 +39,10 @@ public sealed class SketchReferenceTests
             new LineEntity(EntityId.Create("line-a"), new Point2(0, 1), new Point2(2, 3)),
             new CircleEntity(EntityId.Create("circle-a"), new Point2(5, 6), 7),
             new ArcEntity(EntityId.Create("arc-a"), new Point2(8, 9), 10, 0, 90),
-            new PointEntity(EntityId.Create("point-a"), new Point2(11, 12))
+            new PointEntity(EntityId.Create("point-a"), new Point2(11, 12)),
+            new PolylineEntity(
+                EntityId.Create("poly-a"),
+                new[] { new Point2(20, 20), new Point2(25, 20), new Point2(25, 28) })
         });
 
         SketchReferenceResolver.TryGetPoint(document, "line-a:start", out var lineStart).Should().BeTrue();
@@ -56,6 +62,13 @@ public sealed class SketchReferenceTests
 
         SketchReferenceResolver.TryGetEntity(document, "line-a", out var entity).Should().BeTrue();
         entity.Should().BeOfType<LineEntity>();
+
+        SketchReferenceResolver.TryGetPoint(document, "poly-a|segment|1:start", out var segmentStart).Should().BeTrue();
+        segmentStart.Should().Be(new Point2(25, 20));
+
+        SketchReferenceResolver.TryGetLine(document, "poly-a|segment|1", out var segmentLine).Should().BeTrue();
+        segmentLine.Start.Should().Be(new Point2(25, 20));
+        segmentLine.End.Should().Be(new Point2(25, 28));
     }
 
     [Fact]

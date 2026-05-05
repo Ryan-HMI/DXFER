@@ -6,18 +6,31 @@ namespace DXFER.Core.Sketching;
 public readonly record struct SketchReference
 {
     private const string CanvasPointSeparator = "|point|";
+    private const string SegmentSeparator = "|segment|";
 
     public SketchReference(string entityId, SketchReferenceTarget target)
+        : this(entityId, target, null)
+    {
+    }
+
+    public SketchReference(string entityId, SketchReferenceTarget target, int? segmentIndex)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(entityId);
+        if (segmentIndex.HasValue && segmentIndex.Value < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(segmentIndex), "Segment index cannot be negative.");
+        }
 
         EntityId = entityId;
         Target = target;
+        SegmentIndex = segmentIndex;
     }
 
     public string EntityId { get; }
 
     public SketchReferenceTarget Target { get; }
+
+    public int? SegmentIndex { get; }
 
     public bool IsEntity => Target == SketchReferenceTarget.Entity;
 
@@ -39,11 +52,13 @@ public readonly record struct SketchReference
         var targetSeparatorIndex = trimmed.LastIndexOf(':');
         if (targetSeparatorIndex > 0 && targetSeparatorIndex < trimmed.Length - 1)
         {
-            var entityId = trimmed[..targetSeparatorIndex];
+            var entityPart = trimmed[..targetSeparatorIndex];
             var targetText = trimmed[(targetSeparatorIndex + 1)..];
             if (TryParsePointTarget(targetText, out var target))
             {
-                reference = new SketchReference(entityId, target);
+                reference = TryParseSegmentReferenceBase(entityPart, out var entityId, out var segmentIndex)
+                    ? new SketchReference(entityId, target, segmentIndex)
+                    : new SketchReference(entityPart, target);
                 return true;
             }
 
@@ -51,7 +66,9 @@ public readonly record struct SketchReference
             return false;
         }
 
-        reference = new SketchReference(trimmed, SketchReferenceTarget.Entity);
+        reference = TryParseSegmentReferenceBase(trimmed, out var segmentEntityId, out var segmentReferenceIndex)
+            ? new SketchReference(segmentEntityId, SketchReferenceTarget.Entity, segmentReferenceIndex)
+            : new SketchReference(trimmed, SketchReferenceTarget.Entity);
         return true;
     }
 
@@ -109,14 +126,20 @@ public readonly record struct SketchReference
         return true;
     }
 
-    public override string ToString() =>
-        Target switch
+    public override string ToString()
+    {
+        var baseKey = SegmentIndex.HasValue
+            ? $"{EntityId}{SegmentSeparator}{SegmentIndex.Value.ToString(CultureInfo.InvariantCulture)}"
+            : EntityId;
+
+        return Target switch
         {
-            SketchReferenceTarget.Start => $"{EntityId}:start",
-            SketchReferenceTarget.End => $"{EntityId}:end",
-            SketchReferenceTarget.Center => $"{EntityId}:center",
-            _ => EntityId
+            SketchReferenceTarget.Start => $"{baseKey}:start",
+            SketchReferenceTarget.End => $"{baseKey}:end",
+            SketchReferenceTarget.Center => $"{baseKey}:center",
+            _ => baseKey
         };
+    }
 
     private static bool TryParseCanvasPointReference(
         string key,
@@ -139,6 +162,33 @@ public readonly record struct SketchReference
         }
 
         reference = new SketchReference(entityId, target);
+        return true;
+    }
+
+    private static bool TryParseSegmentReferenceBase(
+        string value,
+        out string entityId,
+        out int segmentIndex)
+    {
+        var separatorIndex = value.IndexOf(SegmentSeparator, StringComparison.Ordinal);
+        if (separatorIndex <= 0)
+        {
+            entityId = string.Empty;
+            segmentIndex = default;
+            return false;
+        }
+
+        entityId = value[..separatorIndex];
+        var segmentText = value[(separatorIndex + SegmentSeparator.Length)..];
+        if (string.IsNullOrWhiteSpace(entityId)
+            || !int.TryParse(segmentText, NumberStyles.Integer, CultureInfo.InvariantCulture, out segmentIndex)
+            || segmentIndex < 0)
+        {
+            entityId = string.Empty;
+            segmentIndex = default;
+            return false;
+        }
+
         return true;
     }
 

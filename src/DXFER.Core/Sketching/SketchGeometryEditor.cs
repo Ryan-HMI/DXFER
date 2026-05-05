@@ -63,6 +63,21 @@ internal static class SketchGeometryEditor
             return false;
         }
 
+        if (TryGetPolylineSegment(entity, reference, out var segmentIndex, out var segmentStart, out var segmentEnd))
+        {
+            if (reference.Target == SketchReferenceTarget.Start)
+            {
+                point = segmentStart;
+                return true;
+            }
+
+            if (reference.Target == SketchReferenceTarget.End)
+            {
+                point = segmentEnd;
+                return true;
+            }
+        }
+
         switch (entity)
         {
             case LineEntity line when reference.Target == SketchReferenceTarget.Start:
@@ -96,6 +111,16 @@ internal static class SketchGeometryEditor
             return false;
         }
 
+        if (entity is PolylineEntity polyline
+            && TryGetPolylineSegment(entity, reference, out var segmentIndex, out _, out _)
+            && reference.Target is SketchReferenceTarget.Start or SketchReferenceTarget.End)
+        {
+            var vertices = polyline.Vertices.ToArray();
+            vertices[reference.Target == SketchReferenceTarget.Start ? segmentIndex : segmentIndex + 1] = point;
+            entities[index] = new PolylineEntity(polyline.Id, vertices, polyline.IsConstruction);
+            return true;
+        }
+
         switch (entity)
         {
             case LineEntity line when reference.Target == SketchReferenceTarget.Start:
@@ -125,16 +150,28 @@ internal static class SketchGeometryEditor
         out LineEntity line)
     {
         if (reference.Target != SketchReferenceTarget.Entity
-            || !TryGetEntity(entities, reference, out index, out var entity)
-            || entity is not LineEntity lineEntity)
+            || !TryGetEntity(entities, reference, out index, out var entity))
         {
             index = -1;
             line = default!;
             return false;
         }
 
-        line = lineEntity;
-        return true;
+        if (entity is LineEntity lineEntity)
+        {
+            line = lineEntity;
+            return true;
+        }
+
+        if (TryGetPolylineSegment(entity, reference, out _, out var start, out var end))
+        {
+            line = new LineEntity(EntityId.Create(reference.ToString()), start, end, entity.IsConstruction);
+            return true;
+        }
+
+        index = -1;
+        line = default!;
+        return false;
     }
 
     public static bool TrySetLine(
@@ -142,12 +179,52 @@ internal static class SketchGeometryEditor
         SketchReference reference,
         LineEntity line)
     {
-        if (!TryGetLine(entities, reference, out var index, out _))
+        if (!TryGetEntity(entities, reference, out var index, out var entity))
+        {
+            return false;
+        }
+
+        if (reference.SegmentIndex.HasValue
+            && entity is PolylineEntity polyline
+            && TryGetPolylineSegment(entity, reference, out var segmentIndex, out _, out _))
+        {
+            var vertices = polyline.Vertices.ToArray();
+            vertices[segmentIndex] = line.Start;
+            vertices[segmentIndex + 1] = line.End;
+            entities[index] = new PolylineEntity(polyline.Id, vertices, polyline.IsConstruction);
+            return true;
+        }
+
+        if (entity is not LineEntity)
         {
             return false;
         }
 
         entities[index] = line;
+        return true;
+    }
+
+    private static bool TryGetPolylineSegment(
+        DrawingEntity entity,
+        SketchReference reference,
+        out int segmentIndex,
+        out Point2 start,
+        out Point2 end)
+    {
+        if (reference.SegmentIndex is not { } index
+            || entity is not PolylineEntity polyline
+            || index < 0
+            || index >= polyline.Vertices.Count - 1)
+        {
+            segmentIndex = default;
+            start = default;
+            end = default;
+            return false;
+        }
+
+        segmentIndex = index;
+        start = polyline.Vertices[index];
+        end = polyline.Vertices[index + 1];
         return true;
     }
 

@@ -52,6 +52,31 @@ public sealed class SketchCommandFactoryTests
     }
 
     [Fact]
+    public void BuildsLinearDimensionFromSelectedPolylineSegment()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new PolylineEntity(
+                EntityId.Create("poly"),
+                new[] { new Point2(0, 0), new Point2(3, 0), new Point2(3, 4) })
+        });
+
+        var result = SketchCommandFactory.TryBuildDimension(
+            document,
+            new[] { "poly|segment|1" },
+            "dim-1",
+            out var dimension,
+            out _);
+
+        result.Should().BeTrue();
+        dimension.Kind.Should().Be(SketchDimensionKind.LinearDistance);
+        dimension.ReferenceKeys.Should().Equal("poly|segment|1:start", "poly|segment|1:end");
+        dimension.Value.Should().Be(4);
+        dimension.Anchor.Should().Be(new Point2(3, 2));
+        dimension.IsDriving.Should().BeTrue();
+    }
+
+    [Fact]
     public void BuildsPointToLineDimensionFromPointAndLine()
     {
         var document = new DrawingDocument(new DrawingEntity[]
