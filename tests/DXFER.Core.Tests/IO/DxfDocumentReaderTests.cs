@@ -126,6 +126,24 @@ SHEETMETAL_CUT_LINES
 20
 2
 0
+ELLIPSE
+8
+CUT
+10
+10
+20
+10
+11
+4
+21
+0
+40
+0.5
+41
+0
+42
+1.57079632679
+0
 ENDSEC
 0
 EOF
@@ -133,7 +151,7 @@ EOF
 
         var document = DxfDocumentReader.Read(dxf);
 
-        document.Entities.Should().HaveCount(6);
+        document.Entities.Should().HaveCount(7);
         document.Entities[0].Should().BeOfType<LineEntity>()
             .Which.Start.Should().Be(new Point2(1, 2));
         document.Entities[1].Should().BeOfType<CircleEntity>()
@@ -153,6 +171,11 @@ EOF
             new Point2(4, 2),
             new Point2(6, 2));
         spline.GetSamplePoints().Should().HaveCountGreaterThan(4);
+        var ellipse = document.Entities[6].Should().BeOfType<EllipseEntity>().Subject;
+        ellipse.Center.Should().Be(new Point2(10, 10));
+        ellipse.MajorAxisEndPoint.Should().Be(new Point2(4, 0));
+        ellipse.MinorRadiusRatio.Should().Be(0.5);
+        ellipse.EndParameterDegrees.Should().BeApproximately(90, 0.000001);
     }
 
     [Fact]
@@ -164,6 +187,7 @@ EOF
             new CircleEntity(EntityId.Create("circle-a"), new Point2(5, 5), 1.25),
             new ArcEntity(EntityId.Create("arc-a"), new Point2(8, 8), 2, 15, 120),
             new PointEntity(EntityId.Create("point-a"), new Point2(3, 4)),
+            new EllipseEntity(EntityId.Create("ellipse-a"), new Point2(1, 2), new Point2(4, 0), 0.5),
             new PolylineEntity(EntityId.Create("poly-a"), new[] { new Point2(0, 0), new Point2(2, 0), new Point2(2, 1) }),
             new SplineEntity(
                 EntityId.Create("spline-a"),
@@ -176,17 +200,20 @@ EOF
         var roundTripped = DxfDocumentReader.Read(dxf);
 
         dxf.Should().Contain("SPLINE");
+        dxf.Should().Contain("ELLIPSE");
         dxf.Should().Contain("POINT");
-        roundTripped.Entities.Should().HaveCount(6);
+        roundTripped.Entities.Should().HaveCount(7);
         roundTripped.Entities[3].Should().BeOfType<PointEntity>()
             .Which.Location.Should().Be(new Point2(3, 4));
-        roundTripped.Entities[5].Should().BeOfType<SplineEntity>()
+        roundTripped.Entities[4].Should().BeOfType<EllipseEntity>()
+            .Which.MinorRadiusRatio.Should().Be(0.5);
+        roundTripped.Entities[6].Should().BeOfType<SplineEntity>()
             .Which.ControlPoints.Should().ContainInOrder(
                 new Point2(0, 0),
                 new Point2(1, 2),
                 new Point2(3, 2),
                 new Point2(4, 0));
-        roundTripped.GetBounds().MinX.Should().BeApproximately(0, 0.0001);
+        roundTripped.GetBounds().MinX.Should().BeApproximately(-3, 0.0001);
         roundTripped.GetBounds().MaxX.Should().BeGreaterThan(9.9);
     }
 

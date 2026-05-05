@@ -24,8 +24,10 @@ import {
   getDimensionAnchorUpdateRequest,
   getDimensionDisplayText,
   getDimensionPlacementRequest,
+  getEllipseFromPoints,
   getPersistentDimensionDescriptors,
   getPersistentDimensionCommitValue,
+  getPolygonWorldPoints,
   getRadialDimensionScreenGeometry,
   getRadialDimensionPreference,
   getSketchToolDimensionLocks,
@@ -122,6 +124,57 @@ test("draft line dimension preserves direction when length is typed", () => {
 
   assert.equal(changed, true);
   assert.deepEqual(state.toolDraft.previewPoint, { x: 6, y: 8 });
+});
+
+test("draft ellipse dimensions preserve major and minor axes", () => {
+  const state = {
+    activeTool: "ellipse",
+    toolDraft: {
+      points: [{ x: 0, y: 0 }, { x: 4, y: 0 }],
+      previewPoint: { x: 0, y: 2 }
+    }
+  };
+
+  assert.equal(applyDraftDimensionValue(state, "minor", 3), true);
+  assert.deepEqual(state.toolDraft.previewPoint, { x: 0, y: 3 });
+
+  assert.equal(applyDraftDimensionValue(state, "major", 6), true);
+  assert.deepEqual(state.toolDraft.points[1], { x: 6, y: 0 });
+});
+
+test("ellipse helper builds ratio and elliptical arc parameter", () => {
+  const ellipse = getEllipseFromPoints(
+    { x: 0, y: 0 },
+    { x: 4, y: 0 },
+    { x: 0, y: 2 },
+    { x: 0, y: 2 });
+
+  assert.equal(ellipse.majorLength, 4);
+  assert.equal(ellipse.minorLength, 2);
+  assert.equal(ellipse.minorRadiusRatio, 0.5);
+  assert.equal(ellipse.endParameterDegrees, 90);
+});
+
+test("creation tool point counts cover remaining sketch tools", () => {
+  assert.equal(getSketchToolPointCount("ellipse"), 3);
+  assert.equal(getSketchToolPointCount("ellipticalarc"), 4);
+  assert.equal(getSketchToolPointCount("inscribedpolygon"), 2);
+  assert.equal(getSketchToolPointCount("circumscribedpolygon"), 2);
+  assert.equal(getSketchToolPointCount("conic"), 3);
+  assert.equal(getSketchToolPointCount("spline"), 4);
+  assert.equal(getSketchToolPointCount("bezier"), 4);
+  assert.equal(getSketchToolPointCount("splinecontrolpoint"), 4);
+  assert.equal(getSketchToolPointCount("slot"), 3);
+});
+
+test("polygon helper distinguishes inscribed and circumscribed radii", () => {
+  const inscribed = getPolygonWorldPoints({ x: 0, y: 0 }, { x: 10, y: 0 }, false);
+  const circumscribed = getPolygonWorldPoints({ x: 0, y: 0 }, { x: 10, y: 0 }, true);
+
+  assert.equal(inscribed.length, 6);
+  assert.equal(circumscribed.length, 6);
+  assertApproxEqual(Math.hypot(inscribed[0].x, inscribed[0].y), 10);
+  assertApproxEqual(Math.hypot(circumscribed[0].x, circumscribed[0].y), 10 / Math.cos(Math.PI / 6));
 });
 
 test("draft midpoint line dimension uses full mirrored line length", () => {

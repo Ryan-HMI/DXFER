@@ -209,19 +209,19 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.AlignedRectangle, WorkbenchTool.AlignedRectangle, CadIconName.AlignedRectangle, "Aligned rectangle"),
             Command(WorkbenchCommandId.CenterCircle, WorkbenchTool.CenterCircle, CadIconName.Circle, "Center circle"),
             Command(WorkbenchCommandId.ThreePointCircle, WorkbenchTool.ThreePointCircle, CadIconName.ThreePointCircle, "Three-point circle"),
-            Command(WorkbenchCommandId.Ellipse, WorkbenchTool.Ellipse, CadIconName.Ellipse, "Ellipse", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.Ellipse, WorkbenchTool.Ellipse, CadIconName.Ellipse, "Ellipse"),
             Command(WorkbenchCommandId.ThreePointArc, WorkbenchTool.ThreePointArc, CadIconName.Arc, "Three-point arc"),
             Command(WorkbenchCommandId.CenterPointArc, WorkbenchTool.CenterPointArc, CadIconName.CenterPointArc, "Center point arc"),
-            Command(WorkbenchCommandId.EllipticalArc, WorkbenchTool.EllipticalArc, CadIconName.EllipticalArc, "Elliptical arc", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Conic, WorkbenchTool.Conic, CadIconName.Conic, "Conic", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.InscribedPolygon, WorkbenchTool.InscribedPolygon, CadIconName.InscribedPolygon, "Inscribed polygon", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.CircumscribedPolygon, WorkbenchTool.CircumscribedPolygon, CadIconName.CircumscribedPolygon, "Circumscribed polygon", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Spline, WorkbenchTool.Spline, CadIconName.Spline, "Spline", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Bezier, WorkbenchTool.Bezier, CadIconName.Bezier, "Bezier", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.SplineControlPoint, WorkbenchTool.SplineControlPoint, CadIconName.SplineControlPoint, "Spline control point", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.EllipticalArc, WorkbenchTool.EllipticalArc, CadIconName.EllipticalArc, "Elliptical arc"),
+            Command(WorkbenchCommandId.Conic, WorkbenchTool.Conic, CadIconName.Conic, "Conic"),
+            Command(WorkbenchCommandId.InscribedPolygon, WorkbenchTool.InscribedPolygon, CadIconName.InscribedPolygon, "Inscribed polygon"),
+            Command(WorkbenchCommandId.CircumscribedPolygon, WorkbenchTool.CircumscribedPolygon, CadIconName.CircumscribedPolygon, "Circumscribed polygon"),
+            Command(WorkbenchCommandId.Spline, WorkbenchTool.Spline, CadIconName.Spline, "Spline"),
+            Command(WorkbenchCommandId.Bezier, WorkbenchTool.Bezier, CadIconName.Bezier, "Bezier"),
+            Command(WorkbenchCommandId.SplineControlPoint, WorkbenchTool.SplineControlPoint, CadIconName.SplineControlPoint, "Spline control point"),
             Command(WorkbenchCommandId.Point, WorkbenchTool.Point, CadIconName.Point, "Point"),
             Command(WorkbenchCommandId.Text, WorkbenchTool.Text, CadIconName.Text, "Text", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Slot, WorkbenchTool.Slot, CadIconName.Slot, "Slot", disabled: true, isFuture: true)
+            Command(WorkbenchCommandId.Slot, WorkbenchTool.Slot, CadIconName.Slot, "Slot")
         }),
         new WorkbenchToolGroup("Modify", new[]
         {
@@ -316,11 +316,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.AlignedRectangle => "Aligned rectangle",
         WorkbenchTool.CenterCircle => "Center circle",
         WorkbenchTool.ThreePointCircle => "Three-point circle",
+        WorkbenchTool.Ellipse => "Ellipse",
         WorkbenchTool.CenterPointArc => "Center point arc",
         WorkbenchTool.EllipticalArc => "Elliptical arc",
+        WorkbenchTool.Conic => "Conic",
         WorkbenchTool.TangentArc => "Tangent arc",
         WorkbenchTool.InscribedPolygon => "Inscribed polygon",
         WorkbenchTool.CircumscribedPolygon => "Circumscribed polygon",
+        WorkbenchTool.Spline => "Spline",
+        WorkbenchTool.Bezier => "Bezier",
         WorkbenchTool.SplineControlPoint => "Spline control point",
         WorkbenchTool.Point => "Point",
         WorkbenchTool.Construction => "Construction",
@@ -352,10 +356,19 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.AlignedRectangle => "Aligned rectangle: click baseline start, baseline end, then depth. Esc: cancel.",
         WorkbenchTool.CenterCircle => "Center circle: click center, then radius point. Shift: polar snap. Esc: cancel.",
         WorkbenchTool.ThreePointCircle => "Three-point circle: click three points on the circumference. Esc: cancel.",
+        WorkbenchTool.Ellipse => "Ellipse: click center, major radius point, then minor radius point. Esc: cancel.",
         WorkbenchTool.ThreePointArc => "Three-point arc: click start point, through point, then end point. Esc: cancel.",
         WorkbenchTool.TangentArc => "Tangent arc: click start point, tangent direction point, then end point. Esc: cancel.",
         WorkbenchTool.CenterPointArc => "Center point arc: click center, start radius point, then end angle point. Esc: cancel.",
+        WorkbenchTool.EllipticalArc => "Elliptical arc: click center, major radius point, minor radius point, then end parameter point. Esc: cancel.",
+        WorkbenchTool.Conic => "Conic: click start, control point, then end point. Esc: cancel.",
+        WorkbenchTool.InscribedPolygon => "Inscribed polygon: click center, then vertex radius. Esc: cancel.",
+        WorkbenchTool.CircumscribedPolygon => "Circumscribed polygon: click center, then side apothem. Esc: cancel.",
+        WorkbenchTool.Spline => "Spline: click four control points. Esc: cancel.",
+        WorkbenchTool.Bezier => "Bezier: click four control points. Esc: cancel.",
+        WorkbenchTool.SplineControlPoint => "Spline control point: click four control points. Esc: cancel.",
         WorkbenchTool.Point => "Point: click to place a persistent sketch point. Esc: cancel.",
+        WorkbenchTool.Slot => "Slot: click first center, second center, then radius point. Esc: cancel.",
         WorkbenchTool.Construction => "Construction: click geometry to toggle construction state. Esc: cancel.",
         WorkbenchTool.PowerTrim => "Power trim/extend: click a line section to trim, or click past an endpoint to extend to another line. Esc: cancel.",
         WorkbenchTool.SplitAtPoint => "Split at point: click a line or arc, or pick two points on a circle. Esc: cancel.",
@@ -1923,141 +1936,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private static double Round(double value) => Math.Round(value, 4);
 
-    private IEnumerable<DrawingEntity> CreateEntitiesForTool(string toolName, IReadOnlyList<Point2> points)
-    {
-        var normalizedTool = NormalizeToolName(toolName);
-        if (normalizedTool == "point" && points.Count >= 1)
-        {
-            yield return new PointEntity(CreateEntityId("point"), points[0], _constructionMode);
-            yield break;
-        }
-
-        if (points.Count < 2)
-        {
-            yield break;
-        }
-
-        var first = points[0];
-        var second = points[1];
-        var isConstruction = _constructionMode;
-        switch (normalizedTool)
-        {
-            case "line":
-                yield return new LineEntity(CreateEntityId("line"), first, second, isConstruction);
-                break;
-            case "midpointline":
-                var mirroredEndpoint = new Point2((2 * first.X) - second.X, (2 * first.Y) - second.Y);
-                yield return new LineEntity(CreateEntityId("line"), mirroredEndpoint, second, isConstruction);
-                break;
-            case "twopointrectangle":
-                var oppositeA = new Point2(second.X, first.Y);
-                var oppositeB = new Point2(first.X, second.Y);
-                yield return new LineEntity(CreateEntityId("rect"), first, oppositeA, isConstruction);
-                yield return new LineEntity(CreateEntityId("rect"), oppositeA, second, isConstruction);
-                yield return new LineEntity(CreateEntityId("rect"), second, oppositeB, isConstruction);
-                yield return new LineEntity(CreateEntityId("rect"), oppositeB, first, isConstruction);
-                break;
-            case "centerrectangle":
-                var centerCorners = SketchRectangleGeometry.GetCenterRectangleCorners(first, second);
-                yield return new LineEntity(CreateEntityId("rect"), centerCorners[0], centerCorners[1], isConstruction);
-                yield return new LineEntity(CreateEntityId("rect"), centerCorners[1], centerCorners[2], isConstruction);
-                yield return new LineEntity(CreateEntityId("rect"), centerCorners[2], centerCorners[3], isConstruction);
-                yield return new LineEntity(CreateEntityId("rect"), centerCorners[3], centerCorners[0], isConstruction);
-                break;
-            case "alignedrectangle" when points.Count >= 3:
-                var corners = GetAlignedRectangleCorners(first, second, points[2]);
-                if (corners is not null)
-                {
-                    yield return new LineEntity(CreateEntityId("rect"), corners[0], corners[1], isConstruction);
-                    yield return new LineEntity(CreateEntityId("rect"), corners[1], corners[2], isConstruction);
-                    yield return new LineEntity(CreateEntityId("rect"), corners[2], corners[3], isConstruction);
-                    yield return new LineEntity(CreateEntityId("rect"), corners[3], corners[0], isConstruction);
-                }
-
-                break;
-            case "centercircle":
-                var radius = Math.Sqrt(Math.Pow(second.X - first.X, 2) + Math.Pow(second.Y - first.Y, 2));
-                if (radius > 0.000001)
-                {
-                    yield return new CircleEntity(CreateEntityId("circle"), first, radius, isConstruction);
-                }
-
-                break;
-            case "threepointcircle" when points.Count >= 3:
-                var circle = SketchArcGeometry.GetThreePointCircle(first, second, points[2]);
-                if (circle is not null)
-                {
-                    yield return new CircleEntity(CreateEntityId("circle"), circle.Value.Center, circle.Value.Radius, isConstruction);
-                }
-
-                break;
-            case "threepointarc" when points.Count >= 3:
-                var threePointArc = SketchArcGeometry.GetThreePointArc(first, second, points[2]);
-                if (threePointArc is not null)
-                {
-                    yield return new ArcEntity(
-                        CreateEntityId("arc"),
-                        threePointArc.Value.Center,
-                        threePointArc.Value.Radius,
-                        threePointArc.Value.StartAngleDegrees,
-                        threePointArc.Value.EndAngleDegrees,
-                        isConstruction);
-                }
-
-                break;
-            case "tangentarc" when points.Count >= 3:
-                var tangentArc = SketchArcGeometry.GetTangentArc(first, second, points[2]);
-                if (tangentArc is not null)
-                {
-                    yield return new ArcEntity(
-                        CreateEntityId("arc"),
-                        tangentArc.Value.Center,
-                        tangentArc.Value.Radius,
-                        tangentArc.Value.StartAngleDegrees,
-                        tangentArc.Value.EndAngleDegrees,
-                        isConstruction);
-                }
-
-                break;
-            case "centerpointarc" when points.Count >= 3:
-                var centerPointArc = SketchArcGeometry.GetCenterPointArc(first, second, points[2]);
-                if (centerPointArc is not null)
-                {
-                    yield return new ArcEntity(
-                        CreateEntityId("arc"),
-                        centerPointArc.Value.Center,
-                        centerPointArc.Value.Radius,
-                        centerPointArc.Value.StartAngleDegrees,
-                        centerPointArc.Value.EndAngleDegrees,
-                        isConstruction);
-                }
-
-                break;
-        }
-    }
-
-    private static Point2[]? GetAlignedRectangleCorners(Point2 first, Point2 second, Point2 depthPoint)
-    {
-        var dx = second.X - first.X;
-        var dy = second.Y - first.Y;
-        var length = Math.Sqrt((dx * dx) + (dy * dy));
-        if (length <= 0.000001)
-        {
-            return null;
-        }
-
-        var normalX = -dy / length;
-        var normalY = dx / length;
-        var depth = ((depthPoint.X - second.X) * normalX) + ((depthPoint.Y - second.Y) * normalY);
-        var offset = new Point2(normalX * depth, normalY * depth);
-        return new[]
-        {
-            first,
-            second,
-            new Point2(second.X + offset.X, second.Y + offset.Y),
-            new Point2(first.X + offset.X, first.Y + offset.Y)
-        };
-    }
+    private IReadOnlyList<DrawingEntity> CreateEntitiesForTool(string toolName, IReadOnlyList<Point2> points) =>
+        SketchCreationEntityFactory.CreateEntitiesForTool(toolName, points, CreateEntityId, _constructionMode);
 
     private WorkbenchToolCommand Command(
         WorkbenchCommandId id,
@@ -2085,10 +1965,45 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             or WorkbenchCommandId.MidpointLine
             or WorkbenchCommandId.TwoPointRectangle
             or WorkbenchCommandId.CenterRectangle
+            or WorkbenchCommandId.AlignedRectangle
             or WorkbenchCommandId.CenterCircle
+            or WorkbenchCommandId.ThreePointCircle
+            or WorkbenchCommandId.Ellipse
             or WorkbenchCommandId.ThreePointArc
             or WorkbenchCommandId.TangentArc
-            or WorkbenchCommandId.CenterPointArc;
+            or WorkbenchCommandId.CenterPointArc
+            or WorkbenchCommandId.EllipticalArc
+            or WorkbenchCommandId.Conic
+            or WorkbenchCommandId.InscribedPolygon
+            or WorkbenchCommandId.CircumscribedPolygon
+            or WorkbenchCommandId.Spline
+            or WorkbenchCommandId.Bezier
+            or WorkbenchCommandId.SplineControlPoint
+            or WorkbenchCommandId.Point
+            or WorkbenchCommandId.Construction
+            or WorkbenchCommandId.Slot
+            or WorkbenchCommandId.DeleteSelection
+            or WorkbenchCommandId.PowerTrim
+            or WorkbenchCommandId.SplitAtPoint
+            or WorkbenchCommandId.Offset
+            or WorkbenchCommandId.Fillet
+            or WorkbenchCommandId.Chamfer
+            or WorkbenchCommandId.Dimension
+            or WorkbenchCommandId.Translate
+            or WorkbenchCommandId.Rotate
+            or WorkbenchCommandId.Scale
+            or WorkbenchCommandId.Mirror
+            or WorkbenchCommandId.LinearPattern
+            or WorkbenchCommandId.CircularPattern
+            or WorkbenchCommandId.Coincident
+            or WorkbenchCommandId.Concentric
+            or WorkbenchCommandId.Parallel
+            or WorkbenchCommandId.Horizontal
+            or WorkbenchCommandId.Vertical
+            or WorkbenchCommandId.Perpendicular
+            or WorkbenchCommandId.Equal
+            or WorkbenchCommandId.Midpoint
+            or WorkbenchCommandId.Fix;
 
     private bool? ResolvePressedState(WorkbenchTool? tool, bool disabled, bool? pressed)
     {
@@ -2219,14 +2134,41 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchCommandId.ThreePointCircle:
                 tool = WorkbenchTool.ThreePointCircle;
                 return true;
+            case WorkbenchCommandId.Ellipse:
+                tool = WorkbenchTool.Ellipse;
+                return true;
             case WorkbenchCommandId.ThreePointArc:
                 tool = WorkbenchTool.ThreePointArc;
                 return true;
             case WorkbenchCommandId.CenterPointArc:
                 tool = WorkbenchTool.CenterPointArc;
                 return true;
+            case WorkbenchCommandId.EllipticalArc:
+                tool = WorkbenchTool.EllipticalArc;
+                return true;
+            case WorkbenchCommandId.Conic:
+                tool = WorkbenchTool.Conic;
+                return true;
+            case WorkbenchCommandId.InscribedPolygon:
+                tool = WorkbenchTool.InscribedPolygon;
+                return true;
+            case WorkbenchCommandId.CircumscribedPolygon:
+                tool = WorkbenchTool.CircumscribedPolygon;
+                return true;
+            case WorkbenchCommandId.Spline:
+                tool = WorkbenchTool.Spline;
+                return true;
+            case WorkbenchCommandId.Bezier:
+                tool = WorkbenchTool.Bezier;
+                return true;
+            case WorkbenchCommandId.SplineControlPoint:
+                tool = WorkbenchTool.SplineControlPoint;
+                return true;
             case WorkbenchCommandId.Point:
                 tool = WorkbenchTool.Point;
+                return true;
+            case WorkbenchCommandId.Slot:
+                tool = WorkbenchTool.Slot;
                 return true;
             default:
                 tool = default;
@@ -2271,11 +2213,20 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.CenterRectangle => "Pick center, then corner.",
         WorkbenchTool.AlignedRectangle => "Pick baseline start, baseline end, then depth.",
         WorkbenchTool.ThreePointCircle => "Pick three points on the circle.",
+        WorkbenchTool.Ellipse => "Pick center, major radius, then minor radius.",
         WorkbenchTool.ThreePointArc => "Pick start point, through point, then end point.",
         WorkbenchTool.TangentArc => "Pick start, tangent direction, then endpoint. In a chain, hover the last vertex to switch back to line.",
         WorkbenchTool.CenterPointArc => "Pick center, start radius point, then end angle point.",
+        WorkbenchTool.EllipticalArc => "Pick center, major radius, minor radius, then arc endpoint.",
+        WorkbenchTool.Conic => "Pick start, control point, then end point.",
+        WorkbenchTool.InscribedPolygon => "Pick center, then vertex radius.",
+        WorkbenchTool.CircumscribedPolygon => "Pick center, then side apothem.",
+        WorkbenchTool.Spline => "Pick four control points.",
+        WorkbenchTool.Bezier => "Pick four Bezier control points.",
+        WorkbenchTool.SplineControlPoint => "Pick four spline control points.",
         WorkbenchTool.Point => "Pick a point on the canvas.",
         WorkbenchTool.Construction => "Click geometry to toggle construction state.",
+        WorkbenchTool.Slot => "Pick first center, second center, then radius point.",
         WorkbenchTool.PowerTrim => "Click a line section to trim, or click past an endpoint to extend.",
         WorkbenchTool.Offset => "Click the through side or radius point.",
         WorkbenchTool.Translate => "Pick from point, then to point.",
@@ -2329,10 +2280,19 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         "alignedrectangle" => "Aligned rectangle",
         "centercircle" => "Center circle",
         "threepointcircle" => "Three-point circle",
+        "ellipse" => "Ellipse",
         "threepointarc" => "Three-point arc",
         "tangentarc" => "Tangent arc",
         "centerpointarc" => "Center point arc",
+        "ellipticalarc" => "Elliptical arc",
+        "conic" => "Conic",
+        "inscribedpolygon" => "Inscribed polygon",
+        "circumscribedpolygon" => "Circumscribed polygon",
+        "spline" => "Spline",
+        "bezier" => "Bezier",
+        "splinecontrolpoint" => "Spline control point",
         "point" => "Point",
+        "slot" => "Slot",
         "powertrim" => "Power trim/extend",
         "splitatpoint" => "Split at point",
         "offset" => "Offset",

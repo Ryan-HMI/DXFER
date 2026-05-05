@@ -80,6 +80,19 @@ public sealed class BoundsTests
     }
 
     [Fact]
+    public void EllipseBoundsIncludeSampledEllipseExtents()
+    {
+        var ellipse = new EllipseEntity(EntityId.Create("E1"), new Point2(1, 2), new Point2(4, 0), 0.5);
+
+        var bounds = ellipse.GetBounds();
+
+        bounds.MinX.Should().BeApproximately(-3, 0.000001);
+        bounds.MinY.Should().BeApproximately(0, 0.000001);
+        bounds.MaxX.Should().BeApproximately(5, 0.000001);
+        bounds.MaxY.Should().BeApproximately(4, 0.000001);
+    }
+
+    [Fact]
     public void TransformRotatesLineAroundOrigin()
     {
         var line = new LineEntity(EntityId.Create("L1"), new Point2(2, 0), new Point2(2, 3));
