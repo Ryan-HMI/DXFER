@@ -27,6 +27,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private const int MaxToolPanelWidth = 360;
     private const int MinInspectorWidth = 220;
     private const int MaxInspectorWidth = 520;
+    private const int DefaultPatternInstanceCount = 3;
 
     private DrawingCanvas? _canvas;
     private DrawingDocument _document = SampleDrawingFactory.CreateCanvasPrototype();
@@ -155,6 +156,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private bool CanMoveSelectedPointToOrigin =>
         SelectionPointResolver.TryGetPointToOriginReference(_document, _selectedEntityIds, out _);
 
+    private bool CanModifySelectedGeometry =>
+        GetWholeEntityIdsForOperations().Any();
+
+    private bool CanFilletOrChamferSelectedLines =>
+        GetSelectedWholeEntities().OfType<LineEntity>().Take(3).Count() == 2;
+
     private bool CanCreateSketchDimension =>
         SketchCommandFactory.TryBuildDimension(
             _document,
@@ -219,21 +226,21 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 "Construction",
                 tooltip: "Construction. Converts preselected geometry once; with no selection, enters a modal convert tool until Esc."),
             Command(WorkbenchCommandId.DeleteSelection, null, CadIconName.Delete, "Delete selected geometry", !CanDeleteSelection),
-            Command(WorkbenchCommandId.PowerTrim, WorkbenchTool.PowerTrim, CadIconName.PowerTrim, "Power trim/extend", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.PowerTrim, WorkbenchTool.PowerTrim, CadIconName.PowerTrim, "Power trim/extend"),
             Command(WorkbenchCommandId.SplitAtPoint, WorkbenchTool.SplitAtPoint, CadIconName.Split, "Split at point"),
-            Command(WorkbenchCommandId.Offset, WorkbenchTool.Offset, CadIconName.Offset, "Offset", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Fillet, WorkbenchTool.Fillet, CadIconName.Fillet, "Fillet", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Chamfer, WorkbenchTool.Chamfer, CadIconName.Chamfer, "Chamfer", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.Offset, WorkbenchTool.Offset, CadIconName.Offset, "Offset", !CanModifySelectedGeometry),
+            Command(WorkbenchCommandId.Fillet, null, CadIconName.Fillet, "Fillet", !CanFilletOrChamferSelectedLines),
+            Command(WorkbenchCommandId.Chamfer, null, CadIconName.Chamfer, "Chamfer", !CanFilletOrChamferSelectedLines),
             Command(WorkbenchCommandId.Dimension, WorkbenchTool.Dimension, CadIconName.Dimension, "Dimension")
         }),
         new WorkbenchToolGroup("Transform", new[]
         {
-            Command(WorkbenchCommandId.Translate, WorkbenchTool.Translate, CadIconName.Move, "Translate", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Rotate, WorkbenchTool.Rotate, CadIconName.Rotate, "Rotate", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.Translate, WorkbenchTool.Translate, CadIconName.Move, "Translate", !CanModifySelectedGeometry),
+            Command(WorkbenchCommandId.Rotate, WorkbenchTool.Rotate, CadIconName.Rotate, "Rotate", !CanModifySelectedGeometry),
             Command(WorkbenchCommandId.Rotate90Clockwise, null, CadIconName.Rotate90Clockwise, "Rotate 90 CW", !HasDocument),
             Command(WorkbenchCommandId.Rotate90CounterClockwise, null, CadIconName.Rotate90CounterClockwise, "Rotate 90 CCW", !HasDocument),
-            Command(WorkbenchCommandId.Scale, WorkbenchTool.Scale, CadIconName.Scale, "Scale", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Mirror, WorkbenchTool.Mirror, CadIconName.Mirror, "Mirror", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.Scale, WorkbenchTool.Scale, CadIconName.Scale, "Scale", !CanModifySelectedGeometry),
+            Command(WorkbenchCommandId.Mirror, WorkbenchTool.Mirror, CadIconName.Mirror, "Mirror", !CanModifySelectedGeometry),
             Command(WorkbenchCommandId.BoundsToOrigin, null, CadIconName.BoundsToOrigin, "Move bounds minimum to origin", !HasDocument),
             Command(WorkbenchCommandId.PointToOrigin, null, CadIconName.PointToOrigin, "Move selected point to origin", !CanMoveSelectedPointToOrigin),
             Command(WorkbenchCommandId.VectorToX, null, CadIconName.VectorToX, "Align selected vector to X", !CanAlignSelectedVector),
@@ -241,8 +248,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }),
         new WorkbenchToolGroup("Pattern", new[]
         {
-            Command(WorkbenchCommandId.LinearPattern, WorkbenchTool.LinearPattern, CadIconName.LinearPattern, "Linear pattern", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.CircularPattern, WorkbenchTool.CircularPattern, CadIconName.CircularPattern, "Circular pattern", disabled: true, isFuture: true)
+            Command(WorkbenchCommandId.LinearPattern, WorkbenchTool.LinearPattern, CadIconName.LinearPattern, "Linear pattern", !CanModifySelectedGeometry),
+            Command(WorkbenchCommandId.CircularPattern, WorkbenchTool.CircularPattern, CadIconName.CircularPattern, "Circular pattern", !CanModifySelectedGeometry)
         }),
         new WorkbenchToolGroup("Constraints", new[]
         {
@@ -312,6 +319,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.PowerTrim => "Power trim/extend",
         WorkbenchTool.ThreePointArc => "Three-point arc",
         WorkbenchTool.SplitAtPoint => "Split at point",
+        WorkbenchTool.Offset => "Offset",
+        WorkbenchTool.Translate => "Translate",
+        WorkbenchTool.Rotate => "Rotate",
+        WorkbenchTool.Scale => "Scale",
+        WorkbenchTool.Mirror => "Mirror",
         WorkbenchTool.Dimension => "Dimension",
         WorkbenchTool.LinearPattern => "Linear pattern",
         WorkbenchTool.CircularPattern => "Circular pattern",
@@ -337,7 +349,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.CenterPointArc => "Center point arc: click center, start radius point, then end angle point. Esc: cancel.",
         WorkbenchTool.Point => "Point: click to place a persistent sketch point. Esc: cancel.",
         WorkbenchTool.Construction => "Construction: click geometry to toggle construction state. Esc: cancel.",
+        WorkbenchTool.PowerTrim => "Power trim/extend: click a line section to trim, or click past an endpoint to extend to another line. Esc: cancel.",
         WorkbenchTool.SplitAtPoint => "Split at point: click a line or arc, or pick two points on a circle. Esc: cancel.",
+        WorkbenchTool.Offset => "Offset: select whole geometry, then click the through side or radius point. Esc: cancel.",
+        WorkbenchTool.Translate => "Translate: select whole geometry, click from point, then to point. Esc: cancel.",
+        WorkbenchTool.Rotate => "Rotate: select whole geometry, click center, reference point, then target point. Esc: cancel.",
+        WorkbenchTool.Scale => "Scale: select whole geometry, click center, reference radius, then target radius. Esc: cancel.",
+        WorkbenchTool.Mirror => "Mirror: select whole geometry, click two points for the mirror axis. Esc: cancel.",
+        WorkbenchTool.LinearPattern => "Linear pattern: select whole geometry, click from point, then spacing point. Creates three instances. Esc: cancel.",
+        WorkbenchTool.CircularPattern => "Circular pattern: select whole geometry, click center, reference point, then angle point. Creates three instances. Esc: cancel.",
         WorkbenchTool.Dimension => "Dimension: click geometry or points, move to place, then click to set. Shift: diameter for arcs. Esc: cancel.",
         not null => $"{ActiveToolLabel}: follow canvas prompts. Esc: cancel.",
         null => _constructionMode
@@ -470,6 +490,41 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                         "Split at point active. Click a line or arc, or pick two points on a circle.");
                 }
 
+                break;
+            case WorkbenchCommandId.PowerTrim:
+                ActivateTool(
+                    WorkbenchTool.PowerTrim,
+                    "Power trim/extend active. Click a line section to trim, or click past an endpoint to extend to another line.");
+                break;
+            case WorkbenchCommandId.Offset:
+            case WorkbenchCommandId.Translate:
+            case WorkbenchCommandId.Rotate:
+            case WorkbenchCommandId.Scale:
+            case WorkbenchCommandId.Mirror:
+            case WorkbenchCommandId.LinearPattern:
+            case WorkbenchCommandId.CircularPattern:
+                await SyncSelectionFromCanvasAsync();
+                if (!CanModifySelectedGeometry)
+                {
+                    _status = $"{FormatCommandName(commandId)} needs one or more whole selected entities.";
+                    break;
+                }
+
+                if (TryGetImplementedModifyTool(commandId, out var modifyTool))
+                {
+                    ActivateTool(
+                        modifyTool,
+                        $"{FormatCommandName(commandId)} active. {GetToolPrompt(modifyTool)} Press Esc to cancel.");
+                }
+
+                break;
+            case WorkbenchCommandId.Fillet:
+                await SyncSelectionFromCanvasAsync();
+                FilletSelectedLines();
+                break;
+            case WorkbenchCommandId.Chamfer:
+                await SyncSelectionFromCanvasAsync();
+                ChamferSelectedLines();
                 break;
             case WorkbenchCommandId.Dimension:
                 ActivateTool(
@@ -639,6 +694,56 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             clearTool: false);
     }
 
+    private void OnModifyToolCommitRequested(string toolName, IReadOnlyList<CanvasPointDto> points)
+    {
+        var wholeEntityIds = GetWholeEntityIdsForOperations().ToArray();
+        if (wholeEntityIds.Length == 0)
+        {
+            _status = $"{FormatCreatedToolName(toolName)} needs one or more whole selected entities.";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var toolPoints = points.Select(ToPoint).ToArray();
+        if (!TryApplyModifyTool(toolName, wholeEntityIds, toolPoints))
+        {
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _activeTool = null;
+        ResetSelection();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnPowerTrimRequested(string targetKey, CanvasPointDto point)
+    {
+        if (!TryGetEntityIdForOperationTarget(targetKey, out var entityId)
+            || FindEntity(entityId) is not LineEntity)
+        {
+            _status = "Power trim/extend needs a line target.";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (!DrawingModifyService.TryPowerTrimOrExtendLine(
+                _document,
+                entityId,
+                ToPoint(point),
+                CreateEntityId,
+                out var nextDocument))
+        {
+            _status = "Power trim/extend needs another line crossing the picked line or its extension.";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        ApplyDocumentChange(nextDocument, "Power trim/extend applied. Click another line section, or Esc to cancel.");
+        _activeTool = WorkbenchTool.PowerTrim;
+        ResetSelection();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     private void OnToolCanceled()
     {
         if (_activeTool is null)
@@ -774,6 +879,135 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         {
             _activeTool = null;
         }
+    }
+
+    private bool TryApplyModifyTool(string toolName, IReadOnlyList<string> selectedEntityIds, IReadOnlyList<Point2> points)
+    {
+        var normalizedTool = NormalizeToolName(toolName);
+        var before = _document;
+        DrawingDocument nextDocument;
+        string status;
+
+        switch (normalizedTool)
+        {
+            case "translate" when points.Count >= 2:
+                nextDocument = DrawingModifyService.TranslateSelected(_document, selectedEntityIds, points[0], points[1]);
+                status = $"Translated {selectedEntityIds.Count} selected entities.";
+                break;
+            case "rotate" when points.Count >= 3:
+                nextDocument = DrawingModifyService.RotateSelected(_document, selectedEntityIds, points[0], points[1], points[2]);
+                status = $"Rotated {selectedEntityIds.Count} selected entities.";
+                break;
+            case "scale" when points.Count >= 3:
+                nextDocument = DrawingModifyService.ScaleSelected(_document, selectedEntityIds, points[0], points[1], points[2]);
+                status = $"Scaled {selectedEntityIds.Count} selected entities.";
+                break;
+            case "mirror" when points.Count >= 2:
+                nextDocument = DrawingModifyService.MirrorSelected(_document, selectedEntityIds, points[0], points[1]);
+                status = $"Mirrored {selectedEntityIds.Count} selected entities.";
+                break;
+            case "offset" when points.Count >= 1:
+                if (!DrawingModifyService.TryOffsetSelected(
+                        _document,
+                        selectedEntityIds,
+                        points[0],
+                        CreateEntityId,
+                        out nextDocument,
+                        out var offsetCount))
+                {
+                    _status = "Offset needs a line, circle, arc, or polyline and a distinct through point.";
+                    return false;
+                }
+
+                status = $"Offset {offsetCount} selected entities.";
+                break;
+            case "linearpattern" when points.Count >= 2:
+                if (!DrawingModifyService.TryLinearPatternSelected(
+                        _document,
+                        selectedEntityIds,
+                        points[0],
+                        points[1],
+                        DefaultPatternInstanceCount,
+                        CreateEntityId,
+                        out nextDocument,
+                        out var linearCount))
+                {
+                    _status = "Linear pattern needs a nonzero spacing vector.";
+                    return false;
+                }
+
+                status = $"Linear pattern added {linearCount} entities.";
+                break;
+            case "circularpattern" when points.Count >= 3:
+                if (!DrawingModifyService.TryCircularPatternSelected(
+                        _document,
+                        selectedEntityIds,
+                        points[0],
+                        points[1],
+                        points[2],
+                        DefaultPatternInstanceCount,
+                        CreateEntityId,
+                        out nextDocument,
+                        out var circularCount))
+                {
+                    _status = "Circular pattern needs a center, reference point, and distinct angle point.";
+                    return false;
+                }
+
+                status = $"Circular pattern added {circularCount} entities.";
+                break;
+            default:
+                _status = $"{FormatCreatedToolName(toolName)} needs more points.";
+                return false;
+        }
+
+        if (ReferenceEquals(before, nextDocument))
+        {
+            _status = $"{FormatCreatedToolName(toolName)} did not change the drawing.";
+            return false;
+        }
+
+        ApplyDocumentChange(nextDocument, status);
+        return true;
+    }
+
+    private void FilletSelectedLines()
+    {
+        if (!DrawingModifyService.TryFilletSelectedLines(
+                _document,
+                GetWholeEntityIdsForOperations(),
+                GetDefaultCornerDistance(),
+                out var nextDocument))
+        {
+            _status = "Fillet needs exactly two nonparallel selected lines with enough length.";
+            return;
+        }
+
+        ApplyDocumentChange(nextDocument, "Filleted selected lines.");
+        ResetSelection();
+    }
+
+    private void ChamferSelectedLines()
+    {
+        if (!DrawingModifyService.TryChamferSelectedLines(
+                _document,
+                GetWholeEntityIdsForOperations(),
+                GetDefaultCornerDistance(),
+                out var nextDocument))
+        {
+            _status = "Chamfer needs exactly two nonparallel selected lines with enough length.";
+            return;
+        }
+
+        ApplyDocumentChange(nextDocument, "Chamfered selected lines.");
+        ResetSelection();
+    }
+
+    private double GetDefaultCornerDistance()
+    {
+        var bounds = Bounds;
+        var size = Math.Max(bounds.Width, bounds.Height);
+        return Math.Max(0.1, size * 0.05);
     }
 
     private async Task SyncSelectionFromCanvasAsync()
@@ -1981,6 +2215,37 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
     }
 
+    private static bool TryGetImplementedModifyTool(WorkbenchCommandId commandId, out WorkbenchTool tool)
+    {
+        switch (commandId)
+        {
+            case WorkbenchCommandId.Offset:
+                tool = WorkbenchTool.Offset;
+                return true;
+            case WorkbenchCommandId.Translate:
+                tool = WorkbenchTool.Translate;
+                return true;
+            case WorkbenchCommandId.Rotate:
+                tool = WorkbenchTool.Rotate;
+                return true;
+            case WorkbenchCommandId.Scale:
+                tool = WorkbenchTool.Scale;
+                return true;
+            case WorkbenchCommandId.Mirror:
+                tool = WorkbenchTool.Mirror;
+                return true;
+            case WorkbenchCommandId.LinearPattern:
+                tool = WorkbenchTool.LinearPattern;
+                return true;
+            case WorkbenchCommandId.CircularPattern:
+                tool = WorkbenchTool.CircularPattern;
+                return true;
+            default:
+                tool = default;
+                return false;
+        }
+    }
+
     private static string GetToolPrompt(WorkbenchTool tool) => tool switch
     {
         WorkbenchTool.Line => "Pick points. Hover the last vertex to switch to tangent arc.",
@@ -1992,6 +2257,14 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.CenterPointArc => "Pick center, start radius point, then end angle point.",
         WorkbenchTool.Point => "Pick a point on the canvas.",
         WorkbenchTool.Construction => "Click geometry to toggle construction state.",
+        WorkbenchTool.PowerTrim => "Click a line section to trim, or click past an endpoint to extend.",
+        WorkbenchTool.Offset => "Click the through side or radius point.",
+        WorkbenchTool.Translate => "Pick from point, then to point.",
+        WorkbenchTool.Rotate => "Pick center, reference point, then target point.",
+        WorkbenchTool.Scale => "Pick center, reference radius, then target radius.",
+        WorkbenchTool.Mirror => "Pick two points for the mirror axis.",
+        WorkbenchTool.LinearPattern => "Pick from point, then spacing point.",
+        WorkbenchTool.CircularPattern => "Pick center, reference point, then target angle point.",
         _ => "Pick two points on the canvas."
     };
 
@@ -2041,6 +2314,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         "tangentarc" => "Tangent arc",
         "centerpointarc" => "Center point arc",
         "point" => "Point",
+        "powertrim" => "Power trim/extend",
+        "splitatpoint" => "Split at point",
+        "offset" => "Offset",
+        "translate" => "Translate",
+        "rotate" => "Rotate",
+        "scale" => "Scale",
+        "mirror" => "Mirror",
+        "linearpattern" => "Linear pattern",
+        "circularpattern" => "Circular pattern",
         _ => "Line"
     };
 
