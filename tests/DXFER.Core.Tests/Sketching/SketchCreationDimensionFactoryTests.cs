@@ -129,5 +129,51 @@ public sealed class SketchCreationDimensionFactoryTests
         dimensions.Should().Contain(dimension => dimension.Value == 2);
     }
 
+    [Fact]
+    public void CreatesPermanentSideCountDimensionForPolygon()
+    {
+        var entities = new DrawingEntity[]
+        {
+            new PolygonEntity(EntityId.Create("poly-a"), new Point2(0, 0), 10, 0, 7)
+        };
+
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            "inscribedpolygon",
+            entities,
+            new Dictionary<string, double> { ["sides"] = 7 },
+            CreateDimensionId);
+
+        dimensions.Should().ContainSingle()
+            .Which.Should().Match<SketchDimension>(dimension =>
+                dimension.Kind == SketchDimensionKind.Count
+                && dimension.ReferenceKeys.SequenceEqual(new[] { "poly-a" })
+                && dimension.Value == 7
+                && dimension.IsDriving);
+    }
+
+    [Fact]
+    public void CreatesPolygonRadiusDimensionAgainstPolygonEntity()
+    {
+        var entities = new DrawingEntity[]
+        {
+            new PolygonEntity(EntityId.Create("poly-a"), new Point2(0, 0), 10, 0, 6)
+        };
+
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            "inscribedpolygon",
+            entities,
+            new Dictionary<string, double> { ["sides"] = 6, ["radius"] = 10 },
+            CreateDimensionId);
+
+        dimensions.Should().Contain(dimension =>
+            dimension.Kind == SketchDimensionKind.Radius
+            && dimension.ReferenceKeys.SequenceEqual(new[] { "poly-a" })
+            && dimension.Value == 10);
+        dimensions.Should().Contain(dimension =>
+            dimension.Kind == SketchDimensionKind.Count
+            && dimension.ReferenceKeys.SequenceEqual(new[] { "poly-a" })
+            && dimension.Value == 6);
+    }
+
     private static string CreateDimensionId() => Guid.NewGuid().ToString("N");
 }

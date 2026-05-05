@@ -18,7 +18,7 @@ public static class SketchCreationDimensionFactory
         ArgumentNullException.ThrowIfNull(dimensionValues);
         ArgumentNullException.ThrowIfNull(createDimensionId);
 
-        if (createdEntities.Count == 0 || dimensionValues.Count == 0)
+        if (createdEntities.Count == 0)
         {
             return Array.Empty<SketchDimension>();
         }
@@ -108,33 +108,24 @@ public static class SketchCreationDimensionFactory
 
                 break;
             case "inscribedpolygon":
-                if (TryGetPositiveValue(dimensionValues, "radius", out var polygonRadius)
-                    && TryGetPolygonCenter(lines, out var polygonCenter)
-                    && lines.FirstOrDefault() is { } polygonLine)
+                if (createdEntities.OfType<PolygonEntity>().FirstOrDefault() is { } polygon)
                 {
-                    dimensions.Add(CreatePointDistanceDimension(
-                        createDimensionId(),
-                        polygonLine.Id,
-                        "radius",
-                        polygonCenter,
-                        polygonLine.End,
-                        polygonRadius));
+                    dimensions.Add(CreateCountDimension(createDimensionId(), polygon));
+                    if (TryGetPositiveValue(dimensionValues, "radius", out var polygonRadius))
+                    {
+                        dimensions.Add(CreateRadialDimension(createDimensionId(), polygon, polygonRadius));
+                    }
                 }
 
                 break;
             case "circumscribedpolygon":
-                if (TryGetPositiveValue(dimensionValues, "apothem", out var apothem)
-                    && TryGetPolygonCenter(lines, out var circumscribedCenter)
-                    && lines.FirstOrDefault() is { } circumscribedLine)
+                if (createdEntities.OfType<PolygonEntity>().FirstOrDefault() is { } circumscribedPolygon)
                 {
-                    var sideMidpoint = Midpoint(circumscribedLine.Start, circumscribedLine.End);
-                    dimensions.Add(CreatePointDistanceDimension(
-                        createDimensionId(),
-                        circumscribedLine.Id,
-                        "apothem",
-                        circumscribedCenter,
-                        sideMidpoint,
-                        apothem));
+                    dimensions.Add(CreateCountDimension(createDimensionId(), circumscribedPolygon));
+                    if (TryGetPositiveValue(dimensionValues, "apothem", out var apothem))
+                    {
+                        dimensions.Add(CreateRadialDimension(createDimensionId(), circumscribedPolygon, apothem));
+                    }
                 }
 
                 break;
@@ -251,6 +242,24 @@ public static class SketchCreationDimensionFactory
             new Point2(arc.Center.X + arc.Radius, arc.Center.Y),
             isDriving: true);
 
+    private static SketchDimension CreateRadialDimension(string id, PolygonEntity polygon, double value) =>
+        new(
+            id,
+            SketchDimensionKind.Radius,
+            new[] { polygon.Id.Value },
+            value,
+            polygon.GetRadiusPoint(),
+            isDriving: true);
+
+    private static SketchDimension CreateCountDimension(string id, PolygonEntity polygon) =>
+        new(
+            id,
+            SketchDimensionKind.Count,
+            new[] { polygon.Id.Value },
+            polygon.NormalizedSideCount,
+            new Point2(polygon.Center.X, polygon.Center.Y - Math.Max(polygon.Radius * 0.55, 0.5)),
+            isDriving: true);
+
     private static LineEntity? FindAxisLine(IEnumerable<LineEntity> lines, bool preferHorizontal)
     {
         return lines
@@ -268,20 +277,6 @@ public static class SketchCreationDimensionFactory
             .OrderByDescending(candidate => candidate.Length)
             .Select(candidate => candidate.Line)
             .FirstOrDefault();
-    }
-
-    private static bool TryGetPolygonCenter(IReadOnlyList<LineEntity> lines, out Point2 center)
-    {
-        if (lines.Count < 3)
-        {
-            center = default;
-            return false;
-        }
-
-        center = new Point2(
-            lines.Average(line => line.Start.X),
-            lines.Average(line => line.Start.Y));
-        return true;
     }
 
     private static Point2 GetLineDimensionAnchor(LineEntity line)

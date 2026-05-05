@@ -32,21 +32,24 @@ public sealed class SketchCreationEntityFactoryTests
     }
 
     [Fact]
-    public void CreatesInscribedAndCircumscribedPolygonLines()
+    public void CreatesInscribedAndCircumscribedParametricPolygons()
     {
-        var inscribed = Create("inscribedpolygon", new Point2(0, 0), new Point2(10, 0));
-        var circumscribed = Create("circumscribedpolygon", new Point2(0, 0), new Point2(10, 0));
+        var inscribed = CreatePolygon("inscribedpolygon", 8);
+        var circumscribed = CreatePolygon("circumscribedpolygon", 6);
 
-        inscribed.Should().HaveCount(7);
-        circumscribed.Should().HaveCount(7);
-        inscribed[0].Should().BeOfType<CircleEntity>()
-            .Which.IsConstruction.Should().BeTrue();
-        circumscribed[0].Should().BeOfType<CircleEntity>()
-            .Which.IsConstruction.Should().BeTrue();
-        inscribed.Skip(1).Should().AllBeOfType<LineEntity>();
-        circumscribed.Skip(1).Should().AllBeOfType<LineEntity>();
-        ((LineEntity)inscribed[1]).Start.Should().Be(new Point2(10, 0));
-        Distance(new Point2(0, 0), ((LineEntity)circumscribed[1]).Start)
+        var inscribedPolygon = inscribed.Should().ContainSingle().Subject.Should().BeOfType<PolygonEntity>().Subject;
+        var circumscribedPolygon = circumscribed.Should().ContainSingle().Subject.Should().BeOfType<PolygonEntity>().Subject;
+
+        inscribedPolygon.Kind.Should().Be("polygon");
+        inscribedPolygon.SideCount.Should().Be(8);
+        inscribedPolygon.Circumscribed.Should().BeFalse();
+        inscribedPolygon.Center.Should().Be(new Point2(0, 0));
+        inscribedPolygon.Radius.Should().BeApproximately(10, 0.000001);
+        inscribedPolygon.GetVertices()[0].Should().Be(new Point2(10, 0));
+
+        circumscribedPolygon.SideCount.Should().Be(6);
+        circumscribedPolygon.Circumscribed.Should().BeTrue();
+        Distance(new Point2(0, 0), circumscribedPolygon.GetVertices()[0])
             .Should().BeApproximately(10 / Math.Cos(Math.PI / 6), 0.000001);
     }
 
@@ -70,6 +73,14 @@ public sealed class SketchCreationEntityFactoryTests
 
     private IReadOnlyList<DrawingEntity> Create(string toolName, params Point2[] points) =>
         SketchCreationEntityFactory.CreateEntitiesForTool(toolName, points, CreateEntityId, isConstruction: false);
+
+    private IReadOnlyList<DrawingEntity> CreatePolygon(string toolName, int sideCount) =>
+        SketchCreationEntityFactory.CreateEntitiesForTool(
+            toolName,
+            new[] { new Point2(0, 0), new Point2(10, 0) },
+            CreateEntityId,
+            isConstruction: false,
+            new Dictionary<string, double> { ["sides"] = sideCount });
 
     private EntityId CreateEntityId(string prefix) => EntityId.Create($"{prefix}-{++_sequence}");
 

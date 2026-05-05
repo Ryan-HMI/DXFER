@@ -89,4 +89,24 @@ public sealed class CanvasDocumentDtoTests
                 && entity.StartAngleDegrees == 0
                 && entity.EndAngleDegrees == 90);
     }
+
+    [Fact]
+    public void ExposesPolygonMetadataForParametricRendering()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new PolygonEntity(EntityId.Create("poly-a"), new Point2(1, 2), 10, 30, 8, Circumscribed: true)
+        });
+
+        var dto = CanvasDocumentDto.FromDocument(document);
+
+        var polygon = dto.Entities.Should().ContainSingle().Subject;
+        polygon.Kind.Should().Be("polygon");
+        polygon.Center.Should().Be(new CanvasPointDto(1, 2));
+        polygon.Radius.Should().Be(10);
+        polygon.RotationAngleDegrees.Should().Be(30);
+        polygon.SideCount.Should().Be(8);
+        polygon.Circumscribed.Should().BeTrue();
+        polygon.Points.Should().HaveCount(8);
+    }
 }

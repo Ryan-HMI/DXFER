@@ -1219,16 +1219,19 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
+        var nextValue = existing.Kind == SketchDimensionKind.Count
+            ? PolygonEntity.NormalizeSideCount(value)
+            : value;
         var nextDimension = new SketchDimension(
             existing.Id,
             existing.Kind,
             existing.ReferenceKeys,
-            value,
+            nextValue,
             existing.Anchor,
             isDriving: true);
         ApplyDocumentChange(
             SketchDimensionSolverService.ApplyDimension(_document, nextDimension),
-            $"Updated {FormatDimensionKind(existing.Kind)} dimension to {FormatNumber(value)}.");
+            $"Updated {FormatDimensionKind(existing.Kind)} dimension to {FormatNumber(nextValue)}.");
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -1634,6 +1637,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case PolylineEntity polyline:
                 AddPolylineReadouts(items, polyline.Vertices);
                 break;
+            case PolygonEntity polygon:
+                items.Add(new LiveReadoutItem("Sides", polygon.NormalizedSideCount.ToString(CultureInfo.InvariantCulture)));
+                items.Add(new LiveReadoutItem(polygon.Circumscribed ? "Apothem" : "Radius", FormatNumber(polygon.Radius)));
+                AddClosedPathReadouts(items, polygon.GetVertices());
+                break;
             case SplineEntity spline:
                 var samples = spline.GetSamplePoints();
                 items.Add(new LiveReadoutItem("Spline Len", FormatNumber(GetPathLength(samples))));
@@ -1647,13 +1655,19 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         var pathLength = GetPathLength(vertices);
         if (IsClosedPath(vertices))
         {
-            items.Add(new LiveReadoutItem("Perimeter", FormatNumber(pathLength)));
-            items.Add(new LiveReadoutItem("Area", FormatNumber(Math.Abs(GetSignedArea(vertices)))));
+            AddClosedPathReadouts(items, vertices);
             return;
         }
 
         items.Add(new LiveReadoutItem("Path Len", FormatNumber(pathLength)));
         items.Add(new LiveReadoutItem("Segments", Math.Max(0, vertices.Count - 1).ToString(CultureInfo.InvariantCulture)));
+    }
+
+    private static void AddClosedPathReadouts(ICollection<LiveReadoutItem> items, IReadOnlyList<Point2> vertices)
+    {
+        var closedVertices = EnsureClosedPath(vertices);
+        items.Add(new LiveReadoutItem("Perimeter", FormatNumber(GetPathLength(closedVertices))));
+        items.Add(new LiveReadoutItem("Area", FormatNumber(Math.Abs(GetSignedArea(closedVertices)))));
     }
 
     private static void AddPointDeltaReadouts(ICollection<LiveReadoutItem> items, Point2 first, Point2 second)
@@ -1711,6 +1725,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 new Point2(circle.Center.X + circle.Radius, circle.Center.Y + circle.Radius)
             },
             ArcEntity arc => arc.GetSamplePoints(32),
+            PolygonEntity polygon => polygon.GetVertices(),
             PointEntity point => new[] { point.Location },
             PolylineEntity polyline => polyline.Vertices,
             SplineEntity spline => spline.GetSamplePoints(),
@@ -1731,6 +1746,16 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private static bool IsClosedPath(IReadOnlyList<Point2> points) =>
         points.Count > 2
         && MeasurementService.Measure(points[0], points[^1]).Distance <= 0.000001;
+
+    private static IReadOnlyList<Point2> EnsureClosedPath(IReadOnlyList<Point2> points)
+    {
+        if (points.Count == 0 || IsClosedPath(points))
+        {
+            return points;
+        }
+
+        return points.Concat(new[] { points[0] }).ToArray();
+    }
 
     private static double GetSignedArea(IReadOnlyList<Point2> points)
     {
@@ -2315,6 +2340,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         SketchDimensionKind.Radius => "radius",
         SketchDimensionKind.Diameter => "diameter",
         SketchDimensionKind.Angle => "angle",
+        SketchDimensionKind.Count => "count",
         _ => kind.ToString()
     };
 

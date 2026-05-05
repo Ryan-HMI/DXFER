@@ -574,6 +574,12 @@ public static class DrawingModifyService
                 Center = ScalePoint(arc.Center, center, scale),
                 Radius = arc.Radius * scale
             },
+            PolygonEntity polygon => polygon with
+            {
+                Center = ScalePoint(polygon.Center, center, scale),
+                Radius = polygon.Radius * Math.Abs(scale),
+                SideCount = polygon.NormalizedSideCount
+            },
             PointEntity point => point with { Location = ScalePoint(point.Location, center, scale) },
             SplineEntity spline => new SplineEntity(
                 spline.Id,
@@ -599,6 +605,7 @@ public static class DrawingModifyService
                 polyline.IsConstruction),
             CircleEntity circle => circle with { Center = MirrorPoint(circle.Center, axisStart, axisEnd) },
             ArcEntity arc => MirrorArc(arc, axisStart, axisEnd),
+            PolygonEntity polygon => MirrorPolygon(polygon, axisStart, axisEnd),
             PointEntity point => point with { Location = MirrorPoint(point.Location, axisStart, axisEnd) },
             SplineEntity spline => new SplineEntity(
                 spline.Id,
@@ -631,10 +638,20 @@ public static class DrawingModifyService
             PolylineEntity polyline => new PolylineEntity(id, polyline.Vertices, polyline.IsConstruction),
             CircleEntity circle => circle with { Id = id },
             ArcEntity arc => arc with { Id = id },
+            PolygonEntity polygon => polygon with { Id = id, SideCount = polygon.NormalizedSideCount },
             PointEntity point => point with { Id = id },
             SplineEntity spline => new SplineEntity(id, spline.Degree, spline.ControlPoints, spline.Knots, spline.Weights, spline.IsConstruction),
             _ => entity
         };
+
+    private static PolygonEntity MirrorPolygon(PolygonEntity polygon, Point2 axisStart, Point2 axisEnd) =>
+        PolygonEntity.FromCenterAndRadiusPoint(
+            polygon.Id,
+            MirrorPoint(polygon.Center, axisStart, axisEnd),
+            MirrorPoint(polygon.GetRadiusPoint(), axisStart, axisEnd),
+            polygon.Circumscribed,
+            polygon.NormalizedSideCount,
+            polygon.IsConstruction);
 
     private static bool TryBuildFillet(
         LineEntity first,

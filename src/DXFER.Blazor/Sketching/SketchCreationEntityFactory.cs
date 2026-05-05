@@ -94,10 +94,10 @@ public static class SketchCreationEntityFactory
                 entities.Add(new SplineEntity(createEntityId("conic"), 2, points.Take(3), Array.Empty<double>(), isConstruction: isConstruction));
                 break;
             case "inscribedpolygon":
-                entities.AddRange(CreatePolygon(first, second, false, GetPolygonSideCount(dimensionValues), createEntityId, isConstruction));
+                entities.Add(CreatePolygon(first, second, false, GetPolygonSideCount(dimensionValues), createEntityId, isConstruction));
                 break;
             case "circumscribedpolygon":
-                entities.AddRange(CreatePolygon(first, second, true, GetPolygonSideCount(dimensionValues), createEntityId, isConstruction));
+                entities.Add(CreatePolygon(first, second, true, GetPolygonSideCount(dimensionValues), createEntityId, isConstruction));
                 break;
             case "spline" when points.Count >= 2:
             case "splinecontrolpoint" when points.Count >= 2:
@@ -221,51 +221,20 @@ public static class SketchCreationEntityFactory
         return degrees;
     }
 
-    private static IEnumerable<DrawingEntity> CreatePolygon(
+    private static DrawingEntity CreatePolygon(
         Point2 center,
         Point2 radiusPoint,
         bool circumscribed,
         int sideCount,
         Func<string, EntityId> createEntityId,
-        bool isConstruction)
-    {
-        var constructionRadius = Distance(center, radiusPoint);
-        if (constructionRadius > GeometryTolerance)
-        {
-            yield return new CircleEntity(
-                createEntityId(circumscribed ? "circ-poly-guide" : "poly-guide"),
-                center,
-                constructionRadius,
-                true);
-        }
-
-        var vertices = GetPolygonVertices(center, radiusPoint, circumscribed, sideCount);
-        for (var index = 0; index < vertices.Count; index++)
-        {
-            yield return new LineEntity(
-                createEntityId(circumscribed ? "circ-poly" : "poly"),
-                vertices[index],
-                vertices[(index + 1) % vertices.Count],
-                isConstruction);
-        }
-    }
-
-    private static IReadOnlyList<Point2> GetPolygonVertices(Point2 center, Point2 radiusPoint, bool circumscribed, int sideCount)
-    {
-        var angle = Math.Atan2(radiusPoint.Y - center.Y, radiusPoint.X - center.X);
-        var radius = Distance(center, radiusPoint);
-        if (circumscribed)
-        {
-            radius /= Math.Cos(Math.PI / sideCount);
-            angle += Math.PI / sideCount;
-        }
-
-        return Enumerable.Range(0, sideCount)
-            .Select(index => new Point2(
-                center.X + Math.Cos(angle + index * Math.Tau / sideCount) * radius,
-                center.Y + Math.Sin(angle + index * Math.Tau / sideCount) * radius))
-            .ToArray();
-    }
+        bool isConstruction) =>
+        PolygonEntity.FromCenterAndRadiusPoint(
+            createEntityId(circumscribed ? "circ-poly" : "poly"),
+            center,
+            radiusPoint,
+            circumscribed,
+            sideCount,
+            isConstruction);
 
     private static SplineEntity CreateSpline(EntityId id, IReadOnlyList<Point2> controlPoints, bool isConstruction)
     {
@@ -314,7 +283,7 @@ public static class SketchCreationEntityFactory
             && dimensionValues.TryGetValue("sides", out var sides)
             && double.IsFinite(sides))
         {
-            return Math.Clamp((int)Math.Round(sides), 3, 64);
+            return PolygonEntity.NormalizeSideCount(sides);
         }
 
         return DefaultPolygonSideCount;

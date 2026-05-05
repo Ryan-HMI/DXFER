@@ -135,6 +135,41 @@ public sealed class SketchDimensionSolverServiceTests
     }
 
     [Fact]
+    public void AppliesPolygonSideCountDimension()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new PolygonEntity(EntityId.Create("poly"), new Point2(2, 3), 4, 10, 6)
+        });
+
+        var solved = SketchDimensionSolverService.ApplyDimension(
+            document,
+            DrivingDimension("sides", SketchDimensionKind.Count, 9, "poly"));
+
+        solved.Entities[0].Should().BeOfType<PolygonEntity>()
+            .Which.SideCount.Should().Be(9);
+        solved.Dimensions.Should().ContainSingle()
+            .Which.Value.Should().Be(9);
+    }
+
+    [Fact]
+    public void AppliesPolygonRadiusDimension()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new PolygonEntity(EntityId.Create("poly"), new Point2(2, 3), 4, 10, 6)
+        });
+
+        var solved = SketchDimensionSolverService.ApplyDimension(
+            document,
+            DrivingDimension("radius", SketchDimensionKind.Radius, 12, "poly"));
+
+        var polygon = solved.Entities[0].Should().BeOfType<PolygonEntity>().Subject;
+        polygon.Radius.Should().Be(12);
+        polygon.SideCount.Should().Be(6);
+    }
+
+    [Fact]
     public void AppliesAngleBetweenTwoLinesByRotatingSecondLineEnd()
     {
         var document = new DrawingDocument(new DrawingEntity[]

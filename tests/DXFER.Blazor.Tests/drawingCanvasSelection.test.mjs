@@ -176,6 +176,43 @@ test("polygon helper distinguishes inscribed and circumscribed radii", () => {
   assertApproxEqual(Math.hypot(circumscribed[0].x, circumscribed[0].y), 10 / Math.cos(Math.PI / 6));
 });
 
+test("draft polygon side dimension is permanent editable state", () => {
+  const state = {
+    activeTool: "inscribedpolygon",
+    toolDraft: {
+      points: [{ x: 0, y: 0 }],
+      previewPoint: { x: 10, y: 0 },
+      dimensionValues: {}
+    }
+  };
+
+  const changed = applyDraftDimensionValue(state, "sides", 8);
+
+  assert.equal(changed, true);
+  assert.equal(state.toolDraft.polygonSideCount, 8);
+  assert.deepEqual(state.toolDraft.dimensionValues, { sides: 8 });
+  assert.deepEqual(state.toolDraft.previewPoint, { x: 10, y: 0 });
+});
+
+test("polygon placement supports shifted vertical polar snap", () => {
+  const state = {
+    polarSnapIncrementDegrees: 15,
+    view: { scale: 10 },
+    toolDraft: {
+      points: [{ x: 0, y: 0 }]
+    }
+  };
+
+  const snapped = applyPolarSnapIfRequested(
+    state,
+    { x: 0.3, y: 10 },
+    "inscribedpolygon",
+    { shiftKey: true });
+
+  assertApproxEqual(snapped.x, 0);
+  assertApproxEqual(snapped.y, Math.hypot(0.3, 10));
+});
+
 test("draft midpoint line dimension uses full mirrored line length", () => {
   const state = {
     activeTool: "midpointline",

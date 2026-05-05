@@ -92,6 +92,9 @@ internal static class SketchGeometryEditor
             case ArcEntity arc when reference.Target == SketchReferenceTarget.Center:
                 point = arc.Center;
                 return true;
+            case PolygonEntity polygon when reference.Target == SketchReferenceTarget.Center:
+                point = polygon.Center;
+                return true;
             case PointEntity pointEntity when reference.Target is SketchReferenceTarget.Entity or SketchReferenceTarget.Center:
                 point = pointEntity.Location;
                 return true;
@@ -134,6 +137,9 @@ internal static class SketchGeometryEditor
                 return true;
             case ArcEntity arc when reference.Target == SketchReferenceTarget.Center:
                 entities[index] = arc with { Center = point };
+                return true;
+            case PolygonEntity polygon when reference.Target == SketchReferenceTarget.Center:
+                entities[index] = polygon with { Center = point };
                 return true;
             case PointEntity pointEntity when reference.Target is SketchReferenceTarget.Entity or SketchReferenceTarget.Center:
                 entities[index] = pointEntity with { Location = point };
@@ -260,6 +266,10 @@ internal static class SketchGeometryEditor
                 center = arc.Center;
                 radius = arc.Radius;
                 return true;
+            case PolygonEntity polygon:
+                center = polygon.Center;
+                radius = polygon.Radius;
+                return true;
             default:
                 center = default;
                 radius = default;
@@ -285,6 +295,9 @@ internal static class SketchGeometryEditor
             case ArcEntity arc:
                 entities[index] = arc with { Center = center };
                 return true;
+            case PolygonEntity polygon:
+                entities[index] = polygon with { Center = center };
+                return true;
             default:
                 return false;
         }
@@ -309,9 +322,25 @@ internal static class SketchGeometryEditor
             case ArcEntity arc:
                 entities[index] = arc with { Radius = radius };
                 return true;
+            case PolygonEntity polygon:
+                entities[index] = polygon.WithRadius(radius);
+                return true;
             default:
                 return false;
         }
+    }
+
+    public static bool TrySetPolygonSideCount(DrawingEntity[] entities, SketchReference reference, int sideCount)
+    {
+        if (reference.Target != SketchReferenceTarget.Entity
+            || !TryGetEntity(entities, reference, out var index, out var entity)
+            || entity is not PolygonEntity polygon)
+        {
+            return false;
+        }
+
+        entities[index] = polygon.WithSideCount(sideCount);
+        return true;
     }
 
     public static bool TryGetLineDirection(LineEntity line, out double unitX, out double unitY, out double length)

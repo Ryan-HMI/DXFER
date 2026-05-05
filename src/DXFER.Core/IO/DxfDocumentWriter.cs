@@ -42,6 +42,9 @@ public static class DxfDocumentWriter
                 case PolylineEntity polyline:
                     WritePolyline(builder, polyline);
                     break;
+                case PolygonEntity polygon:
+                    WritePolygon(builder, polygon);
+                    break;
                 case SplineEntity spline:
                     WriteSpline(builder, spline);
                     break;
@@ -105,6 +108,20 @@ public static class DxfDocumentWriter
         WritePair(builder, 70, "0");
 
         foreach (var vertex in polyline.Vertices)
+        {
+            WritePoint(builder, vertex, 10, 20);
+        }
+    }
+
+    private static void WritePolygon(StringBuilder builder, PolygonEntity polygon)
+    {
+        var vertices = polygon.GetVertices();
+        WritePair(builder, 0, "LWPOLYLINE");
+        WritePair(builder, 5, polygon.Id.Value);
+        WritePair(builder, 90, vertices.Count.ToString(CultureInfo.InvariantCulture));
+        WritePair(builder, 70, "1");
+
+        foreach (var vertex in vertices)
         {
             WritePoint(builder, vertex, 10, 20);
         }

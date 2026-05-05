@@ -1343,6 +1343,26 @@ function addPolygonPreviewDimension(dimensions, state, center, radiusPoint, circ
     circumscribed ? "Apothem" : "Radius",
     center,
     radiusPoint);
+  addPolygonSideCountPreviewDimension(dimensions, state, center, radiusPoint);
+}
+
+function addPolygonSideCountPreviewDimension(dimensions, state, center, radiusPoint) {
+  const sideCount = getPolygonSideCount(state);
+  if (!Number.isInteger(sideCount) || sideCount < 3) {
+    return;
+  }
+
+  const centerScreen = worldToScreen(state, center);
+  const edgeScreen = worldToScreen(state, radiusPoint);
+  dimensions.push({
+    key: "sides",
+    label: "Sides",
+    value: sideCount,
+    point: {
+      x: (centerScreen.x + edgeScreen.x) / 2,
+      y: (centerScreen.y + edgeScreen.y) / 2 - 28
+    }
+  });
 }
 
 export function getThreePointArcPreviewDimensions(state, first, through, end) {
@@ -1533,7 +1553,7 @@ function getDimensionModelFromReferences(state, referenceKeys, radialDiameter = 
       };
     }
 
-    if (kind === "circle" || kind === "arc") {
+    if (kind === "circle" || kind === "arc" || kind === "polygon") {
       const circleLike = resolveSketchCircleLikeReference(state, referenceKeys[0]);
       if (!circleLike) {
         return null;
@@ -1594,6 +1614,10 @@ function getDimensionAnchorPoint(state, kind, referenceKeys) {
       x: circleLike.center.x + circleLike.radius,
       y: circleLike.center.y
     };
+  }
+
+  if (kind === "count") {
+    return resolveSketchEntityAnchorPoint(state, referenceKeys[0]);
   }
 
   const points = referenceKeys
@@ -2196,6 +2220,11 @@ function getDimensionRenderStyle(isPreview) {
 }
 
 export function getDimensionDisplayText(dimension) {
+  if (String(dimension && dimension.kind || "").toLowerCase() === "count") {
+    const value = Number(dimension && dimension.value);
+    return Number.isFinite(value) ? String(clamp(Math.round(value), 3, 64)) : "";
+  }
+
   const value = formatDimensionValue(dimension && dimension.value);
   if (!value) {
     return "";
@@ -2227,6 +2256,8 @@ function getDimensionLabel(kind) {
       return "Vertical distance";
     case "pointtolinedistance":
       return "Point-to-line distance";
+    case "count":
+      return "Sides";
     default:
       return "Distance";
   }
@@ -3407,6 +3438,8 @@ function buildEntityPath(state, entity) {
       return buildLinePath(state, entity);
     case "polyline":
       return buildPolylinePath(state, entity);
+    case "polygon":
+      return buildPolygonPath(state, entity);
     case "spline":
       return buildPolylinePath(state, entity);
     case "circle":
@@ -3450,6 +3483,25 @@ function buildPolylinePath(state, entity) {
     state.context.lineTo(screenPoint.x, screenPoint.y);
   }
 
+  return true;
+}
+
+function buildPolygonPath(state, entity) {
+  const points = getEntityPoints(entity);
+  if (points.length < 3) {
+    return false;
+  }
+
+  const first = worldToScreen(state, points[0]);
+  state.context.beginPath();
+  state.context.moveTo(first.x, first.y);
+
+  for (let index = 1; index < points.length; index += 1) {
+    const screenPoint = worldToScreen(state, points[index]);
+    state.context.lineTo(screenPoint.x, screenPoint.y);
+  }
+
+  state.context.closePath();
   return true;
 }
 
@@ -4903,6 +4955,8 @@ function getEntityEdgeHit(state, entity, screenPoint) {
       return getLineEdgeHit(state, entity, screenPoint);
     case "polyline":
       return getPolylineSegmentScreenHit(state, entity, screenPoint);
+    case "polygon":
+      return getPolygonEdgeHit(state, entity, screenPoint);
     case "spline":
       return getSampledCurveEdgeHit(state, entity, screenPoint);
     case "circle":
@@ -5444,6 +5498,35 @@ function getSampledCurveEdgeHit(state, entity, screenPoint) {
     : null;
 }
 
+function getPolygonEdgeHit(state, entity, screenPoint) {
+  const target = createEntityTarget(entity);
+  const points = getEntityPoints(entity);
+  if (!target || points.length < 3) {
+    return null;
+  }
+
+  let closestDistance = Number.POSITIVE_INFINITY;
+  let closestProjectionPoint = null;
+
+  for (let index = 0; index < points.length; index += 1) {
+    const projection = closestPointOnScreenSegment(
+      screenPoint,
+      worldToScreen(state, points[index]),
+      worldToScreen(state, points[(index + 1) % points.length]));
+    if (projection.distance < closestDistance) {
+      closestDistance = projection.distance;
+      closestProjectionPoint = projection.point;
+    }
+  }
+
+  return closestProjectionPoint
+    ? {
+      target: withSnapPoint(target, screenToWorld(state, closestProjectionPoint)),
+      distance: closestDistance
+    }
+    : null;
+}
+
 function getCircleEdgeHit(state, entity, screenPoint) {
   const target = createEntityTarget(entity);
   const center = getEntityCenter(entity);
@@ -5609,7 +5692,7 @@ function getEntityScreenSegments(state, entity) {
     });
   }
 
-  if (getEntityKind(entity) === "circle" && points.length > 2) {
+  if ((getEntityKind(entity) === "circle" || getEntityKind(entity) === "polygon") && points.length > 2) {
     segments.push({
       start: points[points.length - 1],
       end: points[0]
@@ -5627,7 +5710,7 @@ function getEntityScreenSamplePoints(state, entity) {
     return point ? [worldToScreen(state, point)] : [];
   }
 
-  if (kind === "line" || kind === "polyline" || kind === "spline") {
+  if (kind === "line" || kind === "polyline" || kind === "spline" || kind === "polygon") {
     return getEntityPoints(entity).map(point => worldToScreen(state, point));
   }
 
@@ -5667,6 +5750,8 @@ function getSnapPoints(entity, entities) {
       return getLineSnapPoints(entity, entities);
     case "polyline":
       return getPolylineSnapPoints(entity, entities);
+    case "polygon":
+      return getPolygonSnapPoints(entity, entities);
     case "spline":
       return getSplineSnapPoints(entity, entities);
     case "circle":
@@ -5712,6 +5797,31 @@ function getPolylineSnapPoints(entity, entities) {
 
   for (let index = 1; index < points.length; index += 1) {
     snapPoints.push({ label: `mid-${index - 1}`, point: midpoint(points[index - 1], points[index]) });
+  }
+
+  addIntersectionSnapPoints(snapPoints, entity, entities);
+  addTangentSnapPointsForLinearEntity(snapPoints, entity, getLinearSegments(entity), entities);
+  return snapPoints;
+}
+
+function getPolygonSnapPoints(entity, entities) {
+  const points = getEntityPoints(entity);
+  if (points.length < 3) {
+    return [];
+  }
+
+  const snapPoints = [];
+  const center = getEntityCenter(entity);
+  if (center) {
+    snapPoints.push({ label: "center", point: center, priority: 8 });
+  }
+
+  for (let index = 0; index < points.length; index += 1) {
+    snapPoints.push({ label: `vertex-${index}`, point: points[index] });
+  }
+
+  for (let index = 0; index < points.length; index += 1) {
+    snapPoints.push({ label: `mid-${index}`, point: midpoint(points[index], points[(index + 1) % points.length]) });
   }
 
   addIntersectionSnapPoints(snapPoints, entity, entities);
@@ -6057,6 +6167,19 @@ function getLinearSegments(entity) {
     }];
   }
 
+  if (kind === "polygon" && points.length >= 3) {
+    const segments = [];
+    for (let index = 0; index < points.length; index += 1) {
+      segments.push({
+        start: points[index],
+        end: points[(index + 1) % points.length],
+        segmentIndex: index
+      });
+    }
+
+    return segments;
+  }
+
   if ((kind !== "polyline" && kind !== "spline") || points.length < 2) {
     return [];
   }
@@ -6092,7 +6215,7 @@ function getEntityIntersections(firstEntity, secondEntity) {
 function getIntersectionPrimitives(entity) {
   const kind = getEntityKind(entity);
 
-  if (kind === "line" || kind === "polyline" || kind === "spline") {
+  if (kind === "line" || kind === "polyline" || kind === "spline" || kind === "polygon") {
     return getLinearSegments(entity).map(segment => ({
       kind: "segment",
       start: segment.start,
@@ -6471,6 +6594,23 @@ function resolveCurrentPointTargetPoint(entity, label, fallbackPoint) {
     const segmentIndex = parseIndexedPointLabel(normalizedLabel, "mid-");
     if (segmentIndex !== null && segmentIndex >= 0 && segmentIndex < points.length - 1) {
       return midpoint(points[segmentIndex], points[segmentIndex + 1]);
+    }
+  }
+
+  if (kind === "polygon" && points.length >= 3) {
+    const center = getEntityCenter(entity);
+    if (normalizedLabel === "center" && center) {
+      return center;
+    }
+
+    const vertexIndex = parseIndexedPointLabel(normalizedLabel, "vertex-");
+    if (vertexIndex !== null && vertexIndex >= 0 && vertexIndex < points.length) {
+      return points[vertexIndex];
+    }
+
+    const segmentIndex = parseIndexedPointLabel(normalizedLabel, "mid-");
+    if (segmentIndex !== null && segmentIndex >= 0 && segmentIndex < points.length) {
+      return midpoint(points[segmentIndex], points[(segmentIndex + 1) % points.length]);
     }
   }
 
@@ -6955,6 +7095,16 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
   const tool = getSketchCreationTool(state);
   if (!tool || !state.toolDraft || state.toolDraft.points.length === 0) {
     return false;
+  }
+
+  if ((tool === "inscribedpolygon" || tool === "circumscribedpolygon") && dimension === "sides") {
+    const sideCount = clamp(Math.round(numericValue), 3, 64);
+    state.toolDraft.polygonSideCount = sideCount;
+    state.toolDraft.dimensionValues = {
+      ...(state.toolDraft.dimensionValues || {}),
+      sides: sideCount
+    };
+    return true;
   }
 
   const points = state.toolDraft.points;
@@ -8342,6 +8492,7 @@ function resolveSketchReferencePoint(state, referenceKey) {
     }
     case "circle":
     case "arc":
+    case "polygon":
     case "ellipse":
       return reference.target === "center" ? getEntityCenter(entity) : null;
     default:
@@ -8406,6 +8557,7 @@ function resolveSketchEntityAnchorPoint(state, referenceKey) {
       return points.length >= 2 ? midpoint(points[0], points[1]) : null;
     }
     case "polyline":
+    case "polygon":
     case "spline": {
       const points = getEntityPoints(entity);
       if (points.length === 0) {
@@ -8437,7 +8589,10 @@ function resolveSketchCircleLikeReference(state, referenceKey) {
   }
 
   const entity = findDocumentEntity(state, reference.entityId);
-  if (!entity || (getEntityKind(entity) !== "circle" && getEntityKind(entity) !== "arc")) {
+  if (!entity
+    || (getEntityKind(entity) !== "circle"
+      && getEntityKind(entity) !== "arc"
+      && getEntityKind(entity) !== "polygon")) {
     return null;
   }
 
@@ -8611,7 +8766,7 @@ function getArcEndpointWorldPoints(entity) {
 }
 
 export function applyPolarSnapIfRequested(state, point, tool, event) {
-  if ((tool !== "line" && tool !== "midpointline")
+  if (!supportsPolarSnap(tool)
     || !state.toolDraft
     || state.toolDraft.points.length === 0) {
     return point;
@@ -8641,6 +8796,13 @@ export function applyPolarSnapIfRequested(state, point, tool, event) {
   const increment = normalizePolarSnapIncrement(state.polarSnapIncrementDegrees);
   const snappedAngle = Math.round(rawAngle / increment) * increment;
   return pointOnCircle(anchor, distance, snappedAngle);
+}
+
+function supportsPolarSnap(tool) {
+  return tool === "line"
+    || tool === "midpointline"
+    || tool === "inscribedpolygon"
+    || tool === "circumscribedpolygon";
 }
 
 function pointOnCircle(center, radius, angleDegrees) {

@@ -8,5 +8,6 @@ public enum SketchDimensionKind
     PointToLineDistance,
     Radius,
     Diameter,
-    Angle
+    Angle,
+    Count
 }

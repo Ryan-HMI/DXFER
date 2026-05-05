@@ -26,15 +26,16 @@ public static class SketchDimensionSolverService
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(dimension);
 
+        var effectiveDimension = NormalizeDimension(dimension);
         var entities = document.Entities.ToArray();
-        if (dimension.IsDriving)
+        if (effectiveDimension.IsDriving)
         {
-            ApplyDimensionGeometry(entities, document.Constraints, dimension);
+            ApplyDimensionGeometry(entities, document.Constraints, effectiveDimension);
         }
 
         return new DrawingDocument(
             entities,
-            UpsertDimension(document.Dimensions, dimension),
+            UpsertDimension(document.Dimensions, effectiveDimension),
             document.Constraints);
     }
 
@@ -67,6 +68,9 @@ public static class SketchDimensionSolverService
                 break;
             case SketchDimensionKind.Angle:
                 ApplyAngle(entities, fixedReferences, dimension);
+                break;
+            case SketchDimensionKind.Count:
+                ApplyCount(entities, fixedReferences, dimension);
                 break;
         }
     }
@@ -193,6 +197,24 @@ public static class SketchDimensionSolverService
         }
 
         SketchGeometryEditor.TrySetCircleLikeRadius(entities, reference, Math.Abs(radius));
+    }
+
+    private static void ApplyCount(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        SketchDimension dimension)
+    {
+        if (dimension.ReferenceKeys.Count == 0
+            || !SketchReference.TryParse(dimension.ReferenceKeys[0], out var reference)
+            || fixedReferences.IsWholeEntityFixed(reference))
+        {
+            return;
+        }
+
+        SketchGeometryEditor.TrySetPolygonSideCount(
+            entities,
+            reference,
+            PolygonEntity.NormalizeSideCount(dimension.Value));
     }
 
     private static void ApplyAngle(
@@ -462,5 +484,21 @@ public static class SketchDimensionSolverService
         }
 
         return nextDimensions.Concat(new[] { dimension }).ToArray();
+    }
+
+    private static SketchDimension NormalizeDimension(SketchDimension dimension)
+    {
+        if (dimension.Kind != SketchDimensionKind.Count)
+        {
+            return dimension;
+        }
+
+        return new SketchDimension(
+            dimension.Id,
+            dimension.Kind,
+            dimension.ReferenceKeys,
+            PolygonEntity.NormalizeSideCount(dimension.Value),
+            dimension.Anchor,
+            dimension.IsDriving);
     }
 }

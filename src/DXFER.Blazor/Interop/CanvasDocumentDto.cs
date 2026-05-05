@@ -90,6 +90,20 @@ public sealed record CanvasDocumentDto(
                 null,
                 null,
                 polyline.IsConstruction),
+            PolygonEntity polygon => new CanvasEntityDto(
+                id,
+                kind,
+                polygon.GetVertices().Select(FromPoint).ToArray(),
+                FromPoint(polygon.Center),
+                polygon.Radius,
+                null,
+                null,
+                polygon.IsConstruction,
+                null,
+                null,
+                polygon.RotationAngleDegrees,
+                polygon.NormalizedSideCount,
+                polygon.Circumscribed),
             SplineEntity spline => new CanvasEntityDto(
                 id,
                 kind,
@@ -143,7 +157,10 @@ public sealed record CanvasEntityDto(
     [property: JsonPropertyName("endAngleDegrees")] double? EndAngleDegrees,
     [property: JsonPropertyName("isConstruction")] bool IsConstruction,
     [property: JsonPropertyName("majorAxisEndPoint")] CanvasPointDto? MajorAxisEndPoint = null,
-    [property: JsonPropertyName("minorRadiusRatio")] double? MinorRadiusRatio = null);
+    [property: JsonPropertyName("minorRadiusRatio")] double? MinorRadiusRatio = null,
+    [property: JsonPropertyName("rotationAngleDegrees")] double? RotationAngleDegrees = null,
+    [property: JsonPropertyName("sideCount")] int? SideCount = null,
+    [property: JsonPropertyName("circumscribed")] bool? Circumscribed = null);
 
 public sealed record CanvasPointDto(
     [property: JsonPropertyName("x")] double X,
