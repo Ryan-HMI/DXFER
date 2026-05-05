@@ -9,6 +9,8 @@ public sealed class ToolHotkeyResolverTests
     public void ExposesImplementedWorkbenchToolsForHotkeyEditing()
     {
         ToolHotkeyResolver.ToolCommandIds.Should().ContainInOrder(
+            WorkbenchCommandId.Undo,
+            WorkbenchCommandId.Redo,
             WorkbenchCommandId.Measure,
             WorkbenchCommandId.Line,
             WorkbenchCommandId.MidpointLine,
@@ -24,6 +26,26 @@ public sealed class ToolHotkeyResolverTests
             WorkbenchCommandId.SplitAtPoint,
             WorkbenchCommandId.Dimension);
         ToolHotkeyResolver.ToolCommandIds.Should().NotContain(WorkbenchCommandId.TangentArc);
+    }
+
+    [Fact]
+    public void DefaultUndoRedoHotkeysUseControlZChords()
+    {
+        var bindings = ToolHotkeyResolver.GetDefaultBindings();
+
+        ToolHotkeyResolver.TryResolve(
+                bindings,
+                new ToolHotkeyPress("z", CtrlKey: true),
+                out var undoCommand)
+            .Should().BeTrue();
+        undoCommand.Should().Be(WorkbenchCommandId.Undo);
+
+        ToolHotkeyResolver.TryResolve(
+                bindings,
+                new ToolHotkeyPress("Z", CtrlKey: true, ShiftKey: true),
+                out var redoCommand)
+            .Should().BeTrue();
+        redoCommand.Should().Be(WorkbenchCommandId.Redo);
     }
 
     [Theory]
@@ -139,6 +161,37 @@ public sealed class ToolHotkeyResolverTests
             WorkbenchCommandId.Line,
             string.Empty);
 
-        bindings.Should().NotContain(binding => binding.CommandId == WorkbenchCommandId.Line);
+        bindings.Should().ContainSingle(binding =>
+            binding.CommandId == WorkbenchCommandId.Line && binding.Key == string.Empty);
+        ToolHotkeyResolver.TryResolve(bindings, ToolHotkeyPress.Plain("L"), out _)
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public void LoadingStoredHotkeysAddsNewDefaultCommandsWithoutOverwritingCustomOnes()
+    {
+        var service = new ToolHotkeyService();
+
+        service.Load(new[]
+        {
+            new ToolHotkeyBinding(WorkbenchCommandId.Line, "G")
+        });
+
+        service.GetKey(WorkbenchCommandId.Line).Should().Be("G");
+        service.GetKey(WorkbenchCommandId.Undo).Should().Be("Ctrl+Z");
+        service.GetKey(WorkbenchCommandId.Redo).Should().Be("Ctrl+Shift+Z");
+    }
+
+    [Fact]
+    public void LoadingStoredHotkeysPreservesExplicitlyUnassignedCommands()
+    {
+        var service = new ToolHotkeyService();
+
+        service.Load(new[]
+        {
+            new ToolHotkeyBinding(WorkbenchCommandId.Undo, string.Empty)
+        });
+
+        service.GetKey(WorkbenchCommandId.Undo).Should().Be(string.Empty);
     }
 }

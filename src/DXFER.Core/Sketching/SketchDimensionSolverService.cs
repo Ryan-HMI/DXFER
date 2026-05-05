@@ -215,7 +215,7 @@ public static class SketchDimensionSolverService
         if (TryApplyLineDirection(
             entities,
             secondReference,
-            firstAngle + dimension.Value,
+            GetLineAngleTargetDegrees(firstAngle, secondAngle, dimension.Value),
             fixedReferences))
         {
             return;
@@ -224,8 +224,24 @@ public static class SketchDimensionSolverService
         TryApplyLineDirection(
             entities,
             firstReference,
-            secondAngle - dimension.Value,
+            GetLineAngleTargetDegrees(secondAngle, firstAngle, dimension.Value),
             fixedReferences);
+    }
+
+    private static double GetLineAngleTargetDegrees(
+        double referenceAngleDegrees,
+        double currentDrivenAngleDegrees,
+        double dimensionValue)
+    {
+        var signedDelta = SketchGeometryEditor.NormalizeSignedDegrees(currentDrivenAngleDegrees - referenceAngleDegrees);
+        var sign = signedDelta < 0 ? -1.0 : 1.0;
+        var axisDelta = Math.Abs(signedDelta);
+        var targetAxisAngle = Math.Abs(dimensionValue);
+        var targetDelta = axisDelta > 90.0
+            ? sign * (180.0 - targetAxisAngle)
+            : sign * targetAxisAngle;
+
+        return referenceAngleDegrees + targetDelta;
     }
 
     internal static bool TryApplyLineDirection(

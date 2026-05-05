@@ -154,6 +154,25 @@ public sealed class SketchDimensionSolverServiceTests
     }
 
     [Fact]
+    public void AppliesAngleWithoutFlippingDrivenLineAcrossReference()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("anchor"), new Point2(0, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("driven"), new Point2(2, 2), new Point2(2, -3))
+        });
+
+        var solved = SketchDimensionSolverService.ApplyDimension(
+            document,
+            DrivingDimension("angle", SketchDimensionKind.Angle, 45, "anchor", "driven"));
+
+        var driven = solved.Entities[1].Should().BeOfType<LineEntity>().Subject;
+        driven.Start.Should().Be(new Point2(2, 2));
+        driven.End.X.Should().BeApproximately(2 + Math.Sqrt(12.5), 0.0001);
+        driven.End.Y.Should().BeApproximately(2 - Math.Sqrt(12.5), 0.0001);
+    }
+
+    [Fact]
     public void UpdatesExistingDimensionAndPreservesConstraints()
     {
         var existing = new SketchDimension(

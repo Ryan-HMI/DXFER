@@ -9,6 +9,7 @@ import {
   clearTransientDimensionInputs,
   clampDimensionInputScreenPoint,
   getAlignedRectangleCorners,
+  getAngleDimensionScreenGeometry,
   getCenterRectangleCorners,
   getConstraintGlyphText,
   getDefaultActiveDimensionKey,
@@ -271,7 +272,7 @@ test("three point arc chooses the sweep containing the through point", () => {
   assertApproxEqual(arc.endAngleDegrees, 360);
 });
 
-test("three point arc preview prompts radius before sweep angle", () => {
+test("three point arc preview prompts only radius", () => {
   const state = createHitTestState([]);
   const dimensions = getThreePointArcPreviewDimensions(
     state,
@@ -280,9 +281,8 @@ test("three point arc preview prompts radius before sweep angle", () => {
     { x: 0, y: 1 }
   );
 
-  assert.deepEqual(dimensions.map(dimension => dimension.key), ["radius", "sweep"]);
+  assert.deepEqual(dimensions.map(dimension => dimension.key), ["radius"]);
   assertApproxEqual(dimensions[0].value, 1);
-  assertApproxEqual(dimensions[1].value, 90);
 });
 
 test("three point arc sweep dimension updates the preview endpoint", () => {
@@ -483,6 +483,26 @@ test("tangent arc commit stays in arc mode until the next last vertex hover", ()
   assert.equal(state.toolDraft.previewPoint, null);
   assert.equal(state.sketchChainVertexHovering, false);
   assert.equal(state.sketchChainToggleRequiresExit, true);
+});
+
+test("center point arc sweep dimension updates the preview endpoint", () => {
+  const state = {
+    activeTool: "centerpointarc",
+    toolDraft: {
+      points: [{ x: 0, y: 0 }, { x: 1, y: 0 }],
+      previewPoint: { x: 0, y: 1 },
+      dimensionValues: {}
+    }
+  };
+
+  assert.equal(applyDraftDimensionValue(state, "sweep", 120), true);
+
+  const arc = getCenterPointArc(
+    state.toolDraft.points[0],
+    state.toolDraft.points[1],
+    state.toolDraft.previewPoint);
+
+  assertApproxEqual(getPositiveTestSweep(arc.startAngleDegrees, arc.endAngleDegrees), 120);
 });
 
 test("chain tool toggle is suppressed until the pointer leaves the committed vertex", () => {
@@ -1009,6 +1029,29 @@ test("radial dimension preference defaults circles to diameter and arcs to radiu
 test("dimension display text prefixes diameter and radius dimensions", () => {
   assert.equal(getDimensionDisplayText({ kind: "diameter", value: 6 }), "\u23006");
   assert.equal(getDimensionDisplayText({ kind: "radius", value: 3 }), "R3");
+  assert.equal(getDimensionDisplayText({ kind: "angle", value: 72.077 }), "72.077");
+});
+
+test("angle dimension graphics use the line vertex and anchor-selected sweep", () => {
+  const state = {
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 100
+    }
+  };
+  const geometry = getAngleDimensionScreenGeometry(
+    state,
+    { start: { x: 0, y: 0 }, end: { x: 10, y: 0 } },
+    { start: { x: 0, y: 0 }, end: { x: 0, y: 10 } },
+    { x: 0, y: 0 },
+    { x: 3, y: 3 });
+
+  assert.deepEqual(geometry.vertex, { x: 0, y: 100 });
+  assertApproxEqual(geometry.radius, Math.hypot(30, 30));
+  assert.equal(geometry.extensionSegments.length, 2);
+  assert.equal(geometry.arrows.length, 2);
+  assert.ok(geometry.sweep.start < geometry.sweep.end);
 });
 
 test("diameter dimension uses an outside leader with a text gap", () => {
@@ -1292,6 +1335,15 @@ function assertApproxEqual(actual, expected, tolerance = 0.000001) {
 
 function distanceBetweenTestPoints(first, second) {
   return Math.hypot(first.x - second.x, first.y - second.y);
+}
+
+function getPositiveTestSweep(startAngleDegrees, endAngleDegrees) {
+  let sweep = (endAngleDegrees - startAngleDegrees) % 360;
+  if (sweep <= 0) {
+    sweep += 360;
+  }
+
+  return sweep;
 }
 
 function createHitTestState(entities) {

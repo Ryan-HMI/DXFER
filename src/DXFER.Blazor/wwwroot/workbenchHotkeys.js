@@ -9,6 +9,11 @@ export function createToolHotkeyListener(dotNetReference) {
             return;
         }
 
+        const preemptBrowserShortcut = isBrowserUndoRedoShortcut(event);
+        if (preemptBrowserShortcut) {
+            event.preventDefault();
+        }
+
         const handled = await dotNetReference.invokeMethodAsync(
             "OnToolHotkeyPressed",
             key,
@@ -18,7 +23,7 @@ export function createToolHotkeyListener(dotNetReference) {
             event.metaKey,
             editableTarget);
 
-        if (handled) {
+        if (handled && !preemptBrowserShortcut) {
             event.preventDefault();
         }
     };
@@ -72,6 +77,12 @@ function isEditableTarget(target) {
         || tagName === "textarea"
         || tagName === "select"
         || target.closest("[contenteditable='true']") !== null;
+}
+
+function isBrowserUndoRedoShortcut(event) {
+    return !event.altKey
+        && (event.ctrlKey || event.metaKey)
+        && String(event.key || "").toLowerCase() === "z";
 }
 
 function handleHotkeyRecorderKeyDown(event) {

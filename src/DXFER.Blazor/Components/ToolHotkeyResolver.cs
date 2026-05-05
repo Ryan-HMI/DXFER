@@ -11,6 +11,8 @@ public static class ToolHotkeyResolver
 
     public static IReadOnlyList<WorkbenchCommandId> ToolCommandIds { get; } = new[]
     {
+        WorkbenchCommandId.Undo,
+        WorkbenchCommandId.Redo,
         WorkbenchCommandId.Measure,
         WorkbenchCommandId.FitExtents,
         WorkbenchCommandId.OriginAxes,
@@ -47,6 +49,8 @@ public static class ToolHotkeyResolver
 
     public static IReadOnlyList<ToolHotkeyBinding> GetDefaultBindings() => new[]
     {
+        new ToolHotkeyBinding(WorkbenchCommandId.Undo, "Ctrl+Z"),
+        new ToolHotkeyBinding(WorkbenchCommandId.Redo, "Ctrl+Shift+Z"),
         new ToolHotkeyBinding(WorkbenchCommandId.Measure, "Q"),
         new ToolHotkeyBinding(WorkbenchCommandId.Line, "Shift+A"),
         new ToolHotkeyBinding(WorkbenchCommandId.MidpointLine, "M"),
@@ -96,11 +100,13 @@ public static class ToolHotkeyResolver
 
         if (normalizedKey is null)
         {
-            return updated;
+            updated.Add(new ToolHotkeyBinding(commandId, string.Empty));
+            return OrderBindings(updated);
         }
 
         var conflict = updated.FirstOrDefault(binding =>
-            StringComparer.Ordinal.Equals(binding.Key, normalizedKey));
+            !string.IsNullOrEmpty(binding.Key)
+            && StringComparer.Ordinal.Equals(binding.Key, normalizedKey));
         if (conflict is not null)
         {
             throw new InvalidOperationException(
@@ -187,7 +193,7 @@ public static class ToolHotkeyResolver
         _ => commandId.ToString()
     };
 
-    private static IReadOnlyList<ToolHotkeyBinding> OrderBindings(IEnumerable<ToolHotkeyBinding> bindings)
+    internal static IReadOnlyList<ToolHotkeyBinding> OrderBindings(IEnumerable<ToolHotkeyBinding> bindings)
     {
         var commandOrder = ToolCommandIds
             .Select((commandId, index) => new { commandId, index })

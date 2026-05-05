@@ -1013,7 +1013,7 @@ function drawToolPreview(state) {
       const arc = getCenterPointArc(first, second, third);
       if (arc) {
         drawWorldArcPreview(state, arc);
-        addRadiusPreviewDimension(dimensions, state, first, second);
+        addCenterPointArcSweepPreviewDimension(dimensions, state, first, second, third);
       }
     }
   }
@@ -1182,20 +1182,33 @@ export function getThreePointArcPreviewDimensions(state, first, through, end) {
 
   const dimensions = [];
   addRadiusPreviewDimension(dimensions, state, arcState.center, first);
-  dimensions.push({
-    key: "sweep",
-    label: "Sweep",
-    value: arcState.sweepDegrees,
-    point: getThreePointArcSweepDimensionPoint(state, arcState)
-  });
   return dimensions;
 }
 
-function getThreePointArcSweepDimensionPoint(state, arcState) {
-  const startScreen = worldToScreen(state, pointOnCircle(arcState.center, arcState.radius, arcState.firstAngleDegrees));
-  const endScreen = worldToScreen(state, pointOnCircle(arcState.center, arcState.radius, arcState.endAngleDegrees));
+function addCenterPointArcSweepPreviewDimension(dimensions, state, center, startRadiusPoint, endAnglePoint) {
+  const arc = getCenterPointArc(center, startRadiusPoint, endAnglePoint);
+  if (!arc) {
+    return;
+  }
+
+  dimensions.push({
+    key: "sweep",
+    label: "Sweep",
+    value: getPositiveSweepDegrees(arc.startAngleDegrees, arc.endAngleDegrees),
+    point: getArcSweepDimensionPoint(
+      state,
+      arc.center,
+      arc.radius,
+      arc.startAngleDegrees,
+      arc.endAngleDegrees)
+  });
+}
+
+function getArcSweepDimensionPoint(state, center, radius, startAngleDegrees, endAngleDegrees) {
+  const startScreen = worldToScreen(state, pointOnCircle(center, radius, startAngleDegrees));
+  const endScreen = worldToScreen(state, pointOnCircle(center, radius, endAngleDegrees));
   const midpointScreen = midpointScreenPoint(startScreen, endScreen);
-  const centerScreen = worldToScreen(state, arcState.center);
+  const centerScreen = worldToScreen(state, center);
   const direction = normalizeScreenVector(subtractScreenPoints(midpointScreen, centerScreen)) || { x: 0, y: -1 };
   return {
     x: midpointScreen.x + direction.x * 24,
@@ -1440,6 +1453,10 @@ function getDimensionGeometry(state, kind, referenceKeys, anchorPoint) {
         type: "angle",
         firstLine,
         secondLine,
+        vertex: getWorldLineIntersection(firstLine, secondLine)
+          || midpoint(
+            midpoint(firstLine.start, firstLine.end),
+            midpoint(secondLine.start, secondLine.end)),
         anchorPoint
       }
       : null;
@@ -1704,25 +1721,15 @@ function getSegmentPartsAroundPoint(start, end, gapCenter, textGap) {
 }
 
 function drawAngleDimensionGraphics(state, dimension, isPreview) {
-  const anchor = worldToScreen(state, dimension.geometry.anchorPoint);
-  const firstVector = getScreenLineDirection(state, dimension.geometry.firstLine);
-  const secondVector = getScreenLineDirection(state, dimension.geometry.secondLine);
-  if (!firstVector || !secondVector) {
+  const geometry = getAngleDimensionScreenGeometry(
+    state,
+    dimension.geometry.firstLine,
+    dimension.geometry.secondLine,
+    dimension.geometry.vertex,
+    dimension.geometry.anchorPoint);
+  if (!geometry) {
     return;
   }
-
-  const firstAngle = Math.atan2(firstVector.y, firstVector.x);
-  const secondAngle = Math.atan2(secondVector.y, secondVector.x);
-  const sweep = getShortestScreenAngleSweep(firstAngle, secondAngle);
-  const radius = 24;
-  const firstRayEnd = {
-    x: anchor.x + Math.cos(sweep.start) * (radius + 12),
-    y: anchor.y + Math.sin(sweep.start) * (radius + 12)
-  };
-  const secondRayEnd = {
-    x: anchor.x + Math.cos(sweep.end) * (radius + 12),
-    y: anchor.y + Math.sin(sweep.end) * (radius + 12)
-  };
 
   const { context } = state;
   const style = getDimensionRenderStyle(isPreview);
@@ -1731,13 +1738,67 @@ function drawAngleDimensionGraphics(state, dimension, isPreview) {
   context.fillStyle = style.strokeStyle;
   context.lineWidth = 1.15;
   context.setLineDash(style.lineDash);
-  drawScreenLine(context, anchor, firstRayEnd);
-  drawScreenLine(context, anchor, secondRayEnd);
+  for (const segment of geometry.extensionSegments) {
+    drawScreenLine(context, segment.start, segment.end);
+  }
+
   context.beginPath();
-  context.arc(anchor.x, anchor.y, radius, sweep.start, sweep.end);
+  context.arc(geometry.vertex.x, geometry.vertex.y, geometry.radius, geometry.sweep.start, geometry.sweep.end);
   context.stroke();
+  for (const arrow of geometry.arrows) {
+    drawArrowhead(context, arrow.point, arrow.toward, DIMENSION_ARROWHEAD_SIZE);
+  }
+
   context.restore();
   drawDimensionCanvasText(state, dimension, isPreview);
+}
+
+export function getAngleDimensionScreenGeometry(state, firstLine, secondLine, vertex, anchor) {
+  if (!vertex || !anchor) {
+    return null;
+  }
+
+  const screenVertex = worldToScreen(state, vertex);
+  const screenAnchor = worldToScreen(state, anchor);
+  const firstAxis = getScreenLineDirection(state, firstLine);
+  const secondAxis = getScreenLineDirection(state, secondLine);
+  if (!firstAxis || !secondAxis) {
+    return null;
+  }
+
+  const anchorDirection = normalizeScreenVector(subtractScreenPoints(screenAnchor, screenVertex));
+  const sweep = getAngleSweepForAnchor(firstAxis, secondAxis, anchorDirection);
+  if (!sweep) {
+    return null;
+  }
+
+  const radius = Math.max(18, distanceBetweenScreenPoints(screenVertex, screenAnchor));
+  const extensionLength = radius + 12;
+  const firstExtensionEnd = pointFromScreenAngle(screenVertex, sweep.start, extensionLength);
+  const secondExtensionEnd = pointFromScreenAngle(screenVertex, sweep.end, extensionLength);
+  const arcStart = pointFromScreenAngle(screenVertex, sweep.start, radius);
+  const arcEnd = pointFromScreenAngle(screenVertex, sweep.end, radius);
+  const arrowSweep = Math.max(0.05, Math.min(0.18, Math.abs(sweep.end - sweep.start) / 5));
+
+  return {
+    vertex: screenVertex,
+    radius,
+    sweep,
+    extensionSegments: [
+      { start: screenVertex, end: firstExtensionEnd },
+      { start: screenVertex, end: secondExtensionEnd }
+    ],
+    arrows: [
+      {
+        point: arcStart,
+        toward: pointFromScreenAngle(screenVertex, sweep.start + arrowSweep, radius)
+      },
+      {
+        point: arcEnd,
+        toward: pointFromScreenAngle(screenVertex, sweep.end - arrowSweep, radius)
+      }
+    ]
+  };
 }
 
 function getScreenLineDirection(state, line) {
@@ -1751,6 +1812,35 @@ function getScreenLineDirection(state, line) {
     x: end.x - start.x,
     y: end.y - start.y
   });
+}
+
+function getAngleSweepForAnchor(firstAxis, secondAxis, anchorDirection) {
+  const firstAngles = [
+    Math.atan2(firstAxis.y, firstAxis.x),
+    Math.atan2(-firstAxis.y, -firstAxis.x)
+  ];
+  const secondAngles = [
+    Math.atan2(secondAxis.y, secondAxis.x),
+    Math.atan2(-secondAxis.y, -secondAxis.x)
+  ];
+  const anchorAngle = anchorDirection
+    ? Math.atan2(anchorDirection.y, anchorDirection.x)
+    : null;
+  let best = null;
+
+  for (const firstAngle of firstAngles) {
+    for (const secondAngle of secondAngles) {
+      const sweep = getShortestScreenAngleSweep(firstAngle, secondAngle);
+      const containsAnchor = anchorAngle !== null && isScreenAngleWithinSweep(anchorAngle, sweep);
+      const score = (containsAnchor ? 0 : 1000)
+        + getScreenAngleDistance(anchorAngle ?? getSweepMidAngle(sweep), getSweepMidAngle(sweep));
+      if (!best || score < best.score) {
+        best = { ...sweep, score };
+      }
+    }
+  }
+
+  return best ? { start: best.start, end: best.end } : null;
 }
 
 function getShortestScreenAngleSweep(startAngle, endAngle) {
@@ -1770,6 +1860,29 @@ function getShortestScreenAngleSweep(startAngle, endAngle) {
   return {
     start: endAngle,
     end: endAngle + (fullCircle - delta)
+  };
+}
+
+function isScreenAngleWithinSweep(angle, sweep) {
+  const fullCircle = Math.PI * 2;
+  const delta = ((angle - sweep.start) % fullCircle + fullCircle) % fullCircle;
+  return delta <= Math.abs(sweep.end - sweep.start) + 0.000001;
+}
+
+function getSweepMidAngle(sweep) {
+  return sweep.start + (sweep.end - sweep.start) / 2;
+}
+
+function getScreenAngleDistance(first, second) {
+  const fullCircle = Math.PI * 2;
+  const delta = Math.abs(((first - second) % fullCircle + fullCircle) % fullCircle);
+  return Math.min(delta, fullCircle - delta);
+}
+
+function pointFromScreenAngle(origin, angle, distance) {
+  return {
+    x: origin.x + Math.cos(angle) * distance,
+    y: origin.y + Math.sin(angle) * distance
   };
 }
 
@@ -1815,7 +1928,7 @@ export function getDimensionDisplayText(dimension) {
     case "diameter":
       return `\u2300${value}`;
     case "angle":
-      return `${value} deg`;
+      return value;
     default:
       return value;
   }
@@ -5133,6 +5246,8 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
       state.toolDraft.points = [anchor, nextRadiusPoint];
       nextPreviewPoint = previewPoint;
     }
+  } else if (tool === "centerpointarc" && dimension === "sweep" && points.length >= 2) {
+    nextPreviewPoint = getCenterPointArcEndPointWithSweep(points[0], points[1], previewPoint, numericValue);
   } else if (tool === "threepointarc" && dimension === "radius" && points.length >= 2) {
     nextPreviewPoint = getThreePointArcEndPointWithRadius(points[0], points[1], previewPoint, numericValue);
   } else if (tool === "threepointarc" && dimension === "sweep" && points.length >= 2) {
@@ -5288,6 +5403,23 @@ function getThreePointArcEndPointWithSweep(first, through, currentEnd, sweepDegr
     arcState.center,
     arcState.radius,
     arcState.firstAngleDegrees + arcState.direction * sweepDegrees);
+}
+
+function getCenterPointArcEndPointWithSweep(center, startRadiusPoint, currentEnd, sweepDegrees) {
+  const radius = distanceBetweenWorldPoints(center, startRadiusPoint);
+  if (!Number.isFinite(sweepDegrees)
+    || sweepDegrees <= WORLD_GEOMETRY_TOLERANCE
+    || sweepDegrees >= FULL_CIRCLE_DEGREES
+    || radius <= WORLD_GEOMETRY_TOLERANCE
+    || distanceBetweenWorldPoints(center, currentEnd) <= WORLD_GEOMETRY_TOLERANCE) {
+    return currentEnd;
+  }
+
+  const startAngle = getPointAngleDegrees(center, startRadiusPoint);
+  const currentEndAngle = getPointAngleDegrees(center, currentEnd);
+  const counterClockwiseDelta = getCounterClockwiseDeltaDegrees(startAngle, currentEndAngle);
+  const direction = counterClockwiseDelta <= FULL_CIRCLE_DEGREES / 2 ? 1 : -1;
+  return pointOnCircle(center, radius, startAngle + direction * sweepDegrees);
 }
 
 function getThreePointArcEndPointWithRadius(first, through, currentEnd, radius) {
@@ -6638,6 +6770,26 @@ function projectPointToWorldLine(point, line) {
   return {
     x: line.start.x + deltaX * scalar,
     y: line.start.y + deltaY * scalar
+  };
+}
+
+function getWorldLineIntersection(first, second) {
+  if (!first || !second || !first.start || !first.end || !second.start || !second.end) {
+    return null;
+  }
+
+  const firstVector = subtractPoints(first.end, first.start);
+  const secondVector = subtractPoints(second.end, second.start);
+  const denominator = crossPoints(firstVector, secondVector);
+  if (Math.abs(denominator) <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const offset = subtractPoints(second.start, first.start);
+  const scalar = crossPoints(offset, secondVector) / denominator;
+  return {
+    x: first.start.x + firstVector.x * scalar,
+    y: first.start.y + firstVector.y * scalar
   };
 }
 
