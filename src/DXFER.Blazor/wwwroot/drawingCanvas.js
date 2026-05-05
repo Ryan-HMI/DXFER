@@ -22,6 +22,9 @@ const DIMENSION_TEXT_GAP_PADDING = 5;
 const DIMENSION_INPUT_LEADER_GAP = 12;
 const SKETCH_CHAIN_TOGGLE_REARM_TOLERANCE = SNAP_POINT_TOLERANCE + 5;
 const SKETCH_CHAIN_DIMENSION_SUPPRESS_TOLERANCE = SNAP_POINT_TOLERANCE * 3;
+const CONSTRAINT_GLYPH_SIZE = 16;
+const CONSTRAINT_GLYPH_GAP = 4;
+const CONSTRAINT_GROUP_HIT_PADDING = 4;
 
 export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) {
   const context = canvas.getContext("2d");
@@ -45,6 +48,9 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     suppressDimensionInputCommit: false,
     document: null,
     showOriginAxes: false,
+    showAllConstraints: false,
+    constraintGroupOffsets: new Map(),
+    constraintGroupDrag: null,
     grainDirection: "none",
     constructionMode: false,
     polarSnapIncrementDegrees: 15,
@@ -117,8 +123,11 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
         state.sketchChainVertexHovering = false;
         state.sketchChainAutoTool = false;
         state.sketchChainToggleRequiresExit = false;
+        state.constraintGroupDrag = null;
+        state.constraintGroupOffsets.clear();
       }
       pruneInteractionState(state, true);
+      pruneConstraintGroupOffsets(state);
       if (fitToDocument) {
         fitToExtents(state);
       }
@@ -167,6 +176,13 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
 
     setOriginAxesVisible(visible) {
       state.showOriginAxes = Boolean(visible);
+      updateDebugAttributes(state);
+      draw(state);
+    },
+
+    setShowAllConstraints(visible) {
+      state.showAllConstraints = Boolean(visible);
+      state.canvas.dataset.showAllConstraints = state.showAllConstraints ? "true" : "false";
       updateDebugAttributes(state);
       draw(state);
     },
@@ -551,7 +567,8 @@ function draw(state) {
     drawSelectionBox(state);
   }
 
-  drawPersistentConstraintGlyphs(state);
+  const constraintGlyphGroups = getVisibleConstraintGlyphGroups(state);
+  drawConstraintGlyphGroups(state, constraintGlyphGroups);
   const persistentDimensions = getPersistentDimensionDescriptors(state);
   drawPersistentDimensions(state, persistentDimensions);
   updatePersistentDimensionInputs(state, persistentDimensions);
@@ -2352,16 +2369,338 @@ function clearPersistentDimensionInputs(state) {
   state.persistentDimensionInputs.clear();
 }
 
-function drawPersistentConstraintGlyphs(state) {
+function drawConstraintGlyphGroups(state, groups) {
+  for (const group of groups) {
+    drawConstraintGlyphGroup(state, group);
+  }
+}
+
+function drawConstraintGlyphGroup(state, group) {
+  if (!group || !Array.isArray(group.constraints) || group.constraints.length === 0 || !group.point) {
+    return;
+  }
+
+  const { context } = state;
+  const dragging = state.constraintGroupDrag && state.constraintGroupDrag.groupKey === group.key;
+  context.save();
+  if (dragging) {
+    context.shadowColor = "rgba(14, 165, 233, 0.45)";
+    context.shadowBlur = 10;
+  }
+
+  for (let index = 0; index < group.constraints.length; index++) {
+    const constraint = group.constraints[index];
+    const text = getConstraintGlyphText(getSketchItemKind(constraint));
+    const point = getConstraintGlyphItemPoint(group, index);
+    drawConstraintGlyph(state, text, point, constraint);
+  }
+
+  context.restore();
+}
+
+function getConstraintGlyphItemPoint(group, index) {
+  const count = Math.max(1, group.constraints.length);
+  const width = count * CONSTRAINT_GLYPH_SIZE + (count - 1) * CONSTRAINT_GLYPH_GAP;
+  return {
+    x: group.point.x - width / 2 + CONSTRAINT_GLYPH_SIZE / 2 + index * (CONSTRAINT_GLYPH_SIZE + CONSTRAINT_GLYPH_GAP),
+    y: group.point.y
+  };
+}
+
+export function getVisibleConstraintGlyphGroups(state) {
+  const groups = getConstraintGlyphGroups(state);
+  if (state.showAllConstraints) {
+    return groups;
+  }
+
+  return groups.filter(group => isConstraintGroupRelatedToTarget(group, state.hoveredTarget));
+}
+
+export function getConstraintGlyphGroups(state) {
   const constraints = getDocumentConstraints(state.document);
+  const groupsByKey = new Map();
   for (const constraint of constraints) {
+    if (!getConstraintGlyphText(getSketchItemKind(constraint))) {
+      continue;
+    }
+
     const anchor = getConstraintAnchorPoint(state, constraint);
     if (!anchor) {
       continue;
     }
 
-    drawConstraintGlyph(state, getConstraintGlyphText(getSketchItemKind(constraint)), worldToScreen(state, anchor), constraint);
+    const key = getConstraintGroupKey(constraint);
+    if (!key) {
+      continue;
+    }
+
+    let group = groupsByKey.get(key);
+    if (!group) {
+      group = {
+        key,
+        constraints: [],
+        referenceKeys: new Set(),
+        anchor: { x: 0, y: 0 },
+        anchorCount: 0
+      };
+      groupsByKey.set(key, group);
+    }
+
+    group.constraints.push(constraint);
+    group.anchor.x += anchor.x;
+    group.anchor.y += anchor.y;
+    group.anchorCount += 1;
+    for (const relationKey of getConstraintRelationKeys(constraint)) {
+      group.referenceKeys.add(relationKey);
+    }
   }
+
+  return Array.from(groupsByKey.values())
+    .map(group => finalizeConstraintGlyphGroup(state, group))
+    .filter(group => group !== null);
+}
+
+function finalizeConstraintGlyphGroup(state, group) {
+  if (!group || group.anchorCount <= 0 || group.constraints.length === 0) {
+    return null;
+  }
+
+  const anchor = {
+    x: group.anchor.x / group.anchorCount,
+    y: group.anchor.y / group.anchorCount
+  };
+  const anchorScreenPoint = worldToScreen(state, anchor);
+  const offset = getConstraintGroupOffset(state, group.key);
+  const point = {
+    x: anchorScreenPoint.x + offset.x,
+    y: anchorScreenPoint.y + offset.y
+  };
+  const constraints = group.constraints.slice().sort(compareConstraintsById);
+  const result = {
+    key: group.key,
+    constraints,
+    referenceKeys: Array.from(group.referenceKeys),
+    anchor,
+    anchorScreenPoint,
+    point
+  };
+  result.rect = getConstraintGlyphGroupRect(result);
+  return result;
+}
+
+function compareConstraintsById(first, second) {
+  return getSketchItemId(first).localeCompare(getSketchItemId(second), undefined, { sensitivity: "base" });
+}
+
+function getConstraintGlyphGroupRect(group) {
+  const count = Math.max(1, group.constraints.length);
+  const width = count * CONSTRAINT_GLYPH_SIZE + (count - 1) * CONSTRAINT_GLYPH_GAP;
+  return {
+    minX: group.point.x - width / 2,
+    minY: group.point.y - CONSTRAINT_GLYPH_SIZE / 2,
+    maxX: group.point.x + width / 2,
+    maxY: group.point.y + CONSTRAINT_GLYPH_SIZE / 2
+  };
+}
+
+function getConstraintGroupKey(constraint) {
+  const referenceKeys = getSketchReferenceKeys(constraint)
+    .map(getConstraintReferenceGroupKey)
+    .filter(key => key.length > 0)
+    .sort();
+  if (referenceKeys.length > 0) {
+    return `constraint-group:${referenceKeys.join("+")}`;
+  }
+
+  const id = getSketchItemId(constraint);
+  return id ? `constraint:${id}` : "";
+}
+
+function getConstraintReferenceGroupKey(referenceKey) {
+  const reference = parseSketchReference(referenceKey);
+  if (!reference) {
+    return String(referenceKey || "").trim();
+  }
+
+  const baseKey = getSketchReferenceBaseKey(reference);
+  return reference.target && reference.target !== "entity"
+    ? `${baseKey}:${reference.target}`
+    : baseKey;
+}
+
+function getConstraintRelationKeys(constraint) {
+  const keys = new Set();
+  for (const referenceKey of getSketchReferenceKeys(constraint)) {
+    const rawKey = String(referenceKey || "").trim();
+    if (rawKey) {
+      keys.add(rawKey);
+    }
+
+    const reference = parseSketchReference(rawKey);
+    if (!reference) {
+      continue;
+    }
+
+    const baseKey = getSketchReferenceBaseKey(reference);
+    if (reference.entityId) {
+      keys.add(reference.entityId);
+    }
+
+    if (baseKey) {
+      keys.add(baseKey);
+    }
+
+    if (baseKey && reference.target && reference.target !== "entity") {
+      keys.add(`${baseKey}:${reference.target}`);
+    }
+  }
+
+  return keys;
+}
+
+function isConstraintGroupRelatedToTarget(group, target) {
+  if (!group || !target) {
+    return false;
+  }
+
+  const relationKeys = new Set(group.referenceKeys || []);
+  for (const targetKey of getConstraintTargetRelationKeys(target)) {
+    if (relationKeys.has(targetKey)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function getConstraintTargetRelationKeys(target) {
+  const keys = new Set();
+  if (!target) {
+    return keys;
+  }
+
+  if (target.key) {
+    keys.add(target.key);
+  }
+
+  if (target.entityId) {
+    keys.add(target.entityId);
+  }
+
+  if (target.kind === "point" && target.entityId) {
+    const referenceTarget = normalizeSketchReferenceTarget(target.label);
+    if (referenceTarget !== "entity") {
+      keys.add(`${target.entityId}:${referenceTarget}`);
+    }
+  }
+
+  if (target.kind === "segment" && target.entityId && Number.isInteger(target.segmentIndex)) {
+    keys.add(`${target.entityId}${SEGMENT_KEY_SEPARATOR}${target.segmentIndex}`);
+  }
+
+  return keys;
+}
+
+function getConstraintGroupOffset(state, groupKey) {
+  const offset = state.constraintGroupOffsets && state.constraintGroupOffsets.get(groupKey);
+  return offset && Number.isFinite(offset.x) && Number.isFinite(offset.y)
+    ? offset
+    : { x: 0, y: 0 };
+}
+
+function setConstraintGroupOffset(state, groupKey, offset) {
+  if (!state.constraintGroupOffsets || !groupKey || !offset) {
+    return false;
+  }
+
+  const x = Number(offset.x);
+  const y = Number(offset.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return false;
+  }
+
+  state.constraintGroupOffsets.set(groupKey, { x, y });
+  return true;
+}
+
+function pruneConstraintGroupOffsets(state) {
+  if (!state.constraintGroupOffsets || state.constraintGroupOffsets.size === 0) {
+    return;
+  }
+
+  const activeGroupKeys = new Set(getConstraintGlyphGroups(state).map(group => group.key));
+  for (const groupKey of Array.from(state.constraintGroupOffsets.keys())) {
+    if (!activeGroupKeys.has(groupKey)) {
+      state.constraintGroupOffsets.delete(groupKey);
+    }
+  }
+}
+
+function getConstraintGlyphGroupHit(state, screenPoint) {
+  if (!state.showAllConstraints || !screenPoint) {
+    return null;
+  }
+
+  let nearestHit = null;
+  for (const group of getVisibleConstraintGlyphGroups(state)) {
+    const distance = getConstraintGlyphGroupScreenDistance(group, screenPoint);
+    if (distance > CONSTRAINT_GROUP_HIT_PADDING) {
+      continue;
+    }
+
+    if (!nearestHit || distance < nearestHit.distance) {
+      nearestHit = {
+        group,
+        distance
+      };
+    }
+  }
+
+  return nearestHit;
+}
+
+function getConstraintGlyphGroupScreenDistance(group, screenPoint) {
+  if (!group || !group.rect || !screenPoint) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const dx = Math.max(0, group.rect.minX - screenPoint.x, screenPoint.x - group.rect.maxX);
+  const dy = Math.max(0, group.rect.minY - screenPoint.y, screenPoint.y - group.rect.maxY);
+  return Math.hypot(dx, dy);
+}
+
+function startConstraintGroupDrag(state, candidate, screenPoint) {
+  if (!candidate || !candidate.constraintGroupKey || !state.showAllConstraints) {
+    return false;
+  }
+
+  const anchorScreenPoint = candidate.constraintGroupAnchorScreenPoint;
+  if (!anchorScreenPoint) {
+    return false;
+  }
+
+  state.constraintGroupDrag = {
+    pointerId: candidate.pointerId,
+    groupKey: candidate.constraintGroupKey,
+    anchorScreenPoint,
+    startScreenPoint: candidate.screenPoint,
+    currentScreenPoint: screenPoint
+  };
+  updateConstraintGroupDrag(state, screenPoint);
+  return true;
+}
+
+function updateConstraintGroupDrag(state, screenPoint) {
+  const drag = state.constraintGroupDrag;
+  if (!drag || !screenPoint) {
+    return false;
+  }
+
+  drag.currentScreenPoint = screenPoint;
+  return setConstraintGroupOffset(state, drag.groupKey, {
+    x: screenPoint.x - drag.anchorScreenPoint.x,
+    y: screenPoint.y - drag.anchorScreenPoint.y
+  });
 }
 
 function getConstraintAnchorPoint(state, constraint) {
@@ -3026,6 +3365,14 @@ function handlePointerMove(state, event) {
     return;
   }
 
+  if (state.constraintGroupDrag && state.constraintGroupDrag.pointerId === event.pointerId) {
+    updateConstraintGroupDrag(state, screenPoint);
+    event.preventDefault();
+    updateDebugAttributes(state);
+    draw(state);
+    return;
+  }
+
   if (isDimensionTool(state)) {
     const nearestTarget = findNearestTarget(state, screenPoint);
     setHoveredTarget(state, nearestTarget);
@@ -3097,6 +3444,15 @@ function handlePointerMove(state, event) {
     if (moveDistance > CLICK_MOVE_TOLERANCE) {
       state.clickCandidate.cancelled = true;
       if (state.clickCandidate.pointerId === event.pointerId
+        && state.clickCandidate.constraintGroupKey) {
+        startConstraintGroupDrag(state, state.clickCandidate, screenPoint);
+        event.preventDefault();
+        updateDebugAttributes(state);
+        draw(state);
+        return;
+      }
+
+      if (state.clickCandidate.pointerId === event.pointerId
         && state.clickCandidate.target
         && canStartGeometryDrag(state, state.clickCandidate.target)) {
         startGeometryDrag(state, state.clickCandidate, screenPoint, event);
@@ -3164,6 +3520,21 @@ function handlePointerDown(state, event) {
   }
 
   if (isPrimaryPointerButton(event)) {
+    const constraintGroupHit = state.activeTool === "select"
+      ? getConstraintGlyphGroupHit(state, screenPoint)
+      : null;
+    if (constraintGroupHit) {
+      state.clickCandidate = {
+        screenPoint,
+        pointerId: event.pointerId,
+        cancelled: false,
+        constraintGroupKey: constraintGroupHit.group.key,
+        constraintGroupAnchorScreenPoint: constraintGroupHit.group.anchorScreenPoint
+      };
+      event.preventDefault();
+      return;
+    }
+
     const dragTarget = state.activeTool === "select"
       ? findNearestTarget(state, screenPoint)
       : null;
@@ -3208,6 +3579,17 @@ function handlePointerUp(state, event) {
     state.clickCandidate = null;
     const nearestTarget = findNearestTarget(state, screenPoint);
     setHoveredTarget(state, nearestTarget);
+    updateDebugAttributes(state);
+    draw(state);
+    releasePointer(state.canvas, event.pointerId);
+    event.preventDefault();
+    return;
+  }
+
+  if (state.constraintGroupDrag && state.constraintGroupDrag.pointerId === event.pointerId) {
+    updateConstraintGroupDrag(state, screenPoint);
+    state.constraintGroupDrag = null;
+    state.clickCandidate = null;
     updateDebugAttributes(state);
     draw(state);
     releasePointer(state.canvas, event.pointerId);
@@ -3296,6 +3678,14 @@ function handlePointerUp(state, event) {
 
       if (getModifyTool(state)) {
         handleModifyToolClick(state, screenPoint, event);
+        updateDebugAttributes(state);
+        draw(state);
+        releasePointer(state.canvas, event.pointerId);
+        event.preventDefault();
+        return;
+      }
+
+      if (candidate.constraintGroupKey) {
         updateDebugAttributes(state);
         draw(state);
         releasePointer(state.canvas, event.pointerId);
@@ -3791,6 +4181,7 @@ function commitSketchToolPoints(state, tool, points) {
 
 function handlePointerCancel(state, event) {
   cancelGeometryDrag(state);
+  state.constraintGroupDrag = null;
   state.panning = false;
   state.lastPointerScreen = null;
   state.pointerScreenPoint = null;
@@ -3806,7 +4197,7 @@ function handlePointerCancel(state, event) {
 }
 
 function handlePointerLeave(state) {
-  if (state.panning || state.geometryDrag) {
+  if (state.panning || state.geometryDrag || state.constraintGroupDrag) {
     return;
   }
 
@@ -6715,6 +7106,7 @@ function pruneInteractionState(state, removePointTargets = false) {
 
 function clearInteractionState(state) {
   cancelGeometryDrag(state);
+  state.constraintGroupDrag = null;
   state.hoveredTarget = null;
   state.selectedKeys.clear();
   state.activeSelectionKey = null;
@@ -6739,6 +7131,9 @@ function updateDebugAttributes(state) {
     ? `${state.selectionBox.operation}:${isCrossingSelection(state.selectionBox) ? "crossing" : "window"}`
     : "";
   state.canvas.dataset.originAxes = state.showOriginAxes ? "true" : "false";
+  state.canvas.dataset.showAllConstraints = state.showAllConstraints ? "true" : "false";
+  state.canvas.dataset.visibleConstraintGroupCount = String(getVisibleConstraintGlyphGroups(state).length);
+  state.canvas.dataset.constraintGroupDragging = state.constraintGroupDrag ? state.constraintGroupDrag.groupKey : "";
   state.canvas.dataset.grainDirection = normalizeGrainDirection(state.grainDirection);
   state.canvas.dataset.constructionMode = state.constructionMode ? "true" : "false";
   state.canvas.dataset.activeTool = normalizeToolName(state.activeTool);

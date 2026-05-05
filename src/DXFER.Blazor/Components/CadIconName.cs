@@ -66,6 +66,7 @@ public enum CadIconName
     BoundsToOrigin,
     PointToOrigin,
     OriginAxes,
+    ShowConstraints,
     VectorToX,
     VectorToY
 }

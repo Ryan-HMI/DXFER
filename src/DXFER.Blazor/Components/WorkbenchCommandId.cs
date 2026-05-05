@@ -63,6 +63,7 @@ public enum WorkbenchCommandId
     BoundsToOrigin,
     PointToOrigin,
     OriginAxes,
+    ShowConstraints,
     VectorToX,
     VectorToY,
     ToolHotkeys
