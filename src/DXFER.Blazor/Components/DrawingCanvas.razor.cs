@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260505-arc-angle-hotkeys";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260505-geometry-drag";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -73,6 +73,9 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public Action<IReadOnlySet<string>>? DeleteSelectionRequested { get; set; }
+
+    [Parameter]
+    public Action<string, CanvasPointDto, CanvasPointDto>? GeometryDragRequested { get; set; }
 
     [Parameter]
     public Action<string, double>? SketchDimensionValueChanged { get; set; }
@@ -315,6 +318,21 @@ public partial class DrawingCanvas : IAsyncDisposable
         ActiveSelectionChanged?.Invoke(ActiveSelectionKey);
         DeleteSelectionRequested?.Invoke(SelectedEntityIds);
         _ = InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnGeometryDragRequested(
+        string selectionKey,
+        double startX,
+        double startY,
+        double endX,
+        double endY)
+    {
+        GeometryDragRequested?.Invoke(
+            selectionKey,
+            new CanvasPointDto(startX, startY),
+            new CanvasPointDto(endX, endY));
         return Task.CompletedTask;
     }
 

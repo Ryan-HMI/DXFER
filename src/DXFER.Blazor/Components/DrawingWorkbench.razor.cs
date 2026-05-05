@@ -687,9 +687,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private void DeleteSelectedGeometry()
     {
         var result = SelectionDeleteResolver.DeleteSelection(_document, _selectedEntityIds);
-        if (result.DeletedGeometryCount == 0)
+        if (result.DeletedCount == 0)
         {
-            _status = "Select whole geometry or polyline segments before deleting.";
+            _status = "Select whole geometry, polyline segments, or dimensions before deleting.";
             return;
         }
 
@@ -922,6 +922,25 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         ApplyDocumentChange(
             new DrawingDocument(_document.Entities, nextDimensions, _document.Constraints),
             "Moved dimension.");
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnGeometryDragRequested(string selectionKey, CanvasPointDto dragStart, CanvasPointDto dragEnd)
+    {
+        if (!SketchGeometryDragService.TryApplyDrag(
+                _document,
+                selectionKey,
+                ToPoint(dragStart),
+                ToPoint(dragEnd),
+                out var nextDocument,
+                out var status))
+        {
+            _status = status;
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        ApplyDocumentChange(nextDocument, status);
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -1958,6 +1977,25 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private static string FormatDeleteStatus(SelectionDeleteResult result)
     {
+        if (result.DeletedGeometryCount == 0 && result.DeletedDimensions > 0)
+        {
+            return result.DeletedDimensions == 1
+                ? "Deleted 1 dimension."
+                : $"Deleted {result.DeletedDimensions} dimensions.";
+        }
+
+        if (result.DeletedDimensions > 0)
+        {
+            return result.DeletedDimensions == 1
+                ? $"Deleted {FormatGeometryDeleteSummary(result)} and 1 dimension."
+                : $"Deleted {FormatGeometryDeleteSummary(result)} and {result.DeletedDimensions} dimensions.";
+        }
+
+        return FormatGeometryDeleteStatus(result);
+    }
+
+    private static string FormatGeometryDeleteStatus(SelectionDeleteResult result)
+    {
         if (result.DeletedEntities > 0 && result.DeletedSegments > 0)
         {
             return $"Deleted {result.DeletedEntities} entities and {result.DeletedSegments} polyline segments.";
@@ -1973,6 +2011,25 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         return result.DeletedSegments == 1
             ? "Deleted 1 polyline segment."
             : $"Deleted {result.DeletedSegments} polyline segments.";
+    }
+
+    private static string FormatGeometryDeleteSummary(SelectionDeleteResult result)
+    {
+        if (result.DeletedEntities > 0 && result.DeletedSegments > 0)
+        {
+            return $"{result.DeletedEntities} entities, {result.DeletedSegments} polyline segments";
+        }
+
+        if (result.DeletedEntities > 0)
+        {
+            return result.DeletedEntities == 1
+                ? "1 entity"
+                : $"{result.DeletedEntities} entities";
+        }
+
+        return result.DeletedSegments == 1
+            ? "1 polyline segment"
+            : $"{result.DeletedSegments} polyline segments";
     }
 
     private sealed record LiveReadoutItem(string Label, string Value);

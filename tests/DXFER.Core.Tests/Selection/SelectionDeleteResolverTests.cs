@@ -1,6 +1,7 @@
 using DXFER.Blazor.Selection;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
+using DXFER.Core.Sketching;
 using FluentAssertions;
 
 namespace DXFER.Core.Tests.Selection;
@@ -81,5 +82,69 @@ public sealed class SelectionDeleteResolverTests
 
         result.DeletedGeometryCount.Should().Be(0);
         result.Document.Should().BeSameAs(document);
+    }
+
+    [Fact]
+    public void DeletesSelectedDimensions()
+    {
+        var dimension = new SketchDimension(
+            "dim-1",
+            SketchDimensionKind.LinearDistance,
+            new[] { "edge:start", "edge:end" },
+            10);
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(10, 0))
+            },
+            new[] { dimension },
+            Array.Empty<SketchConstraint>());
+
+        var result = SelectionDeleteResolver.DeleteSelection(document, new[] { "persistent-dim-1" });
+
+        result.DeletedDimensions.Should().Be(1);
+        result.DeletedCount.Should().Be(1);
+        result.Document.Entities.Should().ContainSingle();
+        result.Document.Dimensions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void DeletesSketchItemsThatReferenceDeletedGeometry()
+    {
+        var referencingDimension = new SketchDimension(
+            "delete-dim",
+            SketchDimensionKind.LinearDistance,
+            new[] { "delete:start", "delete:end" },
+            10);
+        var keptDimension = new SketchDimension(
+            "keep-dim",
+            SketchDimensionKind.Radius,
+            new[] { "keep" },
+            2);
+        var referencingConstraint = new SketchConstraint(
+            "delete-constraint",
+            SketchConstraintKind.Horizontal,
+            new[] { "delete" });
+        var keptConstraint = new SketchConstraint(
+            "keep-constraint",
+            SketchConstraintKind.Fix,
+            new[] { "keep" });
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("delete"), new Point2(0, 0), new Point2(10, 0)),
+                new CircleEntity(EntityId.Create("keep"), new Point2(20, 0), 2)
+            },
+            new[] { referencingDimension, keptDimension },
+            new[] { referencingConstraint, keptConstraint });
+
+        var result = SelectionDeleteResolver.DeleteSelection(document, new[] { "delete" });
+
+        result.DeletedEntities.Should().Be(1);
+        result.DeletedDimensions.Should().Be(1);
+        result.Document.Dimensions.Should().ContainSingle()
+            .Which.Id.Should().Be("keep-dim");
+        result.Document.Constraints.Should().ContainSingle()
+            .Which.Id.Should().Be("keep-constraint");
     }
 }

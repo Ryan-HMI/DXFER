@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyDraftDimensionValue,
+  applyGeometryDragPreview,
   applyLockedDraftDimensions,
   applyDirectSelectionClick,
   applyPolarSnapIfRequested,
@@ -1220,6 +1221,42 @@ test("persistent dimension descriptors resolve polyline segment endpoints", () =
   assert.deepEqual(descriptors[0].geometry.end, { x: 3, y: 4 });
 });
 
+test("persistent dimensions are selectable canvas targets", () => {
+  const state = {
+    activeTool: "select",
+    document: {
+      entities: [
+        {
+          id: "edge",
+          kind: "line",
+          points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+        }
+      ],
+      dimensions: [
+        {
+          id: "dim-edge",
+          kind: "LinearDistance",
+          referenceKeys: ["edge:start", "edge:end"],
+          value: 10,
+          anchor: { x: 5, y: 2 }
+        }
+      ]
+    },
+    dimensionAnchorOverrides: new Map(),
+    acquiredSnapPoints: [],
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 100
+    }
+  };
+
+  const target = findNearestTarget(state, { x: 50, y: 80 });
+
+  assert.equal(target.kind, "dimension");
+  assert.equal(target.key, "persistent-dim-edge");
+});
+
 test("persistent dimension descriptors prefer explicit anchors", () => {
   const state = {
     document: {
@@ -1261,6 +1298,51 @@ test("point target marker uses a dedicated tangent snap symbol", () => {
   assert.equal(getPointTargetMarker({ label: "circle-tangent-edge-0" }), "tangent");
   assert.equal(getPointTargetMarker({ label: "mid" }), "midpoint");
   assert.equal(getPointTargetMarker({ label: "quadrant-0" }), "point");
+});
+
+test("geometry drag preview moves one line endpoint", () => {
+  const document = {
+    entities: [
+      {
+        id: "edge",
+        kind: "line",
+        points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+      }
+    ],
+    dimensions: [],
+    constraints: []
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "edge|point|start|0|0",
+    { x: 0, y: 0 },
+    { x: 2, y: 3 });
+
+  assert.deepEqual(preview.entities[0].points, [{ x: 2, y: 3 }, { x: 10, y: 0 }]);
+  assert.deepEqual(document.entities[0].points, [{ x: 0, y: 0 }, { x: 10, y: 0 }]);
+});
+
+test("geometry drag preview translates a line midpoint", () => {
+  const document = {
+    entities: [
+      {
+        id: "edge",
+        kind: "line",
+        points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+      }
+    ],
+    dimensions: [],
+    constraints: []
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "edge|point|mid|5|0",
+    { x: 5, y: 0 },
+    { x: 7, y: 3 });
+
+  assert.deepEqual(preview.entities[0].points, [{ x: 2, y: 3 }, { x: 12, y: 3 }]);
 });
 
 test("point sketch tool needs one click", () => {

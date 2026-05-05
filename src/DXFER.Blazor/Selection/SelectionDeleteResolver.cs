@@ -1,6 +1,7 @@
 using System.Globalization;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
+using DXFER.Core.Sketching;
 
 namespace DXFER.Blazor.Selection;
 
@@ -8,9 +9,11 @@ public static class SelectionDeleteResolver
 {
     private const string SegmentKeySeparator = "|segment|";
     private const string PointKeySeparator = "|point|";
+    private const string PersistentDimensionKeyPrefix = "persistent-";
+    private const string DimensionKeyPrefix = "dimension:";
 
     public static bool CanDeleteSelection(DrawingDocument document, IEnumerable<string> selectionKeys) =>
-        DeleteSelection(document, selectionKeys).DeletedGeometryCount > 0;
+        DeleteSelection(document, selectionKeys).DeletedCount > 0;
 
     public static SelectionDeleteResult DeleteSelection(
         DrawingDocument document,
@@ -21,9 +24,16 @@ public static class SelectionDeleteResolver
 
         var wholeEntityIds = new HashSet<string>(StringComparer.Ordinal);
         var segmentSelections = new Dictionary<string, SortedSet<int>>(StringComparer.Ordinal);
+        var dimensionIds = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var selectionKey in selectionKeys.Where(key => !string.IsNullOrWhiteSpace(key)))
         {
+            if (TryParseDimensionSelectionKey(selectionKey, document, out var dimensionId))
+            {
+                dimensionIds.Add(dimensionId);
+                continue;
+            }
+
             if (selectionKey.Contains(PointKeySeparator, StringComparison.Ordinal))
             {
                 continue;
@@ -44,9 +54,9 @@ public static class SelectionDeleteResolver
             wholeEntityIds.Add(selectionKey);
         }
 
-        if (wholeEntityIds.Count == 0 && segmentSelections.Count == 0)
+        if (wholeEntityIds.Count == 0 && segmentSelections.Count == 0 && dimensionIds.Count == 0)
         {
-            return new SelectionDeleteResult(document, 0, 0);
+            return new SelectionDeleteResult(document, 0, 0, 0);
         }
 
         var usedEntityIds = document.Entities
@@ -81,9 +91,25 @@ public static class SelectionDeleteResolver
             nextEntities.Add(entity);
         }
 
-        return deletedEntities == 0 && deletedSegments == 0
-            ? new SelectionDeleteResult(document, 0, 0)
-            : new SelectionDeleteResult(new DrawingDocument(nextEntities), deletedEntities, deletedSegments);
+        var deletedGeometry = deletedEntities > 0 || deletedSegments > 0;
+        var nextDimensions = document.Dimensions
+            .Where(dimension => !dimensionIds.Contains(dimension.Id))
+            .Where(dimension => !deletedGeometry || SketchItemReferencesAreValid(dimension.ReferenceKeys, nextEntities))
+            .ToArray();
+        var nextConstraints = deletedGeometry
+            ? document.Constraints
+                .Where(constraint => SketchItemReferencesAreValid(constraint.ReferenceKeys, nextEntities))
+                .ToArray()
+            : document.Constraints.ToArray();
+        var deletedDimensions = document.Dimensions.Count - nextDimensions.Length;
+
+        return deletedEntities == 0 && deletedSegments == 0 && deletedDimensions == 0
+            ? new SelectionDeleteResult(document, 0, 0, 0)
+            : new SelectionDeleteResult(
+                new DrawingDocument(nextEntities, nextDimensions, nextConstraints),
+                deletedEntities,
+                deletedSegments,
+                deletedDimensions);
     }
 
     private static PolylineDeleteResult DeletePolylineSegments(
@@ -177,6 +203,73 @@ public static class SelectionDeleteResolver
             out segmentIndex);
     }
 
+    private static bool TryParseDimensionSelectionKey(
+        string selectionKey,
+        DrawingDocument document,
+        out string dimensionId)
+    {
+        if (selectionKey.StartsWith(PersistentDimensionKeyPrefix, StringComparison.Ordinal))
+        {
+            var candidateId = selectionKey[PersistentDimensionKeyPrefix.Length..];
+            if (document.Dimensions.Any(dimension => StringComparer.Ordinal.Equals(dimension.Id, candidateId)))
+            {
+                dimensionId = candidateId;
+                return true;
+            }
+
+            dimensionId = string.Empty;
+            return false;
+        }
+
+        if (selectionKey.StartsWith(DimensionKeyPrefix, StringComparison.Ordinal))
+        {
+            var candidateId = selectionKey[DimensionKeyPrefix.Length..];
+            if (document.Dimensions.Any(dimension => StringComparer.Ordinal.Equals(dimension.Id, candidateId)))
+            {
+                dimensionId = candidateId;
+                return true;
+            }
+
+            dimensionId = string.Empty;
+            return false;
+        }
+
+        dimensionId = string.Empty;
+        return false;
+    }
+
+    private static bool SketchItemReferencesAreValid(
+        IEnumerable<string> referenceKeys,
+        IReadOnlyList<DrawingEntity> entities)
+    {
+        foreach (var referenceKey in referenceKeys)
+        {
+            if (!SketchReference.TryParse(referenceKey, out var reference))
+            {
+                return false;
+            }
+
+            var entity = entities.FirstOrDefault(candidate =>
+                StringComparer.Ordinal.Equals(candidate.Id.Value, reference.EntityId));
+            if (entity is null)
+            {
+                return false;
+            }
+
+            if (reference.SegmentIndex is { } segmentIndex)
+            {
+                if (entity is not PolylineEntity polyline
+                    || segmentIndex < 0
+                    || segmentIndex >= polyline.Vertices.Count - 1)
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     private sealed record PolylineDeleteResult(
         IReadOnlyList<DrawingEntity> Entities,
         int DeletedSegments);
@@ -185,7 +278,10 @@ public static class SelectionDeleteResolver
 public readonly record struct SelectionDeleteResult(
     DrawingDocument Document,
     int DeletedEntities,
-    int DeletedSegments)
+    int DeletedSegments,
+    int DeletedDimensions)
 {
     public int DeletedGeometryCount => DeletedEntities + DeletedSegments;
+
+    public int DeletedCount => DeletedGeometryCount + DeletedDimensions;
 }
