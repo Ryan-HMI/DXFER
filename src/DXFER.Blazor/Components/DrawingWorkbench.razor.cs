@@ -217,7 +217,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.InscribedPolygon, WorkbenchTool.InscribedPolygon, CadIconName.InscribedPolygon, "Inscribed polygon"),
             Command(WorkbenchCommandId.CircumscribedPolygon, WorkbenchTool.CircumscribedPolygon, CadIconName.CircumscribedPolygon, "Circumscribed polygon"),
             Command(WorkbenchCommandId.Spline, WorkbenchTool.Spline, CadIconName.Spline, "Spline"),
-            Command(WorkbenchCommandId.Bezier, WorkbenchTool.Bezier, CadIconName.Bezier, "Bezier"),
             Command(WorkbenchCommandId.SplineControlPoint, WorkbenchTool.SplineControlPoint, CadIconName.SplineControlPoint, "Spline control point"),
             Command(WorkbenchCommandId.Point, WorkbenchTool.Point, CadIconName.Point, "Point"),
             Command(WorkbenchCommandId.Text, WorkbenchTool.Text, CadIconName.Text, "Text", disabled: true, isFuture: true),
@@ -264,17 +263,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.Coincident, null, CadIconName.Coincident, "Coincident", !CanCreateConstraint(SketchConstraintKind.Coincident)),
             Command(WorkbenchCommandId.Concentric, null, CadIconName.Concentric, "Concentric", !CanCreateConstraint(SketchConstraintKind.Concentric)),
             Command(WorkbenchCommandId.Parallel, null, CadIconName.Parallel, "Parallel", !CanCreateConstraint(SketchConstraintKind.Parallel)),
-            Command(WorkbenchCommandId.Tangent, WorkbenchTool.Tangent, CadIconName.Tangent, "Tangent", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.Tangent, null, CadIconName.Tangent, "Tangent", !CanCreateConstraint(SketchConstraintKind.Tangent)),
             Command(WorkbenchCommandId.Horizontal, null, CadIconName.Horizontal, "Horizontal", !CanCreateConstraint(SketchConstraintKind.Horizontal)),
             Command(WorkbenchCommandId.Vertical, null, CadIconName.Vertical, "Vertical", !CanCreateConstraint(SketchConstraintKind.Vertical)),
             Command(WorkbenchCommandId.Perpendicular, null, CadIconName.Perpendicular, "Perpendicular", !CanCreateConstraint(SketchConstraintKind.Perpendicular)),
             Command(WorkbenchCommandId.Equal, null, CadIconName.Equal, "Equal", !CanCreateConstraint(SketchConstraintKind.Equal)),
             Command(WorkbenchCommandId.Midpoint, null, CadIconName.Midpoint, "Midpoint", !CanCreateConstraint(SketchConstraintKind.Midpoint)),
             Command(WorkbenchCommandId.Normal, WorkbenchTool.Normal, CadIconName.Normal, "Normal", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Pierce, WorkbenchTool.Pierce, CadIconName.Pierce, "Pierce", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Symmetric, WorkbenchTool.Symmetric, CadIconName.Symmetric, "Symmetric", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Fix, null, CadIconName.Fix, "Fix", !CanCreateConstraint(SketchConstraintKind.Fix)),
-            Command(WorkbenchCommandId.Curvature, WorkbenchTool.Curvature, CadIconName.Curvature, "Curvature", disabled: true, isFuture: true)
+            Command(WorkbenchCommandId.Fix, null, CadIconName.Fix, "Fix", !CanCreateConstraint(SketchConstraintKind.Fix))
         })
     };
 
@@ -362,9 +359,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.CenterPointArc => "Center point arc: click center, start radius point, then end angle point. Esc: cancel.",
         WorkbenchTool.EllipticalArc => "Elliptical arc: click center, major radius point, minor radius point, then end parameter point. Esc: cancel.",
         WorkbenchTool.Conic => "Conic: click start, control point, then end point. Esc: cancel.",
-        WorkbenchTool.InscribedPolygon => "Inscribed polygon: click center, then vertex radius. Esc: cancel.",
-        WorkbenchTool.CircumscribedPolygon => "Circumscribed polygon: click center, then side apothem. Esc: cancel.",
-        WorkbenchTool.Spline => "Spline: click four control points. Esc: cancel.",
+        WorkbenchTool.InscribedPolygon => "Inscribed polygon: click center, scroll for sides, then vertex radius. Esc: cancel.",
+        WorkbenchTool.CircumscribedPolygon => "Circumscribed polygon: click center, scroll for sides, then side apothem. Esc: cancel.",
+        WorkbenchTool.Spline => "Spline: click fit points, double-click to finish. Esc: cancel.",
         WorkbenchTool.Bezier => "Bezier: click four control points. Esc: cancel.",
         WorkbenchTool.SplineControlPoint => "Spline control point: click four control points. Esc: cancel.",
         WorkbenchTool.Point => "Point: click to place a persistent sketch point. Esc: cancel.",
@@ -567,6 +564,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 await SyncSelectionFromCanvasAsync();
                 AddSketchConstraint(SketchConstraintKind.Parallel);
                 break;
+            case WorkbenchCommandId.Tangent:
+                await SyncSelectionFromCanvasAsync();
+                AddSketchConstraint(SketchConstraintKind.Tangent);
+                break;
             case WorkbenchCommandId.Horizontal:
                 await SyncSelectionFromCanvasAsync();
                 AddSketchConstraint(SketchConstraintKind.Horizontal);
@@ -634,7 +635,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         IReadOnlyDictionary<string, double> dimensionValues)
     {
         var toolPoints = points.Select(ToPoint).ToArray();
-        var newEntities = CreateEntitiesForTool(toolName, toolPoints).ToArray();
+        var newEntities = CreateEntitiesForTool(toolName, toolPoints, dimensionValues).ToArray();
         if (newEntities.Length == 0)
         {
             return;
@@ -1936,8 +1937,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private static double Round(double value) => Math.Round(value, 4);
 
-    private IReadOnlyList<DrawingEntity> CreateEntitiesForTool(string toolName, IReadOnlyList<Point2> points) =>
-        SketchCreationEntityFactory.CreateEntitiesForTool(toolName, points, CreateEntityId, _constructionMode);
+    private IReadOnlyList<DrawingEntity> CreateEntitiesForTool(
+        string toolName,
+        IReadOnlyList<Point2> points,
+        IReadOnlyDictionary<string, double> dimensionValues) =>
+        SketchCreationEntityFactory.CreateEntitiesForTool(toolName, points, CreateEntityId, _constructionMode, dimensionValues);
 
     private WorkbenchToolCommand Command(
         WorkbenchCommandId id,
@@ -1977,7 +1981,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             or WorkbenchCommandId.InscribedPolygon
             or WorkbenchCommandId.CircumscribedPolygon
             or WorkbenchCommandId.Spline
-            or WorkbenchCommandId.Bezier
             or WorkbenchCommandId.SplineControlPoint
             or WorkbenchCommandId.Point
             or WorkbenchCommandId.Construction
@@ -1998,6 +2001,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             or WorkbenchCommandId.Coincident
             or WorkbenchCommandId.Concentric
             or WorkbenchCommandId.Parallel
+            or WorkbenchCommandId.Tangent
             or WorkbenchCommandId.Horizontal
             or WorkbenchCommandId.Vertical
             or WorkbenchCommandId.Perpendicular
@@ -2158,9 +2162,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchCommandId.Spline:
                 tool = WorkbenchTool.Spline;
                 return true;
-            case WorkbenchCommandId.Bezier:
-                tool = WorkbenchTool.Bezier;
-                return true;
             case WorkbenchCommandId.SplineControlPoint:
                 tool = WorkbenchTool.SplineControlPoint;
                 return true;
@@ -2219,9 +2220,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.CenterPointArc => "Pick center, start radius point, then end angle point.",
         WorkbenchTool.EllipticalArc => "Pick center, major radius, minor radius, then arc endpoint.",
         WorkbenchTool.Conic => "Pick start, control point, then end point.",
-        WorkbenchTool.InscribedPolygon => "Pick center, then vertex radius.",
-        WorkbenchTool.CircumscribedPolygon => "Pick center, then side apothem.",
-        WorkbenchTool.Spline => "Pick four control points.",
+        WorkbenchTool.InscribedPolygon => "Pick center, scroll for sides, then vertex radius.",
+        WorkbenchTool.CircumscribedPolygon => "Pick center, scroll for sides, then side apothem.",
+        WorkbenchTool.Spline => "Pick fit points; double-click to finish.",
         WorkbenchTool.Bezier => "Pick four Bezier control points.",
         WorkbenchTool.SplineControlPoint => "Pick four spline control points.",
         WorkbenchTool.Point => "Pick a point on the canvas.",

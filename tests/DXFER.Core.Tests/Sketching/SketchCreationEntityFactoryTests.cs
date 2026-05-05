@@ -37,10 +37,16 @@ public sealed class SketchCreationEntityFactoryTests
         var inscribed = Create("inscribedpolygon", new Point2(0, 0), new Point2(10, 0));
         var circumscribed = Create("circumscribedpolygon", new Point2(0, 0), new Point2(10, 0));
 
-        inscribed.Should().HaveCount(6).And.AllBeOfType<LineEntity>();
-        circumscribed.Should().HaveCount(6).And.AllBeOfType<LineEntity>();
-        ((LineEntity)inscribed[0]).Start.Should().Be(new Point2(10, 0));
-        Distance(new Point2(0, 0), ((LineEntity)circumscribed[0]).Start)
+        inscribed.Should().HaveCount(7);
+        circumscribed.Should().HaveCount(7);
+        inscribed[0].Should().BeOfType<CircleEntity>()
+            .Which.IsConstruction.Should().BeTrue();
+        circumscribed[0].Should().BeOfType<CircleEntity>()
+            .Which.IsConstruction.Should().BeTrue();
+        inscribed.Skip(1).Should().AllBeOfType<LineEntity>();
+        circumscribed.Skip(1).Should().AllBeOfType<LineEntity>();
+        ((LineEntity)inscribed[1]).Start.Should().Be(new Point2(10, 0));
+        Distance(new Point2(0, 0), ((LineEntity)circumscribed[1]).Start)
             .Should().BeApproximately(10 / Math.Cos(Math.PI / 6), 0.000001);
     }
 
@@ -57,8 +63,9 @@ public sealed class SketchCreationEntityFactoryTests
             .Should().ContainSingle().Which.Should().BeOfType<SplineEntity>().Which.ControlPoints.Should().HaveCount(4);
 
         var slot = Create("slot", new Point2(0, 0), new Point2(10, 0), new Point2(0, 2));
-        slot.Should().HaveCount(4);
+        slot.Should().HaveCount(5);
         slot.OfType<ArcEntity>().Should().Contain(arc => arc.Radius == 2);
+        slot.OfType<LineEntity>().Should().Contain(line => line.IsConstruction);
     }
 
     private IReadOnlyList<DrawingEntity> Create(string toolName, params Point2[] points) =>

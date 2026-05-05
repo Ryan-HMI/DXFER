@@ -120,6 +120,38 @@ public sealed class SketchConstraintServiceTests
     }
 
     [Fact]
+    public void ValidatesTangentLineAndCircleConstraint()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new Point2(-5, 0), new Point2(5, 0)),
+            new CircleEntity(EntityId.Create("circle"), new Point2(0, 2), 2)
+        });
+
+        var validated = SketchConstraintService.ValidateConstraint(
+            document,
+            Constraint("tangent", SketchConstraintKind.Tangent, "edge", "circle"));
+
+        validated.State.Should().Be(SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void ValidatesTangentCirclePairConstraint()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new CircleEntity(EntityId.Create("first"), new Point2(0, 0), 2),
+            new ArcEntity(EntityId.Create("second"), new Point2(5, 0), 3, 0, 180)
+        });
+
+        var validated = SketchConstraintService.ValidateConstraint(
+            document,
+            Constraint("tangent", SketchConstraintKind.Tangent, "first", "second"));
+
+        validated.State.Should().Be(SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
     public void AppliesConcentricCircleAndArcConstraint()
     {
         var document = new DrawingDocument(new DrawingEntity[]

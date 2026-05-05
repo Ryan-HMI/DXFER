@@ -13,7 +13,8 @@ public static class SketchCreationEntityFactory
         string toolName,
         IReadOnlyList<Point2> points,
         Func<string, EntityId> createEntityId,
-        bool isConstruction)
+        bool isConstruction,
+        IReadOnlyDictionary<string, double>? dimensionValues = null)
     {
         ArgumentNullException.ThrowIfNull(points);
         ArgumentNullException.ThrowIfNull(createEntityId);
@@ -93,14 +94,14 @@ public static class SketchCreationEntityFactory
                 entities.Add(new SplineEntity(createEntityId("conic"), 2, points.Take(3), Array.Empty<double>(), isConstruction: isConstruction));
                 break;
             case "inscribedpolygon":
-                entities.AddRange(CreatePolygon(first, second, false, createEntityId, isConstruction));
+                entities.AddRange(CreatePolygon(first, second, false, GetPolygonSideCount(dimensionValues), createEntityId, isConstruction));
                 break;
             case "circumscribedpolygon":
-                entities.AddRange(CreatePolygon(first, second, true, createEntityId, isConstruction));
+                entities.AddRange(CreatePolygon(first, second, true, GetPolygonSideCount(dimensionValues), createEntityId, isConstruction));
                 break;
-            case "spline" when points.Count >= 4:
-            case "splinecontrolpoint" when points.Count >= 4:
-                entities.Add(CreateSpline(createEntityId("spline"), points.Take(4).ToArray(), isConstruction));
+            case "spline" when points.Count >= 2:
+            case "splinecontrolpoint" when points.Count >= 2:
+                entities.Add(CreateSpline(createEntityId("spline"), points.ToArray(), isConstruction));
                 break;
             case "bezier" when points.Count >= 4:
                 entities.Add(new SplineEntity(
@@ -224,10 +225,21 @@ public static class SketchCreationEntityFactory
         Point2 center,
         Point2 radiusPoint,
         bool circumscribed,
+        int sideCount,
         Func<string, EntityId> createEntityId,
         bool isConstruction)
     {
-        var vertices = GetPolygonVertices(center, radiusPoint, circumscribed, DefaultPolygonSideCount);
+        var constructionRadius = Distance(center, radiusPoint);
+        if (constructionRadius > GeometryTolerance)
+        {
+            yield return new CircleEntity(
+                createEntityId(circumscribed ? "circ-poly-guide" : "poly-guide"),
+                center,
+                constructionRadius,
+                true);
+        }
+
+        var vertices = GetPolygonVertices(center, radiusPoint, circumscribed, sideCount);
         for (var index = 0; index < vertices.Count; index++)
         {
             yield return new LineEntity(
@@ -290,9 +302,22 @@ public static class SketchCreationEntityFactory
         var axisAngle = Math.Atan2(axis.Y, axis.X) * 180.0 / Math.PI;
 
         yield return new LineEntity(createEntityId("slot"), startLeft, endLeft, isConstruction);
-        yield return new ArcEntity(createEntityId("slot"), endCenter, radius, axisAngle + 90, axisAngle + 270, isConstruction);
+        yield return new ArcEntity(createEntityId("slot"), endCenter, radius, axisAngle - 90, axisAngle + 90, isConstruction);
         yield return new LineEntity(createEntityId("slot"), endRight, startRight, isConstruction);
-        yield return new ArcEntity(createEntityId("slot"), startCenter, radius, axisAngle - 90, axisAngle + 90, isConstruction);
+        yield return new ArcEntity(createEntityId("slot"), startCenter, radius, axisAngle + 90, axisAngle + 270, isConstruction);
+        yield return new LineEntity(createEntityId("slot-center"), startCenter, endCenter, true);
+    }
+
+    private static int GetPolygonSideCount(IReadOnlyDictionary<string, double>? dimensionValues)
+    {
+        if (dimensionValues is not null
+            && dimensionValues.TryGetValue("sides", out var sides)
+            && double.IsFinite(sides))
+        {
+            return Math.Clamp((int)Math.Round(sides), 3, 64);
+        }
+
+        return DefaultPolygonSideCount;
     }
 
     private static Point2[]? GetAlignedRectangleCorners(Point2 first, Point2 second, Point2 depthPoint)

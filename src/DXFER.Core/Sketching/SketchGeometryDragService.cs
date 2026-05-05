@@ -41,9 +41,12 @@ public static class SketchGeometryDragService
             return false;
         }
 
-        var draggedDocument = new DrawingDocument(entities, document.Dimensions, document.Constraints);
+        var dimensions = TryGetTranslatedDimensionEntityId(document, selectionKey, out var translatedEntityId)
+            ? TranslateDimensionAnchors(document.Dimensions, translatedEntityId, delta)
+            : document.Dimensions;
+        var draggedDocument = new DrawingDocument(entities, dimensions, document.Constraints);
         draggedDocument = SketchConstraintService.ApplyConstraints(draggedDocument, document.Constraints);
-        draggedDocument = SketchDimensionSolverService.ApplyDimensions(draggedDocument, document.Dimensions);
+        draggedDocument = SketchDimensionSolverService.ApplyDimensions(draggedDocument, draggedDocument.Dimensions);
         if (GeometryMatches(document.Entities, draggedDocument.Entities))
         {
             status = "Selected geometry is constrained.";
@@ -586,6 +589,77 @@ public static class SketchGeometryDragService
             NumberStyles.Integer,
             CultureInfo.InvariantCulture,
             out segmentIndex);
+    }
+
+    private static bool TryGetTranslatedDimensionEntityId(
+        DrawingDocument document,
+        string selectionKey,
+        out string entityId)
+    {
+        if (TryParseSegmentSelectionKey(selectionKey, out entityId, out _))
+        {
+            return true;
+        }
+
+        if (SketchReference.TryParseCanvasPointCoordinates(selectionKey, out var pointEntityId, out var label, out _)
+            && document.Entities.FirstOrDefault(entity => StringComparer.Ordinal.Equals(entity.Id.Value, pointEntityId)) is { } entity)
+        {
+            var normalizedLabel = NormalizePointLabel(label);
+            var translated = entity switch
+            {
+                LineEntity => normalizedLabel == "mid",
+                PolylineEntity => normalizedLabel.StartsWith("mid-", StringComparison.Ordinal),
+                CircleEntity or ArcEntity => normalizedLabel == "center",
+                PointEntity => normalizedLabel == "point",
+                _ => false
+            };
+            entityId = translated ? pointEntityId : string.Empty;
+            return translated;
+        }
+
+        var wholeEntity = document.Entities.FirstOrDefault(entity => StringComparer.Ordinal.Equals(entity.Id.Value, selectionKey));
+        var isWholeEntityTranslation = wholeEntity is LineEntity or PolylineEntity or PointEntity;
+        entityId = isWholeEntityTranslation ? selectionKey : string.Empty;
+        return isWholeEntityTranslation;
+    }
+
+    private static IReadOnlyList<SketchDimension> TranslateDimensionAnchors(
+        IReadOnlyList<SketchDimension> dimensions,
+        string entityId,
+        Point2 delta)
+    {
+        return dimensions
+            .Select(dimension => ShouldTranslateDimensionAnchor(dimension, entityId)
+                ? new SketchDimension(
+                    dimension.Id,
+                    dimension.Kind,
+                    dimension.ReferenceKeys,
+                    dimension.Value,
+                    dimension.Anchor.HasValue ? Add(dimension.Anchor.Value, delta) : null,
+                    dimension.IsDriving)
+                : dimension)
+            .ToArray();
+    }
+
+    private static bool ShouldTranslateDimensionAnchor(SketchDimension dimension, string entityId)
+    {
+        return dimension.Anchor.HasValue
+            && dimension.ReferenceKeys.Count > 0
+            && dimension.ReferenceKeys
+                .Select(GetReferenceEntityId)
+                .All(referenceEntityId => StringComparer.Ordinal.Equals(referenceEntityId, entityId));
+    }
+
+    private static string GetReferenceEntityId(string referenceKey)
+    {
+        if (SketchReference.TryParseCanvasPointCoordinates(referenceKey, out var canvasEntityId, out _, out _))
+        {
+            return canvasEntityId;
+        }
+
+        return SketchReference.TryParse(referenceKey, out var reference)
+            ? reference.EntityId
+            : string.Empty;
     }
 
     private static bool TryParseIndexedLabel(string label, string prefix, out int index)

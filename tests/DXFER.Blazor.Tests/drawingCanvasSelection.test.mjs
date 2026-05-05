@@ -161,9 +161,8 @@ test("creation tool point counts cover remaining sketch tools", () => {
   assert.equal(getSketchToolPointCount("inscribedpolygon"), 2);
   assert.equal(getSketchToolPointCount("circumscribedpolygon"), 2);
   assert.equal(getSketchToolPointCount("conic"), 3);
-  assert.equal(getSketchToolPointCount("spline"), 4);
-  assert.equal(getSketchToolPointCount("bezier"), 4);
-  assert.equal(getSketchToolPointCount("splinecontrolpoint"), 4);
+  assert.equal(getSketchToolPointCount("spline"), Number.MAX_SAFE_INTEGER);
+  assert.equal(getSketchToolPointCount("splinecontrolpoint"), Number.MAX_SAFE_INTEGER);
   assert.equal(getSketchToolPointCount("slot"), 3);
 });
 
@@ -1433,6 +1432,37 @@ test("geometry drag preview translates a line midpoint", () => {
     { x: 7, y: 3 });
 
   assert.deepEqual(preview.entities[0].points, [{ x: 2, y: 3 }, { x: 12, y: 3 }]);
+});
+
+test("geometry drag preview translates dimension anchors for moved geometry", () => {
+  const document = {
+    entities: [
+      {
+        id: "edge",
+        kind: "line",
+        points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+      }
+    ],
+    dimensions: [
+      {
+        id: "dim-edge",
+        kind: "lineardistance",
+        referenceKeys: ["edge:start", "edge:end"],
+        value: 10,
+        anchor: { x: 5, y: 2 }
+      }
+    ],
+    constraints: []
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "edge|point|mid|5|0",
+    { x: 5, y: 0 },
+    { x: 7, y: 3 });
+
+  assert.deepEqual(preview.dimensions[0].anchor, { x: 7, y: 5 });
+  assert.deepEqual(document.dimensions[0].anchor, { x: 5, y: 2 });
 });
 
 test("point sketch tool needs one click", () => {

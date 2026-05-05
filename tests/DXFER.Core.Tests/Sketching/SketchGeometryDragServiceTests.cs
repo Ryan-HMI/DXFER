@@ -51,6 +51,37 @@ public sealed class SketchGeometryDragServiceTests
     }
 
     [Fact]
+    public void DraggingLineMidpointTranslatesDimensionsReferencingThatLine()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(10, 0))
+            },
+            new[]
+            {
+                new SketchDimension(
+                    "dim-edge",
+                    SketchDimensionKind.LinearDistance,
+                    new[] { "edge:start", "edge:end" },
+                    10,
+                    new Point2(5, 2))
+            },
+            Array.Empty<SketchConstraint>());
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "edge|point|mid|5|0",
+            new Point2(5, 0),
+            new Point2(7, 3),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(7, 5));
+    }
+
+    [Fact]
     public void ShiftDraggingLineEndpointProjectsOntoCurrentLineVector()
     {
         var document = new DrawingDocument(new DrawingEntity[]

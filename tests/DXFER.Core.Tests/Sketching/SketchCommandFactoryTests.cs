@@ -272,4 +272,34 @@ public sealed class SketchCommandFactoryTests
         constraint.Kind.Should().Be(SketchConstraintKind.Coincident);
         constraint.ReferenceKeys.Should().Equal("a", "b");
     }
+
+    [Fact]
+    public void BuildsTangentConstraintFromCircleAndLineInEitherOrder()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new CircleEntity(EntityId.Create("circle"), new Point2(0, 2), 2),
+            new LineEntity(EntityId.Create("edge"), new Point2(-5, 0), new Point2(5, 0))
+        });
+
+        SketchCommandFactory.TryBuildConstraint(
+                document,
+                new[] { "edge", "circle" },
+                SketchConstraintKind.Tangent,
+                "constraint-1",
+                out var first,
+                out _)
+            .Should().BeTrue();
+        first.ReferenceKeys.Should().Equal("edge", "circle");
+
+        SketchCommandFactory.TryBuildConstraint(
+                document,
+                new[] { "circle", "edge" },
+                SketchConstraintKind.Tangent,
+                "constraint-2",
+                out var second,
+                out _)
+            .Should().BeTrue();
+        second.ReferenceKeys.Should().Equal("circle", "edge");
+    }
 }

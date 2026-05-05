@@ -67,6 +67,7 @@ public static class SketchConstraintService
             SketchConstraintKind.Vertical => IsAxisAligned(document.Entities, constraint, isHorizontal: false),
             SketchConstraintKind.Parallel => IsParallel(document.Entities, constraint),
             SketchConstraintKind.Perpendicular => IsPerpendicular(document.Entities, constraint),
+            SketchConstraintKind.Tangent => IsTangent(document.Entities, constraint),
             SketchConstraintKind.Concentric => IsConcentric(document.Entities, constraint),
             SketchConstraintKind.Equal => IsEqual(document.Entities, constraint),
             SketchConstraintKind.Midpoint => IsMidpoint(document.Entities, constraint),
@@ -102,6 +103,8 @@ public static class SketchConstraintService
                 break;
             case SketchConstraintKind.Perpendicular:
                 ApplyLinePairDirection(entities, fixedReferences, constraint, perpendicular: true);
+                break;
+            case SketchConstraintKind.Tangent:
                 break;
             case SketchConstraintKind.Concentric:
                 ApplyConcentric(entities, fixedReferences, constraint);
@@ -456,6 +459,38 @@ public static class SketchConstraintService
         return Math.Abs(firstX * secondX + firstY * secondY) <= SketchGeometryEditor.Tolerance;
     }
 
+    private static bool IsTangent(IReadOnlyList<DrawingEntity> entities, SketchConstraint constraint)
+    {
+        if (TryGetLineAndCircleLikeReferences(
+                entities,
+                constraint,
+                out _,
+                out var line,
+                out _,
+                out var center,
+                out var radius))
+        {
+            return SketchGeometryEditor.AreClose(DistancePointToLine(center, line), radius);
+        }
+
+        if (!TryGetTwoCircleLikeReferences(
+                entities,
+                constraint,
+                out _,
+                out var firstCenter,
+                out var firstRadius,
+                out _,
+                out var secondCenter,
+                out var secondRadius))
+        {
+            return false;
+        }
+
+        var centerDistance = Distance(firstCenter, secondCenter);
+        return SketchGeometryEditor.AreClose(centerDistance, firstRadius + secondRadius)
+            || SketchGeometryEditor.AreClose(centerDistance, Math.Abs(firstRadius - secondRadius));
+    }
+
     private static bool IsConcentric(IReadOnlyList<DrawingEntity> entities, SketchConstraint constraint)
     {
         if (!TryGetTwoCircleLikeReferences(
@@ -596,6 +631,56 @@ public static class SketchConstraintService
         return false;
     }
 
+    private static bool TryGetLineAndCircleLikeReferences(
+        IReadOnlyList<DrawingEntity> entities,
+        SketchConstraint constraint,
+        out SketchReference lineReference,
+        out LineEntity line,
+        out SketchReference circleReference,
+        out Point2 center,
+        out double radius)
+    {
+        lineReference = default;
+        line = default!;
+        circleReference = default;
+        center = default;
+        radius = default;
+
+        if (constraint.ReferenceKeys.Count < 2
+            || !SketchReference.TryParse(constraint.ReferenceKeys[0], out var firstReference)
+            || !SketchReference.TryParse(constraint.ReferenceKeys[1], out var secondReference))
+        {
+            return false;
+        }
+
+        var firstIsLine = SketchGeometryEditor.TryGetLine(entities, firstReference, out _, out var firstLine);
+        var secondIsLine = SketchGeometryEditor.TryGetLine(entities, secondReference, out _, out var secondLine);
+        var firstIsCircleLike = SketchGeometryEditor.TryGetCircleLike(entities, firstReference, out _, out var firstCenter, out var firstRadius);
+        var secondIsCircleLike = SketchGeometryEditor.TryGetCircleLike(entities, secondReference, out _, out var secondCenter, out var secondRadius);
+
+        if (firstIsLine && secondIsCircleLike)
+        {
+            lineReference = firstReference;
+            line = firstLine;
+            circleReference = secondReference;
+            center = secondCenter;
+            radius = secondRadius;
+            return true;
+        }
+
+        if (firstIsCircleLike && secondIsLine)
+        {
+            lineReference = secondReference;
+            line = secondLine;
+            circleReference = firstReference;
+            center = firstCenter;
+            radius = firstRadius;
+            return true;
+        }
+
+        return false;
+    }
+
     private static bool TryGetPointAndLineReferences(
         IReadOnlyList<DrawingEntity> entities,
         SketchConstraint constraint,
@@ -648,6 +733,26 @@ public static class SketchConstraintService
 
     private static double GetLineAngleDegrees(LineEntity line) =>
         Math.Atan2(line.End.Y - line.Start.Y, line.End.X - line.Start.X) * 180.0 / Math.PI;
+
+    private static double Distance(Point2 first, Point2 second)
+    {
+        var deltaX = second.X - first.X;
+        var deltaY = second.Y - first.Y;
+        return Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
+    }
+
+    private static double DistancePointToLine(Point2 point, LineEntity line)
+    {
+        var deltaX = line.End.X - line.Start.X;
+        var deltaY = line.End.Y - line.Start.Y;
+        var denominator = Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
+        if (denominator <= SketchGeometryEditor.Tolerance)
+        {
+            return Distance(point, line.Start);
+        }
+
+        return Math.Abs((deltaY * point.X) - (deltaX * point.Y) + (line.End.X * line.Start.Y) - (line.End.Y * line.Start.X)) / denominator;
+    }
 
     private static SketchConstraint WithState(SketchConstraint constraint, SketchConstraintState state) =>
         new(constraint.Id, constraint.Kind, constraint.ReferenceKeys, state);

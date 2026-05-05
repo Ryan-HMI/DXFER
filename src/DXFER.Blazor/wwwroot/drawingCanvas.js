@@ -268,7 +268,8 @@ function createEmptyToolDraft() {
   return {
     points: [],
     previewPoint: null,
-    dimensionValues: {}
+    dimensionValues: {},
+    polygonSideCount: null
   };
 }
 
@@ -538,7 +539,7 @@ function draw(state) {
 
   for (const selectedKey of state.selectedKeys) {
     const target = resolveSelectionTarget(state, selectedKey);
-    if (target) {
+    if (target && !isDimensionTargetBeingEdited(state, target)) {
       const isActive = selectedKey === state.activeSelectionKey;
       drawTarget(state, target, {
         strokeStyle: isActive ? "#7dd3fc" : "#2d7898",
@@ -552,7 +553,7 @@ function draw(state) {
   drawAcquiredSnapPoints(state);
   drawInferenceGuides(state, size);
 
-  if (state.hoveredTarget) {
+  if (state.hoveredTarget && !isDimensionTargetBeingEdited(state, state.hoveredTarget)) {
     const isSelected = state.selectedKeys.has(state.hoveredTarget.key);
     const isActive = state.hoveredTarget.key === state.activeSelectionKey;
     drawTarget(state, state.hoveredTarget, {
@@ -755,6 +756,15 @@ function drawTarget(state, target, style) {
       lineWidth: 2
     });
   }
+}
+
+function isDimensionTargetBeingEdited(state, target) {
+  if (!target || target.kind !== "dimension" || !target.dimensionId || !state.persistentDimensionInputs) {
+    return false;
+  }
+
+  const input = state.persistentDimensionInputs.get(target.dimensionId);
+  return Boolean(input && input.dataset.dimensionEditing === "true");
 }
 
 function drawAcquiredSnapPoints(state) {
@@ -1081,7 +1091,7 @@ function drawToolPreview(state) {
       drawWorldPolyline(state, [first, second, third]);
     }
   } else if (tool === "inscribedpolygon" || tool === "circumscribedpolygon") {
-    const polygonPoints = getPolygonWorldPoints(first, second, tool === "circumscribedpolygon");
+    const polygonPoints = getPolygonWorldPoints(first, second, tool === "circumscribedpolygon", getPolygonSideCount(state));
     drawWorldPolyline(state, polygonPoints.concat(polygonPoints[0]));
     addPolygonPreviewDimension(dimensions, state, first, second, tool === "circumscribedpolygon");
   } else if (tool === "spline" || tool === "bezier" || tool === "splinecontrolpoint") {
@@ -1342,8 +1352,38 @@ export function getThreePointArcPreviewDimensions(state, first, through, end) {
   }
 
   const dimensions = [];
-  addRadiusPreviewDimension(dimensions, state, arcState.center, first);
+  addArcRadiusPreviewDimension(dimensions, state, arcState);
   return dimensions;
+}
+
+function addArcRadiusPreviewDimension(dimensions, state, arc) {
+  if (!arc || !arc.center || !isFinitePositive(arc.radius)) {
+    return;
+  }
+
+  const value = arc.radius;
+  if (!formatDimensionValue(value)) {
+    return;
+  }
+
+  const sweep = getPositiveSweepDegrees(arc.startAngleDegrees, arc.endAngleDegrees);
+  const midAngle = arc.startAngleDegrees + sweep / 2;
+  const arcPoint = pointOnCircle(arc.center, arc.radius, midAngle);
+  const centerScreen = worldToScreen(state, arc.center);
+  const arcScreen = worldToScreen(state, arcPoint);
+  const radialDirection = normalizeScreenVector({
+    x: arcScreen.x - centerScreen.x,
+    y: arcScreen.y - centerScreen.y
+  }) || { x: 1, y: 0 };
+  dimensions.push({
+    key: "radius",
+    label: "Radius",
+    value,
+    point: {
+      x: arcScreen.x + radialDirection.x * 34,
+      y: arcScreen.y + radialDirection.y * 34
+    }
+  });
 }
 
 function addCenterPointArcSweepPreviewDimension(dimensions, state, center, startRadiusPoint, endAnglePoint) {
@@ -1582,7 +1622,9 @@ function getDimensionGeometry(state, kind, referenceKeys, anchorPoint) {
         center: circleLike.center,
         radius: circleLike.radius,
         anchorPoint,
-        diameter: kind === "diameter"
+        diameter: kind === "diameter",
+        startAngleDegrees: circleLike.startAngleDegrees,
+        endAngleDegrees: circleLike.endAngleDegrees
       }
       : null;
   }
@@ -1797,7 +1839,8 @@ function drawRadialDimensionGraphics(state, dimension, isPreview) {
   const radius = geometry.radius * state.view.scale;
   const text = getDimensionDisplayText(dimension);
   const textWidth = text ? measureDimensionCanvasText(state, text) : 0;
-  const radialGeometry = getRadialDimensionScreenGeometry(center, radius, anchor, geometry.diameter, textWidth);
+  const edgeOverride = getArcRadialDimensionEdgeOverride(state, geometry);
+  const radialGeometry = getRadialDimensionScreenGeometry(center, radius, anchor, geometry.diameter, textWidth, edgeOverride);
   const { context } = state;
   const style = getDimensionRenderStyle(isPreview);
 
@@ -1819,7 +1862,7 @@ function drawRadialDimensionGraphics(state, dimension, isPreview) {
   drawDimensionCanvasText(state, dimension, isPreview);
 }
 
-export function getRadialDimensionScreenGeometry(center, radius, anchor, diameter = false, textWidth = 0) {
+export function getRadialDimensionScreenGeometry(center, radius, anchor, diameter = false, textWidth = 0, edgeOverride = null) {
   const direction = normalizeScreenVector({
     x: anchor.x - center.x,
     y: anchor.y - center.y
@@ -1827,22 +1870,26 @@ export function getRadialDimensionScreenGeometry(center, radius, anchor, diamete
   const anchorDistance = distanceBetweenScreenPoints(center, anchor);
   const isInside = anchorDistance < radius;
   const textGap = Math.max(DIMENSION_INPUT_LEADER_GAP, textWidth / 2 + DIMENSION_TEXT_GAP_PADDING);
-  const edge = {
+  const edge = edgeOverride || {
     x: center.x + direction.x * radius,
     y: center.y + direction.y * radius
   };
+  const edgeDirection = normalizeScreenVector({
+    x: edge.x - center.x,
+    y: edge.y - center.y
+  }) || direction;
 
   if (diameter) {
     if (isInside) {
       const oppositeEdge = {
-        x: center.x - direction.x * radius,
-        y: center.y - direction.y * radius
+        x: center.x - edgeDirection.x * radius,
+        y: center.y - edgeDirection.y * radius
       };
       return {
         segments: getSegmentPartsAroundPoint(oppositeEdge, edge, anchor, textGap),
         arrows: [
-          { point: oppositeEdge, toward: { x: oppositeEdge.x - direction.x, y: oppositeEdge.y - direction.y } },
-          { point: edge, toward: { x: edge.x + direction.x, y: edge.y + direction.y } }
+          { point: oppositeEdge, toward: { x: oppositeEdge.x - edgeDirection.x, y: oppositeEdge.y - edgeDirection.y } },
+          { point: edge, toward: { x: edge.x + edgeDirection.x, y: edge.y + edgeDirection.y } }
         ]
       };
     }
@@ -1856,7 +1903,7 @@ export function getRadialDimensionScreenGeometry(center, radius, anchor, diamete
   if (isInside) {
     return {
       segments: getSegmentPartsAroundPoint(center, edge, anchor, textGap),
-      arrows: [{ point: edge, toward: { x: edge.x + direction.x, y: edge.y + direction.y } }]
+      arrows: [{ point: edge, toward: { x: edge.x + edgeDirection.x, y: edge.y + edgeDirection.y } }]
     };
   }
 
@@ -1864,6 +1911,35 @@ export function getRadialDimensionScreenGeometry(center, radius, anchor, diamete
     segments: getLeaderSegmentsToAnchor(edge, anchor, textGap),
     arrows: [{ point: edge, toward: center }]
   };
+}
+
+function getArcRadialDimensionEdgeOverride(state, geometry) {
+  if (!geometry
+    || !Number.isFinite(geometry.startAngleDegrees)
+    || !Number.isFinite(geometry.endAngleDegrees)
+    || !geometry.center
+    || !geometry.anchorPoint
+    || !isFinitePositive(geometry.radius)) {
+    return null;
+  }
+
+  const anchorAngle = radiansToDegrees(Math.atan2(
+    geometry.anchorPoint.y - geometry.center.y,
+    geometry.anchorPoint.x - geometry.center.x));
+  const clampedAngle = getClosestAngleOnSweep(anchorAngle, geometry.startAngleDegrees, geometry.endAngleDegrees);
+  return worldToScreen(state, pointOnCircle(geometry.center, geometry.radius, clampedAngle));
+}
+
+function getClosestAngleOnSweep(angle, startAngle, endAngle) {
+  const sweep = getPositiveSweepDegrees(startAngle, endAngle);
+  const normalizedOffset = normalizeAngleDegrees(angle - startAngle);
+  if (normalizedOffset <= sweep) {
+    return startAngle + normalizedOffset;
+  }
+
+  return normalizedOffset - sweep < 360 - normalizedOffset
+    ? startAngle + sweep
+    : startAngle;
 }
 
 function getLeaderSegmentsToAnchor(start, anchor, textGap) {
@@ -3096,10 +3172,14 @@ function handleDimensionInputKeyDown(state, input, event) {
     commitDimensionInputValue(state, input);
     const dimensions = getVisibleDimensionDescriptors(state);
     if (isLastDimensionInput(dimensions, input)) {
-      commitCurrentSketchTool(state);
-      focusCanvasWithoutDimensionCommit(state);
-      updateDebugAttributes(state);
-      draw(state);
+      if (commitCurrentSketchTool(state)) {
+        focusCanvasWithoutDimensionCommit(state);
+        updateDebugAttributes(state);
+        draw(state);
+      } else if (advanceCurrentSketchToolPoint(state)) {
+        updateDebugAttributes(state);
+        draw(state);
+      }
     } else {
       focusDimensionInputByKey(state, getNextDimensionKey(dimensions, input.dataset.dimensionKey, false), true);
     }
@@ -3110,10 +3190,13 @@ function handleDimensionInputKeyDown(state, input, event) {
     event.preventDefault();
   } else if (event.key === "Tab") {
     input.dataset.dimensionEditing = "false";
-    commitDimensionInputValue(state, input);
+    input.dataset.skipNextBlurCommit = "true";
+    input.dataset.skipNextChangeCommit = "true";
+    const nextKey = getNextDimensionKey(getVisibleDimensionDescriptors(state), input.dataset.dimensionKey, event.shiftKey);
     focusDimensionInputByKey(
       state,
-      getNextDimensionKey(getVisibleDimensionDescriptors(state), input.dataset.dimensionKey, event.shiftKey),
+      nextKey,
+      true,
       true);
     event.preventDefault();
   }
@@ -3172,19 +3255,22 @@ function getFocusedDimensionInput(state) {
     : null;
 }
 
-function focusDimensionInputByKey(state, key, selectContents) {
+function focusDimensionInputByKey(state, key, selectContents, clearLock = false) {
   const input = key ? state.dimensionInputs.get(key) : null;
   if (input) {
-    focusDimensionInput(state, input, selectContents);
+    focusDimensionInput(state, input, selectContents, clearLock);
   }
 }
 
-function focusDimensionInput(state, input, selectContents) {
+function focusDimensionInput(state, input, selectContents, clearLock = false) {
   if (!input) {
     return;
   }
 
   state.activeDimensionKey = input.dataset.dimensionKey || null;
+  if (clearLock && clearDraftDimensionValue(state, state.activeDimensionKey)) {
+    input.dataset.dimensionEditing = "false";
+  }
   focusElement(input);
   if (selectContents) {
     selectInputText(input);
@@ -3852,7 +3938,8 @@ function updateGeometryDrag(state, screenPoint, event = {}) {
   }
 
   drag.currentScreenPoint = screenPoint;
-  drag.currentWorldPoint = screenToWorld(state, screenPoint);
+  const dragPoint = getGeometryDragWorldPoint(state, drag, screenPoint);
+  drag.currentWorldPoint = dragPoint.point;
   drag.constrainToCurrentVector = Boolean(event.shiftKey);
   drag.moved = distanceBetweenScreenPoints(drag.startScreenPoint, screenPoint) > CLICK_MOVE_TOLERANCE;
   const previewDocument = applyGeometryDragPreview(
@@ -3866,8 +3953,64 @@ function updateGeometryDrag(state, screenPoint, event = {}) {
   }
 
   state.document = previewDocument;
-  setHoveredTarget(state, resolveSelectionTarget(state, drag.targetKey));
+  setHoveredTarget(state, dragPoint.target || resolveSelectionTarget(state, drag.targetKey));
   return true;
+}
+
+function getGeometryDragWorldPoint(state, drag, screenPoint) {
+  const fallback = screenToWorld(state, screenPoint);
+  const originalDocument = state.document;
+  state.document = drag.originalDocument;
+  try {
+    const target = findNearestTarget(state, screenPoint);
+    if (isUsableGeometryDragSnapTarget(drag, target)) {
+      return {
+        point: getTargetWorldSnapPoint(target) || fallback,
+        target
+      };
+    }
+  } finally {
+    state.document = originalDocument;
+  }
+
+  return {
+    point: fallback,
+    target: null
+  };
+}
+
+function isUsableGeometryDragSnapTarget(drag, target) {
+  if (!drag || !target || target.dynamic || target.kind === "dimension") {
+    return false;
+  }
+
+  const draggedEntityId = getSelectionEntityId(drag.targetKey);
+  return target.key !== drag.targetKey
+    && (!draggedEntityId || !target.entityId || !StringComparer(target.entityId, draggedEntityId))
+    && Boolean(getTargetWorldSnapPoint(target));
+}
+
+function getTargetWorldSnapPoint(target) {
+  if (!target) {
+    return null;
+  }
+
+  return target.point || target.snapPoint || null;
+}
+
+function getSelectionEntityId(selectionKey) {
+  const key = String(selectionKey || "");
+  const pointIndex = key.indexOf(POINT_KEY_SEPARATOR);
+  if (pointIndex > 0) {
+    return key.slice(0, pointIndex);
+  }
+
+  const segmentIndex = key.indexOf(SEGMENT_KEY_SEPARATOR);
+  if (segmentIndex > 0) {
+    return key.slice(0, segmentIndex);
+  }
+
+  return key || null;
 }
 
 function finishGeometryDrag(state, screenPoint, event = {}) {
@@ -3878,7 +4021,11 @@ function finishGeometryDrag(state, screenPoint, event = {}) {
 
   updateGeometryDrag(state, screenPoint, event);
   const endWorldPoint = drag.currentWorldPoint || screenToWorld(state, screenPoint);
-  state.document = drag.originalDocument;
+  if (!drag.moved) {
+    state.document = drag.originalDocument;
+  }
+
+  state.geometryDrag = null;
   if (drag.moved) {
     invokeDotNet(
       state,
@@ -3891,7 +4038,6 @@ function finishGeometryDrag(state, screenPoint, event = {}) {
       Boolean(drag.constrainToCurrentVector));
   }
 
-  state.geometryDrag = null;
   return true;
 }
 
@@ -3943,6 +4089,16 @@ function handleSketchToolClick(state, screenPoint, event) {
   }
 
   const nextPoints = state.toolDraft.points.concat(worldPoint);
+  if (isVariablePointSketchTool(tool)) {
+    state.toolDraft = {
+      points: nextPoints,
+      previewPoint: null,
+      dimensionValues: {}
+    };
+    setHoveredTarget(state, null);
+    return;
+  }
+
   if (nextPoints.length < getSketchToolPointCount(tool)) {
     const dimensionValues = shouldPreserveDraftDimensionsForNextPoint(tool, nextPoints)
       ? { ...(state.toolDraft.dimensionValues || {}) }
@@ -4029,7 +4185,7 @@ function commitModifyToolPoints(state, tool, points) {
 function shouldPreserveDraftDimensionsForNextPoint(tool, nextPoints) {
   return Array.isArray(nextPoints)
     && nextPoints.length === 2
-    && (tool === "alignedrectangle" || tool === "centerpointarc");
+    && (tool === "alignedrectangle" || tool === "centerpointarc" || tool === "slot");
 }
 
 function getNextSketchToolDimensionFocusKey(tool, nextPoints) {
@@ -4039,6 +4195,10 @@ function getNextSketchToolDimensionFocusKey(tool, nextPoints) {
 
   if (tool === "alignedrectangle") {
     return "depth";
+  }
+
+  if (tool === "slot") {
+    return "radius";
   }
 
   return tool === "centerpointarc" ? "sweep" : null;
@@ -4215,20 +4375,26 @@ export function getRadialDimensionPreference(target, event = {}) {
   return kind === "arc" && Boolean(event.shiftKey);
 }
 
-function commitCurrentSketchTool(state) {
+function commitCurrentSketchTool(state, allowVariablePointCommit = false) {
   const tool = getSketchCreationTool(state);
-  if (!tool || !state.toolDraft || state.toolDraft.points.length === 0 || !state.toolDraft.previewPoint) {
+  if (!tool || !state.toolDraft || state.toolDraft.points.length === 0) {
     return false;
   }
 
-  const points = state.toolDraft.points.concat(state.toolDraft.previewPoint);
-  if (points.length < getSketchToolPointCount(tool)) {
+  const points = state.toolDraft.previewPoint
+    ? state.toolDraft.points.concat(state.toolDraft.previewPoint)
+    : state.toolDraft.points.slice();
+  if (isVariablePointSketchTool(tool)) {
+    if (!allowVariablePointCommit || points.length < 2) {
+      return false;
+    }
+  } else if (!state.toolDraft.previewPoint || points.length < getSketchToolPointCount(tool)) {
     return false;
   }
 
-  const previousPoint = points[points.length - 2];
-  const lastPoint = points[points.length - 1];
-  if (distanceBetweenWorldPoints(previousPoint, lastPoint) <= WORLD_GEOMETRY_TOLERANCE) {
+  const previousPoint = points[points.length - 2] || null;
+  const lastPoint = points[points.length - 1] || null;
+  if (previousPoint && lastPoint && distanceBetweenWorldPoints(previousPoint, lastPoint) <= WORLD_GEOMETRY_TOLERANCE) {
     return false;
   }
 
@@ -4237,6 +4403,50 @@ function commitCurrentSketchTool(state) {
   }
 
   commitSketchToolPoints(state, tool, points);
+  return true;
+}
+
+function advanceCurrentSketchToolPoint(state) {
+  const tool = getSketchCreationTool(state);
+  if (!tool || !state.toolDraft || state.toolDraft.points.length === 0 || !state.toolDraft.previewPoint) {
+    return false;
+  }
+
+  const nextPoints = state.toolDraft.points.concat(state.toolDraft.previewPoint);
+  if (isVariablePointSketchTool(tool)) {
+    const previousPoint = state.toolDraft.points[state.toolDraft.points.length - 1];
+    if (distanceBetweenWorldPoints(previousPoint, state.toolDraft.previewPoint) <= WORLD_GEOMETRY_TOLERANCE) {
+      return false;
+    }
+
+    state.toolDraft = {
+      points: nextPoints,
+      previewPoint: null,
+      dimensionValues: {}
+    };
+    setHoveredTarget(state, null);
+    return true;
+  }
+
+  if (nextPoints.length >= getSketchToolPointCount(tool)) {
+    return false;
+  }
+
+  const previousPoint = state.toolDraft.points[state.toolDraft.points.length - 1];
+  if (distanceBetweenWorldPoints(previousPoint, state.toolDraft.previewPoint) <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
+  const dimensionValues = shouldPreserveDraftDimensionsForNextPoint(tool, nextPoints)
+    ? { ...(state.toolDraft.dimensionValues || {}) }
+    : {};
+  state.toolDraft = {
+    points: nextPoints,
+    previewPoint: null,
+    dimensionValues
+  };
+  state.pendingDimensionFocusKey = getNextSketchToolDimensionFocusKey(tool, nextPoints);
+  setHoveredTarget(state, null);
   return true;
 }
 
@@ -4363,6 +4573,12 @@ function handleWheel(state, event) {
   state.pointerScreenPoint = screenPoint;
   const worldPoint = screenToWorld(state, screenPoint);
   const normalizedDelta = normalizeWheelDelta(event);
+  if (adjustPolygonSideCount(state, normalizedDelta)) {
+    updateDebugAttributes(state);
+    draw(state);
+    return;
+  }
+
   const zoomFactor = clamp(Math.exp(-normalizedDelta * 0.001), 0.2, 5);
   const nextScale = clamp(state.view.scale * zoomFactor, MIN_VIEW_SCALE, MAX_VIEW_SCALE);
 
@@ -4385,7 +4601,16 @@ function handleDoubleClick(state, event) {
     return;
   }
 
-  if (getSketchCreationTool(state)) {
+  const sketchTool = getSketchCreationTool(state);
+  if (isVariablePointSketchTool(sketchTool) && commitCurrentSketchTool(state, true)) {
+    focusCanvasWithoutDimensionCommit(state);
+    updateDebugAttributes(state);
+    draw(state);
+    event.preventDefault();
+    return;
+  }
+
+  if (sketchTool) {
     state.toolDraft = createEmptyToolDraft();
     state.sketchChainContext = null;
     state.sketchChainVertexHovering = false;
@@ -6314,6 +6539,7 @@ export function applyGeometryDragPreview(document, selectionKey, dragStart, drag
     return null;
   }
 
+  translatePreviewDimensionAnchorsForDrag(previewDocument, selectionKey, delta);
   previewDocument.bounds = computeEntityBounds(getDocumentEntities(previewDocument));
   return previewDocument;
 }
@@ -6488,6 +6714,82 @@ function translatePreviewPolylineSegment(document, entityId, segmentIndex, delta
   return true;
 }
 
+function translatePreviewDimensionAnchorsForDrag(document, selectionKey, delta) {
+  if (!document || !delta || !Number.isFinite(delta.x) || !Number.isFinite(delta.y)) {
+    return false;
+  }
+
+  const translatedEntityId = getTranslatedDimensionEntityId(document, selectionKey);
+  if (!translatedEntityId) {
+    return false;
+  }
+
+  let changed = false;
+  document.dimensions = getDocumentDimensions(document).map(dimension => {
+    const referenceKeys = getSketchReferenceKeys(dimension);
+    const anchor = readPoint(readProperty(dimension, "anchor", "Anchor"));
+    if (!anchor
+      || referenceKeys.length === 0
+      || !referenceKeys.every(key => StringComparer(getReferenceEntityId(key), translatedEntityId))) {
+      return dimension;
+    }
+
+    changed = true;
+    return {
+      ...dimension,
+      anchor: addWorldPoints(anchor, delta),
+      Anchor: addWorldPoints(anchor, delta)
+    };
+  });
+
+  return changed;
+}
+
+function getTranslatedDimensionEntityId(document, selectionKey) {
+  const key = String(selectionKey || "");
+  const segmentReference = parseSegmentSelectionKey(key);
+  if (segmentReference) {
+    return segmentReference.entityId;
+  }
+
+  const pointReference = parsePointSelectionKey(key);
+  if (pointReference) {
+    const entity = findCanvasDocumentEntity(document, pointReference.entityId);
+    const kind = getEntityKind(entity);
+    const label = String(pointReference.label || "").split("|")[0].toLowerCase();
+    if ((kind === "line" && label === "mid")
+      || (kind === "polyline" && label.startsWith("mid-"))
+      || ((kind === "circle" || kind === "arc") && label === "center")
+      || (kind === "point" && label === "point")) {
+      return pointReference.entityId;
+    }
+
+    return null;
+  }
+
+  const entity = findCanvasDocumentEntity(document, key);
+  const kind = getEntityKind(entity);
+  return kind === "line" || kind === "polyline" || kind === "point"
+    ? key
+    : null;
+}
+
+function getReferenceEntityId(referenceKey) {
+  const key = String(referenceKey || "");
+  const pointIndex = key.indexOf(POINT_KEY_SEPARATOR);
+  if (pointIndex > 0) {
+    return key.slice(0, pointIndex);
+  }
+
+  const segmentIndex = key.indexOf(SEGMENT_KEY_SEPARATOR);
+  if (segmentIndex > 0) {
+    return key.slice(0, segmentIndex);
+  }
+
+  const targetIndex = key.lastIndexOf(":");
+  return targetIndex > 0 ? key.slice(0, targetIndex) : key;
+}
+
 function findCanvasDocumentEntity(document, entityId) {
   return getDocumentEntities(document)
     .find(entity => StringComparer(getEntityId(entity), entityId)) || null;
@@ -6499,8 +6801,19 @@ function cloneCanvasDocument(document) {
     ...document,
     entities,
     bounds: readBounds(readProperty(document, "bounds", "Bounds")) || computeEntityBounds(entities),
-    dimensions: getDocumentDimensions(document).slice(),
+    dimensions: getDocumentDimensions(document).map(cloneCanvasDimension),
     constraints: getDocumentConstraints(document).slice()
+  };
+}
+
+function cloneCanvasDimension(dimension) {
+  const anchor = readPoint(readProperty(dimension, "anchor", "Anchor"));
+  return {
+    ...dimension,
+    referenceKeys: getSketchReferenceKeys(dimension).slice(),
+    ReferenceKeys: getSketchReferenceKeys(dimension).slice(),
+    anchor: anchor ? { ...anchor } : null,
+    Anchor: anchor ? { ...anchor } : null
   };
 }
 
@@ -6792,15 +7105,48 @@ export function getSketchToolDimensionLocks(toolDraft) {
   for (const [key, value] of Object.entries(dimensionValues)) {
     const normalizedKey = String(key || "").trim().toLowerCase();
     const numericValue = Number(value);
-    if (!normalizedKey || !Number.isFinite(numericValue) || numericValue <= WORLD_GEOMETRY_TOLERANCE) {
+    if (!normalizedKey
+      || !Number.isFinite(numericValue)
+      || (normalizedKey === "sides" ? numericValue < 3 : numericValue <= WORLD_GEOMETRY_TOLERANCE)) {
       continue;
     }
 
     keys.push(normalizedKey);
-    values.push(numericValue);
+    values.push(normalizedKey === "sides" ? clamp(Math.round(numericValue), 3, 64) : numericValue);
   }
 
   return { keys, values };
+}
+
+function isVariablePointSketchTool(tool) {
+  return tool === "spline" || tool === "splinecontrolpoint";
+}
+
+function getPolygonSideCount(state) {
+  const sideCount = state && state.toolDraft
+    ? Number(state.toolDraft.polygonSideCount)
+    : Number.NaN;
+  return Number.isInteger(sideCount) && sideCount >= 3
+    ? clamp(sideCount, 3, 64)
+    : 6;
+}
+
+function adjustPolygonSideCount(state, wheelDelta) {
+  const tool = getSketchCreationTool(state);
+  if ((tool !== "inscribedpolygon" && tool !== "circumscribedpolygon")
+    || !state.toolDraft
+    || !Array.isArray(state.toolDraft.points)
+    || state.toolDraft.points.length === 0) {
+    return false;
+  }
+
+  const direction = wheelDelta < 0 ? 1 : -1;
+  state.toolDraft.polygonSideCount = clamp(getPolygonSideCount(state) + direction, 3, 64);
+  state.toolDraft.dimensionValues = {
+    ...(state.toolDraft.dimensionValues || {}),
+    sides: state.toolDraft.polygonSideCount
+  };
+  return true;
 }
 
 export function isDynamicTargetCurrentToPointer(state, target) {
@@ -7133,7 +7479,7 @@ function getShortestVisualArcSweep(startAngleDegrees, endAngleDegrees) {
 }
 
 function isSketchToolPointSetValid(tool, points) {
-  if (!points || points.length < getSketchToolPointCount(tool)) {
+  if (!points || (!isVariablePointSketchTool(tool) && points.length < getSketchToolPointCount(tool))) {
     return false;
   }
 
@@ -7165,7 +7511,12 @@ function isSketchToolPointSetValid(tool, points) {
     return distanceBetweenWorldPoints(points[0], points[2]) > WORLD_GEOMETRY_TOLERANCE;
   }
 
-  if (tool === "spline" || tool === "bezier" || tool === "splinecontrolpoint") {
+  if (isVariablePointSketchTool(tool)) {
+    return points.length >= 2
+      && points.slice(1).some(point => distanceBetweenWorldPoints(points[0], point) > WORLD_GEOMETRY_TOLERANCE);
+  }
+
+  if (tool === "bezier") {
     return points.slice(1).some(point => distanceBetweenWorldPoints(points[0], point) > WORLD_GEOMETRY_TOLERANCE);
   }
 
@@ -7578,10 +7929,10 @@ export function getSketchToolPointCount(tool) {
     case "point":
       return 1;
     case "ellipticalarc":
-    case "spline":
-    case "bezier":
-    case "splinecontrolpoint":
       return 4;
+    case "spline":
+    case "splinecontrolpoint":
+      return Number.MAX_SAFE_INTEGER;
     case "alignedrectangle":
     case "threepointcircle":
     case "ellipse":
@@ -8092,9 +8443,18 @@ function resolveSketchCircleLikeReference(state, referenceKey) {
 
   const center = getEntityCenter(entity);
   const radius = getEntityRadius(entity);
-  return center && isFinitePositive(radius)
-    ? { center, radius }
-    : null;
+  if (!center || !isFinitePositive(radius)) {
+    return null;
+  }
+
+  return getEntityKind(entity) === "arc"
+    ? {
+      center,
+      radius,
+      startAngleDegrees: getEntityStartAngle(entity),
+      endAngleDegrees: getEntityEndAngle(entity)
+    }
+    : { center, radius };
 }
 
 function parseSketchReference(referenceKey) {

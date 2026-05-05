@@ -154,6 +154,10 @@ public static class SketchCommandFactory
                 Keys(lineSelections),
             SketchConstraintKind.Perpendicular when lineSelections.Length == 2 =>
                 Keys(lineSelections),
+            SketchConstraintKind.Tangent when selections.Length == 2
+                && circleLikeSelections.Length >= 1
+                && (circleLikeSelections.Length == 2 || lineSelections.Length == 1) =>
+                Keys(selections),
             SketchConstraintKind.Concentric when circleLikeSelections.Length == 2 =>
                 Keys(circleLikeSelections),
             SketchConstraintKind.Equal when lineSelections.Length == 2 =>
