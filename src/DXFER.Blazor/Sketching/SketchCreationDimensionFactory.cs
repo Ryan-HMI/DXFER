@@ -152,10 +152,18 @@ public static class SketchCreationDimensionFactory
             case "threepointarc":
             case "tangentarc":
             case "centerpointarc":
-                if (TryGetPositiveValue(dimensionValues, "radius", out var arcRadius)
-                    && createdEntities.OfType<ArcEntity>().FirstOrDefault() is { } arc)
+                if (createdEntities.OfType<ArcEntity>().FirstOrDefault() is { } arc)
                 {
-                    dimensions.Add(CreateRadialDimension(createDimensionId(), arc, arcRadius));
+                    if (TryGetPositiveValue(dimensionValues, "radius", out var arcRadius))
+                    {
+                        dimensions.Add(CreateRadialDimension(createDimensionId(), arc, arcRadius));
+                    }
+
+                    if (normalizedTool == "centerpointarc"
+                        && TryGetSweepValue(dimensionValues, out var sweep))
+                    {
+                        dimensions.Add(CreateArcSweepDimension(createDimensionId(), arc, sweep));
+                    }
                 }
 
                 break;
@@ -242,6 +250,15 @@ public static class SketchCreationDimensionFactory
             new Point2(arc.Center.X + arc.Radius, arc.Center.Y),
             isDriving: true);
 
+    private static SketchDimension CreateArcSweepDimension(string id, ArcEntity arc, double value) =>
+        new(
+            id,
+            SketchDimensionKind.Angle,
+            new[] { arc.Id.Value },
+            value,
+            GetArcSweepDimensionAnchor(arc),
+            isDriving: true);
+
     private static SketchDimension CreateRadialDimension(string id, PolygonEntity polygon, double value) =>
         new(
             id,
@@ -294,6 +311,17 @@ public static class SketchCreationDimensionFactory
         return new Point2(midpoint.X - dy / length * offset, midpoint.Y + dx / length * offset);
     }
 
+    private static Point2 GetArcSweepDimensionAnchor(ArcEntity arc)
+    {
+        var sweep = GetPositiveSweepDegrees(arc.StartAngleDegrees, arc.EndAngleDegrees);
+        var midAngle = arc.StartAngleDegrees + sweep / 2.0;
+        var radius = arc.Radius * 0.7;
+        var radians = midAngle * Math.PI / 180.0;
+        return new Point2(
+            arc.Center.X + Math.Cos(radians) * radius,
+            arc.Center.Y + Math.Sin(radians) * radius);
+    }
+
     private static bool TryGetPositiveValue(
         IReadOnlyDictionary<string, double> dimensionValues,
         string key,
@@ -314,6 +342,18 @@ public static class SketchCreationDimensionFactory
         return false;
     }
 
+    private static bool TryGetSweepValue(
+        IReadOnlyDictionary<string, double> dimensionValues,
+        out double value)
+    {
+        if (!TryGetPositiveValue(dimensionValues, "sweep", out value))
+        {
+            return false;
+        }
+
+        return value < 360.0 - GeometryTolerance;
+    }
+
     private static double Distance(Point2 first, Point2 second)
     {
         var dx = second.X - first.X;
@@ -323,6 +363,17 @@ public static class SketchCreationDimensionFactory
 
     private static Point2 Midpoint(Point2 first, Point2 second) =>
         new((first.X + second.X) / 2.0, (first.Y + second.Y) / 2.0);
+
+    private static double GetPositiveSweepDegrees(double startAngleDegrees, double endAngleDegrees)
+    {
+        var sweep = (endAngleDegrees - startAngleDegrees) % 360.0;
+        if (sweep <= 0)
+        {
+            sweep += 360.0;
+        }
+
+        return sweep;
+    }
 
     private static string NormalizeToolName(string toolName) =>
         toolName.Replace("-", string.Empty, StringComparison.Ordinal)

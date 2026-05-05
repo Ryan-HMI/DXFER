@@ -208,6 +208,24 @@ public sealed class SketchDimensionSolverServiceTests
     }
 
     [Fact]
+    public void AppliesArcSweepAngle()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new ArcEntity(EntityId.Create("arc"), new Point2(2, 3), 4, 15, 75)
+        });
+
+        var solved = SketchDimensionSolverService.ApplyDimension(
+            document,
+            DrivingDimension("sweep", SketchDimensionKind.Angle, 120, "arc"));
+
+        var arc = solved.Entities[0].Should().BeOfType<ArcEntity>().Subject;
+        arc.StartAngleDegrees.Should().Be(15);
+        arc.EndAngleDegrees.Should().Be(135);
+        arc.Radius.Should().Be(4);
+    }
+
+    [Fact]
     public void UpdatesExistingDimensionAndPreservesConstraints()
     {
         var existing = new SketchDimension(

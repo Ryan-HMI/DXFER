@@ -222,6 +222,11 @@ public static class SketchDimensionSolverService
         SketchFixedReferences fixedReferences,
         SketchDimension dimension)
     {
+        if (TryApplyArcSweepAngle(entities, fixedReferences, dimension))
+        {
+            return;
+        }
+
         if (dimension.ReferenceKeys.Count < 2
             || !SketchReference.TryParse(dimension.ReferenceKeys[0], out var firstReference)
             || !SketchReference.TryParse(dimension.ReferenceKeys[1], out var secondReference)
@@ -248,6 +253,33 @@ public static class SketchDimensionSolverService
             firstReference,
             GetLineAngleTargetDegrees(secondAngle, firstAngle, dimension.Value),
             fixedReferences);
+    }
+
+    private static bool TryApplyArcSweepAngle(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        SketchDimension dimension)
+    {
+        if (dimension.ReferenceKeys.Count != 1
+            || !SketchReference.TryParse(dimension.ReferenceKeys[0], out var reference)
+            || fixedReferences.IsWholeEntityFixed(reference)
+            || !SketchGeometryEditor.TryGetEntity(entities, reference, out var index, out var entity)
+            || entity is not ArcEntity arc)
+        {
+            return false;
+        }
+
+        var sweep = Math.Abs(dimension.Value);
+        if (sweep <= SketchGeometryEditor.Tolerance)
+        {
+            return false;
+        }
+
+        entities[index] = arc with
+        {
+            EndAngleDegrees = arc.StartAngleDegrees + Math.Min(sweep, 360.0 - SketchGeometryEditor.Tolerance)
+        };
+        return true;
     }
 
     private static double GetLineAngleTargetDegrees(

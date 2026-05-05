@@ -1616,6 +1616,13 @@ function getDimensionAnchorPoint(state, kind, referenceKeys) {
     };
   }
 
+  if (kind === "angle") {
+    const arcAngle = resolveSketchArcAngleReference(state, referenceKeys[0]);
+    if (arcAngle) {
+      return getArcSweepDimensionAnchorPoint(arcAngle);
+    }
+  }
+
   if (kind === "count") {
     return resolveSketchEntityAnchorPoint(state, referenceKeys[0]);
   }
@@ -1673,6 +1680,17 @@ function getDimensionGeometry(state, kind, referenceKeys, anchorPoint) {
   }
 
   if (kind === "angle") {
+    const arcAngle = resolveSketchArcAngleReference(state, referenceKeys[0]);
+    if (arcAngle) {
+      return {
+        type: "angle",
+        firstLine: arcAngle.firstLine,
+        secondLine: arcAngle.secondLine,
+        vertex: arcAngle.center,
+        anchorPoint
+      };
+    }
+
     const firstLine = resolveSketchLineReference(state, referenceKeys[0]);
     const secondLine = resolveSketchLineReference(state, referenceKeys[1]);
     return firstLine && secondLine
@@ -1702,6 +1720,11 @@ function getDimensionGeometry(state, kind, referenceKeys, anchorPoint) {
   }
 
   return null;
+}
+
+function getArcSweepDimensionAnchorPoint(arcAngle) {
+  const sweep = getPositiveSweepDegrees(arcAngle.startAngleDegrees, arcAngle.endAngleDegrees);
+  return pointOnCircle(arcAngle.center, arcAngle.radius * 0.7, arcAngle.startAngleDegrees + sweep / 2);
 }
 
 function drawDimensionGraphics(state, dimension, isPreview) {
@@ -8610,6 +8633,41 @@ function resolveSketchCircleLikeReference(state, referenceKey) {
       endAngleDegrees: getEntityEndAngle(entity)
     }
     : { center, radius };
+}
+
+function resolveSketchArcAngleReference(state, referenceKey) {
+  const reference = parseSketchReference(referenceKey);
+  if (!reference || reference.target === "center" || Number.isInteger(reference.segmentIndex)) {
+    return null;
+  }
+
+  const entity = findDocumentEntity(state, reference.entityId);
+  if (!entity || getEntityKind(entity) !== "arc") {
+    return null;
+  }
+
+  const center = getEntityCenter(entity);
+  const radius = getEntityRadius(entity);
+  if (!center || !isFinitePositive(radius)) {
+    return null;
+  }
+
+  const startAngleDegrees = getEntityStartAngle(entity);
+  const endAngleDegrees = getEntityEndAngle(entity);
+  return {
+    center,
+    radius,
+    startAngleDegrees,
+    endAngleDegrees,
+    firstLine: {
+      start: center,
+      end: pointOnCircle(center, radius, startAngleDegrees)
+    },
+    secondLine: {
+      start: center,
+      end: pointOnCircle(center, radius, endAngleDegrees)
+    }
+  };
 }
 
 function parseSketchReference(referenceKey) {

@@ -1279,6 +1279,49 @@ test("persistent dimension descriptors resolve line references to overlay positi
   assert.deepEqual(descriptors[0].point, { x: 115, y: 180 });
 });
 
+test("persistent dimension descriptors resolve arc angle references to sweep geometry", () => {
+  const state = {
+    document: {
+      entities: [
+        {
+          id: "arc-a",
+          kind: "arc",
+          center: { x: 0, y: 0 },
+          radius: 2,
+          startAngleDegrees: 0,
+          endAngleDegrees: 120
+        }
+      ],
+      dimensions: [
+        {
+          id: "sweep-a",
+          kind: "Angle",
+          referenceKeys: ["arc-a"],
+          value: 120,
+          anchor: { x: 1, y: 1 },
+          isDriving: true
+        }
+      ]
+    },
+    dimensionAnchorOverrides: new Map(),
+    view: {
+      scale: 10,
+      offsetX: 100,
+      offsetY: 100
+    }
+  };
+
+  const descriptors = getPersistentDimensionDescriptors(state);
+
+  assert.equal(descriptors.length, 1);
+  assert.equal(descriptors[0].geometry.type, "angle");
+  assert.deepEqual(descriptors[0].geometry.vertex, { x: 0, y: 0 });
+  assert.deepEqual(descriptors[0].geometry.firstLine.start, { x: 0, y: 0 });
+  assert.deepEqual(descriptors[0].geometry.firstLine.end, { x: 2, y: 0 });
+  assertApproxEqual(descriptors[0].geometry.secondLine.end.x, -1);
+  assertApproxEqual(descriptors[0].geometry.secondLine.end.y, Math.sqrt(3));
+});
+
 test("persistent dimension descriptors resolve polyline segment endpoints", () => {
   const state = {
     document: {

@@ -107,6 +107,29 @@ public sealed class SketchCreationDimensionFactoryTests
     }
 
     [Fact]
+    public void CreatesSweepAngleDimensionForKeyedCenterPointArc()
+    {
+        var entities = new DrawingEntity[]
+        {
+            new ArcEntity(EntityId.Create("arc-a"), new Point2(0, 0), 5, 0, 120)
+        };
+
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            "centerpointarc",
+            entities,
+            new Dictionary<string, double> { ["sweep"] = 120 },
+            CreateDimensionId);
+
+        dimensions.Should().ContainSingle()
+            .Which.Should().Match<SketchDimension>(dimension =>
+                dimension.Kind == SketchDimensionKind.Angle
+                && dimension.ReferenceKeys.SequenceEqual(new[] { "arc-a" })
+                && dimension.Value == 120
+                && dimension.Anchor.HasValue
+                && dimension.IsDriving);
+    }
+
+    [Fact]
     public void CreatesEllipseAxisDimensionsFromTypedValues()
     {
         var entities = new DrawingEntity[]
