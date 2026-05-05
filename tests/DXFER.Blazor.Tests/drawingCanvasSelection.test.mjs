@@ -13,6 +13,7 @@ import {
   getConstraintGlyphText,
   getDefaultActiveDimensionKey,
   getVisibleDimensionDescriptors,
+  getConstructionToggleRequest,
   getDynamicSketchSnapHit,
   getCenterPointArc,
   getChainedSketchToolDraft,
@@ -1109,6 +1110,33 @@ test("split at point request projects clicked line point", () => {
   assert.equal(request.targetKey, "edge");
   assertApproxEqual(request.point.x, 4);
   assertApproxEqual(request.point.y, 0);
+});
+
+test("construction toggle request targets the hovered entity while construction tool is active", () => {
+  const state = createHitTestState([
+    {
+      id: "edge",
+      kind: "line",
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+    }
+  ]);
+  state.activeTool = "construction";
+
+  const request = getConstructionToggleRequest(state, { x: 40, y: 100 });
+
+  assert.deepEqual(request, { targetKey: "edge" });
+});
+
+test("construction toggle request is inactive outside the construction tool", () => {
+  const state = createHitTestState([
+    {
+      id: "edge",
+      kind: "line",
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+    }
+  ]);
+
+  assert.equal(getConstructionToggleRequest(state, { x: 40, y: 100 }), null);
 });
 
 function assertApproxEqual(actual, expected, tolerance = 0.000001) {

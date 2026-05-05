@@ -42,7 +42,7 @@ public static class LineSplitService
         }
 
         nextDocument = split
-            ? new DrawingDocument(nextEntities)
+            ? new DrawingDocument(nextEntities, document.Dimensions, document.Constraints)
             : document;
         return split;
     }

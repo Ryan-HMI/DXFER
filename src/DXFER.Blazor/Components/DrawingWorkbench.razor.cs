@@ -213,11 +213,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.Redo, null, CadIconName.Redo, "Redo", !CanRedo),
             Command(
                 WorkbenchCommandId.Construction,
-                null,
+                WorkbenchTool.Construction,
                 CadIconName.Construction,
                 "Construction",
-                pressed: _constructionMode,
-                tooltip: "Construction. Toggles construction creation when nothing is selected; converts selected whole geometry otherwise."),
+                tooltip: "Construction. Converts preselected geometry once; with no selection, enters a modal convert tool until Esc."),
             Command(WorkbenchCommandId.DeleteSelection, null, CadIconName.Delete, "Delete selected geometry", !CanDeleteSelection),
             Command(WorkbenchCommandId.PowerTrim, WorkbenchTool.PowerTrim, CadIconName.PowerTrim, "Power trim/extend", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.SplitAtPoint, WorkbenchTool.SplitAtPoint, CadIconName.Split, "Split at point"),
@@ -308,6 +307,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.CircumscribedPolygon => "Circumscribed polygon",
         WorkbenchTool.SplineControlPoint => "Spline control point",
         WorkbenchTool.Point => "Point",
+        WorkbenchTool.Construction => "Construction",
         WorkbenchTool.PowerTrim => "Power trim/extend",
         WorkbenchTool.ThreePointArc => "Three-point arc",
         WorkbenchTool.SplitAtPoint => "Split at point",
@@ -335,6 +335,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.TangentArc => "Tangent arc: click start point, tangent direction point, then end point. Esc: cancel.",
         WorkbenchTool.CenterPointArc => "Center point arc: click center, start radius point, then end angle point. Esc: cancel.",
         WorkbenchTool.Point => "Point: click to place a persistent sketch point. Esc: cancel.",
+        WorkbenchTool.Construction => "Construction: click geometry to toggle construction state. Esc: cancel.",
         WorkbenchTool.SplitAtPoint => "Split at point: click a line, or select one line and one point before invoking. Esc: cancel.",
         WorkbenchTool.Dimension => "Dimension: click geometry or points, move to place, then click to set. Shift: diameter for arcs. Esc: cancel.",
         not null => $"{ActiveToolLabel}: follow canvas prompts. Esc: cancel.",
@@ -606,6 +607,21 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         SplitLineAtPoint(lineEntityId, ToPoint(point));
     }
 
+    private void OnConstructionToggleRequested(string targetKey)
+    {
+        if (!TryGetEntityIdForOperationTarget(targetKey, out var entityId))
+        {
+            _status = "Construction conversion needs whole geometry.";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        ToggleConstructionForEntityIds(
+            new[] { entityId },
+            "Construction convert active. Click geometry to toggle construction state. Esc to cancel.",
+            clearTool: false);
+    }
+
     private void OnToolCanceled()
     {
         if (_activeTool is null)
@@ -697,18 +713,28 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         {
             if (_selectedEntityIds.Count > 0)
             {
-                _status = "Construction conversion needs whole selected geometry. Clear selection to toggle construction creation.";
+                _status = "Construction conversion needs whole selected geometry. Clear selection to enter construction convert.";
                 return;
             }
 
-            _constructionMode = !_constructionMode;
-            _status = _constructionMode
-                ? "Construction creation enabled. New sketch geometry will be dashed and excluded from DXF export."
-                : "Construction creation disabled.";
+            _constructionMode = false;
+            ActivateTool(
+                WorkbenchTool.Construction,
+                "Construction convert active. Click geometry to toggle construction state. Esc to cancel.");
             return;
         }
 
-        var result = DrawingConstructionService.ToggleSelected(_document, selectedWholeEntityIds);
+        ToggleConstructionForEntityIds(
+            selectedWholeEntityIds,
+            clearTool: true);
+    }
+
+    private void ToggleConstructionForEntityIds(
+        IReadOnlyCollection<string> entityIds,
+        string? modalStatus = null,
+        bool clearTool = true)
+    {
+        var result = DrawingConstructionService.ToggleSelected(_document, entityIds);
         if (result.ChangedCount == 0)
         {
             _status = "Select whole geometry before converting construction state.";
@@ -717,9 +743,14 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         ApplyDocumentChange(
             result.Document,
-            result.IsConstruction
+            modalStatus ?? (result.IsConstruction
                 ? $"Converted {result.ChangedCount} selected entities to construction geometry."
-                : $"Converted {result.ChangedCount} selected entities to normal geometry.");
+                : $"Converted {result.ChangedCount} selected entities to normal geometry."));
+        _constructionMode = false;
+        if (clearTool)
+        {
+            _activeTool = null;
+        }
     }
 
     private async Task SyncSelectionFromCanvasAsync()
@@ -754,8 +785,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return false;
         }
 
-        ApplyDocumentChange(nextDocument, "Split line at point.");
-        _activeTool = null;
+        var stayModal = _activeTool == WorkbenchTool.SplitAtPoint;
+        ApplyDocumentChange(
+            nextDocument,
+            stayModal
+                ? "Split line at point. Click another line to split, or Esc to cancel."
+                : "Split line at point.");
+        _activeTool = stayModal ? WorkbenchTool.SplitAtPoint : null;
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);
         return true;
@@ -915,6 +951,32 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         lineEntityId = string.Empty;
+        return false;
+    }
+
+    private bool TryGetEntityIdForOperationTarget(string targetKey, out string entityId)
+    {
+        if (FindEntity(targetKey) is not null)
+        {
+            entityId = targetKey;
+            return true;
+        }
+
+        if (TryParsePointSelectionEntityId(targetKey, out var pointEntityId)
+            && FindEntity(pointEntityId) is not null)
+        {
+            entityId = pointEntityId;
+            return true;
+        }
+
+        if (TryParseSegmentSelectionKey(targetKey, out var segmentEntityId, out _)
+            && FindEntity(segmentEntityId) is not null)
+        {
+            entityId = segmentEntityId;
+            return true;
+        }
+
+        entityId = string.Empty;
         return false;
     }
 
@@ -1829,6 +1891,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.TangentArc => "Pick start, tangent direction, then endpoint. In a chain, hover the last vertex to switch back to line.",
         WorkbenchTool.CenterPointArc => "Pick center, start radius point, then end angle point.",
         WorkbenchTool.Point => "Pick a point on the canvas.",
+        WorkbenchTool.Construction => "Click geometry to toggle construction state.",
         _ => "Pick two points on the canvas."
     };
 

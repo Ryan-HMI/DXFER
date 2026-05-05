@@ -1,6 +1,7 @@
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
 using DXFER.Core.Operations;
+using DXFER.Core.Sketching;
 using FluentAssertions;
 
 namespace DXFER.Core.Tests.Operations;
@@ -49,6 +50,40 @@ public sealed class LineSplitServiceTests
 
         split.Should().BeTrue();
         nextDocument.Entities.Should().AllSatisfy(entity => entity.IsConstruction.Should().BeTrue());
+    }
+
+    [Fact]
+    public void SplitLinePreservesSketchData()
+    {
+        var dimension = new SketchDimension(
+            "dim-1",
+            SketchDimensionKind.LinearDistance,
+            new[] { "edge:start", "edge:end" },
+            10);
+        var constraint = new SketchConstraint(
+            "constraint-1",
+            SketchConstraintKind.Horizontal,
+            new[] { "edge" });
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(10, 0))
+            },
+            new[] { dimension },
+            new[] { constraint });
+
+        var split = LineSplitService.TrySplitLineAtPoint(
+            document,
+            "edge",
+            new Point2(4, 0),
+            EntityId.Create("edge-split"),
+            out var nextDocument);
+
+        split.Should().BeTrue();
+        nextDocument.Dimensions.Should().ContainSingle()
+            .Which.Should().BeSameAs(dimension);
+        nextDocument.Constraints.Should().ContainSingle()
+            .Which.Should().BeSameAs(constraint);
     }
 
     [Theory]

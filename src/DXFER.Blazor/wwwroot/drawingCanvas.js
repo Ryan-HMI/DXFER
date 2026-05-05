@@ -2642,7 +2642,7 @@ function handlePointerMove(state, event) {
     return;
   }
 
-  if (isSplitAtPointTool(state)) {
+  if (isSplitAtPointTool(state) || isConstructionTool(state)) {
     const nearestTarget = findNearestTarget(state, screenPoint);
     if (setHoveredTarget(state, nearestTarget)) {
       draw(state);
@@ -2755,7 +2755,7 @@ function handlePointerDown(state, event) {
       cancelled: false
     };
 
-    if (getSketchCreationTool(state) || isSplitAtPointTool(state)) {
+    if (getSketchCreationTool(state) || isSplitAtPointTool(state) || isConstructionTool(state)) {
       event.preventDefault();
     }
   }
@@ -2812,6 +2812,18 @@ function handlePointerUp(state, event) {
         const request = getSplitAtPointRequest(state, screenPoint);
         if (request) {
           invokeDotNet(state, "OnSplitAtPointRequested", request.targetKey, request.point.x, request.point.y);
+        }
+        updateDebugAttributes(state);
+        draw(state);
+        releasePointer(state.canvas, event.pointerId);
+        event.preventDefault();
+        return;
+      }
+
+      if (isConstructionTool(state)) {
+        const request = getConstructionToggleRequest(state, screenPoint);
+        if (request) {
+          invokeDotNet(state, "OnConstructionToggleRequested", request.targetKey);
         }
         updateDebugAttributes(state);
         draw(state);
@@ -5749,6 +5761,10 @@ function isSplitAtPointTool(state) {
   return normalizeToolName(state && state.activeTool) === "splitatpoint";
 }
 
+function isConstructionTool(state) {
+  return normalizeToolName(state && state.activeTool) === "construction";
+}
+
 function isDimensionTool(state) {
   return normalizeToolName(state && state.activeTool) === "dimension";
 }
@@ -5767,6 +5783,21 @@ export function getSplitAtPointRequest(state, screenPoint) {
   return {
     targetKey: target.key,
     point
+  };
+}
+
+export function getConstructionToggleRequest(state, screenPoint) {
+  if (!isConstructionTool(state)) {
+    return null;
+  }
+
+  const target = findNearestTarget(state, screenPoint);
+  if (!target || target.dynamic || !target.key) {
+    return null;
+  }
+
+  return {
+    targetKey: target.key
   };
 }
 

@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260504-modal-fixes";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260504-split-construction";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -64,6 +64,9 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public Action<string, CanvasPointDto>? SplitAtPointRequested { get; set; }
+
+    [Parameter]
+    public Action<string>? ConstructionToggleRequested { get; set; }
 
     [Parameter]
     public Action? ToolCancelRequested { get; set; }
@@ -281,6 +284,13 @@ public partial class DrawingCanvas : IAsyncDisposable
     public Task OnSplitAtPointRequested(string targetKey, double x, double y)
     {
         SplitAtPointRequested?.Invoke(targetKey, new CanvasPointDto(x, y));
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnConstructionToggleRequested(string targetKey)
+    {
+        ConstructionToggleRequested?.Invoke(targetKey);
         return Task.CompletedTask;
     }
 
