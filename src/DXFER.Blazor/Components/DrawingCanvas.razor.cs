@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260505-geometry-drag";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260505-modify-tools";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -67,6 +67,12 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public Action<string>? ConstructionToggleRequested { get; set; }
+
+    [Parameter]
+    public Action<string, IReadOnlyList<CanvasPointDto>>? ModifyToolCommitRequested { get; set; }
+
+    [Parameter]
+    public Action<string, CanvasPointDto>? PowerTrimRequested { get; set; }
 
     [Parameter]
     public Action? ToolCancelRequested { get; set; }
@@ -294,6 +300,26 @@ public partial class DrawingCanvas : IAsyncDisposable
     public Task OnConstructionToggleRequested(string targetKey)
     {
         ConstructionToggleRequested?.Invoke(targetKey);
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnModifyToolCommitted(string toolName, double[] coordinates)
+    {
+        var points = new List<CanvasPointDto>();
+        for (var index = 0; index + 1 < coordinates.Length; index += 2)
+        {
+            points.Add(new CanvasPointDto(coordinates[index], coordinates[index + 1]));
+        }
+
+        ModifyToolCommitRequested?.Invoke(toolName, points);
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnPowerTrimRequested(string targetKey, double x, double y)
+    {
+        PowerTrimRequested?.Invoke(targetKey, new CanvasPointDto(x, y));
         return Task.CompletedTask;
     }
 

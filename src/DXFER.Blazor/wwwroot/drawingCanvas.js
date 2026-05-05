@@ -898,6 +898,12 @@ function drawSelectionBox(state) {
 
 function drawToolPreview(state) {
   const tool = getSketchCreationTool(state);
+  const modifyTool = getModifyTool(state);
+  if (!tool && modifyTool) {
+    drawModifyToolPreview(state, modifyTool);
+    return [];
+  }
+
   if (!tool || !state.toolDraft || state.toolDraft.points.length === 0 || !state.toolDraft.previewPoint) {
     return [];
   }
@@ -1033,6 +1039,57 @@ function drawToolPreview(state) {
   }
   context.restore();
   return dimensions;
+}
+
+function drawModifyToolPreview(state, tool) {
+  if (!tool || !state.toolDraft || state.toolDraft.points.length === 0) {
+    return false;
+  }
+
+  const points = state.toolDraft.previewPoint
+    ? state.toolDraft.points.concat(state.toolDraft.previewPoint)
+    : state.toolDraft.points;
+  const { context } = state;
+
+  context.save();
+  context.strokeStyle = "#facc15";
+  context.fillStyle = "#facc15";
+  context.lineWidth = 1.5;
+  context.setLineDash([6, 4]);
+
+  if (tool === "translate" || tool === "linearpattern" || tool === "mirror") {
+    drawWorldPolyline(state, points.slice(0, 2));
+  } else if (tool === "rotate" || tool === "scale" || tool === "circularpattern") {
+    const center = points[0];
+    if (points.length >= 2) {
+      drawWorldPolyline(state, [center, points[1]]);
+    }
+    if (points.length >= 3) {
+      drawWorldPolyline(state, [center, points[2]]);
+      const centerScreen = worldToScreen(state, center);
+      const radius = distanceBetweenWorldPoints(center, points[1]) * state.view.scale;
+      if (radius > 0) {
+        context.beginPath();
+        context.arc(centerScreen.x, centerScreen.y, radius, 0, Math.PI * 2);
+        context.stroke();
+      }
+    }
+  } else if (tool === "offset") {
+    const marker = worldToScreen(state, points[0]);
+    context.beginPath();
+    context.arc(marker.x, marker.y, 5, 0, Math.PI * 2);
+    context.stroke();
+  }
+
+  for (const point of points) {
+    const marker = worldToScreen(state, point);
+    context.beginPath();
+    context.arc(marker.x, marker.y, 3.5, 0, Math.PI * 2);
+    context.fill();
+  }
+
+  context.restore();
+  return true;
 }
 
 function shouldSuppressSketchChainPreviewDimensions(state) {
@@ -2909,7 +2966,7 @@ function handlePointerMove(state, event) {
     return;
   }
 
-  if (isSplitAtPointTool(state) || isConstructionTool(state)) {
+  if (isPowerTrimTool(state) || isSplitAtPointTool(state) || isConstructionTool(state)) {
     const nearestTarget = findNearestTarget(state, screenPoint);
     if (setHoveredTarget(state, nearestTarget)) {
       draw(state);
@@ -2925,11 +2982,11 @@ function handlePointerMove(state, event) {
     return;
   }
 
-  if (getSketchCreationTool(state)) {
+  if (getSketchCreationTool(state) || getModifyTool(state)) {
     const nearestTarget = findNearestTarget(state, screenPoint);
     setHoveredTarget(state, nearestTarget);
 
-    if (tryToggleSketchChainToolAtPoint(state, screenPoint, nearestTarget)) {
+    if (getSketchCreationTool(state) && tryToggleSketchChainToolAtPoint(state, screenPoint, nearestTarget)) {
       updateDebugAttributes(state);
       draw(state);
       return;
@@ -2937,7 +2994,9 @@ function handlePointerMove(state, event) {
 
     if (state.toolDraft && state.toolDraft.points.length > 0) {
       state.toolDraft.previewPoint = getSketchWorldPoint(state, screenPoint, nearestTarget, event);
-      applyLockedDraftDimensions(state);
+      if (getSketchCreationTool(state)) {
+        applyLockedDraftDimensions(state);
+      }
       updateDebugAttributes(state);
       draw(state);
     } else if (nearestTarget) {
@@ -3037,7 +3096,7 @@ function handlePointerDown(state, event) {
       startWorldPoint: screenToWorld(state, screenPoint)
     };
 
-    if (getSketchCreationTool(state) || isSplitAtPointTool(state) || isConstructionTool(state)) {
+    if (getSketchCreationTool(state) || getModifyTool(state) || isPowerTrimTool(state) || isSplitAtPointTool(state) || isConstructionTool(state)) {
       event.preventDefault();
     }
   }
@@ -3114,6 +3173,18 @@ function handlePointerUp(state, event) {
         return;
       }
 
+      if (isPowerTrimTool(state)) {
+        const request = getPowerTrimRequest(state, screenPoint);
+        if (request) {
+          invokeDotNet(state, "OnPowerTrimRequested", request.targetKey, request.point.x, request.point.y);
+        }
+        updateDebugAttributes(state);
+        draw(state);
+        releasePointer(state.canvas, event.pointerId);
+        event.preventDefault();
+        return;
+      }
+
       if (isConstructionTool(state)) {
         const request = getConstructionToggleRequest(state, screenPoint);
         if (request) {
@@ -3137,6 +3208,15 @@ function handlePointerUp(state, event) {
 
       if (getSketchCreationTool(state)) {
         handleSketchToolClick(state, screenPoint, event);
+        updateDebugAttributes(state);
+        draw(state);
+        releasePointer(state.canvas, event.pointerId);
+        event.preventDefault();
+        return;
+      }
+
+      if (getModifyTool(state)) {
+        handleModifyToolClick(state, screenPoint, event);
         updateDebugAttributes(state);
         draw(state);
         releasePointer(state.canvas, event.pointerId);
@@ -3311,6 +3391,71 @@ function handleSketchToolClick(state, screenPoint, event) {
   }
 
   commitSketchToolPoints(state, tool, nextPoints);
+}
+
+function handleModifyToolClick(state, screenPoint, event) {
+  const tool = getModifyTool(state);
+  if (!tool) {
+    return false;
+  }
+
+  const clickTarget = findNearestTarget(state, screenPoint);
+  if (clickTarget) {
+    setHoveredTarget(state, clickTarget);
+  }
+
+  const worldPoint = getSketchWorldPoint(state, screenPoint, clickTarget, event);
+  if (getModifyToolPointCount(tool) === 1) {
+    commitModifyToolPoints(state, tool, [worldPoint]);
+    return true;
+  }
+
+  if (!state.toolDraft || state.toolDraft.points.length === 0) {
+    state.toolDraft = {
+      points: [worldPoint],
+      previewPoint: null,
+      dimensionValues: {}
+    };
+    setHoveredTarget(state, null);
+    return true;
+  }
+
+  const previousPoint = state.toolDraft.points[state.toolDraft.points.length - 1];
+  if (distanceBetweenWorldPoints(previousPoint, worldPoint) <= WORLD_GEOMETRY_TOLERANCE) {
+    state.toolDraft.previewPoint = null;
+    return false;
+  }
+
+  const nextPoints = state.toolDraft.points.concat(worldPoint);
+  if (nextPoints.length < getModifyToolPointCount(tool)) {
+    state.toolDraft = {
+      points: nextPoints,
+      previewPoint: null,
+      dimensionValues: {}
+    };
+    setHoveredTarget(state, null);
+    return true;
+  }
+
+  commitModifyToolPoints(state, tool, nextPoints);
+  return true;
+}
+
+function commitModifyToolPoints(state, tool, points) {
+  if (!tool || !Array.isArray(points) || points.length < getModifyToolPointCount(tool)) {
+    return false;
+  }
+
+  state.activeTool = "select";
+  if (state.canvas && state.canvas.dataset) {
+    state.canvas.dataset.activeTool = state.activeTool;
+  }
+
+  state.toolDraft = createEmptyToolDraft();
+  clearTransientDimensionInputs(state);
+  setHoveredTarget(state, null);
+  invokeDotNet(state, "OnModifyToolCommitted", tool, flattenPointCoordinates(points));
+  return true;
 }
 
 function shouldPreserveDraftDimensionsForNextPoint(tool, nextPoints) {
@@ -6666,6 +6811,27 @@ function getSketchCreationTool(state) {
   }
 }
 
+function getModifyTool(state) {
+  switch (normalizeToolName(state && state.activeTool)) {
+    case "offset":
+      return "offset";
+    case "translate":
+      return "translate";
+    case "rotate":
+      return "rotate";
+    case "scale":
+      return "scale";
+    case "mirror":
+      return "mirror";
+    case "linearpattern":
+      return "linearpattern";
+    case "circularpattern":
+      return "circularpattern";
+    default:
+      return null;
+  }
+}
+
 export function getSketchToolPointCount(tool) {
   switch (tool) {
     case "point":
@@ -6679,6 +6845,23 @@ export function getSketchToolPointCount(tool) {
     default:
       return 2;
   }
+}
+
+export function getModifyToolPointCount(tool) {
+  switch (tool) {
+    case "offset":
+      return 1;
+    case "rotate":
+    case "scale":
+    case "circularpattern":
+      return 3;
+    default:
+      return 2;
+  }
+}
+
+function isPowerTrimTool(state) {
+  return normalizeToolName(state && state.activeTool) === "powertrim";
 }
 
 function isSplitAtPointTool(state) {
@@ -6706,6 +6889,28 @@ export function getSplitAtPointRequest(state, screenPoint) {
 
   return {
     targetKey: target.key,
+    point
+  };
+}
+
+export function getPowerTrimRequest(state, screenPoint) {
+  if (!isPowerTrimTool(state)) {
+    return null;
+  }
+
+  const target = findNearestTarget(state, screenPoint);
+  const point = screenToWorld(state, screenPoint);
+  const targetKey = target && target.kind === "entity"
+    ? target.key
+    : target && (target.kind === "point" || target.kind === "segment")
+      ? target.entityId
+      : null;
+  if (!target || target.dynamic || !targetKey || !point) {
+    return null;
+  }
+
+  return {
+    targetKey,
     point
   };
 }

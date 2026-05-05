@@ -28,11 +28,13 @@ import {
   getRadialDimensionPreference,
   getSketchToolDimensionLocks,
   getSketchChainContextFromCommittedTool,
+  getModifyToolPointCount,
   getSketchToolPointCount,
   getPostCommitSketchToolState,
   getTangentArc,
   getPointTargetMarker,
   getNextDimensionKey,
+  getPowerTrimRequest,
   getSplitAtPointRequest,
   getThreePointCircle,
   getThreePointArc,
@@ -1351,6 +1353,15 @@ test("point sketch tool needs one click", () => {
   assert.equal(getSketchToolPointCount("centerrectangle"), 2);
 });
 
+test("modify tools expose expected point counts", () => {
+  assert.equal(getModifyToolPointCount("offset"), 1);
+  assert.equal(getModifyToolPointCount("translate"), 2);
+  assert.equal(getModifyToolPointCount("mirror"), 2);
+  assert.equal(getModifyToolPointCount("rotate"), 3);
+  assert.equal(getModifyToolPointCount("scale"), 3);
+  assert.equal(getModifyToolPointCount("circularpattern"), 3);
+});
+
 test("persistent point entity is selected by id and exposes a snap point", () => {
   const state = createHitTestState([
     {
@@ -1378,6 +1389,23 @@ test("split at point request projects clicked line point", () => {
   state.activeTool = "splitatpoint";
 
   const request = getSplitAtPointRequest(state, { x: 40, y: 100 });
+
+  assert.equal(request.targetKey, "edge");
+  assertApproxEqual(request.point.x, 4);
+  assertApproxEqual(request.point.y, 0);
+});
+
+test("power trim request targets clicked entity with projected point", () => {
+  const state = createHitTestState([
+    {
+      id: "edge",
+      kind: "line",
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+    }
+  ]);
+  state.activeTool = "powertrim";
+
+  const request = getPowerTrimRequest(state, { x: 40, y: 100 });
 
   assert.equal(request.targetKey, "edge");
   assertApproxEqual(request.point.x, 4);
