@@ -38,6 +38,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private GrainDirection _grainDirection = GrainDirection.None;
     private WorkbenchTool? _activeTool;
     private bool _showOriginAxes = true;
+    private bool _showAllConstraints;
     private bool _constructionMode;
     private bool _isToolPanelCollapsed;
     private bool _isInspectorCollapsed = true;
@@ -182,6 +183,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.Measure, WorkbenchTool.Measure, CadIconName.Measure, "Measure"),
             Command(WorkbenchCommandId.FitExtents, null, CadIconName.Fit, "Fit extents", !HasDocument),
             Command(WorkbenchCommandId.OriginAxes, null, CadIconName.OriginAxes, "Origin axes", pressed: _showOriginAxes),
+            Command(
+                WorkbenchCommandId.ShowConstraints,
+                null,
+                CadIconName.ShowConstraints,
+                "Show constraints",
+                pressed: _showAllConstraints,
+                tooltip: "Show constraints. When off, constraints appear only while hovering referenced geometry."),
             Command(WorkbenchCommandId.ToolHotkeys, null, CadIconName.Hotkeys, "Tool hotkeys")
         }),
         new WorkbenchToolGroup("Sketch", new[]
@@ -451,6 +459,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 break;
             case WorkbenchCommandId.OriginAxes:
                 ToggleOriginAxes();
+                break;
+            case WorkbenchCommandId.ShowConstraints:
+                ToggleShowAllConstraints();
                 break;
             case WorkbenchCommandId.DeleteSelection:
                 await SyncSelectionFromCanvasAsync();
@@ -1022,6 +1033,14 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _status = _showOriginAxes
             ? "Origin axes enabled."
             : "Origin axes hidden.";
+    }
+
+    private void ToggleShowAllConstraints()
+    {
+        _showAllConstraints = !_showAllConstraints;
+        _status = _showAllConstraints
+            ? "Constraint glyphs shown. Drag glyph groups to reposition them."
+            : "Constraint glyphs hidden until referenced geometry is hovered.";
     }
 
     private void ToggleToolPanel() => _isToolPanelCollapsed = !_isToolPanelCollapsed;

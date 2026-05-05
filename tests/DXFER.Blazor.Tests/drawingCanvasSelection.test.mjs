@@ -12,7 +12,9 @@ import {
   getAlignedRectangleCorners,
   getAngleDimensionScreenGeometry,
   getCenterRectangleCorners,
+  getConstraintGlyphGroups,
   getConstraintGlyphText,
+  getVisibleConstraintGlyphGroups,
   getDefaultActiveDimensionKey,
   getVisibleDimensionDescriptors,
   getConstructionToggleRequest,
@@ -1293,6 +1295,39 @@ test("constraint glyphs use compact CAD relation markers", () => {
   assert.equal(getConstraintGlyphText("fix"), "F");
 });
 
+test("constraint glyph groups hide until hover when show all is off", () => {
+  const state = createConstraintGlyphState(false);
+
+  assert.equal(getVisibleConstraintGlyphGroups(state).length, 0);
+
+  state.hoveredTarget = {
+    kind: "entity",
+    key: "edge-a",
+    entityId: "edge-a"
+  };
+
+  const groups = getVisibleConstraintGlyphGroups(state);
+
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].constraints.length, 2);
+  assert.deepEqual(groups[0].constraints.map(constraint => constraint.id), ["fix-a", "horizontal-a"]);
+});
+
+test("constraint glyph groups show all constraints and keep dragged screen offsets", () => {
+  const state = createConstraintGlyphState(true);
+  state.constraintGroupOffsets.set("constraint-group:edge-a", { x: 24, y: -12 });
+
+  const groups = getConstraintGlyphGroups(state);
+  const visibleGroups = getVisibleConstraintGlyphGroups(state);
+  const movedGroup = visibleGroups.find(group => group.key === "constraint-group:edge-a");
+
+  assert.equal(groups.length, 2);
+  assert.equal(visibleGroups.length, 2);
+  assert.ok(movedGroup);
+  assert.deepEqual(movedGroup.anchorScreenPoint, { x: 60, y: 90 });
+  assert.deepEqual(movedGroup.point, { x: 84, y: 78 });
+});
+
 test("point target marker uses a dedicated tangent snap symbol", () => {
   assert.equal(getPointTargetMarker({ label: "tangent-hole-0" }), "tangent");
   assert.equal(getPointTargetMarker({ label: "circle-tangent-edge-0" }), "tangent");
@@ -1410,6 +1445,53 @@ test("construction toggle request is inactive outside the construction tool", ()
 
   assert.equal(getConstructionToggleRequest(state, { x: 40, y: 100 }), null);
 });
+
+function createConstraintGlyphState(showAllConstraints) {
+  return {
+    showAllConstraints,
+    hoveredTarget: null,
+    constraintGroupOffsets: new Map(),
+    document: {
+      entities: [
+        {
+          id: "edge-a",
+          kind: "line",
+          points: [{ x: 0, y: 0 }, { x: 4, y: 0 }]
+        },
+        {
+          id: "edge-b",
+          kind: "line",
+          points: [{ x: 0, y: 2 }, { x: 4, y: 2 }]
+        }
+      ],
+      constraints: [
+        {
+          id: "horizontal-a",
+          kind: "Horizontal",
+          referenceKeys: ["edge-a"],
+          state: "Satisfied"
+        },
+        {
+          id: "fix-a",
+          kind: "Fix",
+          referenceKeys: ["edge-a"],
+          state: "Satisfied"
+        },
+        {
+          id: "vertical-b",
+          kind: "Vertical",
+          referenceKeys: ["edge-b"],
+          state: "Satisfied"
+        }
+      ]
+    },
+    view: {
+      scale: 10,
+      offsetX: 40,
+      offsetY: 90
+    }
+  };
+}
 
 function assertApproxEqual(actual, expected, tolerance = 0.000001) {
   assert.ok(Math.abs(actual - expected) <= tolerance, `expected ${actual} to equal ${expected}`);

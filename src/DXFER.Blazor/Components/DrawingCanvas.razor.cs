@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260505-geometry-drag";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260505-constraints-visibility";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -34,6 +34,9 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public bool ShowOriginAxes { get; set; }
+
+    [Parameter]
+    public bool ShowAllConstraints { get; set; }
 
     [Parameter]
     public WorkbenchTool? ActiveTool { get; set; }
@@ -113,6 +116,7 @@ public partial class DrawingCanvas : IAsyncDisposable
             }
 
             await SetOriginAxesVisibilityAsync();
+            await SetConstraintVisibilityAsync();
             await SetGrainDirectionAsync();
             await SetConstructionModeAsync();
         }
@@ -133,6 +137,7 @@ public partial class DrawingCanvas : IAsyncDisposable
         await SetCanvasDocumentAsync();
         await SetActiveToolAsync();
         await SetOriginAxesVisibilityAsync();
+        await SetConstraintVisibilityAsync();
         await SetGrainDirectionAsync();
         await SetConstructionModeAsync();
     }
@@ -423,6 +428,16 @@ public partial class DrawingCanvas : IAsyncDisposable
         }
 
         await _canvasInstance.InvokeVoidAsync("setOriginAxesVisible", ShowOriginAxes);
+    }
+
+    private async Task SetConstraintVisibilityAsync()
+    {
+        if (_canvasInstance is null)
+        {
+            return;
+        }
+
+        await _canvasInstance.InvokeVoidAsync("setShowAllConstraints", ShowAllConstraints);
     }
 
     private async Task SetActiveToolAsync()
