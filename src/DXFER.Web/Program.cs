@@ -2,6 +2,7 @@ using DXFER.Blazor.Components;
 using DXFER.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseStaticWebAssets();
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
