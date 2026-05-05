@@ -800,6 +800,8 @@ function drawPointTarget(state, point, style, marker = "point") {
   }
   if (marker === "midpoint") {
     drawMidpointTargetPath(context, screenPoint);
+  } else if (marker === "tangent") {
+    drawTangentTargetPath(context, screenPoint);
   } else {
     context.beginPath();
     context.arc(screenPoint.x, screenPoint.y, 3.5, 0, Math.PI * 2);
@@ -817,6 +819,13 @@ function drawMidpointTargetPath(context, screenPoint) {
   context.lineTo(screenPoint.x + size, screenPoint.y + size * 0.72);
   context.lineTo(screenPoint.x - size, screenPoint.y + size * 0.72);
   context.closePath();
+}
+
+function drawTangentTargetPath(context, screenPoint) {
+  context.beginPath();
+  context.arc(screenPoint.x, screenPoint.y, 4.2, 0, Math.PI * 2);
+  context.moveTo(screenPoint.x - 5.2, screenPoint.y + 5.2);
+  context.lineTo(screenPoint.x + 5.2, screenPoint.y - 5.2);
 }
 
 function drawSelectionBox(state) {
@@ -4640,11 +4649,17 @@ function createDynamicPointTarget(label, point, guides = []) {
   };
 }
 
-function getPointTargetMarker(target) {
+export function getPointTargetMarker(target) {
   const label = String(target && target.label ? target.label : "").toLowerCase();
-  return label === "mid" || label.startsWith("mid-") || label.startsWith("midpoint-")
-    ? "midpoint"
-    : "point";
+  if (label.includes("tangent")) {
+    return "tangent";
+  }
+
+  if (label === "mid" || label.startsWith("mid-") || label.startsWith("midpoint-")) {
+    return "midpoint";
+  }
+
+  return "point";
 }
 
 function withSnapPoint(target, snapPoint) {

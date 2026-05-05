@@ -26,6 +26,7 @@ import {
   getSketchToolPointCount,
   getPostCommitSketchToolState,
   getTangentArc,
+  getPointTargetMarker,
   getNextDimensionKey,
   getSplitAtPointRequest,
   getThreePointCircle,
@@ -965,6 +966,13 @@ test("constraint glyphs use compact CAD relation markers", () => {
   assert.equal(getConstraintGlyphText("horizontal"), "H");
   assert.equal(getConstraintGlyphText("perpendicular"), "L");
   assert.equal(getConstraintGlyphText("fix"), "F");
+});
+
+test("point target marker uses a dedicated tangent snap symbol", () => {
+  assert.equal(getPointTargetMarker({ label: "tangent-hole-0" }), "tangent");
+  assert.equal(getPointTargetMarker({ label: "circle-tangent-edge-0" }), "tangent");
+  assert.equal(getPointTargetMarker({ label: "mid" }), "midpoint");
+  assert.equal(getPointTargetMarker({ label: "quadrant-0" }), "point");
 });
 
 test("point sketch tool needs one click", () => {
