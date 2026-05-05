@@ -48,6 +48,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private int _createdEntitySequence;
     private int _createdDimensionSequence;
     private int _createdConstraintSequence;
+    private PendingCircleSplit? _pendingCircleSplit;
     private DockResizeTarget _resizeTarget = DockResizeTarget.None;
     private double _resizeStartClientX;
     private int _resizeStartToolPanelWidth;
@@ -336,7 +337,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.CenterPointArc => "Center point arc: click center, start radius point, then end angle point. Esc: cancel.",
         WorkbenchTool.Point => "Point: click to place a persistent sketch point. Esc: cancel.",
         WorkbenchTool.Construction => "Construction: click geometry to toggle construction state. Esc: cancel.",
-        WorkbenchTool.SplitAtPoint => "Split at point: click a line, or select one line and one point before invoking. Esc: cancel.",
+        WorkbenchTool.SplitAtPoint => "Split at point: click a line or arc, or pick two points on a circle. Esc: cancel.",
         WorkbenchTool.Dimension => "Dimension: click geometry or points, move to place, then click to set. Shift: diameter for arcs. Esc: cancel.",
         not null => $"{ActiveToolLabel}: follow canvas prompts. Esc: cancel.",
         null => _constructionMode
@@ -466,7 +467,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 {
                     ActivateTool(
                         WorkbenchTool.SplitAtPoint,
-                        "Split at point active. Click a line, or select one line and one point before invoking.");
+                        "Split at point active. Click a line or arc, or pick two points on a circle.");
                 }
 
                 break;
@@ -597,14 +598,30 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void OnSplitAtPointRequested(string targetKey, CanvasPointDto point)
     {
+        var splitPoint = ToPoint(point);
+        if (TryGetEntityIdForOperationTarget(targetKey, out var entityId)
+            && FindEntity(entityId) is CircleEntity)
+        {
+            SplitCircleAtPoint(entityId, splitPoint);
+            return;
+        }
+
+        _pendingCircleSplit = null;
+        if (TryGetEntityIdForOperationTarget(targetKey, out var arcEntityId)
+            && FindEntity(arcEntityId) is ArcEntity)
+        {
+            SplitArcAtPoint(arcEntityId, splitPoint);
+            return;
+        }
+
         if (!TryGetLineIdForSplitTarget(targetKey, out var lineEntityId))
         {
-            _status = "Select one line before splitting at a selected point.";
+            _status = "Click a line, an arc, or two points on a circle before splitting.";
             _ = InvokeAsync(StateHasChanged);
             return;
         }
 
-        SplitLineAtPoint(lineEntityId, ToPoint(point));
+        SplitLineAtPoint(lineEntityId, splitPoint);
     }
 
     private void OnConstructionToggleRequested(string targetKey)
@@ -629,6 +646,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
+        _pendingCircleSplit = null;
         _activeTool = null;
         _status = "Selection active.";
         _ = InvokeAsync(StateHasChanged);
@@ -636,6 +654,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void ActivateTool(WorkbenchTool tool, string status)
     {
+        if (tool != WorkbenchTool.SplitAtPoint)
+        {
+            _pendingCircleSplit = null;
+        }
+
         _activeTool = tool;
         _status = status;
     }
@@ -777,6 +800,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private bool SplitLineAtPoint(string lineEntityId, Point2 point)
     {
+        _pendingCircleSplit = null;
         var newLineId = CreateEntityId("line");
         if (!LineSplitService.TrySplitLineAtPoint(_document, lineEntityId, point, newLineId, out var nextDocument))
         {
@@ -792,6 +816,57 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 ? "Split line at point. Click another line to split, or Esc to cancel."
                 : "Split line at point.");
         _activeTool = stayModal ? WorkbenchTool.SplitAtPoint : null;
+        ResetSelection();
+        _ = InvokeAsync(StateHasChanged);
+        return true;
+    }
+
+    private bool SplitCircleAtPoint(string circleEntityId, Point2 point)
+    {
+        if (_pendingCircleSplit is not { } pending
+            || !StringComparer.Ordinal.Equals(pending.CircleEntityId, circleEntityId))
+        {
+            _pendingCircleSplit = new PendingCircleSplit(circleEntityId, point);
+            _activeTool = WorkbenchTool.SplitAtPoint;
+            _status = "First circle split point set. Pick the second point on the same circle, or Esc to cancel.";
+            _ = InvokeAsync(StateHasChanged);
+            return true;
+        }
+
+        var newArcId = CreateEntityId("arc");
+        if (!CurveSplitService.TrySplitCircleAtPoints(
+                _document,
+                circleEntityId,
+                pending.FirstPoint,
+                point,
+                newArcId,
+                out var nextDocument))
+        {
+            _status = "Second split point must be a different point on the same circle.";
+            _ = InvokeAsync(StateHasChanged);
+            return false;
+        }
+
+        _pendingCircleSplit = null;
+        ApplyDocumentChange(nextDocument, "Split circle into arcs. Click another curve to split, or Esc to cancel.");
+        _activeTool = WorkbenchTool.SplitAtPoint;
+        ResetSelection();
+        _ = InvokeAsync(StateHasChanged);
+        return true;
+    }
+
+    private bool SplitArcAtPoint(string arcEntityId, Point2 point)
+    {
+        var newArcId = CreateEntityId("arc");
+        if (!CurveSplitService.TrySplitArcAtPoint(_document, arcEntityId, point, newArcId, out var nextDocument))
+        {
+            _status = "Split point must lie inside the selected arc.";
+            _ = InvokeAsync(StateHasChanged);
+            return false;
+        }
+
+        ApplyDocumentChange(nextDocument, "Split arc at point. Click another curve to split, or Esc to cancel.");
+        _activeTool = WorkbenchTool.SplitAtPoint;
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);
         return true;
@@ -836,7 +911,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         ApplyDocumentChange(SketchDimensionSolverService.ApplyDimension(_document, dimension), status);
-        _activeTool = null;
+        _activeTool = WorkbenchTool.Dimension;
+        _status = $"{status} Dimension tool stays active; pick another reference or Esc to cancel.";
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);
     }
@@ -925,13 +1001,18 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private void OnGeometryDragRequested(string selectionKey, CanvasPointDto dragStart, CanvasPointDto dragEnd)
+    private void OnGeometryDragRequested(
+        string selectionKey,
+        CanvasPointDto dragStart,
+        CanvasPointDto dragEnd,
+        bool constrainToCurrentVector)
     {
         if (!SketchGeometryDragService.TryApplyDrag(
                 _document,
                 selectionKey,
                 ToPoint(dragStart),
                 ToPoint(dragEnd),
+                constrainToCurrentVector,
                 out var nextDocument,
                 out var status))
         {
@@ -2035,6 +2116,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private sealed record LiveReadoutItem(string Label, string Value);
 
     private readonly record struct ReadoutVector(Point2 Start, Point2 End);
+
+    private readonly record struct PendingCircleSplit(string CircleEntityId, Point2 FirstPoint);
 }
 
 internal enum DockResizeTarget

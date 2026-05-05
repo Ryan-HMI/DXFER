@@ -189,6 +189,27 @@ public sealed class SketchCommandFactoryTests
     }
 
     [Fact]
+    public void BuildsRadiusDimensionFromArcEndpointWhenItIsTheOnlySelection()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new ArcEntity(EntityId.Create("arc"), new Point2(10, 20), 4, 0, 90)
+        });
+
+        var result = SketchCommandFactory.TryBuildDimension(
+            document,
+            new[] { "arc|point|end|10|24" },
+            "dim-1",
+            out var dimension,
+            out _);
+
+        result.Should().BeTrue();
+        dimension.Kind.Should().Be(SketchDimensionKind.Radius);
+        dimension.ReferenceKeys.Should().Equal("arc");
+        dimension.Value.Should().Be(4);
+    }
+
+    [Fact]
     public void BuildsDiameterDimensionFromArcWhenRequested()
     {
         var document = new DrawingDocument(new DrawingEntity[]

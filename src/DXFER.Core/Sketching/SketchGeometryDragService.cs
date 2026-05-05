@@ -14,6 +14,7 @@ public static class SketchGeometryDragService
         string selectionKey,
         Point2 dragStart,
         Point2 dragEnd,
+        bool constrainToCurrentVector,
         out DrawingDocument nextDocument,
         out string status)
     {
@@ -35,7 +36,7 @@ public static class SketchGeometryDragService
 
         var entities = document.Entities.ToArray();
         var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
-        if (!TryApplyGeometryDrag(entities, fixedReferences, selectionKey, delta, dragEnd, out status))
+        if (!TryApplyGeometryDrag(entities, fixedReferences, selectionKey, delta, dragEnd, constrainToCurrentVector, out status))
         {
             return false;
         }
@@ -59,6 +60,7 @@ public static class SketchGeometryDragService
         string selectionKey,
         Point2 delta,
         Point2 dragEnd,
+        bool constrainToCurrentVector,
         out string status)
     {
         if (TryParseSegmentSelectionKey(selectionKey, out var segmentEntityId, out var segmentIndex))
@@ -84,6 +86,7 @@ public static class SketchGeometryDragService
                 targetPoint,
                 delta,
                 dragEnd,
+                constrainToCurrentVector,
                 out status);
         }
 
@@ -105,18 +108,47 @@ public static class SketchGeometryDragService
         Point2 targetPoint,
         Point2 delta,
         Point2 dragEnd,
+        bool constrainToCurrentVector,
         out string status)
     {
         switch (entity)
         {
             case LineEntity line:
-                return TryApplyLinePointDrag(entities, fixedReferences, entityIndex, line, label, targetPoint, delta, out status);
+                return TryApplyLinePointDrag(
+                    entities,
+                    fixedReferences,
+                    entityIndex,
+                    line,
+                    label,
+                    targetPoint,
+                    delta,
+                    dragEnd,
+                    constrainToCurrentVector,
+                    out status);
             case PolylineEntity polyline:
                 return TryApplyPolylinePointDrag(entities, fixedReferences, entityIndex, polyline, label, delta, out status);
             case CircleEntity circle:
-                return TryApplyCirclePointDrag(entities, fixedReferences, entityIndex, circle, label, dragEnd, delta, out status);
+                return TryApplyCirclePointDrag(
+                    entities,
+                    fixedReferences,
+                    entityIndex,
+                    circle,
+                    label,
+                    dragEnd,
+                    delta,
+                    constrainToCurrentVector,
+                    out status);
             case ArcEntity arc:
-                return TryApplyArcPointDrag(entities, fixedReferences, entityIndex, arc, label, dragEnd, delta, out status);
+                return TryApplyArcPointDrag(
+                    entities,
+                    fixedReferences,
+                    entityIndex,
+                    arc,
+                    label,
+                    dragEnd,
+                    delta,
+                    constrainToCurrentVector,
+                    out status);
             case PointEntity pointEntity:
                 return TrySetPointEntityLocation(entities, fixedReferences, entityIndex, pointEntity, Add(pointEntity.Location, delta), out status);
             default:
@@ -133,6 +165,8 @@ public static class SketchGeometryDragService
         string label,
         Point2 targetPoint,
         Point2 delta,
+        Point2 dragEnd,
+        bool constrainToCurrentVector,
         out string status)
     {
         var lineReference = new SketchReference(line.Id.Value, SketchReferenceTarget.Entity);
@@ -144,7 +178,12 @@ public static class SketchGeometryDragService
                 return false;
             }
 
-            entities[entityIndex] = line with { Start = Add(targetPoint, delta) };
+            entities[entityIndex] = line with
+            {
+                Start = constrainToCurrentVector
+                    ? ProjectPointToLine(dragEnd, line.Start, line.End)
+                    : Add(targetPoint, delta)
+            };
             status = "Moved line endpoint.";
             return true;
         }
@@ -157,7 +196,12 @@ public static class SketchGeometryDragService
                 return false;
             }
 
-            entities[entityIndex] = line with { End = Add(targetPoint, delta) };
+            entities[entityIndex] = line with
+            {
+                End = constrainToCurrentVector
+                    ? ProjectPointToLine(dragEnd, line.Start, line.End)
+                    : Add(targetPoint, delta)
+            };
             status = "Moved line endpoint.";
             return true;
         }
@@ -221,6 +265,7 @@ public static class SketchGeometryDragService
         string label,
         Point2 dragEnd,
         Point2 delta,
+        bool constrainToCurrentVector,
         out string status)
     {
         var reference = new SketchReference(circle.Id.Value, SketchReferenceTarget.Entity);
@@ -263,6 +308,7 @@ public static class SketchGeometryDragService
         string label,
         Point2 dragEnd,
         Point2 delta,
+        bool constrainToCurrentVector,
         out string status)
     {
         var reference = new SketchReference(arc.Id.Value, SketchReferenceTarget.Entity);
@@ -277,6 +323,19 @@ public static class SketchGeometryDragService
             entities[entityIndex] = arc with { Center = Add(arc.Center, delta) };
             status = "Moved arc center.";
             return true;
+        }
+
+        if (label is "start" or "end")
+        {
+            return TryApplyArcEndpointDrag(
+                entities,
+                fixedReferences,
+                entityIndex,
+                arc,
+                label,
+                dragEnd,
+                constrainToCurrentVector,
+                out status);
         }
 
         if (!fixedReferences.CanChangeCircleLikeRadius(reference))
@@ -297,6 +356,42 @@ public static class SketchGeometryDragService
         return true;
     }
 
+    private static bool TryApplyArcEndpointDrag(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        int entityIndex,
+        ArcEntity arc,
+        string label,
+        Point2 dragEnd,
+        bool constrainToCurrentVector,
+        out string status)
+    {
+        var reference = new SketchReference(arc.Id.Value, SketchReferenceTarget.Entity);
+        if (!fixedReferences.CanChangeCircleLikeRadius(reference) && !constrainToCurrentVector)
+        {
+            status = "Arc radius is constrained.";
+            return false;
+        }
+
+        var radius = constrainToCurrentVector
+            ? arc.Radius
+            : SketchGeometryEditor.Distance(arc.Center, dragEnd);
+        if (radius <= SketchGeometryEditor.Tolerance)
+        {
+            status = "Arc radius must stay positive.";
+            return false;
+        }
+
+        var angle = GetPointAngleDegrees(arc.Center, dragEnd);
+        entities[entityIndex] = label == "start"
+            ? arc with { Radius = radius, StartAngleDegrees = angle }
+            : arc with { Radius = radius, EndAngleDegrees = angle };
+        status = constrainToCurrentVector
+            ? "Changed arc sweep."
+            : "Changed arc endpoint.";
+        return true;
+    }
+
     private static bool TryApplyEntityDrag(
         DrawingEntity[] entities,
         SketchFixedReferences fixedReferences,
@@ -313,9 +408,9 @@ public static class SketchGeometryDragService
             case PolylineEntity polyline:
                 return TryTranslatePolyline(entities, fixedReferences, entityIndex, polyline, delta, out status);
             case CircleEntity circle:
-                return TryApplyCirclePointDrag(entities, fixedReferences, entityIndex, circle, "perimeter", dragEnd, delta, out status);
+                return TryApplyCirclePointDrag(entities, fixedReferences, entityIndex, circle, "perimeter", dragEnd, delta, constrainToCurrentVector: false, out status);
             case ArcEntity arc:
-                return TryApplyArcPointDrag(entities, fixedReferences, entityIndex, arc, "perimeter", dragEnd, delta, out status);
+                return TryApplyArcPointDrag(entities, fixedReferences, entityIndex, arc, "perimeter", dragEnd, delta, constrainToCurrentVector: false, out status);
             case PointEntity pointEntity:
                 return TrySetPointEntityLocation(entities, fixedReferences, entityIndex, pointEntity, Add(pointEntity.Location, delta), out status);
             default:
@@ -514,6 +609,23 @@ public static class SketchGeometryDragService
 
     private static Point2 Add(Point2 point, Point2 delta) =>
         new(point.X + delta.X, point.Y + delta.Y);
+
+    private static Point2 ProjectPointToLine(Point2 point, Point2 start, Point2 end)
+    {
+        var deltaX = end.X - start.X;
+        var deltaY = end.Y - start.Y;
+        var lengthSquared = (deltaX * deltaX) + (deltaY * deltaY);
+        if (lengthSquared <= SketchGeometryEditor.Tolerance * SketchGeometryEditor.Tolerance)
+        {
+            return start;
+        }
+
+        var scalar = (((point.X - start.X) * deltaX) + ((point.Y - start.Y) * deltaY)) / lengthSquared;
+        return new Point2(start.X + (deltaX * scalar), start.Y + (deltaY * scalar));
+    }
+
+    private static double GetPointAngleDegrees(Point2 center, Point2 point) =>
+        Math.Atan2(point.Y - center.Y, point.X - center.X) * 180.0 / Math.PI;
 
     private static bool GeometryMatches(
         IReadOnlyList<DrawingEntity> first,

@@ -81,5 +81,30 @@ public sealed class SketchCreationDimensionFactoryTests
                 && dimension.IsDriving);
     }
 
+    [Theory]
+    [InlineData("threepointarc")]
+    [InlineData("centerpointarc")]
+    public void CreatesRadiusDimensionForKeyedArc(string toolName)
+    {
+        var entities = new DrawingEntity[]
+        {
+            new ArcEntity(EntityId.Create("arc-a"), new Point2(10, 20), 3, 0, 90)
+        };
+
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            toolName,
+            entities,
+            new Dictionary<string, double> { ["radius"] = 3 },
+            CreateDimensionId);
+
+        dimensions.Should().ContainSingle()
+            .Which.Should().Match<SketchDimension>(dimension =>
+                dimension.Kind == SketchDimensionKind.Radius
+                && dimension.ReferenceKeys.SequenceEqual(new[] { "arc-a" })
+                && dimension.Value == 3
+                && dimension.Anchor == new Point2(13, 20)
+                && dimension.IsDriving);
+    }
+
     private static string CreateDimensionId() => Guid.NewGuid().ToString("N");
 }

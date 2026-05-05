@@ -75,7 +75,7 @@ public partial class DrawingCanvas : IAsyncDisposable
     public Action<IReadOnlySet<string>>? DeleteSelectionRequested { get; set; }
 
     [Parameter]
-    public Action<string, CanvasPointDto, CanvasPointDto>? GeometryDragRequested { get; set; }
+    public Action<string, CanvasPointDto, CanvasPointDto, bool>? GeometryDragRequested { get; set; }
 
     [Parameter]
     public Action<string, double>? SketchDimensionValueChanged { get; set; }
@@ -327,12 +327,14 @@ public partial class DrawingCanvas : IAsyncDisposable
         double startX,
         double startY,
         double endX,
-        double endY)
+        double endY,
+        bool constrainToCurrentVector)
     {
         GeometryDragRequested?.Invoke(
             selectionKey,
             new CanvasPointDto(startX, startY),
-            new CanvasPointDto(endX, endY));
+            new CanvasPointDto(endX, endY),
+            constrainToCurrentVector);
         return Task.CompletedTask;
     }
 

@@ -53,7 +53,7 @@ public static class SketchCommandFactory
             dimension = new SketchDimension(
                 id,
                 kind,
-                new[] { selections[0].Key },
+                new[] { GetCircleLikeDimensionReferenceKey(selections[0].Key) },
                 value,
                 anchorOverride ?? new Point2(circleLike.Center.X + circleLike.Radius, circleLike.Center.Y),
                 isDriving: true);
@@ -227,11 +227,21 @@ public static class SketchCommandFactory
         string key,
         out SketchSelection selection)
     {
-        if (!SketchReference.TryParseCanvasPointCoordinates(key, out var entityId, out _, out var point)
-            || !TryFindEntity(document, entityId, out _))
+        if (!SketchReference.TryParseCanvasPointCoordinates(key, out var entityId, out var label, out var point)
+            || !TryFindEntity(document, entityId, out var entity))
         {
             selection = default!;
             return false;
+        }
+
+        CircleLikeSelection? circleLike = null;
+        if (IsCurvePerimeterCanvasPoint(label)
+            && TryGetCircleLike(
+                new SketchReference(entityId, SketchReferenceTarget.Entity),
+                entity,
+                out var curveSelection))
+        {
+            circleLike = curveSelection;
         }
 
         selection = new SketchSelection(
@@ -240,8 +250,20 @@ public static class SketchCommandFactory
             point,
             null,
             null,
-            null);
+            circleLike);
         return true;
+    }
+
+    private static bool IsCurvePerimeterCanvasPoint(string label)
+    {
+        var normalized = label.Split('|', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty;
+        return !StringComparer.OrdinalIgnoreCase.Equals(normalized, "center");
+    }
+
+    private static string GetCircleLikeDimensionReferenceKey(string key)
+    {
+        var pointSeparatorIndex = key.IndexOf("|point|", StringComparison.Ordinal);
+        return pointSeparatorIndex > 0 ? key[..pointSeparatorIndex] : key;
     }
 
     private static string NormalizeSelectionKey(string? selectionKey)
@@ -249,6 +271,11 @@ public static class SketchCommandFactory
         if (string.IsNullOrWhiteSpace(selectionKey))
         {
             return string.Empty;
+        }
+
+        if (selectionKey.Contains("|point|", StringComparison.Ordinal))
+        {
+            return selectionKey.Trim();
         }
 
         return SketchReference.TryNormalize(selectionKey, out var normalized)
