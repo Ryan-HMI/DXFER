@@ -295,13 +295,10 @@ export function getSketchChainContextFromCommittedTool(tool, points) {
 export function getPostCommitSketchToolState(tool, points, wasAutoChained = false) {
   const normalizedTool = normalizeToolName(tool);
   const chainContext = getSketchChainContextFromCommittedTool(normalizedTool, points);
-  const activeTool = normalizedTool === "tangentarc" && wasAutoChained && chainContext
-    ? "line"
-    : normalizedTool;
 
   return {
-    activeTool,
-    toolDraft: getChainedSketchToolDraft(normalizedTool, activeTool, chainContext),
+    activeTool: normalizedTool,
+    toolDraft: getChainedSketchToolDraft(normalizedTool, normalizedTool, chainContext),
     sketchChainContext: chainContext,
     sketchChainVertexHovering: false
   };
@@ -376,7 +373,7 @@ function getSketchChainToggleTool(tool) {
   return normalized === "tangentarc" ? "line" : null;
 }
 
-export function tryToggleSketchChainToolAtPoint(state, screenPoint) {
+export function tryToggleSketchChainToolAtPoint(state, screenPoint, target = null) {
   const previousTool = normalizeToolName(state && state.activeTool);
   const nextTool = getSketchChainToggleTool(previousTool);
   if (!nextTool || !state.sketchChainContext || !state.sketchChainContext.point) {
@@ -387,6 +384,11 @@ export function tryToggleSketchChainToolAtPoint(state, screenPoint) {
   }
 
   const chainPoint = state.sketchChainContext.point;
+  if (!isSketchChainVertexTarget(target, chainPoint)) {
+    state.sketchChainVertexHovering = false;
+    return false;
+  }
+
   const firstDraftPoint = state.toolDraft && Array.isArray(state.toolDraft.points)
     ? state.toolDraft.points[0]
     : null;
@@ -425,6 +427,13 @@ export function tryToggleSketchChainToolAtPoint(state, screenPoint) {
     invokeDotNet(state, "OnSketchToolModeChanged", nextTool);
   }
   return true;
+}
+
+function isSketchChainVertexTarget(target, chainPoint) {
+  return Boolean(target
+    && target.kind === "point"
+    && target.point
+    && sameOptionalWorldPoint(target.point, chainPoint));
 }
 
 function copyPoint(point) {
@@ -630,14 +639,15 @@ function drawGrainDirection(state, size) {
 }
 
 function drawArrowHead(context, point, angle, size) {
+  const wingAngle = Math.PI / 12;
   context.beginPath();
   context.moveTo(point.x, point.y);
   context.lineTo(
-    point.x - size * Math.cos(angle - Math.PI / 6),
-    point.y - size * Math.sin(angle - Math.PI / 6));
+    point.x - size * Math.cos(angle - wingAngle),
+    point.y - size * Math.sin(angle - wingAngle));
   context.lineTo(
-    point.x - size * Math.cos(angle + Math.PI / 6),
-    point.y - size * Math.sin(angle + Math.PI / 6));
+    point.x - size * Math.cos(angle + wingAngle),
+    point.y - size * Math.sin(angle + wingAngle));
   context.closePath();
   context.fill();
 }
@@ -649,7 +659,7 @@ function drawScreenLine(context, start, end) {
   context.stroke();
 }
 
-function drawArrowhead(context, point, toward, size = 7) {
+function drawArrowhead(context, point, toward, size = 9) {
   drawArrowHead(context, point, Math.atan2(toward.y - point.y, toward.x - point.x), size);
 }
 
@@ -945,7 +955,7 @@ function drawToolPreview(state) {
       const arc = getThreePointArc(first, second, third);
       if (arc) {
         drawWorldArcPreview(state, arc);
-        addRadiusPreviewDimension(dimensions, state, arc.center, first);
+        dimensions.push(...getThreePointArcPreviewDimensions(state, first, second, third));
       } else {
         drawWorldPolyline(state, [second, third]);
       }
@@ -1112,6 +1122,35 @@ function addRadiusPreviewDimension(dimensions, state, center, edge) {
       y: midpointScreen.y + normal.y * 18
     }
   });
+}
+
+export function getThreePointArcPreviewDimensions(state, first, through, end) {
+  const arcState = getThreePointArcConstructionState(first, through, end);
+  if (!arcState) {
+    return [];
+  }
+
+  const dimensions = [];
+  addRadiusPreviewDimension(dimensions, state, arcState.center, first);
+  dimensions.push({
+    key: "sweep",
+    label: "Sweep",
+    value: arcState.sweepDegrees,
+    point: getThreePointArcSweepDimensionPoint(state, arcState)
+  });
+  return dimensions;
+}
+
+function getThreePointArcSweepDimensionPoint(state, arcState) {
+  const startScreen = worldToScreen(state, pointOnCircle(arcState.center, arcState.radius, arcState.firstAngleDegrees));
+  const endScreen = worldToScreen(state, pointOnCircle(arcState.center, arcState.radius, arcState.endAngleDegrees));
+  const midpointScreen = midpointScreenPoint(startScreen, endScreen);
+  const centerScreen = worldToScreen(state, arcState.center);
+  const direction = normalizeScreenVector(subtractScreenPoints(midpointScreen, centerScreen)) || { x: 0, y: -1 };
+  return {
+    x: midpointScreen.x + direction.x * 24,
+    y: midpointScreen.y + direction.y * 24
+  };
 }
 
 function drawPreviewDimensionFallbackLabels(state, dimensions) {
@@ -1391,15 +1430,12 @@ function drawLinearDimensionGraphics(state, dimension, isPreview) {
   const start = worldToScreen(state, geometry.start);
   const end = worldToScreen(state, geometry.end);
   const anchor = worldToScreen(state, geometry.anchorPoint);
-  const vector = normalizeScreenVector({ x: end.x - start.x, y: end.y - start.y });
-  if (!vector) {
+  const text = getDimensionDisplayText(dimension);
+  const textWidth = text ? measureDimensionCanvasText(state, text) : 0;
+  const screenGeometry = getLinearDimensionScreenGeometry(start, end, anchor, textWidth);
+  if (!screenGeometry) {
     return;
   }
-
-  const startOffset = dotScreenPoints(subtractScreenPoints(start, anchor), vector);
-  const endOffset = dotScreenPoints(subtractScreenPoints(end, anchor), vector);
-  const dimensionStart = { x: anchor.x + vector.x * startOffset, y: anchor.y + vector.y * startOffset };
-  const dimensionEnd = { x: anchor.x + vector.x * endOffset, y: anchor.y + vector.y * endOffset };
 
   const { context } = state;
   const style = getDimensionRenderStyle(isPreview);
@@ -1409,14 +1445,79 @@ function drawLinearDimensionGraphics(state, dimension, isPreview) {
   context.lineWidth = 1.15;
   context.setLineDash(style.lineDash);
 
-  drawScreenLine(context, start, dimensionStart);
-  drawScreenLine(context, end, dimensionEnd);
-  drawScreenLine(context, dimensionStart, dimensionEnd);
-  drawArrowhead(context, dimensionStart, dimensionEnd);
-  drawArrowhead(context, dimensionEnd, dimensionStart);
+  for (const segment of screenGeometry.extensionSegments) {
+    drawScreenLine(context, segment.start, segment.end);
+  }
+
+  for (const segment of screenGeometry.dimensionSegments) {
+    drawScreenLine(context, segment.start, segment.end);
+  }
+
+  for (const arrow of screenGeometry.arrows) {
+    drawArrowhead(context, arrow.point, arrow.toward);
+  }
+
   context.restore();
 
   drawDimensionCanvasText(state, dimension, isPreview);
+}
+
+export function getLinearDimensionScreenGeometry(start, end, anchor, textWidth = 0) {
+  const vector = normalizeScreenVector({ x: end.x - start.x, y: end.y - start.y });
+  if (!vector) {
+    return null;
+  }
+
+  const startOffset = dotScreenPoints(subtractScreenPoints(start, anchor), vector);
+  const endOffset = dotScreenPoints(subtractScreenPoints(end, anchor), vector);
+  const dimensionStart = { x: anchor.x + vector.x * startOffset, y: anchor.y + vector.y * startOffset };
+  const dimensionEnd = { x: anchor.x + vector.x * endOffset, y: anchor.y + vector.y * endOffset };
+  const dimensionLength = distanceBetweenScreenPoints(dimensionStart, dimensionEnd);
+  const textGapHalfWidth = Math.min(dimensionLength / 2, Math.max(12, textWidth / 2 + 4));
+  const dimensionMidpoint = midpointScreenPoint(dimensionStart, dimensionEnd);
+  const gapStart = {
+    x: dimensionMidpoint.x - vector.x * textGapHalfWidth,
+    y: dimensionMidpoint.y - vector.y * textGapHalfWidth
+  };
+  const gapEnd = {
+    x: dimensionMidpoint.x + vector.x * textGapHalfWidth,
+    y: dimensionMidpoint.y + vector.y * textGapHalfWidth
+  };
+  const firstExtension = getExtensionSegmentPastDimensionLine(start, dimensionStart);
+  const secondExtension = getExtensionSegmentPastDimensionLine(end, dimensionEnd);
+
+  return {
+    extensionSegments: [
+      { start, end: firstExtension },
+      { start: end, end: secondExtension }
+    ],
+    dimensionSegments: [
+      { start: dimensionStart, end: gapStart },
+      { start: gapEnd, end: dimensionEnd }
+    ],
+    arrows: [
+      {
+        point: dimensionStart,
+        toward: { x: dimensionStart.x - vector.x, y: dimensionStart.y - vector.y }
+      },
+      {
+        point: dimensionEnd,
+        toward: { x: dimensionEnd.x + vector.x, y: dimensionEnd.y + vector.y }
+      }
+    ]
+  };
+}
+
+function getExtensionSegmentPastDimensionLine(referencePoint, dimensionPoint) {
+  const direction = normalizeScreenVector(subtractScreenPoints(dimensionPoint, referencePoint));
+  if (!direction) {
+    return dimensionPoint;
+  }
+
+  return {
+    x: dimensionPoint.x + direction.x * 6,
+    y: dimensionPoint.y + direction.y * 6
+  };
 }
 
 function drawRadialDimensionGraphics(state, dimension, isPreview) {
@@ -1551,6 +1652,19 @@ function drawDimensionCanvasText(state, dimension, isPreview) {
   drawFloatingDimensionLabel(state, text, dimension.point);
 }
 
+function measureDimensionCanvasText(state, text) {
+  if (!text || !state || !state.context) {
+    return 0;
+  }
+
+  const { context } = state;
+  context.save();
+  context.font = "600 12px Segoe UI, system-ui, sans-serif";
+  const width = context.measureText(text).width;
+  context.restore();
+  return width;
+}
+
 function getDimensionRenderStyle(isPreview) {
   return {
     strokeStyle: isPreview ? DIMENSION_PREVIEW_STROKE_STYLE : DIMENSION_LAYER_STROKE_STYLE,
@@ -1630,6 +1744,7 @@ function updatePersistentDimensionInputs(state, dimensions) {
     input.dataset.dimensionId = dimension.id;
     input.dataset.dimensionLabel = dimension.label;
     input.dataset.dimensionKind = dimension.kind;
+    input.dataset.dimensionValue = String(dimension.value);
     input.dataset.dimensionEditing = isEditing ? "true" : "false";
     const inputPoint = clampDimensionInputScreenPoint(state, dimension.point);
     input.style.left = `${inputPoint.x}px`;
@@ -1802,14 +1917,32 @@ function focusNextPersistentDimensionInput(state, currentId, reverse) {
 
 function commitPersistentDimensionInputValue(state, input) {
   const id = input.dataset.dimensionId;
-  const value = Number(String(input.value || "").trim());
-  if (!id || !Number.isFinite(value)) {
+  const commit = getPersistentDimensionCommitValue(input.value, input.dataset.dimensionValue);
+  input.dataset.dimensionEditing = "false";
+  if (!id || !commit.shouldCommit) {
+    input.value = formatDimensionValue(commit.value);
     return false;
   }
 
-  input.dataset.dimensionEditing = "false";
-  invokeDotNet(state, "OnSketchDimensionValueChanged", id, value);
+  invokeDotNet(state, "OnSketchDimensionValueChanged", id, commit.value);
   return true;
+}
+
+export function getPersistentDimensionCommitValue(text, fallbackValue) {
+  const fallback = Number(fallbackValue);
+  const safeFallback = Number.isFinite(fallback) ? fallback : 0;
+  const value = Number(String(text || "").trim());
+  if (!Number.isFinite(value) || value <= WORLD_GEOMETRY_TOLERANCE) {
+    return {
+      shouldCommit: false,
+      value: safeFallback
+    };
+  }
+
+  return {
+    shouldCommit: true,
+    value
+  };
 }
 
 function clearPersistentDimensionInputs(state) {
@@ -2030,12 +2163,15 @@ export function shouldAutoSelectDimensionInputValue(isFocused, hasLockedValue, h
   return isFocused && isActiveDimension && !hasLockedValue && !hasTransientEdit;
 }
 
-export function shouldCommitDimensionInputOnBlur(suppressDimensionInputCommit = false, skipNextBlurCommit = false) {
-  return !suppressDimensionInputCommit && !skipNextBlurCommit;
+export function shouldCommitDimensionInputOnBlur(
+  suppressDimensionInputCommit = false,
+  skipNextBlurCommit = false,
+  hasTransientEdit = false) {
+  return hasTransientEdit && !suppressDimensionInputCommit && !skipNextBlurCommit;
 }
 
-export function shouldCommitDimensionInputOnChange(skipNextChangeCommit = false) {
-  return !skipNextChangeCommit;
+export function shouldCommitDimensionInputOnChange(skipNextChangeCommit = false, hasTransientEdit = false) {
+  return hasTransientEdit && !skipNextChangeCommit;
 }
 
 export function clampDimensionInputScreenPoint(
@@ -2103,7 +2239,10 @@ function getOrCreateDimensionInput(state, dimension) {
   input.addEventListener("blur", () => {
     const skipNextBlurCommit = input.dataset.skipNextBlurCommit === "true";
     input.dataset.skipNextBlurCommit = "false";
-    if (shouldCommitDimensionInputOnBlur(state.suppressDimensionInputCommit, skipNextBlurCommit)) {
+    if (shouldCommitDimensionInputOnBlur(
+      state.suppressDimensionInputCommit,
+      skipNextBlurCommit,
+      input.dataset.dimensionEditing === "true")) {
       commitDimensionInputValue(state, input);
     }
     if (state.activeDimensionKey === input.dataset.dimensionKey) {
@@ -2111,12 +2250,15 @@ function getOrCreateDimensionInput(state, dimension) {
     }
     input.classList.remove("drawing-dimension-input-active");
   });
-  input.addEventListener("input", () => commitDimensionInputValue(state, input));
+  input.addEventListener("input", () => {
+    input.dataset.dimensionEditing = "true";
+    commitDimensionInputValue(state, input);
+  });
   input.addEventListener("keydown", event => handleDimensionInputKeyDown(state, input, event));
   input.addEventListener("change", () => {
     const skipNextChangeCommit = input.dataset.skipNextChangeCommit === "true";
     input.dataset.skipNextChangeCommit = "false";
-    if (shouldCommitDimensionInputOnChange(skipNextChangeCommit)) {
+    if (shouldCommitDimensionInputOnChange(skipNextChangeCommit, input.dataset.dimensionEditing === "true")) {
       commitDimensionInputValue(state, input);
     }
   });
@@ -2520,7 +2662,7 @@ function handlePointerMove(state, event) {
     const nearestTarget = findNearestTarget(state, screenPoint);
     setHoveredTarget(state, nearestTarget);
 
-    if (tryToggleSketchChainToolAtPoint(state, screenPoint)) {
+    if (tryToggleSketchChainToolAtPoint(state, screenPoint, nearestTarget)) {
       updateDebugAttributes(state);
       draw(state);
       return;
@@ -4795,6 +4937,10 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
       state.toolDraft.points = [anchor, nextRadiusPoint];
       nextPreviewPoint = previewPoint;
     }
+  } else if (tool === "threepointarc" && dimension === "radius" && points.length >= 2) {
+    nextPreviewPoint = getThreePointArcEndPointWithRadius(points[0], points[1], previewPoint, numericValue);
+  } else if (tool === "threepointarc" && dimension === "sweep" && points.length >= 2) {
+    nextPreviewPoint = getThreePointArcEndPointWithSweep(points[0], points[1], previewPoint, numericValue);
   } else if (tool === "twopointrectangle" && (dimension === "width" || dimension === "height")) {
     const width = dimension === "width" ? numericValue : Math.abs(previewPoint.x - anchor.x);
     const height = dimension === "height" ? numericValue : Math.abs(previewPoint.y - anchor.y);
@@ -4929,6 +5075,70 @@ function pointFromAnchorWithLength(anchor, referencePoint, length) {
   };
 }
 
+function getThreePointArcEndPointWithSweep(first, through, currentEnd, sweepDegrees) {
+  const arcState = getThreePointArcConstructionState(first, through, currentEnd);
+  if (!arcState || !Number.isFinite(sweepDegrees) || sweepDegrees <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const throughSweep = arcState.direction > 0
+    ? getCounterClockwiseDeltaDegrees(arcState.firstAngleDegrees, arcState.throughAngleDegrees)
+    : FULL_CIRCLE_DEGREES - getCounterClockwiseDeltaDegrees(arcState.firstAngleDegrees, arcState.throughAngleDegrees);
+  if (sweepDegrees <= throughSweep + WORLD_GEOMETRY_TOLERANCE || sweepDegrees >= FULL_CIRCLE_DEGREES) {
+    return null;
+  }
+
+  return pointOnCircle(
+    arcState.center,
+    arcState.radius,
+    arcState.firstAngleDegrees + arcState.direction * sweepDegrees);
+}
+
+function getThreePointArcEndPointWithRadius(first, through, currentEnd, radius) {
+  if (!Number.isFinite(radius) || radius <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const currentState = getThreePointArcConstructionState(first, through, currentEnd);
+  const centers = getCircleCentersFromChordAndRadius(first, through, radius);
+  if (!currentState || centers.length === 0) {
+    return null;
+  }
+
+  const center = centers
+    .sort((left, right) =>
+      distanceBetweenWorldPoints(left, currentState.center) - distanceBetweenWorldPoints(right, currentState.center))[0];
+  const firstAngle = getPointAngleDegrees(center, first);
+  return pointOnCircle(center, radius, firstAngle + currentState.direction * currentState.sweepDegrees);
+}
+
+function getCircleCentersFromChordAndRadius(first, second, radius) {
+  const chordLength = distanceBetweenWorldPoints(first, second);
+  if (chordLength <= WORLD_GEOMETRY_TOLERANCE || radius < chordLength / 2) {
+    return [];
+  }
+
+  const middle = midpoint(first, second);
+  const halfChord = chordLength / 2;
+  const centerDistance = Math.sqrt(Math.max(0, radius * radius - halfChord * halfChord));
+  const chordDirection = {
+    x: (second.x - first.x) / chordLength,
+    y: (second.y - first.y) / chordLength
+  };
+  const normal = { x: -chordDirection.y, y: chordDirection.x };
+
+  return [
+    {
+      x: middle.x + normal.x * centerDistance,
+      y: middle.y + normal.y * centerDistance
+    },
+    {
+      x: middle.x - normal.x * centerDistance,
+      y: middle.y - normal.y * centerDistance
+    }
+  ];
+}
+
 export function getAlignedRectangleCorners(first, second, depthPoint) {
   const depthVector = getAlignedRectangleDepthVector(first, second, depthPoint);
   return [
@@ -5008,6 +5218,29 @@ export function getThreePointCircle(first, second, third) {
 }
 
 export function getThreePointArc(first, through, end) {
+  const arcState = getThreePointArcConstructionState(first, through, end);
+  if (!arcState) {
+    return null;
+  }
+
+  if (arcState.direction > 0) {
+    return {
+      center: arcState.center,
+      radius: arcState.radius,
+      startAngleDegrees: arcState.firstAngleDegrees,
+      endAngleDegrees: arcState.firstAngleDegrees + arcState.sweepDegrees
+    };
+  }
+
+  return {
+    center: arcState.center,
+    radius: arcState.radius,
+    startAngleDegrees: arcState.endAngleDegrees,
+    endAngleDegrees: arcState.endAngleDegrees + arcState.sweepDegrees
+  };
+}
+
+export function getThreePointArcConstructionState(first, through, end) {
   const circle = getThreePointCircle(first, through, end);
   if (!circle || circle.radius <= WORLD_GEOMETRY_TOLERANCE) {
     return null;
@@ -5018,21 +5251,19 @@ export function getThreePointArc(first, through, end) {
   const endAngle = getPointAngleDegrees(circle.center, end);
   const throughDelta = getCounterClockwiseDeltaDegrees(firstAngle, throughAngle);
   const endDelta = getCounterClockwiseDeltaDegrees(firstAngle, endAngle);
-
-  if (throughDelta <= endDelta + WORLD_GEOMETRY_TOLERANCE) {
-    return {
-      center: circle.center,
-      radius: circle.radius,
-      startAngleDegrees: firstAngle,
-      endAngleDegrees: firstAngle + endDelta
-    };
-  }
+  const direction = throughDelta <= endDelta + WORLD_GEOMETRY_TOLERANCE ? 1 : -1;
+  const sweepDegrees = direction > 0
+    ? endDelta
+    : FULL_CIRCLE_DEGREES - endDelta;
 
   return {
     center: circle.center,
     radius: circle.radius,
-    startAngleDegrees: endAngle,
-    endAngleDegrees: endAngle + getCounterClockwiseDeltaDegrees(endAngle, firstAngle)
+    firstAngleDegrees: firstAngle,
+    throughAngleDegrees: throughAngle,
+    endAngleDegrees: endAngle,
+    direction,
+    sweepDegrees
   };
 }
 

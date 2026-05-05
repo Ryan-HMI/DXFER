@@ -19,6 +19,7 @@ import {
   getDimensionAnchorUpdateRequest,
   getDimensionPlacementRequest,
   getPersistentDimensionDescriptors,
+  getPersistentDimensionCommitValue,
   getRadialDimensionScreenGeometry,
   getRadialDimensionPreference,
   getSketchToolDimensionLocks,
@@ -31,6 +32,9 @@ import {
   getSplitAtPointRequest,
   getThreePointCircle,
   getThreePointArc,
+  getThreePointArcConstructionState,
+  getThreePointArcPreviewDimensions,
+  getLinearDimensionScreenGeometry,
   findNearestTarget,
   releaseDimensionDraftSelection,
   resolveActiveDimensionKey,
@@ -265,6 +269,65 @@ test("three point arc chooses the sweep containing the through point", () => {
   assertApproxEqual(arc.endAngleDegrees, 360);
 });
 
+test("three point arc preview prompts radius before sweep angle", () => {
+  const state = createHitTestState([]);
+  const dimensions = getThreePointArcPreviewDimensions(
+    state,
+    { x: 1, y: 0 },
+    { x: Math.SQRT1_2, y: Math.SQRT1_2 },
+    { x: 0, y: 1 }
+  );
+
+  assert.deepEqual(dimensions.map(dimension => dimension.key), ["radius", "sweep"]);
+  assertApproxEqual(dimensions[0].value, 1);
+  assertApproxEqual(dimensions[1].value, 90);
+});
+
+test("three point arc sweep dimension updates the preview endpoint", () => {
+  const state = {
+    activeTool: "threepointarc",
+    toolDraft: {
+      points: [{ x: 1, y: 0 }, { x: Math.SQRT1_2, y: Math.SQRT1_2 }],
+      previewPoint: { x: 0, y: 1 },
+      dimensionValues: {}
+    }
+  };
+
+  assert.equal(applyDraftDimensionValue(state, "sweep", 120), true);
+
+  const arc = getThreePointArc(
+    state.toolDraft.points[0],
+    state.toolDraft.points[1],
+    state.toolDraft.previewPoint);
+  const arcState = getThreePointArcConstructionState(
+    state.toolDraft.points[0],
+    state.toolDraft.points[1],
+    state.toolDraft.previewPoint);
+
+  assertApproxEqual(arc.radius, 1);
+  assertApproxEqual(arcState.sweepDegrees, 120);
+});
+
+test("three point arc radius dimension updates the preview radius", () => {
+  const state = {
+    activeTool: "threepointarc",
+    toolDraft: {
+      points: [{ x: 1, y: 0 }, { x: 0, y: 1 }],
+      previewPoint: { x: -1, y: 0 },
+      dimensionValues: {}
+    }
+  };
+
+  assert.equal(applyDraftDimensionValue(state, "radius", 2), true);
+
+  const arc = getThreePointArc(
+    state.toolDraft.points[0],
+    state.toolDraft.points[1],
+    state.toolDraft.previewPoint);
+
+  assertApproxEqual(arc.radius, 2);
+});
+
 test("three point arc rejects collinear points", () => {
   assert.equal(getThreePointArc(
     { x: 0, y: 0 },
@@ -364,19 +427,28 @@ test("line chain hover toggles to a tangent arc draft and back to a line draft",
     }
   };
 
-  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 40, y: 100 }), true);
+  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 40, y: 100 }), false);
+  assert.equal(state.activeTool, "line");
+
+  const chainVertexTarget = {
+    kind: "point",
+    point: { x: 4, y: 0 },
+    label: "end"
+  };
+
+  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 40, y: 100 }, chainVertexTarget), true);
   assert.equal(state.activeTool, "tangentarc");
   assert.deepEqual(state.toolDraft.points, [{ x: 4, y: 0 }, { x: 8, y: 0 }]);
   assert.equal(state.toolDraft.previewPoint, null);
   assert.equal(state.sketchChainVertexHovering, true);
   assert.deepEqual(state.acquiredSnapPoints, []);
 
-  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 40, y: 100 }), false);
+  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 40, y: 100 }, chainVertexTarget), false);
   assert.equal(state.activeTool, "tangentarc");
   assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 80, y: 100 }), false);
   assert.equal(state.sketchChainVertexHovering, false);
 
-  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 40, y: 100 }), true);
+  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 40, y: 100 }, chainVertexTarget), true);
   assert.equal(state.activeTool, "line");
   assert.deepEqual(state.toolDraft.points, [{ x: 4, y: 0 }]);
 });
@@ -396,15 +468,16 @@ test("committed tangent arc chain continues from the arc endpoint", () => {
   assert.ok(distanceBetweenTestPoints(arcDraft.points[0], arcDraft.points[1]) > 0);
 });
 
-test("auto tangent arc commit returns to line chain mode", () => {
+test("tangent arc commit stays in arc mode until the next last vertex hover", () => {
   const state = getPostCommitSketchToolState(
     "tangentarc",
     [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 2 }],
     true
   );
 
-  assert.equal(state.activeTool, "line");
-  assert.deepEqual(state.toolDraft.points, [{ x: 2, y: 2 }]);
+  assert.equal(state.activeTool, "tangentarc");
+  assert.equal(state.toolDraft.points.length, 2);
+  assert.deepEqual(state.toolDraft.points[0], { x: 2, y: 2 });
   assert.equal(state.toolDraft.previewPoint, null);
   assert.equal(state.sketchChainVertexHovering, false);
 });
@@ -620,11 +693,13 @@ test("focused dimension input keeps typed locks but refreshes live preview when 
   assert.equal(shouldAutoSelectDimensionInputValue(true, true, false, true), false);
   assert.equal(shouldAutoSelectDimensionInputValue(true, false, true, true), false);
   assert.equal(shouldAutoSelectDimensionInputValue(true, false, false, false), false);
-  assert.equal(shouldCommitDimensionInputOnBlur(false), true);
-  assert.equal(shouldCommitDimensionInputOnBlur(true), false);
-  assert.equal(shouldCommitDimensionInputOnBlur(false, true), false);
-  assert.equal(shouldCommitDimensionInputOnChange(false), true);
-  assert.equal(shouldCommitDimensionInputOnChange(true), false);
+  assert.equal(shouldCommitDimensionInputOnBlur(false, false, false), false);
+  assert.equal(shouldCommitDimensionInputOnBlur(false, false, true), true);
+  assert.equal(shouldCommitDimensionInputOnBlur(true, false, true), false);
+  assert.equal(shouldCommitDimensionInputOnBlur(false, true, true), false);
+  assert.equal(shouldCommitDimensionInputOnChange(false, false), false);
+  assert.equal(shouldCommitDimensionInputOnChange(false, true), true);
+  assert.equal(shouldCommitDimensionInputOnChange(true, true), false);
 });
 
 test("inference guides stop rendering after a maximum screen distance", () => {
@@ -710,6 +785,12 @@ test("dimension input screen position is clamped inside the canvas", () => {
   assert.deepEqual(clampDimensionInputScreenPoint(state, { x: 150, y: 100 }, 50, 20), { x: 150, y: 100 });
   assert.deepEqual(clampDimensionInputScreenPoint(state, { x: -40, y: 250 }, 50, 20), { x: 50, y: 180 });
   assert.deepEqual(clampDimensionInputScreenPoint(state, { x: 360, y: -25 }, 50, 20), { x: 250, y: 20 });
+});
+
+test("empty persistent dimension edit reverts instead of committing zero", () => {
+  assert.deepEqual(getPersistentDimensionCommitValue("", 20), { shouldCommit: false, value: 20 });
+  assert.deepEqual(getPersistentDimensionCommitValue("0", 20), { shouldCommit: false, value: 20 });
+  assert.deepEqual(getPersistentDimensionCommitValue("12.5", 20), { shouldCommit: true, value: 12.5 });
 });
 
 test("transient dimension cleanup removes live draft inputs", () => {
@@ -877,6 +958,22 @@ test("diameter dimension uses an outside leader instead of crossing the circle",
   assert.deepEqual(geometry.arrows, [
     { point: { x: 130, y: 100 }, toward: { x: 100, y: 100 } }
   ]);
+});
+
+test("linear dimension graphics leave a text gap and extend past the dimension line", () => {
+  const geometry = getLinearDimensionScreenGeometry(
+    { x: 0, y: 20 },
+    { x: 100, y: 20 },
+    { x: 50, y: 0 },
+    24);
+
+  assert.equal(geometry.dimensionSegments.length, 2);
+  assert.deepEqual(geometry.dimensionSegments[0], { start: { x: 0, y: 0 }, end: { x: 34, y: 0 } });
+  assert.deepEqual(geometry.dimensionSegments[1], { start: { x: 66, y: 0 }, end: { x: 100, y: 0 } });
+  assert.deepEqual(geometry.extensionSegments[0].end, { x: 0, y: -6 });
+  assert.deepEqual(geometry.extensionSegments[1].end, { x: 100, y: -6 });
+  assert.deepEqual(geometry.arrows[0], { point: { x: 0, y: 0 }, toward: { x: -1, y: 0 } });
+  assert.deepEqual(geometry.arrows[1], { point: { x: 100, y: 0 }, toward: { x: 101, y: 0 } });
 });
 
 test("dimension anchor drag request converts screen point to world anchor", () => {

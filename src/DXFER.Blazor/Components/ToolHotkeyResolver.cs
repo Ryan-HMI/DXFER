@@ -22,7 +22,6 @@ public static class ToolHotkeyResolver
         WorkbenchCommandId.CenterCircle,
         WorkbenchCommandId.ThreePointCircle,
         WorkbenchCommandId.ThreePointArc,
-        WorkbenchCommandId.TangentArc,
         WorkbenchCommandId.CenterPointArc,
         WorkbenchCommandId.Point,
         WorkbenchCommandId.Construction,

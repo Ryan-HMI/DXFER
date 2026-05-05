@@ -195,7 +195,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.ThreePointCircle, WorkbenchTool.ThreePointCircle, CadIconName.ThreePointCircle, "Three-point circle"),
             Command(WorkbenchCommandId.Ellipse, WorkbenchTool.Ellipse, CadIconName.Ellipse, "Ellipse", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.ThreePointArc, WorkbenchTool.ThreePointArc, CadIconName.Arc, "Three-point arc"),
-            Command(WorkbenchCommandId.TangentArc, WorkbenchTool.TangentArc, CadIconName.TangentArc, "Tangent arc"),
             Command(WorkbenchCommandId.CenterPointArc, WorkbenchTool.CenterPointArc, CadIconName.CenterPointArc, "Center point arc"),
             Command(WorkbenchCommandId.EllipticalArc, WorkbenchTool.EllipticalArc, CadIconName.EllipticalArc, "Elliptical arc", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Conic, WorkbenchTool.Conic, CadIconName.Conic, "Conic", disabled: true, isFuture: true),
@@ -833,6 +832,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void OnSketchDimensionValueChanged(string dimensionId, double value)
     {
+        if (!double.IsFinite(value) || value <= 0)
+        {
+            _status = "Dimension edit canceled.";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
         var existing = _document.Dimensions.FirstOrDefault(
             dimension => StringComparer.Ordinal.Equals(dimension.Id, dimensionId));
         if (existing is null)
@@ -1800,9 +1806,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 return true;
             case WorkbenchCommandId.ThreePointArc:
                 tool = WorkbenchTool.ThreePointArc;
-                return true;
-            case WorkbenchCommandId.TangentArc:
-                tool = WorkbenchTool.TangentArc;
                 return true;
             case WorkbenchCommandId.CenterPointArc:
                 tool = WorkbenchTool.CenterPointArc;

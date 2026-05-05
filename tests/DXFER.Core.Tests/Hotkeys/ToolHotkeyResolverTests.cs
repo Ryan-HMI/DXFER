@@ -18,12 +18,12 @@ public sealed class ToolHotkeyResolverTests
             WorkbenchCommandId.CenterCircle,
             WorkbenchCommandId.ThreePointCircle,
             WorkbenchCommandId.ThreePointArc,
-            WorkbenchCommandId.TangentArc,
             WorkbenchCommandId.CenterPointArc,
             WorkbenchCommandId.Point,
             WorkbenchCommandId.Construction,
             WorkbenchCommandId.SplitAtPoint,
             WorkbenchCommandId.Dimension);
+        ToolHotkeyResolver.ToolCommandIds.Should().NotContain(WorkbenchCommandId.TangentArc);
     }
 
     [Theory]
@@ -31,7 +31,6 @@ public sealed class ToolHotkeyResolverTests
     [InlineData(WorkbenchCommandId.CenterRectangle, "Center rectangle")]
     [InlineData(WorkbenchCommandId.ThreePointCircle, "Three-point circle")]
     [InlineData(WorkbenchCommandId.ThreePointArc, "Three-point arc")]
-    [InlineData(WorkbenchCommandId.TangentArc, "Tangent arc")]
     [InlineData(WorkbenchCommandId.CenterPointArc, "Center point arc")]
     [InlineData(WorkbenchCommandId.SplitAtPoint, "Split at point")]
     public void FormatsImplementedToolNamesForHotkeyEditing(
