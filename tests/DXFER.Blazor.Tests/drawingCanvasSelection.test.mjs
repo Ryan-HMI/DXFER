@@ -25,6 +25,7 @@ import {
   getDimensionAnchorUpdateRequest,
   getDimensionDisplayText,
   getDimensionPlacementRequest,
+  getFitViewForDocument,
   getEllipseFromPoints,
   getPersistentDimensionDescriptors,
   getPersistentDimensionCommitValue,
@@ -63,6 +64,19 @@ import {
   syncActiveSelectionWithSelectedKeys,
   tryToggleSketchChainToolAtPoint
 } from "../../src/DXFER.Blazor/wwwroot/drawingCanvas.js";
+
+test("blank document fit uses a sane default sketch scale", () => {
+  const view = getFitViewForDocument(
+    {
+      entities: [],
+      bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 }
+    },
+    { width: 1200, height: 800 });
+
+  assert.equal(view.scale, 24);
+  assert.equal(view.offsetX, 600);
+  assert.equal(view.offsetY, 400);
+});
 
 test("direct click selects an unselected target and makes it active", () => {
   const state = {

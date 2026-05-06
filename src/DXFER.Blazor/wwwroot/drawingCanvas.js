@@ -1,4 +1,5 @@
 const DEFAULT_FIT_MARGIN = 32;
+const DEFAULT_BLANK_VIEW_SCALE = 24;
 const HIT_TEST_TOLERANCE = 9;
 const SNAP_POINT_TOLERANCE = 8;
 const CLICK_MOVE_TOLERANCE = 5;
@@ -4962,31 +4963,43 @@ function handleDoubleClick(state, event) {
 
 function fitToExtents(state) {
   const size = getCanvasCssSize(state);
-  const bounds = getDocumentBounds(state.document);
+  const view = getFitViewForDocument(state.document, size);
+
+  state.view.scale = view.scale;
+  state.view.offsetX = view.offsetX;
+  state.view.offsetY = view.offsetY;
+  updateDebugAttributes(state);
+}
+
+export function getFitViewForDocument(document, size) {
+  const width = Math.max(1, Number(size && size.width) || 1);
+  const height = Math.max(1, Number(size && size.height) || 1);
+  const bounds = getDocumentBounds(document);
 
   if (!bounds) {
-    state.view.scale = 1;
-    state.view.offsetX = size.width / 2;
-    state.view.offsetY = size.height / 2;
-    return;
+    return {
+      scale: DEFAULT_BLANK_VIEW_SCALE,
+      offsetX: width / 2,
+      offsetY: height / 2
+    };
   }
 
   const worldWidth = Math.max(bounds.maxX - bounds.minX, 1);
   const worldHeight = Math.max(bounds.maxY - bounds.minY, 1);
-  const availableWidth = Math.max(1, size.width - DEFAULT_FIT_MARGIN * 2);
-  const availableHeight = Math.max(1, size.height - DEFAULT_FIT_MARGIN * 2);
+  const availableWidth = Math.max(1, width - DEFAULT_FIT_MARGIN * 2);
+  const availableHeight = Math.max(1, height - DEFAULT_FIT_MARGIN * 2);
   const scale = clamp(
     Math.min(availableWidth / worldWidth, availableHeight / worldHeight),
     MIN_VIEW_SCALE,
     MAX_VIEW_SCALE);
-
   const centerX = (bounds.minX + bounds.maxX) / 2;
   const centerY = (bounds.minY + bounds.maxY) / 2;
 
-  state.view.scale = scale;
-  state.view.offsetX = size.width / 2 - centerX * scale;
-  state.view.offsetY = size.height / 2 + centerY * scale;
-  updateDebugAttributes(state);
+  return {
+    scale,
+    offsetX: width / 2 - centerX * scale,
+    offsetY: height / 2 + centerY * scale
+  };
 }
 
 function worldToScreen(state, point) {
@@ -8792,12 +8805,17 @@ function getDocumentConstraints(document) {
 }
 
 function getDocumentBounds(document) {
+  const entities = getDocumentEntities(document);
+  if (entities.length === 0) {
+    return null;
+  }
+
   const dtoBounds = readBounds(readProperty(document, "bounds", "Bounds"));
   if (dtoBounds) {
     return dtoBounds;
   }
 
-  return computeEntityBounds(getDocumentEntities(document));
+  return computeEntityBounds(entities);
 }
 
 function computeEntityBounds(entities) {

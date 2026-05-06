@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260505-ortho-snap-refresh";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260505-blank-view-scale";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
