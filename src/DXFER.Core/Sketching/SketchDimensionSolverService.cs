@@ -27,16 +27,24 @@ public static class SketchDimensionSolverService
         ArgumentNullException.ThrowIfNull(dimension);
 
         var effectiveDimension = NormalizeDimension(dimension);
+        var originalEntities = document.Entities.ToArray();
         var entities = document.Entities.ToArray();
         if (effectiveDimension.IsDriving)
         {
             ApplyDimensionGeometry(entities, document.Constraints, effectiveDimension);
+            SketchConstraintPropagationService.PropagateFromChanges(
+                originalEntities,
+                entities,
+                document.Constraints,
+                SketchFixedReferences.FromConstraints(document.Constraints));
         }
 
+        var dimensions = UpsertDimension(document.Dimensions, effectiveDimension);
+        var solvedDocument = new DrawingDocument(entities, dimensions, document.Constraints);
         return new DrawingDocument(
             entities,
-            UpsertDimension(document.Dimensions, effectiveDimension),
-            document.Constraints);
+            dimensions,
+            SketchConstraintPropagationService.ValidateConstraints(solvedDocument, document.Constraints));
     }
 
     private static void ApplyDimensionGeometry(

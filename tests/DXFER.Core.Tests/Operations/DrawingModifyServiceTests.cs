@@ -48,6 +48,33 @@ public sealed class DrawingModifyServiceTests
     }
 
     [Fact]
+    public void OffsetSelectedSplineCreatesSplineCopyThroughPickedSide()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new SplineEntity(
+                EntityId.Create("curve"),
+                1,
+                new[] { new Point2(0, 0), new Point2(10, 0) },
+                Array.Empty<double>())
+        });
+
+        var offset = DrawingModifyService.TryOffsetSelected(
+            document,
+            new[] { "curve" },
+            new Point2(2, 3),
+            prefix => EntityId.Create($"{prefix}-copy"),
+            out var next,
+            out var createdCount);
+
+        offset.Should().BeTrue();
+        createdCount.Should().Be(1);
+        var spline = next.Entities[1].Should().BeOfType<SplineEntity>().Subject;
+        spline.Id.Should().Be(EntityId.Create("spline-copy"));
+        spline.ControlPoints.Should().Equal(new Point2(0, 3), new Point2(10, 3));
+    }
+
+    [Fact]
     public void LinearPatternAddsTranslatedCopies()
     {
         var document = new DrawingDocument(new DrawingEntity[]
@@ -116,6 +143,48 @@ public sealed class DrawingModifyServiceTests
         next.Entities.Should().HaveCount(4);
         next.Entities[0].Should().Be(new LineEntity(EntityId.Create("target"), new Point2(0, 0), new Point2(3, 0)));
         next.Entities[1].Should().Be(new LineEntity(EntityId.Create("line-split"), new Point2(7, 0), new Point2(10, 0)));
+    }
+
+    [Fact]
+    public void PowerTrimDeletesPickedLineWhenNoCuttersExist()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("target"), new Point2(0, 0), new Point2(10, 0)),
+            new CircleEntity(EntityId.Create("other"), new Point2(20, 0), 2)
+        });
+
+        var trimmed = DrawingModifyService.TryPowerTrimOrExtendLine(
+            document,
+            "target",
+            new Point2(5, 0),
+            prefix => EntityId.Create($"{prefix}-split"),
+            out var next);
+
+        trimmed.Should().BeTrue();
+        next.Entities.Should().ContainSingle()
+            .Which.Should().Be(new CircleEntity(EntityId.Create("other"), new Point2(20, 0), 2));
+    }
+
+    [Fact]
+    public void PowerTrimDeletesPickedCurveWhenNoCurveTrimSolverExists()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new ArcEntity(EntityId.Create("target"), new Point2(0, 0), 5, 0, 90),
+            new LineEntity(EntityId.Create("other"), new Point2(20, 0), new Point2(30, 0))
+        });
+
+        var trimmed = DrawingModifyService.TryPowerTrimOrExtendLine(
+            document,
+            "target",
+            new Point2(3, 3),
+            prefix => EntityId.Create($"{prefix}-split"),
+            out var next);
+
+        trimmed.Should().BeTrue();
+        next.Entities.Should().ContainSingle()
+            .Which.Should().Be(new LineEntity(EntityId.Create("other"), new Point2(20, 0), new Point2(30, 0)));
     }
 
     [Fact]

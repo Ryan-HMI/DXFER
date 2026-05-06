@@ -750,9 +750,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private void OnPowerTrimRequested(string targetKey, CanvasPointDto point)
     {
         if (!TryGetEntityIdForOperationTarget(targetKey, out var entityId)
-            || FindEntity(entityId) is not LineEntity)
+            || FindEntity(entityId) is null)
         {
-            _status = "Power trim/extend needs a line target.";
+            _status = "Power trim/extend needs a geometry target.";
             _ = InvokeAsync(StateHasChanged);
             return;
         }
@@ -764,12 +764,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 CreateEntityId,
                 out var nextDocument))
         {
-            _status = "Power trim/extend needs another line crossing the picked line or its extension.";
+            _status = "Power trim/extend needs a crossed geometry section or an extendable line target.";
             _ = InvokeAsync(StateHasChanged);
             return;
         }
 
-        ApplyDocumentChange(nextDocument, "Power trim/extend applied. Click another line section, or Esc to cancel.");
+        ApplyDocumentChange(nextDocument, "Power trim/extend applied. Click another section, or Esc to cancel.");
         _activeTool = WorkbenchTool.PowerTrim;
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);
@@ -781,7 +781,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         foreach (var pick in picks)
         {
             if (TryGetEntityIdForOperationTarget(pick.TargetKey, out var entityId)
-                && FindEntity(entityId) is LineEntity)
+                && FindEntity(entityId) is not null)
             {
                 trimPicks.Add(new PowerTrimLinePick(entityId, ToPoint(pick.Point)));
             }
@@ -793,7 +793,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             : DrawingModifyService.PowerTrimOrExtendLines(_document, trimPicks, CreateEntityId, out nextDocument);
         if (appliedCount == 0)
         {
-            _status = "Power trim drag needs one or more line sections crossed by the cursor path.";
+            _status = "Power trim drag needs one or more geometry sections crossed by the cursor path.";
             _ = InvokeAsync(StateHasChanged);
             return;
         }

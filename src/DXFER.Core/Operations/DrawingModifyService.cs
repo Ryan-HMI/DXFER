@@ -1,5 +1,6 @@
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
+using DXFER.Core.Sketching;
 
 namespace DXFER.Core.Operations;
 
@@ -298,9 +299,20 @@ public static class DrawingModifyService
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(createEntityId);
 
-        var target = document.Entities.OfType<LineEntity>()
-            .FirstOrDefault(line => StringComparer.Ordinal.Equals(line.Id.Value, targetEntityId));
-        if (target is null || !TryProjectParameter(target, pickedPoint, out var pickedParameter))
+        var targetEntity = document.Entities
+            .FirstOrDefault(entity => StringComparer.Ordinal.Equals(entity.Id.Value, targetEntityId));
+        if (targetEntity is null)
+        {
+            nextDocument = document;
+            return false;
+        }
+
+        if (targetEntity is not LineEntity target)
+        {
+            return RemoveTargetEntity(document, targetEntity.Id.Value, out nextDocument);
+        }
+
+        if (!TryProjectParameter(target, pickedPoint, out var pickedParameter))
         {
             nextDocument = document;
             return false;
@@ -327,8 +339,9 @@ public static class DrawingModifyService
             .ToArray();
         if (distinctCuts.Length == 0)
         {
-            nextDocument = document;
-            return false;
+            return pickedParameter is >= -GeometryTolerance and <= 1.0 + GeometryTolerance
+                ? RemoveTargetEntity(document, target.Id.Value, out nextDocument)
+                : FailUnchanged(document, out nextDocument);
         }
 
         if (pickedParameter < -GeometryTolerance)
@@ -360,8 +373,7 @@ public static class DrawingModifyService
             .ToArray();
         if (insideCuts.Length == 0)
         {
-            nextDocument = document;
-            return false;
+            return RemoveTargetEntity(document, target.Id.Value, out nextDocument);
         }
 
         var left = insideCuts.LastOrDefault(parameter => parameter < pickedParameter, double.NaN);
@@ -494,6 +506,33 @@ public static class DrawingModifyService
         return true;
     }
 
+    private static bool RemoveTargetEntity(
+        DrawingDocument document,
+        string entityId,
+        out DrawingDocument nextDocument)
+    {
+        var nextEntities = document.Entities
+            .Where(entity => !StringComparer.Ordinal.Equals(entity.Id.Value, entityId))
+            .ToArray();
+        if (nextEntities.Length == document.Entities.Count)
+        {
+            nextDocument = document;
+            return false;
+        }
+
+        nextDocument = new DrawingDocument(
+            nextEntities,
+            document.Dimensions.Where(dimension => !ReferenceKeysContainEntity(dimension.ReferenceKeys, entityId)),
+            document.Constraints.Where(constraint => !ReferenceKeysContainEntity(constraint.ReferenceKeys, entityId)));
+        return true;
+    }
+
+    private static bool FailUnchanged(DrawingDocument document, out DrawingDocument nextDocument)
+    {
+        nextDocument = document;
+        return false;
+    }
+
     private static bool TryOffsetEntity(
         DrawingEntity entity,
         Point2 throughPoint,
@@ -542,6 +581,14 @@ public static class DrawingModifyService
                 }
 
                 break;
+            case SplineEntity spline:
+                if (TryOffsetSpline(spline, throughPoint, entityId, out var offsetSpline))
+                {
+                    offsetEntity = offsetSpline;
+                    return true;
+                }
+
+                break;
         }
 
         offsetEntity = default!;
@@ -550,12 +597,24 @@ public static class DrawingModifyService
 
     private static bool TryOffsetLine(LineEntity line, Point2 throughPoint, EntityId entityId, out LineEntity offsetLine)
     {
+        if (!TryGetLineOffsetVector(line, throughPoint, out var offset))
+        {
+            offsetLine = default!;
+            return false;
+        }
+
+        offsetLine = new LineEntity(entityId, Add(line.Start, offset), Add(line.End, offset), line.IsConstruction);
+        return true;
+    }
+
+    private static bool TryGetLineOffsetVector(LineEntity line, Point2 throughPoint, out Point2 offset)
+    {
         var deltaX = line.End.X - line.Start.X;
         var deltaY = line.End.Y - line.Start.Y;
         var length = Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
         if (length <= GeometryTolerance)
         {
-            offsetLine = default!;
+            offset = default;
             return false;
         }
 
@@ -563,12 +622,11 @@ public static class DrawingModifyService
         var signedDistance = Dot(Subtract(throughPoint, line.Start), normal);
         if (Math.Abs(signedDistance) <= GeometryTolerance)
         {
-            offsetLine = default!;
+            offset = default;
             return false;
         }
 
-        var offset = Multiply(normal, signedDistance);
-        offsetLine = new LineEntity(entityId, Add(line.Start, offset), Add(line.End, offset), line.IsConstruction);
+        offset = Multiply(normal, signedDistance);
         return true;
     }
 
@@ -588,6 +646,48 @@ public static class DrawingModifyService
 
         var offsetVector = Subtract(offsetFirst.Start, firstSegment.Start);
         offsetPolyline = new PolylineEntity(entityId, vertices.Select(vertex => Add(vertex, offsetVector)), polyline.IsConstruction);
+        return true;
+    }
+
+    private static bool TryOffsetSpline(
+        SplineEntity spline,
+        Point2 throughPoint,
+        EntityId entityId,
+        out SplineEntity offsetSpline)
+    {
+        var samples = spline.GetSamplePoints();
+        if (samples.Count < 2)
+        {
+            offsetSpline = default!;
+            return false;
+        }
+
+        LineEntity? closestSegment = null;
+        var closestDistance = double.PositiveInfinity;
+        for (var index = 1; index < samples.Count; index++)
+        {
+            var segment = new LineEntity(spline.Id, samples[index - 1], samples[index], spline.IsConstruction);
+            var distance = DistancePointToSegment(throughPoint, segment);
+            if (distance < closestDistance)
+            {
+                closestDistance = distance;
+                closestSegment = segment;
+            }
+        }
+
+        if (closestSegment is null || !TryGetLineOffsetVector(closestSegment, throughPoint, out var offsetVector))
+        {
+            offsetSpline = default!;
+            return false;
+        }
+
+        offsetSpline = new SplineEntity(
+            entityId,
+            spline.Degree,
+            spline.ControlPoints.Select(point => Add(point, offsetVector)),
+            spline.Knots,
+            spline.Weights,
+            spline.IsConstruction);
         return true;
     }
 
@@ -839,6 +939,19 @@ public static class DrawingModifyService
             line.Start.X + (line.End.X - line.Start.X) * parameter,
             line.Start.Y + (line.End.Y - line.Start.Y) * parameter);
 
+    private static double DistancePointToSegment(Point2 point, LineEntity segment)
+    {
+        var delta = Subtract(segment.End, segment.Start);
+        var lengthSquared = Dot(delta, delta);
+        if (lengthSquared <= GeometryTolerance * GeometryTolerance)
+        {
+            return Distance(point, segment.Start);
+        }
+
+        var parameter = Math.Clamp(Dot(Subtract(point, segment.Start), delta) / lengthSquared, 0, 1);
+        return Distance(point, PointAtParameter(segment, parameter));
+    }
+
     private static bool TryGetAngleDelta(Point2 center, Point2 reference, Point2 target, out double degrees)
     {
         if (Distance(center, reference) <= GeometryTolerance || Distance(center, target) <= GeometryTolerance)
@@ -895,6 +1008,20 @@ public static class DrawingModifyService
     private static double Dot(Point2 first, Point2 second) => first.X * second.X + first.Y * second.Y;
 
     private static double Cross(Point2 first, Point2 second) => first.X * second.Y - first.Y * second.X;
+
+    private static bool ReferenceKeysContainEntity(IEnumerable<string> referenceKeys, string entityId)
+    {
+        foreach (var referenceKey in referenceKeys)
+        {
+            if (SketchReference.TryParse(referenceKey, out var reference)
+                && StringComparer.Ordinal.Equals(reference.EntityId, entityId))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static Point2? Unit(Point2 point)
     {

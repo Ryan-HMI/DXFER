@@ -1,6 +1,7 @@
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
 using DXFER.Core.Sketching;
+using DXFER.Blazor.Sketching;
 using FluentAssertions;
 
 namespace DXFER.Core.Tests.Sketching;
@@ -259,7 +260,39 @@ public sealed class SketchDimensionSolverServiceTests
         solved.Dimensions.Should().ContainSingle()
             .Which.Value.Should().Be(9);
         solved.Constraints.Should().ContainSingle()
-            .Which.Should().BeSameAs(constraint);
+            .Which.Should().BeEquivalentTo(constraint);
+    }
+
+    [Fact]
+    public void UpdatingRectangleWidthPreservesCoincidentAndAxisConstraints()
+    {
+        var sequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false);
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var document = new DrawingDocument(entities, Array.Empty<SketchDimension>(), constraints);
+
+        var solved = SketchDimensionSolverService.ApplyDimension(
+            document,
+            DrivingDimension(
+                "top-width",
+                SketchDimensionKind.LinearDistance,
+                11,
+                "rect-3:start",
+                "rect-3:end"));
+
+        solved.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("rect-1"), new Point2(-1, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("rect-2"), new Point2(10, 0), new Point2(10, 5)),
+            new LineEntity(EntityId.Create("rect-3"), new Point2(10, 5), new Point2(-1, 5)),
+            new LineEntity(EntityId.Create("rect-4"), new Point2(-1, 5), new Point2(-1, 0)));
+        solved.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
     }
 
     [Fact]

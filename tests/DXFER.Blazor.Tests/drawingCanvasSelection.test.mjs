@@ -695,6 +695,30 @@ test("locked draft dimensions reapply after cursor movement", () => {
   assert.deepEqual(state.toolDraft.previewPoint, { x: 0, y: 10 });
 });
 
+test("offset draft dimension updates the preview point on the picked side", () => {
+  const state = createHitTestState([
+    {
+      id: "edge",
+      kind: "line",
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+    }
+  ]);
+  state.activeTool = "offset";
+  state.selectedKeys = new Set(["edge"]);
+  state.toolDraft = {
+    points: [],
+    previewPoint: { x: 2, y: 3 },
+    dimensionValues: {}
+  };
+
+  const changed = applyDraftDimensionValue(state, "offset", 5);
+
+  assert.equal(changed, true);
+  assertApproxEqual(state.toolDraft.previewPoint.x, 2);
+  assertApproxEqual(state.toolDraft.previewPoint.y, 5);
+  assert.equal(state.toolDraft.dimensionValues.offset, 5);
+});
+
 test("sketch tool dimension locks only include finite positive values", () => {
   const locks = getSketchToolDimensionLocks({
     dimensionValues: {
@@ -1828,6 +1852,25 @@ test("power trim drag request captures crossed line targets", () => {
   assertApproxEqual(requests[0].point.y, 0);
   assertApproxEqual(requests[1].point.x, 6);
   assertApproxEqual(requests[1].point.y, 0);
+});
+
+test("power trim drag request captures crossed curve targets", () => {
+  const state = createHitTestState([
+    {
+      id: "hole",
+      kind: "circle",
+      center: { x: 4, y: 0 },
+      radius: 1
+    }
+  ]);
+  state.activeTool = "powertrim";
+
+  const requests = getPowerTrimCrossingRequests(state, [
+    { x: 0, y: 100 },
+    { x: 80, y: 100 }
+  ]);
+
+  assert.deepEqual(requests.map(request => request.targetKey), ["hole"]);
 });
 
 test("construction toggle request targets the hovered entity while construction tool is active", () => {

@@ -42,6 +42,39 @@ public sealed class SketchGeometryDragServiceTests
     }
 
     [Fact]
+    public void DraggingConstrainedRectangleEdgeHorizontallyKeepsVerticalSidesAxisAligned()
+    {
+        var sequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false);
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var document = new DrawingDocument(entities, Array.Empty<SketchDimension>(), constraints);
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "rect-3",
+            new Point2(5, 5),
+            new Point2(8, 5),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        next.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("rect-1"), new Point2(3, 0), new Point2(13, 0)),
+            new LineEntity(EntityId.Create("rect-2"), new Point2(13, 0), new Point2(13, 5)),
+            new LineEntity(EntityId.Create("rect-3"), new Point2(13, 5), new Point2(3, 5)),
+            new LineEntity(EntityId.Create("rect-4"), new Point2(3, 5), new Point2(3, 0)));
+        next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
     public void DraggingLineEndpointMovesOnlyThatEndpoint()
     {
         var document = new DrawingDocument(new DrawingEntity[]

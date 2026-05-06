@@ -42,7 +42,7 @@ public static class SketchGeometryDragService
             return false;
         }
 
-        PropagateCoincidentConstraints(originalEntities, entities, document.Constraints, fixedReferences);
+        SketchConstraintPropagationService.PropagateFromChanges(originalEntities, entities, document.Constraints, fixedReferences);
         var dimensions = TryGetTranslatedDimensionEntityId(document, selectionKey, out var translatedEntityId)
             ? TranslateDimensionAnchors(document.Dimensions, translatedEntityId, delta)
             : document.Dimensions;
@@ -50,7 +50,7 @@ public static class SketchGeometryDragService
         draggedDocument = new DrawingDocument(
             draggedDocument.Entities,
             draggedDocument.Dimensions,
-            ValidateConstraints(draggedDocument, document.Constraints));
+            SketchConstraintPropagationService.ValidateConstraints(draggedDocument, document.Constraints));
         if (GeometryMatches(document.Entities, draggedDocument.Entities))
         {
             status = "Selected geometry is constrained.";
