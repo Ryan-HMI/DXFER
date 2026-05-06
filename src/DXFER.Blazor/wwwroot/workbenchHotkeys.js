@@ -1,10 +1,10 @@
 export function createToolHotkeyListener(dotNetReference) {
     const handleKeyDown = async (event) => {
-        const key = event.key || "";
+        const key = getToolHotkeyEventKey(event);
         const editableTarget = isEditableTarget(event.target);
 
         if (event.defaultPrevented
-            || key.length !== 1
+            || !key
             || editableTarget) {
             return;
         }
@@ -99,14 +99,14 @@ function handleHotkeyRecorderKeyDown(event) {
         return;
     }
 
-    if (event.key === "Backspace" || event.key === "Delete") {
+    if (event.key === "Backspace") {
         updateHotkeyInput(event.currentTarget, "");
         event.preventDefault();
         event.stopPropagation();
         return;
     }
 
-    const baseKey = normalizeRecordedBaseKey(event.key);
+    const baseKey = getToolHotkeyEventKey(event);
     if (!baseKey) {
         return;
     }
@@ -134,15 +134,122 @@ function handleHotkeyRecorderKeyDown(event) {
     event.stopPropagation();
 }
 
-function normalizeRecordedBaseKey(key) {
-    if (!key || key.length !== 1 || !/^[a-z0-9]$/i.test(key)) {
+export function getToolHotkeyEventKey(event) {
+    if (!event || event.isComposing) {
         return null;
     }
 
-    return key.toUpperCase();
+    return normalizeRecordedBaseKey(event.key || "");
+}
+
+export function normalizeRecordedBaseKey(key) {
+    if (!key) {
+        return null;
+    }
+
+    if (key.length === 1) {
+        if (/^[a-z0-9]$/i.test(key)) {
+            return key.toUpperCase();
+        }
+
+        return punctuationKeyNames.get(key) || null;
+    }
+
+    if (isModifierOnlyKey(key) || isInvalidBrowserKey(key)) {
+        return null;
+    }
+
+    const functionMatch = /^f([1-9]|1[0-9]|2[0-4])$/i.exec(key);
+    if (functionMatch) {
+        return `F${functionMatch[1]}`;
+    }
+
+    return namedKeyNames.get(key.toLowerCase()) || key.toUpperCase();
 }
 
 function updateHotkeyInput(input, value) {
     input.value = value;
     input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+const punctuationKeyNames = new Map([
+    [" ", "Space"],
+    ["+", "Plus"],
+    ["-", "Minus"],
+    ["=", "Equal"],
+    [",", "Comma"],
+    [".", "Period"],
+    ["/", "Slash"],
+    ["\\", "Backslash"],
+    [";", "Semicolon"],
+    ["'", "Quote"],
+    ["`", "Backquote"],
+    ["[", "BracketLeft"],
+    ["]", "BracketRight"]
+]);
+
+const namedKeyNames = new Map([
+    ["backspace", "Backspace"],
+    ["delete", "Delete"],
+    ["del", "Delete"],
+    ["insert", "Insert"],
+    ["ins", "Insert"],
+    ["enter", "Enter"],
+    ["return", "Enter"],
+    ["escape", "Escape"],
+    ["esc", "Escape"],
+    ["tab", "Tab"],
+    ["space", "Space"],
+    ["spacebar", "Space"],
+    ["home", "Home"],
+    ["end", "End"],
+    ["pageup", "PageUp"],
+    ["pgup", "PageUp"],
+    ["pagedown", "PageDown"],
+    ["pgdn", "PageDown"],
+    ["arrowleft", "ArrowLeft"],
+    ["left", "ArrowLeft"],
+    ["arrowright", "ArrowRight"],
+    ["right", "ArrowRight"],
+    ["arrowup", "ArrowUp"],
+    ["up", "ArrowUp"],
+    ["arrowdown", "ArrowDown"],
+    ["down", "ArrowDown"],
+    ["printscreen", "PrintScreen"],
+    ["scrolllock", "ScrollLock"],
+    ["pause", "Pause"],
+    ["capslock", "CapsLock"],
+    ["contextmenu", "ContextMenu"],
+    ["plus", "Plus"],
+    ["add", "Plus"],
+    ["minus", "Minus"],
+    ["hyphen", "Minus"],
+    ["dash", "Minus"],
+    ["equal", "Equal"],
+    ["equals", "Equal"],
+    ["comma", "Comma"],
+    ["period", "Period"],
+    ["dot", "Period"],
+    ["slash", "Slash"],
+    ["forwardslash", "Slash"],
+    ["backslash", "Backslash"],
+    ["semicolon", "Semicolon"],
+    ["quote", "Quote"],
+    ["apostrophe", "Quote"],
+    ["backquote", "Backquote"],
+    ["grave", "Backquote"],
+    ["bracketleft", "BracketLeft"],
+    ["leftbracket", "BracketLeft"],
+    ["bracketright", "BracketRight"],
+    ["rightbracket", "BracketRight"]
+]);
+
+function isModifierOnlyKey(key) {
+    return /^(control|ctrl|alt|shift|meta|cmd|command|win|os)$/i.test(key);
+}
+
+function isInvalidBrowserKey(key) {
+    return /^(dead|unidentified|process)$/i.test(key)
+        || /\s/.test(key)
+        || key.includes("+");
 }

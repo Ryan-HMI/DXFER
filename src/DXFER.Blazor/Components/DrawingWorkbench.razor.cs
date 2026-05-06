@@ -18,7 +18,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 {
-    private const string HotkeyModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js?v=20260505-undo-redo";
+    private const string HotkeyModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js?v=20260506-all-hotkey-keys";
     private const string DownloadModulePath = "./_content/DXFER.Blazor/downloadFile.js?v=20260504-save";
     private const long MaxDxfFileSize = 25 * 1024 * 1024;
     private const string SegmentKeySeparator = "|segment|";

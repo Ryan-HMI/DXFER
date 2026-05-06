@@ -8,6 +8,79 @@ public static class ToolHotkeyResolver
     private const string AltModifier = "Alt";
     private const string ShiftModifier = "Shift";
     private const string MetaModifier = "Meta";
+    private static readonly IReadOnlyDictionary<string, string> NamedBaseKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Backspace"] = "Backspace",
+        ["Delete"] = "Delete",
+        ["Del"] = "Delete",
+        ["Insert"] = "Insert",
+        ["Ins"] = "Insert",
+        ["Enter"] = "Enter",
+        ["Return"] = "Enter",
+        ["Escape"] = "Escape",
+        ["Esc"] = "Escape",
+        ["Tab"] = "Tab",
+        ["Space"] = "Space",
+        ["Spacebar"] = "Space",
+        ["Home"] = "Home",
+        ["End"] = "End",
+        ["PageUp"] = "PageUp",
+        ["PgUp"] = "PageUp",
+        ["PageDown"] = "PageDown",
+        ["PgDn"] = "PageDown",
+        ["ArrowLeft"] = "ArrowLeft",
+        ["Left"] = "ArrowLeft",
+        ["ArrowRight"] = "ArrowRight",
+        ["Right"] = "ArrowRight",
+        ["ArrowUp"] = "ArrowUp",
+        ["Up"] = "ArrowUp",
+        ["ArrowDown"] = "ArrowDown",
+        ["Down"] = "ArrowDown",
+        ["PrintScreen"] = "PrintScreen",
+        ["ScrollLock"] = "ScrollLock",
+        ["Pause"] = "Pause",
+        ["CapsLock"] = "CapsLock",
+        ["ContextMenu"] = "ContextMenu",
+        ["Plus"] = "Plus",
+        ["Add"] = "Plus",
+        ["Minus"] = "Minus",
+        ["Hyphen"] = "Minus",
+        ["Dash"] = "Minus",
+        ["Equal"] = "Equal",
+        ["Equals"] = "Equal",
+        ["Comma"] = "Comma",
+        ["Period"] = "Period",
+        ["Dot"] = "Period",
+        ["Slash"] = "Slash",
+        ["ForwardSlash"] = "Slash",
+        ["Backslash"] = "Backslash",
+        ["Semicolon"] = "Semicolon",
+        ["Quote"] = "Quote",
+        ["Apostrophe"] = "Quote",
+        ["Backquote"] = "Backquote",
+        ["Grave"] = "Backquote",
+        ["BracketLeft"] = "BracketLeft",
+        ["LeftBracket"] = "BracketLeft",
+        ["BracketRight"] = "BracketRight",
+        ["RightBracket"] = "BracketRight"
+    };
+
+    private static readonly IReadOnlyDictionary<char, string> PunctuationBaseKeys = new Dictionary<char, string>
+    {
+        [' '] = "Space",
+        ['+'] = "Plus",
+        ['-'] = "Minus",
+        ['='] = "Equal",
+        [','] = "Comma",
+        ['.'] = "Period",
+        ['/'] = "Slash",
+        ['\\'] = "Backslash",
+        [';'] = "Semicolon",
+        ['\''] = "Quote",
+        ['`'] = "Backquote",
+        ['['] = "BracketLeft",
+        [']'] = "BracketRight"
+    };
 
     public static IReadOnlyList<WorkbenchCommandId> ToolCommandIds { get; } = new[]
     {
@@ -226,16 +299,66 @@ public static class ToolHotkeyResolver
         }
 
         var trimmed = key.Trim();
-        if (trimmed.Length != 1)
+        if (trimmed.Length == 1)
         {
-            return null;
+            var character = trimmed[0];
+            if (char.IsLetterOrDigit(character))
+            {
+                return char.ToUpper(character, CultureInfo.InvariantCulture).ToString();
+            }
+
+            return PunctuationBaseKeys.TryGetValue(character, out var punctuationKey)
+                ? punctuationKey
+                : null;
         }
 
-        var character = trimmed[0];
-        return char.IsLetterOrDigit(character)
-            ? char.ToUpper(character, CultureInfo.InvariantCulture).ToString()
-            : null;
+        if (TryNormalizeFunctionKey(trimmed, out var functionKey))
+        {
+            return functionKey;
+        }
+
+        if (NamedBaseKeys.TryGetValue(trimmed, out var namedKey))
+        {
+            return namedKey;
+        }
+
+        return IsModifierOnlyBaseKey(trimmed) || IsInvalidBrowserBaseKey(trimmed)
+            ? null
+            : trimmed.ToUpper(CultureInfo.InvariantCulture);
     }
+
+    private static bool TryNormalizeFunctionKey(string key, out string normalized)
+    {
+        normalized = string.Empty;
+        if (key.Length < 2
+            || key[0] is not ('f' or 'F')
+            || !int.TryParse(key[1..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var index)
+            || index is < 1 or > 24)
+        {
+            return false;
+        }
+
+        normalized = $"F{index.ToString(CultureInfo.InvariantCulture)}";
+        return true;
+    }
+
+    private static bool IsModifierOnlyBaseKey(string key) =>
+        StringComparer.OrdinalIgnoreCase.Equals(key, CtrlModifier)
+        || StringComparer.OrdinalIgnoreCase.Equals(key, "Control")
+        || StringComparer.OrdinalIgnoreCase.Equals(key, AltModifier)
+        || StringComparer.OrdinalIgnoreCase.Equals(key, ShiftModifier)
+        || StringComparer.OrdinalIgnoreCase.Equals(key, MetaModifier)
+        || StringComparer.OrdinalIgnoreCase.Equals(key, "Cmd")
+        || StringComparer.OrdinalIgnoreCase.Equals(key, "Command")
+        || StringComparer.OrdinalIgnoreCase.Equals(key, "Win")
+        || StringComparer.OrdinalIgnoreCase.Equals(key, "OS");
+
+    private static bool IsInvalidBrowserBaseKey(string key) =>
+        StringComparer.OrdinalIgnoreCase.Equals(key, "Dead")
+        || StringComparer.OrdinalIgnoreCase.Equals(key, "Unidentified")
+        || StringComparer.OrdinalIgnoreCase.Equals(key, "Process")
+        || key.Any(char.IsWhiteSpace)
+        || key.Contains('+', StringComparison.Ordinal);
 
     private static bool TryApplyModifier(
         string value,

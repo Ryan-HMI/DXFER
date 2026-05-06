@@ -124,6 +124,58 @@ public sealed class ToolHotkeyResolverTests
             .Key.Should().Be("Ctrl+Shift+L");
     }
 
+    [Theory]
+    [InlineData("F2", "F2")]
+    [InlineData("ctrl+arrowleft", "Ctrl+ArrowLeft")]
+    [InlineData("Alt+Delete", "Alt+Delete")]
+    [InlineData("Shift+/", "Shift+Slash")]
+    [InlineData("Ctrl++", null)]
+    [InlineData("Ctrl+Plus", "Ctrl+Plus")]
+    public void NormalizesNonLetterHotkeys(string key, string? expectedKey)
+    {
+        ToolHotkeyResolver.NormalizeKey(key).Should().Be(expectedKey);
+    }
+
+    [Theory]
+    [InlineData("F2", false, false, false, "F2")]
+    [InlineData("ArrowLeft", true, false, false, "Ctrl+ArrowLeft")]
+    [InlineData("Delete", false, true, false, "Alt+Delete")]
+    [InlineData("/", false, false, true, "Shift+Slash")]
+    [InlineData("Shift", false, false, false, null)]
+    public void NormalizesNonLetterHotkeyPresses(
+        string key,
+        bool ctrlKey,
+        bool altKey,
+        bool shiftKey,
+        string? expectedKey)
+    {
+        ToolHotkeyResolver.NormalizePress(new ToolHotkeyPress(key, ctrlKey, altKey, shiftKey))
+            .Should()
+            .Be(expectedKey);
+    }
+
+    [Fact]
+    public void ResolvesCustomNonLetterHotkeys()
+    {
+        var bindings = ToolHotkeyResolver.UpdateBinding(
+            ToolHotkeyResolver.GetDefaultBindings(),
+            WorkbenchCommandId.Dimension,
+            "F2");
+
+        bindings = ToolHotkeyResolver.UpdateBinding(
+            bindings,
+            WorkbenchCommandId.DeleteSelection,
+            "Delete");
+
+        ToolHotkeyResolver.TryResolve(bindings, ToolHotkeyPress.Plain("F2"), out var dimensionCommand)
+            .Should().BeTrue();
+        dimensionCommand.Should().Be(WorkbenchCommandId.Dimension);
+
+        ToolHotkeyResolver.TryResolve(bindings, ToolHotkeyPress.Plain("Delete"), out var deleteCommand)
+            .Should().BeTrue();
+        deleteCommand.Should().Be(WorkbenchCommandId.DeleteSelection);
+    }
+
     [Fact]
     public void CustomBindingReplacesPreviousBindingForCommand()
     {
