@@ -130,6 +130,11 @@ public static class SketchConstraintService
             return;
         }
 
+        if (SketchGeometryEditor.AreClose(firstPoint, secondPoint))
+        {
+            return;
+        }
+
         if (fixedReferences.CanMovePoint(secondReference))
         {
             SketchGeometryEditor.TrySetPoint(entities, secondReference, firstPoint);

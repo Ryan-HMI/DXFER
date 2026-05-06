@@ -79,6 +79,55 @@ public sealed class SketchCreationConstraintFactoryTests
     }
 
     [Fact]
+    public void CreatesCoincidentAndTangentConstraintsForSlot()
+    {
+        var sequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "slot",
+            new[] { new Point2(0, 0), new Point2(10, 0), new Point2(0, 2) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false);
+
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "slot",
+            entities,
+            CreateConstraintId);
+
+        constraints.Count(constraint => constraint.Kind == SketchConstraintKind.Coincident).Should().Be(4);
+        constraints.Count(constraint => constraint.Kind == SketchConstraintKind.Tangent).Should().Be(4);
+        constraints.Count(constraint => constraint.Kind == SketchConstraintKind.Parallel).Should().Be(1);
+        constraints.Count(constraint => constraint.Kind == SketchConstraintKind.Equal).Should().Be(1);
+        constraints.Should().Contain(constraint =>
+            constraint.Kind == SketchConstraintKind.Coincident
+            && constraint.ReferenceKeys.SequenceEqual(new[] { "slot-1:end", "slot-2:end" }));
+        constraints.Should().Contain(constraint =>
+            constraint.Kind == SketchConstraintKind.Tangent
+            && constraint.ReferenceKeys.SequenceEqual(new[] { "slot-1", "slot-2" }));
+    }
+
+    [Fact]
+    public void GeneratedSlotConstraintsDoNotMoveCreatedGeometry()
+    {
+        var sequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "slot",
+            new[] { new Point2(0, 0), new Point2(10, 0), new Point2(0, 2) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false);
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "slot",
+            entities,
+            CreateConstraintId);
+        var document = new DrawingDocument(entities);
+
+        var solved = SketchConstraintService.ApplyConstraints(document, constraints);
+
+        solved.Entities.Should().Equal(entities);
+        solved.Constraints.Should().AllSatisfy(constraint =>
+            constraint.State.Should().Be(SketchConstraintState.Satisfied));
+    }
+
+    [Fact]
     public void GeneratedCenterRectangleConstraintsDoNotMoveCreatedGeometry()
     {
         var sequence = 0;

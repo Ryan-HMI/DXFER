@@ -30,6 +30,32 @@ public sealed class SketchGeometryDragServiceTests
     }
 
     [Fact]
+    public void DraggingLineEndpointOntoAnotherPointCreatesCoincidentConstraint()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("moving"), new Point2(0, 0), new Point2(1, 0)),
+            new LineEntity(EntityId.Create("anchor"), new Point2(5, 5), new Point2(9, 5))
+        });
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "moving|point|end|1|0",
+            new Point2(1, 0),
+            new Point2(5, 5),
+            false,
+            out var next,
+            out var status);
+
+        changed.Should().BeTrue();
+        status.Should().Contain("coincident");
+        next.Constraints.Should().ContainSingle(constraint =>
+            constraint.Kind == SketchConstraintKind.Coincident
+            && constraint.State == SketchConstraintState.Satisfied
+            && constraint.ReferenceKeys.SequenceEqual(new[] { "anchor:start", "moving:end" }));
+    }
+
+    [Fact]
     public void DraggingLineMidpointTranslatesLine()
     {
         var document = new DrawingDocument(new DrawingEntity[]

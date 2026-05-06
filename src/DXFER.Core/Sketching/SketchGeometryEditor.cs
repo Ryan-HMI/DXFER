@@ -86,6 +86,12 @@ internal static class SketchGeometryEditor
             case LineEntity line when reference.Target == SketchReferenceTarget.End:
                 point = line.End;
                 return true;
+            case ArcEntity arc when reference.Target == SketchReferenceTarget.Start:
+                point = PointOnArc(arc, arc.StartAngleDegrees);
+                return true;
+            case ArcEntity arc when reference.Target == SketchReferenceTarget.End:
+                point = PointOnArc(arc, arc.EndAngleDegrees);
+                return true;
             case CircleEntity circle when reference.Target == SketchReferenceTarget.Center:
                 point = circle.Center;
                 return true;
@@ -131,6 +137,22 @@ internal static class SketchGeometryEditor
                 return true;
             case LineEntity line when reference.Target == SketchReferenceTarget.End:
                 entities[index] = line with { End = point };
+                return true;
+            case ArcEntity arc when reference.Target == SketchReferenceTarget.Start:
+                if (!TryGetRadiusAndAngle(arc.Center, point, out var startRadius, out var startAngle))
+                {
+                    return false;
+                }
+
+                entities[index] = arc with { Radius = startRadius, StartAngleDegrees = startAngle };
+                return true;
+            case ArcEntity arc when reference.Target == SketchReferenceTarget.End:
+                if (!TryGetRadiusAndAngle(arc.Center, point, out var endRadius, out var endAngle))
+                {
+                    return false;
+                }
+
+                entities[index] = arc with { Radius = endRadius, EndAngleDegrees = endAngle };
                 return true;
             case CircleEntity circle when reference.Target == SketchReferenceTarget.Center:
                 entities[index] = circle with { Center = point };
@@ -373,5 +395,26 @@ internal static class SketchGeometryEditor
         }
 
         return normalized;
+    }
+
+    private static Point2 PointOnArc(ArcEntity arc, double angleDegrees)
+    {
+        var radians = angleDegrees * Math.PI / 180.0;
+        return new Point2(
+            arc.Center.X + arc.Radius * Math.Cos(radians),
+            arc.Center.Y + arc.Radius * Math.Sin(radians));
+    }
+
+    private static bool TryGetRadiusAndAngle(Point2 center, Point2 point, out double radius, out double angleDegrees)
+    {
+        radius = Distance(center, point);
+        if (radius <= Tolerance)
+        {
+            angleDegrees = default;
+            return false;
+        }
+
+        angleDegrees = Math.Atan2(point.Y - center.Y, point.X - center.X) * 180.0 / Math.PI;
+        return true;
     }
 }

@@ -53,6 +53,7 @@ public static class SketchGeometryDragService
             return false;
         }
 
+        draggedDocument = AddCoincidentConstraintForSnappedPointDrag(draggedDocument, selectionKey, ref status);
         nextDocument = draggedDocument;
         return true;
     }
@@ -571,6 +572,106 @@ public static class SketchGeometryDragService
             || fixedReferences.CanChangeLineEndpoint(
                 new SketchReference(entityId, SketchReferenceTarget.Entity, vertexIndex),
                 SketchReferenceTarget.Start);
+    }
+
+    private static DrawingDocument AddCoincidentConstraintForSnappedPointDrag(
+        DrawingDocument document,
+        string selectionKey,
+        ref string status)
+    {
+        if (!TryGetDraggedPointReference(selectionKey, out var draggedReference)
+            || !SketchGeometryEditor.TryGetPoint(document.Entities, draggedReference, out var draggedPoint)
+            || !TryFindCoincidentPointReference(document.Entities, draggedReference, draggedPoint, out var anchorReference)
+            || HasCoincidentConstraint(document.Constraints, anchorReference, draggedReference))
+        {
+            return document;
+        }
+
+        var constraint = new SketchConstraint(
+            $"drag-coincident-{Guid.NewGuid():N}",
+            SketchConstraintKind.Coincident,
+            new[] { anchorReference.ToString(), draggedReference.ToString() },
+            SketchConstraintState.Satisfied);
+        var constrainedDocument = SketchConstraintService.ApplyConstraint(document, constraint);
+        status = $"{status} Added coincident constraint.";
+        return constrainedDocument;
+    }
+
+    private static bool TryGetDraggedPointReference(string selectionKey, out SketchReference reference)
+    {
+        if (SketchReference.TryParse(selectionKey, out reference)
+            && reference.Target != SketchReferenceTarget.Entity)
+        {
+            return true;
+        }
+
+        reference = default;
+        return false;
+    }
+
+    private static bool TryFindCoincidentPointReference(
+        IReadOnlyList<DrawingEntity> entities,
+        SketchReference draggedReference,
+        Point2 draggedPoint,
+        out SketchReference anchorReference)
+    {
+        foreach (var candidate in EnumeratePointReferences(entities))
+        {
+            if (StringComparer.Ordinal.Equals(candidate.EntityId, draggedReference.EntityId)
+                || StringComparer.Ordinal.Equals(candidate.ToString(), draggedReference.ToString())
+                || !SketchGeometryEditor.TryGetPoint(entities, candidate, out var candidatePoint)
+                || !SketchGeometryEditor.AreClose(candidatePoint, draggedPoint))
+            {
+                continue;
+            }
+
+            anchorReference = candidate;
+            return true;
+        }
+
+        anchorReference = default;
+        return false;
+    }
+
+    private static IEnumerable<SketchReference> EnumeratePointReferences(IReadOnlyList<DrawingEntity> entities)
+    {
+        foreach (var entity in entities)
+        {
+            switch (entity)
+            {
+                case LineEntity line:
+                    yield return new SketchReference(line.Id.Value, SketchReferenceTarget.Start);
+                    yield return new SketchReference(line.Id.Value, SketchReferenceTarget.End);
+                    break;
+                case CircleEntity circle:
+                    yield return new SketchReference(circle.Id.Value, SketchReferenceTarget.Center);
+                    break;
+                case ArcEntity arc:
+                    yield return new SketchReference(arc.Id.Value, SketchReferenceTarget.Start);
+                    yield return new SketchReference(arc.Id.Value, SketchReferenceTarget.End);
+                    yield return new SketchReference(arc.Id.Value, SketchReferenceTarget.Center);
+                    break;
+                case PointEntity point:
+                    yield return new SketchReference(point.Id.Value, SketchReferenceTarget.Entity);
+                    break;
+            }
+        }
+    }
+
+    private static bool HasCoincidentConstraint(
+        IReadOnlyList<SketchConstraint> constraints,
+        SketchReference firstReference,
+        SketchReference secondReference)
+    {
+        var firstKey = firstReference.ToString();
+        var secondKey = secondReference.ToString();
+        return constraints.Any(constraint =>
+            constraint.Kind == SketchConstraintKind.Coincident
+            && constraint.ReferenceKeys.Count >= 2
+            && ((StringComparer.Ordinal.Equals(constraint.ReferenceKeys[0], firstKey)
+                    && StringComparer.Ordinal.Equals(constraint.ReferenceKeys[1], secondKey))
+                || (StringComparer.Ordinal.Equals(constraint.ReferenceKeys[0], secondKey)
+                    && StringComparer.Ordinal.Equals(constraint.ReferenceKeys[1], firstKey))));
     }
 
     private static bool TryParseSegmentSelectionKey(string selectionKey, out string entityId, out int segmentIndex)

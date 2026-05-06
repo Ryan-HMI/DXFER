@@ -85,6 +85,25 @@ public static class SketchCreationConstraintFactory
         {
             AddConstraint(constraints, SketchConstraintKind.Equal, createConstraintId, arcs[0].Id.Value, arcs[1].Id.Value);
         }
+
+        if (lines.Count < 2 || arcs.Count < 2)
+        {
+            return;
+        }
+
+        var firstLine = lines[0];
+        var secondLine = lines[1];
+        var endArc = arcs[0];
+        var startArc = arcs[1];
+
+        AddConstraint(constraints, SketchConstraintKind.Coincident, createConstraintId, $"{firstLine.Id.Value}:end", $"{endArc.Id.Value}:end");
+        AddConstraint(constraints, SketchConstraintKind.Coincident, createConstraintId, $"{secondLine.Id.Value}:start", $"{endArc.Id.Value}:start");
+        AddConstraint(constraints, SketchConstraintKind.Coincident, createConstraintId, $"{secondLine.Id.Value}:end", $"{startArc.Id.Value}:end");
+        AddConstraint(constraints, SketchConstraintKind.Coincident, createConstraintId, $"{firstLine.Id.Value}:start", $"{startArc.Id.Value}:start");
+        AddConstraint(constraints, SketchConstraintKind.Tangent, createConstraintId, firstLine.Id.Value, endArc.Id.Value);
+        AddConstraint(constraints, SketchConstraintKind.Tangent, createConstraintId, secondLine.Id.Value, endArc.Id.Value);
+        AddConstraint(constraints, SketchConstraintKind.Tangent, createConstraintId, firstLine.Id.Value, startArc.Id.Value);
+        AddConstraint(constraints, SketchConstraintKind.Tangent, createConstraintId, secondLine.Id.Value, startArc.Id.Value);
     }
 
     private static void AddCoincidentLoopConstraints(

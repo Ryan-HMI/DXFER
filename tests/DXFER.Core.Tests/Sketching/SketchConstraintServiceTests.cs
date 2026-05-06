@@ -47,6 +47,42 @@ public sealed class SketchConstraintServiceTests
     }
 
     [Fact]
+    public void ValidatesCoincidentConstraintAgainstArcEndpoints()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new Point2(-5, 2), new Point2(0, 2)),
+            new ArcEntity(EntityId.Create("arc"), new Point2(0, 0), 2, 90, 180)
+        });
+
+        var validated = SketchConstraintService.ValidateConstraint(
+            document,
+            Constraint("arc-coincident", SketchConstraintKind.Coincident, "edge:end", "arc:start"));
+
+        validated.State.Should().Be(SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void AppliesCoincidentConstraintToDrivenArcEndpoint()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new Point2(-5, 3), new Point2(0, 3)),
+            new ArcEntity(EntityId.Create("arc"), new Point2(0, 0), 2, 0, 180)
+        });
+
+        var solved = SketchConstraintService.ApplyConstraint(
+            document,
+            Constraint("arc-coincident", SketchConstraintKind.Coincident, "edge:end", "arc:start"));
+
+        var arc = solved.Entities[1].Should().BeOfType<ArcEntity>().Subject;
+        arc.Radius.Should().Be(3);
+        arc.StartAngleDegrees.Should().BeApproximately(90, 0.000001);
+        solved.Constraints.Should().ContainSingle()
+            .Which.State.Should().Be(SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
     public void AppliesHorizontalLineConstraintAndPreservesConstruction()
     {
         var document = new DrawingDocument(new DrawingEntity[]
