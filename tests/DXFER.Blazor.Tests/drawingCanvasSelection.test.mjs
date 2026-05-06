@@ -26,6 +26,7 @@ import {
   getChainedSketchToolDraft,
   getDimensionAnchorUpdateRequest,
   getDimensionDisplayText,
+  getDimensionInputClassName,
   getDimensionPlacementRequest,
   getDimensionRenderStyle,
   getFitViewForDocument,
@@ -33,6 +34,7 @@ import {
   getPersistentDimensionDescriptors,
   getPersistentDimensionCommitValue,
   getPolygonWorldPoints,
+  getPendingPersistentDimensionEditId,
   getRadialDimensionScreenGeometry,
   getRadialDimensionPreference,
   getSketchToolDimensionLocks,
@@ -63,6 +65,7 @@ import {
   shouldAutoSelectDimensionInputValue,
   shouldCommitDimensionInputOnChange,
   shouldCommitDimensionInputOnBlur,
+  shouldDrawSelectionTargetOverlay,
   shouldRefreshDimensionInputValue,
   syncActiveSelectionWithSelectedKeys,
   tryToggleSketchChainToolAtPoint
@@ -1366,6 +1369,46 @@ test("persistent dimension style is visually distinct from normal geometry", () 
   assert.notEqual(style.strokeStyle.toLowerCase(), geometryStroke);
   assert.notEqual(style.strokeStyle, previewStyle.strokeStyle);
   assert.equal(Math.abs(getHexBrightness(style.strokeStyle) - getHexBrightness(geometryStroke)) >= 30, true);
+});
+
+test("selected persistent dimension style paints the full dimension differently", () => {
+  const normalStyle = getDimensionRenderStyle(false);
+  const selectedStyle = getDimensionRenderStyle(false, { selected: true });
+
+  assert.notEqual(selectedStyle.strokeStyle, normalStyle.strokeStyle);
+  assert.notEqual(selectedStyle.textStyle, normalStyle.textStyle);
+  assert.equal(selectedStyle.lineWidth > normalStyle.lineWidth, true);
+  assert.equal(selectedStyle.glow, true);
+});
+
+test("dimension target selection uses full-dimension painting instead of a text rectangle", () => {
+  assert.equal(shouldDrawSelectionTargetOverlay({ kind: "dimension" }), false);
+  assert.equal(shouldDrawSelectionTargetOverlay({ kind: "entity" }), true);
+});
+
+test("persistent dimension input classes mark selected text without edit chrome", () => {
+  const className = getDimensionInputClassName({
+    persistent: true,
+    selected: true,
+    active: true,
+    editing: false
+  });
+
+  assert.equal(className.includes("drawing-persistent-dimension-input-selected"), true);
+  assert.equal(className.includes("drawing-persistent-dimension-input-active"), true);
+  assert.equal(className.includes("drawing-dimension-input-active"), false);
+});
+
+test("new persistent dimensions are detected for immediate edit focus", () => {
+  const pendingId = getPendingPersistentDimensionEditId(
+    [
+      { id: "existing-dim" },
+      { id: "new-dim" }
+    ],
+    new Set(["existing-dim"]));
+
+  assert.equal(pendingId, "new-dim");
+  assert.equal(getPendingPersistentDimensionEditId([{ id: "existing-dim" }], new Set(["existing-dim"])), null);
 });
 
 test("persistent dimension commit accepts displayed prefixes", () => {

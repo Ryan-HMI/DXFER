@@ -47,6 +47,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     dimensionAnchorOverrides: new Map(),
     activeDimensionKey: null,
     pendingDimensionFocusKey: null,
+    pendingPersistentDimensionEditIds: null,
     visibleDimensionKeys: [],
     dimensionDrag: null,
     geometryDrag: null,
@@ -545,7 +546,7 @@ function draw(state) {
 
   for (const selectedKey of state.selectedKeys) {
     const target = resolveSelectionTarget(state, selectedKey);
-    if (target && !isDimensionTargetBeingEdited(state, target)) {
+    if (target && shouldDrawSelectionTargetOverlay(target) && !isDimensionTargetBeingEdited(state, target)) {
       const isActive = selectedKey === state.activeSelectionKey;
       drawTarget(state, target, {
         strokeStyle: isActive ? "#7dd3fc" : "#2d7898",
@@ -559,7 +560,9 @@ function draw(state) {
   drawAcquiredSnapPoints(state);
   drawInferenceGuides(state, size);
 
-  if (state.hoveredTarget && !isDimensionTargetBeingEdited(state, state.hoveredTarget)) {
+  if (state.hoveredTarget
+    && shouldDrawSelectionTargetOverlay(state.hoveredTarget)
+    && !isDimensionTargetBeingEdited(state, state.hoveredTarget)) {
     const isSelected = state.selectedKeys.has(state.hoveredTarget.key);
     const isActive = state.hoveredTarget.key === state.activeSelectionKey;
     drawTarget(state, state.hoveredTarget, {
@@ -716,6 +719,10 @@ function drawScreenLine(context, start, end) {
 
 function drawArrowhead(context, point, toward, size = 9) {
   drawArrowHead(context, point, Math.atan2(toward.y - point.y, toward.x - point.x), size);
+}
+
+export function shouldDrawSelectionTargetOverlay(target) {
+  return Boolean(target) && target.kind !== "dimension";
 }
 
 function drawTarget(state, target, style) {
@@ -1787,9 +1794,33 @@ function drawPersistentDimensions(state, dimensions) {
   state.context.save();
   state.context.globalCompositeOperation = "source-over";
   for (const dimension of dimensions) {
-    drawDimensionGraphics(state, dimension, false);
+    drawDimensionGraphics(state, dimension, false, getPersistentDimensionVisualState(state, dimension));
   }
   state.context.restore();
+}
+
+function getPersistentDimensionVisualState(state, dimension) {
+  const selectionKey = getPersistentDimensionSelectionKey(dimension);
+  const selected = Boolean(selectionKey && state.selectedKeys && state.selectedKeys.has(selectionKey));
+  const active = Boolean(selectionKey && state.activeSelectionKey === selectionKey);
+  const hovered = Boolean(selectionKey
+    && state.hoveredTarget
+    && state.hoveredTarget.key === selectionKey
+    && !isDimensionTargetBeingEdited(state, state.hoveredTarget));
+
+  return {
+    selected,
+    active,
+    hovered
+  };
+}
+
+function getPersistentDimensionSelectionKey(dimension) {
+  if (!dimension) {
+    return "";
+  }
+
+  return dimension.key || (dimension.id ? `persistent-${dimension.id}` : "");
 }
 
 function getDimensionAnchorOverride(state, id) {
@@ -2035,23 +2066,23 @@ function getArcSweepDimensionAnchorPoint(arcAngle) {
   return pointOnCircle(arcAngle.center, arcAngle.radius * 0.7, arcAngle.startAngleDegrees + sweep / 2);
 }
 
-function drawDimensionGraphics(state, dimension, isPreview) {
+function drawDimensionGraphics(state, dimension, isPreview, visualState = null) {
   if (!dimension || !dimension.geometry) {
     return;
   }
 
   if (dimension.geometry.type === "linear") {
-    drawLinearDimensionGraphics(state, dimension, isPreview);
+    drawLinearDimensionGraphics(state, dimension, isPreview, visualState);
   } else if (dimension.geometry.type === "radial") {
-    drawRadialDimensionGraphics(state, dimension, isPreview);
+    drawRadialDimensionGraphics(state, dimension, isPreview, visualState);
   } else if (dimension.geometry.type === "arcangle") {
-    drawArcAngleDimensionGraphics(state, dimension, isPreview);
+    drawArcAngleDimensionGraphics(state, dimension, isPreview, visualState);
   } else if (dimension.geometry.type === "angle") {
-    drawAngleDimensionGraphics(state, dimension, isPreview);
+    drawAngleDimensionGraphics(state, dimension, isPreview, visualState);
   }
 }
 
-function drawLinearDimensionGraphics(state, dimension, isPreview) {
+function drawLinearDimensionGraphics(state, dimension, isPreview, visualState = null) {
   const geometry = dimension.geometry;
   const start = worldToScreen(state, geometry.start);
   const end = worldToScreen(state, geometry.end);
@@ -2064,12 +2095,9 @@ function drawLinearDimensionGraphics(state, dimension, isPreview) {
   }
 
   const { context } = state;
-  const style = getDimensionRenderStyle(isPreview);
+  const style = getDimensionRenderStyle(isPreview, visualState);
   context.save();
-  context.strokeStyle = style.strokeStyle;
-  context.fillStyle = style.strokeStyle;
-  context.lineWidth = 1.15;
-  context.setLineDash(style.lineDash);
+  applyDimensionGraphicsStyle(context, style);
 
   for (const segment of screenGeometry.extensionSegments) {
     drawScreenLine(context, segment.start, segment.end);
@@ -2085,7 +2113,7 @@ function drawLinearDimensionGraphics(state, dimension, isPreview) {
 
   context.restore();
 
-  drawDimensionCanvasText(state, dimension, isPreview);
+  drawDimensionCanvasText(state, dimension, isPreview, visualState);
 }
 
 export function getLinearDimensionScreenGeometry(start, end, anchor, textWidth = 0) {
@@ -2189,7 +2217,7 @@ function getExtensionSegmentPastDimensionLine(referencePoint, dimensionPoint) {
   };
 }
 
-function drawRadialDimensionGraphics(state, dimension, isPreview) {
+function drawRadialDimensionGraphics(state, dimension, isPreview, visualState = null) {
   const geometry = dimension.geometry;
   const center = worldToScreen(state, geometry.center);
   const anchor = worldToScreen(state, geometry.anchorPoint);
@@ -2199,13 +2227,10 @@ function drawRadialDimensionGraphics(state, dimension, isPreview) {
   const edgeOverride = getArcRadialDimensionEdgeOverride(state, geometry);
   const radialGeometry = getRadialDimensionScreenGeometry(center, radius, anchor, geometry.diameter, textWidth, edgeOverride);
   const { context } = state;
-  const style = getDimensionRenderStyle(isPreview);
+  const style = getDimensionRenderStyle(isPreview, visualState);
 
   context.save();
-  context.strokeStyle = style.strokeStyle;
-  context.fillStyle = style.strokeStyle;
-  context.lineWidth = 1.15;
-  context.setLineDash(style.lineDash);
+  applyDimensionGraphicsStyle(context, style);
 
   for (const segment of radialGeometry.segments) {
     drawScreenLine(context, segment.start, segment.end);
@@ -2216,7 +2241,7 @@ function drawRadialDimensionGraphics(state, dimension, isPreview) {
   }
 
   context.restore();
-  drawDimensionCanvasText(state, dimension, isPreview);
+  drawDimensionCanvasText(state, dimension, isPreview, visualState);
 }
 
 export function getRadialDimensionScreenGeometry(center, radius, anchor, diameter = false, textWidth = 0, edgeOverride = null) {
@@ -2363,7 +2388,7 @@ function getSegmentPartsAroundPoint(start, end, gapCenter, textGap) {
   return segments;
 }
 
-function drawAngleDimensionGraphics(state, dimension, isPreview) {
+function drawAngleDimensionGraphics(state, dimension, isPreview, visualState = null) {
   const geometry = getAngleDimensionScreenGeometry(
     state,
     dimension.geometry.firstLine,
@@ -2375,12 +2400,9 @@ function drawAngleDimensionGraphics(state, dimension, isPreview) {
   }
 
   const { context } = state;
-  const style = getDimensionRenderStyle(isPreview);
+  const style = getDimensionRenderStyle(isPreview, visualState);
   context.save();
-  context.strokeStyle = style.strokeStyle;
-  context.fillStyle = style.strokeStyle;
-  context.lineWidth = 1.15;
-  context.setLineDash(style.lineDash);
+  applyDimensionGraphicsStyle(context, style);
   for (const segment of geometry.extensionSegments) {
     drawScreenLine(context, segment.start, segment.end);
   }
@@ -2393,10 +2415,10 @@ function drawAngleDimensionGraphics(state, dimension, isPreview) {
   }
 
   context.restore();
-  drawDimensionCanvasText(state, dimension, isPreview);
+  drawDimensionCanvasText(state, dimension, isPreview, visualState);
 }
 
-function drawArcAngleDimensionGraphics(state, dimension, isPreview) {
+function drawArcAngleDimensionGraphics(state, dimension, isPreview, visualState = null) {
   const geometry = getArcAngleDimensionScreenGeometry(
     state,
     dimension.geometry.center,
@@ -2409,12 +2431,9 @@ function drawArcAngleDimensionGraphics(state, dimension, isPreview) {
   }
 
   const { context } = state;
-  const style = getDimensionRenderStyle(isPreview);
+  const style = getDimensionRenderStyle(isPreview, visualState);
   context.save();
-  context.strokeStyle = style.strokeStyle;
-  context.fillStyle = style.strokeStyle;
-  context.lineWidth = 1.15;
-  context.setLineDash(style.lineDash);
+  applyDimensionGraphicsStyle(context, style);
   for (const segment of geometry.extensionSegments) {
     drawScreenLine(context, segment.start, segment.end);
   }
@@ -2427,7 +2446,7 @@ function drawArcAngleDimensionGraphics(state, dimension, isPreview) {
   }
 
   context.restore();
-  drawDimensionCanvasText(state, dimension, isPreview);
+  drawDimensionCanvasText(state, dimension, isPreview, visualState);
 }
 
 export function getAngleDimensionScreenGeometry(state, firstLine, secondLine, vertex, anchor) {
@@ -2620,13 +2639,13 @@ function pointFromScreenAngle(origin, angle, distance) {
   };
 }
 
-function drawDimensionCanvasText(state, dimension, isPreview) {
+function drawDimensionCanvasText(state, dimension, isPreview, visualState = null) {
   const text = getDimensionDisplayText(dimension);
   if (!text || state.dimensionOverlay && !isPreview) {
     return;
   }
 
-  drawFloatingDimensionLabel(state, text, dimension.point);
+  drawFloatingDimensionLabel(state, text, dimension.point, getDimensionRenderStyle(isPreview, visualState));
 }
 
 function measureDimensionCanvasText(state, text) {
@@ -2642,12 +2661,80 @@ function measureDimensionCanvasText(state, text) {
   return width;
 }
 
-export function getDimensionRenderStyle(isPreview) {
+export function getDimensionRenderStyle(isPreview, visualState = null) {
+  const normalizedVisualState = normalizeDimensionVisualState(visualState);
+  if (!isPreview && normalizedVisualState.active) {
+    return {
+      strokeStyle: "#bae6fd",
+      textStyle: "#f8fdff",
+      lineDash: [],
+      lineWidth: 1.95,
+      glow: true
+    };
+  }
+
+  if (!isPreview && normalizedVisualState.selected) {
+    return {
+      strokeStyle: "#7dd3fc",
+      textStyle: "#e0f2fe",
+      lineDash: [],
+      lineWidth: 1.7,
+      glow: true
+    };
+  }
+
+  if (!isPreview && normalizedVisualState.hovered) {
+    return {
+      strokeStyle: "#e2e8f0",
+      textStyle: "#ffffff",
+      lineDash: [],
+      lineWidth: 1.45,
+      glow: false
+    };
+  }
+
   return {
     strokeStyle: isPreview ? DIMENSION_PREVIEW_STROKE_STYLE : DIMENSION_LAYER_STROKE_STYLE,
     textStyle: isPreview ? DIMENSION_PREVIEW_STROKE_STYLE : DIMENSION_LAYER_TEXT_STYLE,
-    lineDash: isPreview ? [5, 4] : []
+    lineDash: isPreview ? [5, 4] : [],
+    lineWidth: 1.15,
+    glow: false
   };
+}
+
+function normalizeDimensionVisualState(visualState) {
+  if (!visualState) {
+    return {
+      selected: false,
+      active: false,
+      hovered: false
+    };
+  }
+
+  if (typeof visualState === "boolean") {
+    return {
+      selected: visualState,
+      active: false,
+      hovered: false
+    };
+  }
+
+  return {
+    selected: Boolean(visualState.selected || visualState.active),
+    active: Boolean(visualState.active),
+    hovered: Boolean(visualState.hovered)
+  };
+}
+
+function applyDimensionGraphicsStyle(context, style) {
+  context.strokeStyle = style.strokeStyle;
+  context.fillStyle = style.strokeStyle;
+  context.lineWidth = style.lineWidth || 1.15;
+  context.setLineDash(style.lineDash || []);
+  if (style.glow) {
+    context.shadowColor = "rgba(125, 211, 252, 0.5)";
+    context.shadowBlur = 8;
+  }
 }
 
 export function getDimensionDisplayText(dimension) {
@@ -2721,10 +2808,17 @@ function updatePersistentDimensionInputs(state, dimensions) {
     const input = getOrCreatePersistentDimensionInput(state, dimension);
     const isFocused = document.activeElement === input;
     const isEditing = input.dataset.dimensionEditing === "true";
+    const visualState = getPersistentDimensionVisualState(state, dimension);
     if (!isFocused && !isEditing) {
       input.value = getDimensionDisplayText(dimension);
     }
 
+    input.className = getDimensionInputClassName({
+      persistent: true,
+      selected: visualState.selected,
+      active: visualState.active,
+      editing: isEditing
+    });
     input.dataset.dimensionId = dimension.id;
     input.dataset.dimensionLabel = dimension.label;
     input.dataset.dimensionKind = dimension.kind;
@@ -2734,6 +2828,29 @@ function updatePersistentDimensionInputs(state, dimensions) {
     input.style.left = `${inputPoint.x}px`;
     input.style.top = `${inputPoint.y}px`;
   }
+
+  focusPendingPersistentDimensionEditIfNeeded(state, dimensions);
+}
+
+export function getDimensionInputClassName(options = {}) {
+  const classes = ["drawing-dimension-input"];
+  if (options.persistent) {
+    classes.push("drawing-persistent-dimension-input");
+  }
+
+  if (options.editing) {
+    classes.push("drawing-dimension-input-active");
+  }
+
+  if (options.selected) {
+    classes.push("drawing-persistent-dimension-input-selected");
+  }
+
+  if (options.active) {
+    classes.push("drawing-persistent-dimension-input-active");
+  }
+
+  return classes.join(" ");
 }
 
 function getOrCreatePersistentDimensionInput(state, dimension) {
@@ -2746,7 +2863,7 @@ function getOrCreatePersistentDimensionInput(state, dimension) {
   input.type = "text";
   input.step = "0.001";
   input.inputMode = "decimal";
-  input.className = "drawing-dimension-input drawing-persistent-dimension-input";
+  input.className = getDimensionInputClassName({ persistent: true });
   input.style.pointerEvents = "auto";
   input.style.zIndex = "6";
   input.title = dimension.label;
@@ -2925,6 +3042,17 @@ function handlePersistentDimensionDoubleClick(state, input, event) {
 }
 
 function selectPersistentDimension(state, dimensionId) {
+  const changed = setPersistentDimensionSelection(state, dimensionId);
+  if (changed) {
+    notifySelectionChanged(state);
+    updateDebugAttributes(state);
+    draw(state);
+  }
+
+  return changed;
+}
+
+function setPersistentDimensionSelection(state, dimensionId) {
   const id = String(dimensionId || "");
   if (!id) {
     return false;
@@ -2937,13 +3065,76 @@ function selectPersistentDimension(state, dimensionId) {
   state.selectedKeys.clear();
   state.selectedKeys.add(selectionKey);
   state.activeSelectionKey = selectionKey;
+  return changed;
+}
+
+function focusPendingPersistentDimensionEditIfNeeded(state, dimensions) {
+  const pendingIds = state.pendingPersistentDimensionEditIds;
+  if (!pendingIds) {
+    return false;
+  }
+
+  const dimensionId = getPendingPersistentDimensionEditId(dimensions, pendingIds);
+  if (!dimensionId) {
+    return false;
+  }
+
+  const input = state.persistentDimensionInputs.get(dimensionId);
+  if (!input) {
+    return false;
+  }
+
+  state.pendingPersistentDimensionEditIds = null;
+  const changed = setPersistentDimensionSelection(state, dimensionId);
   if (changed) {
     notifySelectionChanged(state);
     updateDebugAttributes(state);
-    draw(state);
   }
 
-  return changed;
+  input.dataset.dimensionEditing = "true";
+  input.className = getDimensionInputClassName({
+    persistent: true,
+    selected: true,
+    active: true,
+    editing: true
+  });
+  focusElement(input);
+  selectInputText(input);
+  requestDimensionRedraw(state);
+  return true;
+}
+
+export function getPendingPersistentDimensionEditId(dimensions, previousIds) {
+  if (!previousIds || typeof previousIds.has !== "function" || !Array.isArray(dimensions)) {
+    return null;
+  }
+
+  for (const dimension of dimensions) {
+    const id = String(dimension && dimension.id || "");
+    if (id && !previousIds.has(id)) {
+      return id;
+    }
+  }
+
+  return null;
+}
+
+function getCurrentPersistentDimensionIds(state) {
+  return new Set(getDocumentDimensions(state.document)
+    .map(dimension => String(getSketchItemId(dimension) || ""))
+    .filter(id => Boolean(id)));
+}
+
+function requestDimensionRedraw(state) {
+  if (!state || state.disposed || typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    if (!state.disposed) {
+      draw(state);
+    }
+  });
 }
 
 export function getPersistentDimensionCommitValue(text, fallbackValue) {
@@ -4068,7 +4259,7 @@ function clearDimensionInputEditState(state) {
   }
 }
 
-function drawFloatingDimensionLabel(state, label, point) {
+function drawFloatingDimensionLabel(state, label, point, style = null) {
   if (!label) {
     return;
   }
@@ -4086,15 +4277,20 @@ function drawFloatingDimensionLabel(state, label, point) {
   const y = point.y - height / 2;
 
   context.fillStyle = "rgba(15, 23, 42, 0.88)";
-  context.strokeStyle = "#38bdf8";
+  context.strokeStyle = style && style.strokeStyle ? style.strokeStyle : "#38bdf8";
   context.lineWidth = 1;
   context.setLineDash([]);
+  if (style && style.glow) {
+    context.shadowColor = "rgba(125, 211, 252, 0.5)";
+    context.shadowBlur = 8;
+  }
+
   context.beginPath();
   context.roundRect(x, y, width, height, 3);
   context.fill();
   context.stroke();
 
-  context.fillStyle = "#7dd3fc";
+  context.fillStyle = style && style.textStyle ? style.textStyle : "#7dd3fc";
   context.fillText(label, point.x, point.y + 0.5);
   context.restore();
 }
@@ -5011,6 +5207,7 @@ function handleDimensionToolClick(state, screenPoint, event) {
       return false;
     }
 
+    state.pendingPersistentDimensionEditIds = getCurrentPersistentDimensionIds(state);
     clearTransientDimensionInputs(state);
     state.dimensionDraft = createEmptyDimensionDraft();
     setHoveredTarget(state, null);

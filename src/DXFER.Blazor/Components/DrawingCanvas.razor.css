@@ -111,6 +111,16 @@
     color: #ffffff;
 }
 
+::deep .drawing-persistent-dimension-input-selected {
+    color: #e0f2fe;
+    text-shadow: 0 0 8px rgba(125, 211, 252, 0.55);
+}
+
+::deep .drawing-persistent-dimension-input-active {
+    color: #f8fdff;
+    text-shadow: 0 0 10px rgba(186, 230, 253, 0.7);
+}
+
 ::deep .drawing-persistent-dimension-input[data-dimension-dragging="true"] {
     cursor: grabbing;
 }
