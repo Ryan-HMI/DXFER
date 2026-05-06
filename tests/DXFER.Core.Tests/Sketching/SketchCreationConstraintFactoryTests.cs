@@ -98,5 +98,33 @@ public sealed class SketchCreationConstraintFactoryTests
         solved.Entities.Should().Equal(entities);
     }
 
+    [Theory]
+    [InlineData(10, 10, 20, 15)]
+    [InlineData(20, 15, 10, 10)]
+    [InlineData(10, 15, 20, 10)]
+    [InlineData(20, 10, 10, 15)]
+    public void GeneratedTwoPointRectangleConstraintsDoNotMoveCreatedGeometry(
+        double firstX,
+        double firstY,
+        double secondX,
+        double secondY)
+    {
+        var sequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(firstX, firstY), new Point2(secondX, secondY) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false);
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            CreateConstraintId);
+        var document = new DrawingDocument(entities);
+
+        var solved = SketchConstraintService.ApplyConstraints(document, constraints);
+
+        solved.Entities.Should().Equal(entities);
+    }
+
     private static string CreateConstraintId(SketchConstraintKind kind) => $"constraint-{kind}-{Guid.NewGuid():N}";
 }
