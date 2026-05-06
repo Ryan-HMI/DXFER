@@ -102,6 +102,25 @@ public sealed class SketchConstraintServiceTests
     }
 
     [Fact]
+    public void ParallelConstraintPreservesOppositeLineDirectionWhenAlreadyParallel()
+    {
+        var driven = new LineEntity(EntityId.Create("driven"), new Point2(10, 5), new Point2(0, 5));
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("anchor"), new Point2(0, 0), new Point2(10, 0)),
+            driven
+        });
+
+        var solved = SketchConstraintService.ApplyConstraint(
+            document,
+            Constraint("parallel", SketchConstraintKind.Parallel, "anchor", "driven"));
+
+        solved.Entities[1].Should().Be(driven);
+        solved.Constraints.Should().ContainSingle()
+            .Which.State.Should().Be(SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
     public void AppliesPerpendicularLineConstraint()
     {
         var document = new DrawingDocument(new DrawingEntity[]

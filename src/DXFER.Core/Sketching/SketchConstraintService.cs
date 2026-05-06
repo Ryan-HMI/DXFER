@@ -225,7 +225,10 @@ public static class SketchConstraintService
 
         var firstAngle = GetLineAngleDegrees(firstLine);
         var secondAngle = GetLineAngleDegrees(secondLine);
-        var targetSecondAngle = perpendicular ? firstAngle + 90.0 : firstAngle;
+        var targetSecondAngle = GetClosestLineRelationAngle(
+            firstAngle,
+            secondAngle,
+            perpendicular);
 
         if (SketchDimensionSolverService.TryApplyLineDirection(
                 entities,
@@ -236,12 +239,31 @@ public static class SketchConstraintService
             return;
         }
 
-        var targetFirstAngle = perpendicular ? secondAngle - 90.0 : secondAngle;
+        var targetFirstAngle = GetClosestLineRelationAngle(
+            secondAngle,
+            firstAngle,
+            perpendicular);
         SketchDimensionSolverService.TryApplyLineDirection(
             entities,
             firstReference,
             targetFirstAngle,
             fixedReferences);
+    }
+
+    private static double GetClosestLineRelationAngle(
+        double referenceAngleDegrees,
+        double currentDrivenAngleDegrees,
+        bool perpendicular)
+    {
+        var firstCandidate = perpendicular
+            ? referenceAngleDegrees + 90.0
+            : referenceAngleDegrees;
+        var secondCandidate = perpendicular
+            ? referenceAngleDegrees - 90.0
+            : referenceAngleDegrees + 180.0;
+        var firstDelta = Math.Abs(SketchGeometryEditor.NormalizeSignedDegrees(firstCandidate - currentDrivenAngleDegrees));
+        var secondDelta = Math.Abs(SketchGeometryEditor.NormalizeSignedDegrees(secondCandidate - currentDrivenAngleDegrees));
+        return secondDelta < firstDelta ? secondCandidate : firstCandidate;
     }
 
     private static void ApplyConcentric(

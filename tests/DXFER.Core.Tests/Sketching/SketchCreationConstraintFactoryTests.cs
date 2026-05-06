@@ -78,5 +78,25 @@ public sealed class SketchCreationConstraintFactoryTests
             .BeFalse();
     }
 
+    [Fact]
+    public void GeneratedCenterRectangleConstraintsDoNotMoveCreatedGeometry()
+    {
+        var sequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "centerrectangle",
+            new[] { new Point2(10, 10), new Point2(20, 15) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false);
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "centerrectangle",
+            entities,
+            CreateConstraintId);
+        var document = new DrawingDocument(entities);
+
+        var solved = SketchConstraintService.ApplyConstraints(document, constraints);
+
+        solved.Entities.Should().Equal(entities);
+    }
+
     private static string CreateConstraintId(SketchConstraintKind kind) => $"constraint-{kind}-{Guid.NewGuid():N}";
 }
