@@ -27,6 +27,7 @@ import {
   getDimensionAnchorUpdateRequest,
   getDimensionDisplayText,
   getDimensionPlacementRequest,
+  getDimensionRenderStyle,
   getFitViewForDocument,
   getEllipseFromPoints,
   getPersistentDimensionDescriptors,
@@ -1333,6 +1334,16 @@ test("linear dimension arrows flip outside when text cannot fit inside", () => {
   assert.deepEqual(geometry.arrows[1], { point: { x: 24, y: 0 }, toward: { x: 23, y: 0 } });
 });
 
+test("persistent dimension style is visually distinct from normal geometry", () => {
+  const geometryStroke = "#94a3b8";
+  const style = getDimensionRenderStyle(false);
+  const previewStyle = getDimensionRenderStyle(true);
+
+  assert.notEqual(style.strokeStyle.toLowerCase(), geometryStroke);
+  assert.notEqual(style.strokeStyle, previewStyle.strokeStyle);
+  assert.equal(Math.abs(getHexBrightness(style.strokeStyle) - getHexBrightness(geometryStroke)) >= 30, true);
+});
+
 test("persistent dimension commit accepts displayed prefixes", () => {
   assert.deepEqual(getPersistentDimensionCommitValue("R3.5", 1), {
     shouldCommit: true,
@@ -1904,6 +1915,14 @@ function assertApproxPoint(actual, expected, tolerance = 0.000001) {
 
 function distanceBetweenTestPoints(first, second) {
   return Math.hypot(first.x - second.x, first.y - second.y);
+}
+
+function getHexBrightness(color) {
+  const value = color.startsWith("#") ? color.slice(1) : color;
+  const red = Number.parseInt(value.slice(0, 2), 16);
+  const green = Number.parseInt(value.slice(2, 4), 16);
+  const blue = Number.parseInt(value.slice(4, 6), 16);
+  return (red * 0.299) + (green * 0.587) + (blue * 0.114);
 }
 
 function getPositiveTestSweep(startAngleDegrees, endAngleDegrees) {

@@ -100,7 +100,7 @@
 }
 
 ::deep .drawing-persistent-dimension-input {
-    color: #a7b6c8;
+    color: #f3f6fb;
     background: transparent;
     border-color: transparent;
     box-shadow: none;
@@ -108,7 +108,7 @@
 }
 
 ::deep .drawing-persistent-dimension-input:hover {
-    color: #c3d0de;
+    color: #ffffff;
 }
 
 ::deep .drawing-persistent-dimension-input[data-dimension-dragging="true"] {

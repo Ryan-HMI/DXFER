@@ -17,8 +17,8 @@ const ORTHO_POLAR_SNAP_TOLERANCE = 6;
 const MAX_INFERENCE_GUIDE_SCREEN_DISTANCE = 360;
 const DIMENSION_INPUT_SCREEN_MARGIN_X = 52;
 const DIMENSION_INPUT_SCREEN_MARGIN_Y = 18;
-const DIMENSION_LAYER_STROKE_STYLE = "#8fa1b6";
-const DIMENSION_LAYER_TEXT_STYLE = "#a7b6c8";
+const DIMENSION_LAYER_STROKE_STYLE = "#d5dde8";
+const DIMENSION_LAYER_TEXT_STYLE = "#f3f6fb";
 const DIMENSION_PREVIEW_STROKE_STYLE = "#facc15";
 const DIMENSION_ARROWHEAD_SIZE = 15;
 const DIMENSION_TEXT_GAP_PADDING = 5;
@@ -2406,7 +2406,7 @@ function measureDimensionCanvasText(state, text) {
   return width;
 }
 
-function getDimensionRenderStyle(isPreview) {
+export function getDimensionRenderStyle(isPreview) {
   return {
     strokeStyle: isPreview ? DIMENSION_PREVIEW_STROKE_STYLE : DIMENSION_LAYER_STROKE_STYLE,
     textStyle: isPreview ? DIMENSION_PREVIEW_STROKE_STYLE : DIMENSION_LAYER_TEXT_STYLE,
