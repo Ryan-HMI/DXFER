@@ -1,12 +1,46 @@
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
 using DXFER.Core.Sketching;
+using DXFER.Blazor.Sketching;
 using FluentAssertions;
 
 namespace DXFER.Core.Tests.Sketching;
 
 public sealed class SketchGeometryDragServiceTests
 {
+    [Fact]
+    public void DraggingConstrainedRectangleEdgeKeepsCoincidentCornersConnected()
+    {
+        var sequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false);
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var document = new DrawingDocument(entities, Array.Empty<SketchDimension>(), constraints);
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "rect-3",
+            new Point2(5, 5),
+            new Point2(5, 7),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        next.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("rect-1"), new Point2(0, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("rect-2"), new Point2(10, 0), new Point2(10, 7)),
+            new LineEntity(EntityId.Create("rect-3"), new Point2(10, 7), new Point2(0, 7)),
+            new LineEntity(EntityId.Create("rect-4"), new Point2(0, 7), new Point2(0, 0)));
+        next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
     [Fact]
     public void DraggingLineEndpointMovesOnlyThatEndpoint()
     {

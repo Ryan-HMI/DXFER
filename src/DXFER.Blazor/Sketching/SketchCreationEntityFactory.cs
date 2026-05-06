@@ -37,17 +37,35 @@ public static class SketchCreationEntityFactory
         switch (normalizedTool)
         {
             case "line":
-                entities.Add(new LineEntity(createEntityId("line"), first, second, isConstruction));
+                entities.Add(new LineEntity(
+                    createEntityId("line"),
+                    first,
+                    GetPointAtLength(first, second, GetPositiveDimensionValue(dimensionValues, "length")),
+                    isConstruction));
                 break;
             case "midpointline":
-                var mirroredEndpoint = new Point2((2 * first.X) - second.X, (2 * first.Y) - second.Y);
-                entities.Add(new LineEntity(createEntityId("line"), mirroredEndpoint, second, isConstruction));
+                var midpointEndpoint = GetPointAtLength(
+                    first,
+                    second,
+                    GetPositiveDimensionValue(dimensionValues, "length") is { } typedLength
+                        ? typedLength / 2.0
+                        : null);
+                var mirroredEndpoint = new Point2((2 * first.X) - midpointEndpoint.X, (2 * first.Y) - midpointEndpoint.Y);
+                entities.Add(new LineEntity(createEntityId("line"), mirroredEndpoint, midpointEndpoint, isConstruction));
                 break;
             case "twopointrectangle":
-                entities.AddRange(CreateRectangle(first, new Point2(second.X, first.Y), second, new Point2(first.X, second.Y), createEntityId, isConstruction));
+                var dimensionedSecond = GetAxisRectangleOppositeCorner(first, second, dimensionValues);
+                entities.AddRange(CreateRectangle(
+                    first,
+                    new Point2(dimensionedSecond.X, first.Y),
+                    dimensionedSecond,
+                    new Point2(first.X, dimensionedSecond.Y),
+                    createEntityId,
+                    isConstruction));
                 break;
             case "centerrectangle":
-                var centerCorners = SketchRectangleGeometry.GetCenterRectangleCorners(first, second);
+                var dimensionedCorner = GetCenterRectangleCorner(first, second, dimensionValues);
+                var centerCorners = SketchRectangleGeometry.GetCenterRectangleCorners(first, dimensionedCorner);
                 entities.AddRange(CreateRectangle(centerCorners[0], centerCorners[1], centerCorners[2], centerCorners[3], createEntityId, isConstruction));
                 break;
             case "alignedrectangle" when points.Count >= 3:
@@ -59,7 +77,7 @@ public static class SketchCreationEntityFactory
 
                 break;
             case "centercircle":
-                var radius = Distance(first, second);
+                var radius = GetPositiveDimensionValue(dimensionValues, "radius") ?? Distance(first, second);
                 if (radius > GeometryTolerance)
                 {
                     entities.Add(new CircleEntity(createEntityId("circle"), first, radius, isConstruction));
@@ -94,10 +112,22 @@ public static class SketchCreationEntityFactory
                 entities.Add(new SplineEntity(createEntityId("conic"), 2, points.Take(3), Array.Empty<double>(), isConstruction: isConstruction));
                 break;
             case "inscribedpolygon":
-                entities.Add(CreatePolygon(first, second, false, GetPolygonSideCount(dimensionValues), createEntityId, isConstruction));
+                entities.Add(CreatePolygon(
+                    first,
+                    GetPointAtLength(first, second, GetPositiveDimensionValue(dimensionValues, "radius")),
+                    false,
+                    GetPolygonSideCount(dimensionValues),
+                    createEntityId,
+                    isConstruction));
                 break;
             case "circumscribedpolygon":
-                entities.Add(CreatePolygon(first, second, true, GetPolygonSideCount(dimensionValues), createEntityId, isConstruction));
+                entities.Add(CreatePolygon(
+                    first,
+                    GetPointAtLength(first, second, GetPositiveDimensionValue(dimensionValues, "apothem")),
+                    true,
+                    GetPolygonSideCount(dimensionValues),
+                    createEntityId,
+                    isConstruction));
                 break;
             case "spline" when points.Count >= 2:
             case "splinecontrolpoint" when points.Count >= 2:
@@ -317,6 +347,72 @@ public static class SketchCreationEntityFactory
         var dx = second.X - first.X;
         var dy = second.Y - first.Y;
         return Math.Sqrt((dx * dx) + (dy * dy));
+    }
+
+    private static Point2 GetPointAtLength(Point2 anchor, Point2 directionPoint, double? length)
+    {
+        if (length is null)
+        {
+            return directionPoint;
+        }
+
+        var dx = directionPoint.X - anchor.X;
+        var dy = directionPoint.Y - anchor.Y;
+        var currentLength = Math.Sqrt((dx * dx) + (dy * dy));
+        if (currentLength <= GeometryTolerance)
+        {
+            return new Point2(anchor.X + length.Value, anchor.Y);
+        }
+
+        return new Point2(
+            anchor.X + dx / currentLength * length.Value,
+            anchor.Y + dy / currentLength * length.Value);
+    }
+
+    private static Point2 GetAxisRectangleOppositeCorner(
+        Point2 first,
+        Point2 second,
+        IReadOnlyDictionary<string, double>? dimensionValues)
+    {
+        var width = GetPositiveDimensionValue(dimensionValues, "width") ?? Math.Abs(second.X - first.X);
+        var height = GetPositiveDimensionValue(dimensionValues, "height") ?? Math.Abs(second.Y - first.Y);
+        var signX = second.X < first.X ? -1.0 : 1.0;
+        var signY = second.Y < first.Y ? -1.0 : 1.0;
+        return new Point2(first.X + width * signX, first.Y + height * signY);
+    }
+
+    private static Point2 GetCenterRectangleCorner(
+        Point2 center,
+        Point2 corner,
+        IReadOnlyDictionary<string, double>? dimensionValues)
+    {
+        var halfWidth = (GetPositiveDimensionValue(dimensionValues, "width") ?? Math.Abs((corner.X - center.X) * 2.0)) / 2.0;
+        var halfHeight = (GetPositiveDimensionValue(dimensionValues, "height") ?? Math.Abs((corner.Y - center.Y) * 2.0)) / 2.0;
+        var signX = corner.X < center.X ? -1.0 : 1.0;
+        var signY = corner.Y < center.Y ? -1.0 : 1.0;
+        return new Point2(center.X + halfWidth * signX, center.Y + halfHeight * signY);
+    }
+
+    private static double? GetPositiveDimensionValue(
+        IReadOnlyDictionary<string, double>? dimensionValues,
+        string key)
+    {
+        if (dimensionValues is null)
+        {
+            return null;
+        }
+
+        foreach (var dimensionValue in dimensionValues)
+        {
+            if (StringComparer.OrdinalIgnoreCase.Equals(dimensionValue.Key, key)
+                && double.IsFinite(dimensionValue.Value)
+                && dimensionValue.Value > GeometryTolerance)
+            {
+                return dimensionValue.Value;
+            }
+        }
+
+        return null;
     }
 
     private static string NormalizeToolName(string toolName) =>

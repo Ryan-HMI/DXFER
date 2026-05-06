@@ -10,6 +10,37 @@ public sealed class SketchCreationEntityFactoryTests
     private int _sequence;
 
     [Fact]
+    public void CreatesLineGeometryAtTypedLength()
+    {
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "line",
+            new[] { new Point2(0, 0), new Point2(3, 4) },
+            CreateEntityId,
+            isConstruction: false,
+            new Dictionary<string, double> { ["length"] = 10 });
+
+        entities.Should().ContainSingle().Which.Should().BeOfType<LineEntity>()
+            .Which.Should().Be(new LineEntity(EntityId.Create("line-1"), new Point2(0, 0), new Point2(6, 8)));
+    }
+
+    [Fact]
+    public void CreatesTwoPointRectangleGeometryAtTypedWidthAndHeight()
+    {
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(2, 1) },
+            CreateEntityId,
+            isConstruction: false,
+            new Dictionary<string, double> { ["width"] = 10, ["height"] = 5 });
+
+        entities.Should().Equal(
+            new LineEntity(EntityId.Create("rect-1"), new Point2(0, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("rect-2"), new Point2(10, 0), new Point2(10, 5)),
+            new LineEntity(EntityId.Create("rect-3"), new Point2(10, 5), new Point2(0, 5)),
+            new LineEntity(EntityId.Create("rect-4"), new Point2(0, 5), new Point2(0, 0)));
+    }
+
+    [Fact]
     public void CreatesEllipseEntityFromCenterMajorAndMinorPoints()
     {
         var entities = Create("ellipse", new Point2(0, 0), new Point2(4, 0), new Point2(0, 2));

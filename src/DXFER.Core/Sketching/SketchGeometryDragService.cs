@@ -34,6 +34,7 @@ public static class SketchGeometryDragService
             return false;
         }
 
+        var originalEntities = document.Entities.ToArray();
         var entities = document.Entities.ToArray();
         var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
         if (!TryApplyGeometryDrag(entities, fixedReferences, selectionKey, delta, dragEnd, constrainToCurrentVector, out status))
@@ -41,12 +42,15 @@ public static class SketchGeometryDragService
             return false;
         }
 
+        PropagateCoincidentConstraints(originalEntities, entities, document.Constraints, fixedReferences);
         var dimensions = TryGetTranslatedDimensionEntityId(document, selectionKey, out var translatedEntityId)
             ? TranslateDimensionAnchors(document.Dimensions, translatedEntityId, delta)
             : document.Dimensions;
         var draggedDocument = new DrawingDocument(entities, dimensions, document.Constraints);
-        draggedDocument = SketchConstraintService.ApplyConstraints(draggedDocument, document.Constraints);
-        draggedDocument = SketchDimensionSolverService.ApplyDimensions(draggedDocument, draggedDocument.Dimensions);
+        draggedDocument = new DrawingDocument(
+            draggedDocument.Entities,
+            draggedDocument.Dimensions,
+            ValidateConstraints(draggedDocument, document.Constraints));
         if (GeometryMatches(document.Entities, draggedDocument.Entities))
         {
             status = "Selected geometry is constrained.";
@@ -548,6 +552,103 @@ public static class SketchGeometryDragService
         return true;
     }
 
+    private static void PropagateCoincidentConstraints(
+        IReadOnlyList<DrawingEntity> originalEntities,
+        DrawingEntity[] entities,
+        IReadOnlyList<SketchConstraint> constraints,
+        SketchFixedReferences fixedReferences)
+    {
+        var queue = new Queue<SketchReference>(GetChangedPointReferences(originalEntities, entities));
+        var queued = new HashSet<string>(queue.Select(reference => reference.ToString()), StringComparer.Ordinal);
+        var guard = 0;
+        var guardLimit = Math.Max(64, constraints.Count * 8);
+
+        while (queue.Count > 0 && guard++ < guardLimit)
+        {
+            var changedReference = queue.Dequeue();
+            queued.Remove(changedReference.ToString());
+            if (!SketchGeometryEditor.TryGetPoint(entities, changedReference, out var changedPoint))
+            {
+                continue;
+            }
+
+            foreach (var constraint in constraints)
+            {
+                if (constraint.Kind != SketchConstraintKind.Coincident
+                    || constraint.State == SketchConstraintState.Suppressed
+                    || !TryGetCoincidentPair(constraint, out var firstReference, out var secondReference))
+                {
+                    continue;
+                }
+
+                var otherReference = ReferenceEquals(firstReference, changedReference)
+                    ? secondReference
+                    : ReferenceEquals(secondReference, changedReference)
+                        ? firstReference
+                        : (SketchReference?)null;
+                if (!otherReference.HasValue
+                    || !SketchGeometryEditor.TryGetPoint(entities, otherReference.Value, out var otherPoint)
+                    || SketchGeometryEditor.AreClose(changedPoint, otherPoint)
+                    || !fixedReferences.CanMovePoint(otherReference.Value)
+                    || !SketchGeometryEditor.TrySetPoint(entities, otherReference.Value, changedPoint))
+                {
+                    continue;
+                }
+
+                var otherKey = otherReference.Value.ToString();
+                if (queued.Add(otherKey))
+                {
+                    queue.Enqueue(otherReference.Value);
+                }
+            }
+        }
+    }
+
+    private static IReadOnlyList<SketchReference> GetChangedPointReferences(
+        IReadOnlyList<DrawingEntity> originalEntities,
+        IReadOnlyList<DrawingEntity> entities)
+    {
+        var changedReferences = new List<SketchReference>();
+        foreach (var reference in EnumeratePointReferences(originalEntities))
+        {
+            if (SketchGeometryEditor.TryGetPoint(originalEntities, reference, out var before)
+                && SketchGeometryEditor.TryGetPoint(entities, reference, out var after)
+                && !SketchGeometryEditor.AreClose(before, after))
+            {
+                changedReferences.Add(reference);
+            }
+        }
+
+        return changedReferences;
+    }
+
+    private static bool TryGetCoincidentPair(
+        SketchConstraint constraint,
+        out SketchReference firstReference,
+        out SketchReference secondReference)
+    {
+        if (constraint.ReferenceKeys.Count >= 2
+            && SketchReference.TryParse(constraint.ReferenceKeys[0], out firstReference)
+            && SketchReference.TryParse(constraint.ReferenceKeys[1], out secondReference))
+        {
+            return true;
+        }
+
+        firstReference = default;
+        secondReference = default;
+        return false;
+    }
+
+    private static IReadOnlyList<SketchConstraint> ValidateConstraints(
+        DrawingDocument document,
+        IReadOnlyList<SketchConstraint> constraints) =>
+        constraints
+            .Select(constraint => SketchConstraintService.ValidateConstraint(document, constraint))
+            .ToArray();
+
+    private static bool ReferenceEquals(SketchReference first, SketchReference second) =>
+        StringComparer.Ordinal.Equals(first.ToString(), second.ToString());
+
     private static bool CanMovePolylineVertex(
         SketchFixedReferences fixedReferences,
         string entityId,
@@ -643,6 +744,14 @@ public static class SketchGeometryDragService
                     yield return new SketchReference(line.Id.Value, SketchReferenceTarget.Start);
                     yield return new SketchReference(line.Id.Value, SketchReferenceTarget.End);
                     break;
+                case PolylineEntity polyline:
+                    for (var index = 0; index < polyline.Vertices.Count - 1; index++)
+                    {
+                        yield return new SketchReference(polyline.Id.Value, SketchReferenceTarget.Start, index);
+                        yield return new SketchReference(polyline.Id.Value, SketchReferenceTarget.End, index);
+                    }
+
+                    break;
                 case CircleEntity circle:
                     yield return new SketchReference(circle.Id.Value, SketchReferenceTarget.Center);
                     break;
@@ -650,6 +759,9 @@ public static class SketchGeometryDragService
                     yield return new SketchReference(arc.Id.Value, SketchReferenceTarget.Start);
                     yield return new SketchReference(arc.Id.Value, SketchReferenceTarget.End);
                     yield return new SketchReference(arc.Id.Value, SketchReferenceTarget.Center);
+                    break;
+                case PolygonEntity polygon:
+                    yield return new SketchReference(polygon.Id.Value, SketchReferenceTarget.Center);
                     break;
                 case PointEntity point:
                     yield return new SketchReference(point.Id.Value, SketchReferenceTarget.Entity);
