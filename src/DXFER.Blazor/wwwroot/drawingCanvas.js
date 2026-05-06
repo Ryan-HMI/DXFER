@@ -2769,9 +2769,9 @@ function drawConstraintGlyphGroup(state, group) {
 
   for (let index = 0; index < group.constraints.length; index++) {
     const constraint = group.constraints[index];
-    const text = getConstraintGlyphText(getSketchItemKind(constraint));
+    const icon = getConstraintGlyphIcon(getSketchItemKind(constraint));
     const point = getConstraintGlyphItemPoint(group, index);
-    drawConstraintGlyph(state, text, point, constraint);
+    drawConstraintGlyph(state, icon, point, constraint);
   }
 
   context.restore();
@@ -2842,7 +2842,7 @@ export function getConstraintGlyphGroups(state) {
   const constraints = getDocumentConstraints(state.document);
   const groupsByKey = new Map();
   for (const constraint of constraints) {
-    if (!getConstraintGlyphText(getSketchItemKind(constraint))) {
+    if (!getConstraintGlyphIcon(getSketchItemKind(constraint))) {
       continue;
     }
 
@@ -3246,8 +3246,8 @@ function getConstraintAnchorPoint(state, constraint) {
   };
 }
 
-function drawConstraintGlyph(state, text, point, constraint) {
-  if (!text) {
+function drawConstraintGlyph(state, icon, point, constraint) {
+  if (!icon) {
     return;
   }
 
@@ -3255,9 +3255,6 @@ function drawConstraintGlyph(state, text, point, constraint) {
   const stateText = getSketchConstraintState(constraint);
   const selected = state.selectedKeys && state.selectedKeys.has(`${CONSTRAINT_KEY_PREFIX}${getSketchItemId(constraint)}`);
   context.save();
-  context.font = "700 9px Segoe UI, system-ui, sans-serif";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
   context.fillStyle = selected
     ? "rgba(14, 165, 233, 0.82)"
     : stateText === "unsatisfied"
@@ -3270,34 +3267,125 @@ function drawConstraintGlyph(state, text, point, constraint) {
   context.rect(point.x - 8, point.y - 8, 16, 16);
   context.fill();
   context.stroke();
-  context.fillStyle = selected ? "#ffffff" : stateText === "unsatisfied" ? "#fecaca" : "#e2e8f0";
-  context.fillText(text, point.x, point.y + 0.5);
+  drawConstraintGlyphIcon(
+    context,
+    icon,
+    point,
+    selected ? "#ffffff" : stateText === "unsatisfied" ? "#fecaca" : "#e2e8f0"
+  );
   context.restore();
 }
 
-export function getConstraintGlyphText(kind) {
+function drawConstraintGlyphIcon(context, icon, point, color) {
+  context.save();
+  context.translate(point.x, point.y);
+  context.strokeStyle = color;
+  context.fillStyle = color;
+  context.lineWidth = 1.45;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+
+  switch (icon) {
+    case "coincident":
+      drawCircleIcon(context, -2.2, 2.2, 2.3);
+      drawCircleIcon(context, 2.2, -2.2, 2.3);
+      drawGlyphLine(context, -0.6, 0.6, 0.6, -0.6);
+      break;
+    case "concentric":
+      drawCircleIcon(context, 0, 0, 4.7);
+      drawCircleIcon(context, 0, 0, 2.2);
+      break;
+    case "parallel":
+      drawGlyphLine(context, -4.3, 4.9, 1.2, -4.9);
+      drawGlyphLine(context, -0.7, 4.9, 4.8, -4.9);
+      break;
+    case "tangent":
+      drawCircleIcon(context, -1.7, 1.5, 3.2);
+      drawGlyphLine(context, 0.7, -1.4, 5.5, -6.2);
+      break;
+    case "horizontal":
+      drawGlyphLine(context, -5.4, 0, 5.4, 0);
+      drawGlyphLine(context, -2.5, -2.7, 2.5, -2.7);
+      break;
+    case "vertical":
+      drawGlyphLine(context, 0, -5.4, 0, 5.4);
+      drawGlyphLine(context, 2.7, -2.5, 2.7, 2.5);
+      break;
+    case "perpendicular":
+      drawGlyphLine(context, -4.6, 4.3, -4.6, -4.3);
+      drawGlyphLine(context, -4.6, 4.3, 4.6, 4.3);
+      drawGlyphLine(context, -1.6, 4.3, -1.6, 1.3);
+      drawGlyphLine(context, -4.6, 1.3, -1.6, 1.3);
+      break;
+    case "equal":
+      drawGlyphLine(context, -4.7, -2, 4.7, -2);
+      drawGlyphLine(context, -4.7, 2, 4.7, 2);
+      break;
+    case "midpoint":
+      drawGlyphLine(context, -5, 0, 5, 0);
+      context.beginPath();
+      context.moveTo(0, -4.5);
+      context.lineTo(4, 3.2);
+      context.lineTo(-4, 3.2);
+      context.closePath();
+      context.stroke();
+      break;
+    case "fix":
+      drawGlyphLine(context, 0, -5.2, 0, 1.8);
+      drawGlyphLine(context, -4.2, 1.8, 4.2, 1.8);
+      drawGlyphLine(context, -2.7, 4.8, 2.7, 4.8);
+      drawGlyphLine(context, -2.2, 1.8, -2.7, 4.8);
+      drawGlyphLine(context, 2.2, 1.8, 2.7, 4.8);
+      break;
+    default:
+      break;
+  }
+
+  context.restore();
+}
+
+function drawCircleIcon(context, x, y, radius) {
+  context.beginPath();
+  context.arc(x, y, radius, 0, Math.PI * 2);
+  context.stroke();
+}
+
+function drawGlyphLine(context, x1, y1, x2, y2) {
+  context.beginPath();
+  context.moveTo(x1, y1);
+  context.lineTo(x2, y2);
+  context.stroke();
+}
+
+export function getConstraintGlyphIcon(kind) {
   switch (kind) {
     case "coincident":
-      return "C";
+      return "coincident";
     case "concentric":
-      return "O";
+      return "concentric";
     case "parallel":
-      return "//";
+      return "parallel";
+    case "tangent":
+      return "tangent";
     case "horizontal":
-      return "H";
+      return "horizontal";
     case "vertical":
-      return "V";
+      return "vertical";
     case "perpendicular":
-      return "L";
+      return "perpendicular";
     case "equal":
-      return "=";
+      return "equal";
     case "midpoint":
-      return "M";
+      return "midpoint";
     case "fix":
-      return "F";
+      return "fix";
     default:
       return "";
   }
+}
+
+export function getConstraintGlyphText(kind) {
+  return getConstraintGlyphIcon(kind);
 }
 
 function updateDimensionInputs(state, dimensions) {

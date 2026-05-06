@@ -15,8 +15,8 @@ import {
   getArcAngleDimensionScreenGeometry,
   getCenterRectangleCorners,
   getConstraintGlyphGroups,
+  getConstraintGlyphIcon,
   getConstraintGlyphLeader,
-  getConstraintGlyphText,
   getVisibleConstraintGlyphGroups,
   getDefaultActiveDimensionKey,
   getVisibleDimensionDescriptors,
@@ -1539,11 +1539,13 @@ test("persistent dimension descriptors prefer explicit anchors", () => {
   assert.deepEqual(descriptors[0].point, { x: 24, y: 14 });
 });
 
-test("constraint glyphs use compact CAD relation markers", () => {
-  assert.equal(getConstraintGlyphText("coincident"), "C");
-  assert.equal(getConstraintGlyphText("horizontal"), "H");
-  assert.equal(getConstraintGlyphText("perpendicular"), "L");
-  assert.equal(getConstraintGlyphText("fix"), "F");
+test("constraint glyphs use symbolic CAD relation icons instead of letters", () => {
+  assert.equal(getConstraintGlyphIcon("coincident"), "coincident");
+  assert.equal(getConstraintGlyphIcon("horizontal"), "horizontal");
+  assert.equal(getConstraintGlyphIcon("perpendicular"), "perpendicular");
+  assert.equal(getConstraintGlyphIcon("tangent"), "tangent");
+  assert.equal(getConstraintGlyphIcon("fix"), "fix");
+  assert.equal(getConstraintGlyphIcon("unknown"), "");
 });
 
 test("constraint glyph groups hide until hover when show all is off", () => {
