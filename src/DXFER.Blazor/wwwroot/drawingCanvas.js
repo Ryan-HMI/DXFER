@@ -1644,9 +1644,15 @@ function addRadiusPreviewDimension(dimensions, state, center, edge) {
 }
 
 function addEllipsePreviewDimensions(dimensions, state, ellipse) {
-  addLinearPreviewDimension(dimensions, state, "major", "Major", ellipse.center, ellipse.majorPoint);
-  const minorPoint = getEllipsePointAtParameter(ellipse, 90);
-  addLinearPreviewDimension(dimensions, state, "minor", "Minor", ellipse.center, minorPoint);
+  const major = getEllipseAxisDiameterPoints(ellipse, "major");
+  if (major) {
+    addLinearPreviewDimension(dimensions, state, "major", "Major diameter", major.start, major.end);
+  }
+
+  const minor = getEllipseAxisDiameterPoints(ellipse, "minor");
+  if (minor) {
+    addLinearPreviewDimension(dimensions, state, "minor", "Minor diameter", minor.start, minor.end);
+  }
 }
 
 function addPolygonPreviewDimension(dimensions, state, center, radiusPoint, circumscribed) {
@@ -5167,13 +5173,17 @@ function commitCurrentModifyTool(state) {
   return commitModifyToolPoints(state, tool, points);
 }
 
-function shouldPreserveDraftDimensionsForNextPoint(tool, nextPoints) {
+export function shouldPreserveDraftDimensionsForNextPoint(tool, nextPoints) {
   return Array.isArray(nextPoints)
     && nextPoints.length === 2
-    && (tool === "alignedrectangle" || tool === "centerpointarc" || tool === "slot");
+    && (tool === "alignedrectangle"
+      || tool === "centerpointarc"
+      || tool === "ellipse"
+      || tool === "ellipticalarc"
+      || tool === "slot");
 }
 
-function getNextSketchToolDimensionFocusKey(tool, nextPoints) {
+export function getNextSketchToolDimensionFocusKey(tool, nextPoints) {
   if (!Array.isArray(nextPoints) || nextPoints.length !== 2) {
     return null;
   }
@@ -5184,6 +5194,10 @@ function getNextSketchToolDimensionFocusKey(tool, nextPoints) {
 
   if (tool === "slot") {
     return "radius";
+  }
+
+  if (tool === "ellipse" || tool === "ellipticalarc") {
+    return "minor";
   }
 
   return tool === "centerpointarc" ? "sweep" : null;
@@ -8145,10 +8159,11 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
   } else if (tool === "centercircle" && dimension === "radius") {
     nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
   } else if ((tool === "ellipse" || tool === "ellipticalarc") && dimension === "major") {
+    const majorRadius = numericValue / 2;
     if (points.length === 1) {
-      nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
+      nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, majorRadius);
     } else {
-      const nextMajorPoint = pointFromAnchorWithLength(anchor, points[1], numericValue);
+      const nextMajorPoint = pointFromAnchorWithLength(anchor, points[1], majorRadius);
       const minorPoint = points.length >= 3 ? points[2] : previewPoint;
       const nextMinorPoint = getEllipseMinorPointWithLength(anchor, nextMajorPoint, minorPoint, getEllipseMinorLength(anchor, points[1], minorPoint));
       state.toolDraft.points = points.length >= 3
@@ -8157,7 +8172,7 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
       nextPreviewPoint = points.length >= 3 ? previewPoint : nextMinorPoint;
     }
   } else if ((tool === "ellipse" || tool === "ellipticalarc") && dimension === "minor" && points.length >= 2) {
-    nextPreviewPoint = getEllipseMinorPointWithLength(anchor, points[1], previewPoint, numericValue);
+    nextPreviewPoint = getEllipseMinorPointWithLength(anchor, points[1], previewPoint, numericValue / 2);
   } else if (tool === "inscribedpolygon" && dimension === "radius") {
     nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
   } else if (tool === "circumscribedpolygon" && dimension === "apothem") {
@@ -10090,7 +10105,7 @@ export function applyPolarSnapIfRequested(state, point, tool, event) {
     return point;
   }
 
-  const anchor = state.toolDraft.points[0];
+  const anchor = getPolarSnapAnchor(state, tool);
   const distance = distanceBetweenWorldPoints(anchor, point);
   if (distance <= WORLD_GEOMETRY_TOLERANCE) {
     return point;
@@ -10118,9 +10133,23 @@ export function applyPolarSnapIfRequested(state, point, tool, event) {
 
 function supportsPolarSnap(tool) {
   return tool === "line"
+    || tool === "alignedrectangle"
+    || tool === "ellipse"
+    || tool === "ellipticalarc"
     || tool === "midpointline"
     || tool === "inscribedpolygon"
     || tool === "circumscribedpolygon";
+}
+
+function getPolarSnapAnchor(state, tool) {
+  const points = state && state.toolDraft && Array.isArray(state.toolDraft.points)
+    ? state.toolDraft.points
+    : [];
+  if (tool === "alignedrectangle" && points.length >= 2) {
+    return points[points.length - 1];
+  }
+
+  return points[0];
 }
 
 function pointOnCircle(center, radius, angleDegrees) {
@@ -10174,6 +10203,30 @@ export function getEllipseFromPoints(center, majorPoint, minorPoint, endParamete
   }
 
   return ellipse;
+}
+
+export function getEllipseAxisDiameterPoints(ellipse, axis) {
+  if (!ellipse || !ellipse.center) {
+    return null;
+  }
+
+  const normalizedAxis = String(axis || "").toLowerCase();
+  const unit = normalizedAxis === "minor" ? ellipse.minorUnit : ellipse.majorUnit;
+  const length = normalizedAxis === "minor" ? ellipse.minorLength : ellipse.majorLength;
+  if (!unit || !isFinitePositive(length)) {
+    return null;
+  }
+
+  return {
+    start: {
+      x: ellipse.center.x - unit.x * length,
+      y: ellipse.center.y - unit.y * length
+    },
+    end: {
+      x: ellipse.center.x + unit.x * length,
+      y: ellipse.center.y + unit.y * length
+    }
+  };
 }
 
 function getEllipseFromEntity(entity) {

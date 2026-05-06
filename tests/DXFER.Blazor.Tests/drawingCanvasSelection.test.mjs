@@ -29,6 +29,7 @@ import {
   getDimensionInputClassName,
   getDimensionPlacementRequest,
   getDimensionRenderStyle,
+  getEllipseAxisDiameterPoints,
   getFitViewForDocument,
   getEllipseFromPoints,
   getPersistentDimensionDescriptors,
@@ -46,6 +47,7 @@ import {
   getPointTargetMarker,
   getPowerTrimCrossingRequests,
   getNextDimensionKey,
+  getNextSketchToolDimensionFocusKey,
   getPowerTrimRequest,
   getSplitAtPointRequest,
   getThreePointCircle,
@@ -66,6 +68,7 @@ import {
   shouldCommitDimensionInputOnChange,
   shouldCommitDimensionInputOnBlur,
   shouldDrawSelectionTargetOverlay,
+  shouldPreserveDraftDimensionsForNextPoint,
   shouldRefreshDimensionInputValue,
   syncActiveSelectionWithSelectedKeys,
   tryToggleSketchChainToolAtPoint
@@ -150,7 +153,7 @@ test("draft line dimension preserves direction when length is typed", () => {
   assert.deepEqual(state.toolDraft.previewPoint, { x: 6, y: 8 });
 });
 
-test("draft ellipse dimensions preserve major and minor axes", () => {
+test("draft ellipse dimensions use major and minor diameters", () => {
   const state = {
     activeTool: "ellipse",
     toolDraft: {
@@ -159,11 +162,12 @@ test("draft ellipse dimensions preserve major and minor axes", () => {
     }
   };
 
-  assert.equal(applyDraftDimensionValue(state, "minor", 3), true);
+  assert.equal(applyDraftDimensionValue(state, "minor", 6), true);
   assert.deepEqual(state.toolDraft.previewPoint, { x: 0, y: 3 });
 
-  assert.equal(applyDraftDimensionValue(state, "major", 6), true);
+  assert.equal(applyDraftDimensionValue(state, "major", 12), true);
   assert.deepEqual(state.toolDraft.points[1], { x: 6, y: 0 });
+  assert.deepEqual(state.toolDraft.dimensionValues, { minor: 6, major: 12 });
 });
 
 test("ellipse helper builds ratio and elliptical arc parameter", () => {
@@ -177,6 +181,21 @@ test("ellipse helper builds ratio and elliptical arc parameter", () => {
   assert.equal(ellipse.minorLength, 2);
   assert.equal(ellipse.minorRadiusRatio, 0.5);
   assert.equal(ellipse.endParameterDegrees, 90);
+});
+
+test("ellipse axis dimension helpers use full diameter endpoints", () => {
+  const ellipse = getEllipseFromPoints(
+    { x: 0, y: 0 },
+    { x: 4, y: 0 },
+    { x: 0, y: 2 });
+
+  const major = getEllipseAxisDiameterPoints(ellipse, "major");
+  const minor = getEllipseAxisDiameterPoints(ellipse, "minor");
+
+  assert.deepEqual(major.start, { x: -4, y: 0 });
+  assert.deepEqual(major.end, { x: 4, y: 0 });
+  assert.deepEqual(minor.start, { x: 0, y: -2 });
+  assert.deepEqual(minor.end, { x: 0, y: 2 });
 });
 
 test("creation tool point counts cover remaining sketch tools", () => {
@@ -850,6 +869,42 @@ test("line polar snap is ortho only near an ortho axis by default", () => {
   assertApproxEqual(fine.y, Math.sin(Math.PI / 12) * nearRadius);
 });
 
+test("ellipse polar snap uses the center while placing the major axis", () => {
+  const state = {
+    view: {
+      scale: 1
+    },
+    toolDraft: {
+      points: [{ x: 0, y: 0 }]
+    }
+  };
+  const nearHorizontal = { x: 10, y: 3 };
+  const nearRadius = Math.hypot(nearHorizontal.x, nearHorizontal.y);
+
+  const snapped = applyPolarSnapIfRequested(state, nearHorizontal, "ellipse", { shiftKey: false });
+
+  assertApproxEqual(snapped.x, nearRadius);
+  assertApproxEqual(snapped.y, 0);
+});
+
+test("aligned rectangle polar snap uses the last placed point for depth", () => {
+  const state = {
+    view: {
+      scale: 1
+    },
+    toolDraft: {
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+    }
+  };
+  const nearVerticalFromBaselineEnd = { x: 13, y: 10 };
+  const radius = Math.hypot(3, 10);
+
+  const snapped = applyPolarSnapIfRequested(state, nearVerticalFromBaselineEnd, "alignedrectangle", { shiftKey: false });
+
+  assertApproxEqual(snapped.x, 10);
+  assertApproxEqual(snapped.y, radius);
+});
+
 test("dimension active key defaults and cycles through all visible dimensions", () => {
   const dimensions = [{ key: "width" }, { key: "height" }];
 
@@ -893,6 +948,16 @@ test("pending dimension focus wins over stale focused key during command phase c
       activeKey: "depth",
       pendingKey: null
     });
+});
+
+test("sequential sketch tools preserve first keyed dimension and request the next input on click", () => {
+  const ellipseNextPoints = [{ x: 0, y: 0 }, { x: 5, y: 0 }];
+  const alignedRectangleNextPoints = [{ x: 0, y: 0 }, { x: 5, y: 0 }];
+
+  assert.equal(shouldPreserveDraftDimensionsForNextPoint("ellipse", ellipseNextPoints), true);
+  assert.equal(getNextSketchToolDimensionFocusKey("ellipse", ellipseNextPoints), "minor");
+  assert.equal(shouldPreserveDraftDimensionsForNextPoint("alignedrectangle", alignedRectangleNextPoints), true);
+  assert.equal(getNextSketchToolDimensionFocusKey("alignedrectangle", alignedRectangleNextPoints), "depth");
 });
 
 test("visible dimension descriptors preserve drawn order instead of map insertion order", () => {

@@ -53,6 +53,21 @@ public sealed class SketchCreationEntityFactoryTests
     }
 
     [Fact]
+    public void CreatesEllipseGeometryFromTypedAxisDiameters()
+    {
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "ellipse",
+            new[] { new Point2(0, 0), new Point2(4, 0), new Point2(0, 2) },
+            CreateEntityId,
+            isConstruction: false,
+            new Dictionary<string, double> { ["major"] = 10, ["minor"] = 6 });
+
+        var ellipse = entities.Should().ContainSingle().Subject.Should().BeOfType<EllipseEntity>().Subject;
+        ellipse.MajorAxisEndPoint.Should().Be(new Point2(5, 0));
+        ellipse.MinorRadiusRatio.Should().BeApproximately(0.6, 0.000001);
+    }
+
+    [Fact]
     public void CreatesEllipticalArcEntityWithEndParameter()
     {
         var entities = Create("ellipticalarc", new Point2(0, 0), new Point2(4, 0), new Point2(0, 2), new Point2(0, 2));

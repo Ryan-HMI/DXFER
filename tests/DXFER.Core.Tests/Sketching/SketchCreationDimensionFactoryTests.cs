@@ -130,7 +130,7 @@ public sealed class SketchCreationDimensionFactoryTests
     }
 
     [Fact]
-    public void CreatesEllipseAxisDimensionsFromTypedValues()
+    public void CreatesEllipseAxisDiameterDimensionsFromTypedValues()
     {
         var entities = new DrawingEntity[]
         {
@@ -140,7 +140,7 @@ public sealed class SketchCreationDimensionFactoryTests
         var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
             "ellipse",
             entities,
-            new Dictionary<string, double> { ["major"] = 4, ["minor"] = 2 },
+            new Dictionary<string, double> { ["major"] = 8, ["minor"] = 4 },
             CreateDimensionId);
 
         dimensions.Should().HaveCount(2);
@@ -148,8 +148,14 @@ public sealed class SketchCreationDimensionFactoryTests
             dimension.Kind == SketchDimensionKind.LinearDistance
             && dimension.ReferenceKeys.All(key => key.Contains("|point|", StringComparison.Ordinal))
             && dimension.IsDriving);
-        dimensions.Should().Contain(dimension => dimension.Value == 4);
-        dimensions.Should().Contain(dimension => dimension.Value == 2);
+        dimensions.Should().Contain(dimension =>
+            dimension.Value == 8
+            && dimension.ReferenceKeys.Any(key => key.Contains("major-start|-4|0", StringComparison.Ordinal))
+            && dimension.ReferenceKeys.Any(key => key.Contains("major-end|4|0", StringComparison.Ordinal)));
+        dimensions.Should().Contain(dimension =>
+            dimension.Value == 4
+            && dimension.ReferenceKeys.Any(key => key.Contains("minor-start|0|-2", StringComparison.Ordinal))
+            && dimension.ReferenceKeys.Any(key => key.Contains("minor-end|0|2", StringComparison.Ordinal)));
     }
 
     [Fact]

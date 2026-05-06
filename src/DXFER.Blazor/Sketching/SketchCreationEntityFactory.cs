@@ -93,7 +93,8 @@ public static class SketchCreationEntityFactory
 
                 break;
             case "ellipse" when points.Count >= 3:
-                AddEllipseEntity(entities, createEntityId("ellipse"), first, second, points[2], 0, 360, isConstruction);
+                var ellipseAxes = GetDimensionedEllipseAxisPoints(first, second, points[2], dimensionValues);
+                AddEllipseEntity(entities, createEntityId("ellipse"), first, ellipseAxes.MajorPoint, ellipseAxes.MinorPoint, 0, 360, isConstruction);
                 break;
             case "threepointarc" when points.Count >= 3:
                 AddArcEntity(entities, createEntityId, SketchArcGeometry.GetThreePointArc(first, second, points[2]), isConstruction);
@@ -105,8 +106,9 @@ public static class SketchCreationEntityFactory
                 AddArcEntity(entities, createEntityId, SketchArcGeometry.GetCenterPointArc(first, second, points[2]), isConstruction);
                 break;
             case "ellipticalarc" when points.Count >= 4:
-                var endParameter = GetEllipseParameterDegrees(first, second, points[2], points[3]);
-                AddEllipseEntity(entities, createEntityId("ellipse"), first, second, points[2], 0, endParameter, isConstruction);
+                var ellipticalArcAxes = GetDimensionedEllipseAxisPoints(first, second, points[2], dimensionValues);
+                var endParameter = GetEllipseParameterDegrees(first, ellipticalArcAxes.MajorPoint, ellipticalArcAxes.MinorPoint, points[3]);
+                AddEllipseEntity(entities, createEntityId("ellipse"), first, ellipticalArcAxes.MajorPoint, ellipticalArcAxes.MinorPoint, 0, endParameter, isConstruction);
                 break;
             case "conic" when points.Count >= 3:
                 entities.Add(new SplineEntity(createEntityId("conic"), 2, points.Take(3), Array.Empty<double>(), isConstruction: isConstruction));
@@ -206,6 +208,48 @@ public static class SketchCreationEntityFactory
             startParameterDegrees,
             endParameterDegrees,
             isConstruction));
+    }
+
+    private static (Point2 MajorPoint, Point2 MinorPoint) GetDimensionedEllipseAxisPoints(
+        Point2 center,
+        Point2 majorPoint,
+        Point2 minorPoint,
+        IReadOnlyDictionary<string, double>? dimensionValues)
+    {
+        var majorRadius = GetPositiveDimensionValue(dimensionValues, "major") is { } majorDiameter
+            ? (double?)(majorDiameter / 2.0)
+            : null;
+        var adjustedMajorPoint = GetPointAtLength(center, majorPoint, majorRadius);
+        var minorRadius = GetPositiveDimensionValue(dimensionValues, "minor") is { } minorDiameter
+            ? (double?)(minorDiameter / 2.0)
+            : null;
+        var adjustedMinorPoint = minorRadius is { } radius
+            ? GetEllipseMinorPointAtLength(center, adjustedMajorPoint, minorPoint, radius)
+            : minorPoint;
+
+        return (adjustedMajorPoint, adjustedMinorPoint);
+    }
+
+    private static Point2 GetEllipseMinorPointAtLength(
+        Point2 center,
+        Point2 majorPoint,
+        Point2 minorPoint,
+        double minorLength)
+    {
+        var majorLength = Distance(center, majorPoint);
+        if (majorLength <= GeometryTolerance)
+        {
+            return minorPoint;
+        }
+
+        var normal = new Point2(
+            -(majorPoint.Y - center.Y) / majorLength,
+            (majorPoint.X - center.X) / majorLength);
+        var signedDistance = ((minorPoint.X - center.X) * normal.X) + ((minorPoint.Y - center.Y) * normal.Y);
+        var sign = signedDistance < 0 ? -1.0 : 1.0;
+        return new Point2(
+            center.X + normal.X * minorLength * sign,
+            center.Y + normal.Y * minorLength * sign);
     }
 
     private static bool TryGetEllipseAxes(

@@ -81,26 +81,32 @@ public static class SketchCreationDimensionFactory
                 {
                     if (TryGetPositiveValue(dimensionValues, "major", out var major))
                     {
-                        var majorPoint = new Point2(
+                        var majorStart = new Point2(
+                            ellipse.Center.X - ellipse.MajorAxisEndPoint.X,
+                            ellipse.Center.Y - ellipse.MajorAxisEndPoint.Y);
+                        var majorEnd = new Point2(
                             ellipse.Center.X + ellipse.MajorAxisEndPoint.X,
                             ellipse.Center.Y + ellipse.MajorAxisEndPoint.Y);
                         dimensions.Add(CreatePointDistanceDimension(
                             createDimensionId(),
                             ellipse.Id,
                             "major",
-                            ellipse.Center,
-                            majorPoint,
+                            majorStart,
+                            majorEnd,
                             major));
                     }
 
                     if (TryGetPositiveValue(dimensionValues, "minor", out var minor))
                     {
                         var minorPoint = GetEllipseMinorPoint(ellipse);
+                        var oppositeMinorPoint = new Point2(
+                            ellipse.Center.X - (minorPoint.X - ellipse.Center.X),
+                            ellipse.Center.Y - (minorPoint.Y - ellipse.Center.Y));
                         dimensions.Add(CreatePointDistanceDimension(
                             createDimensionId(),
                             ellipse.Id,
                             "minor",
-                            ellipse.Center,
+                            oppositeMinorPoint,
                             minorPoint,
                             minor));
                     }
