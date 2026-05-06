@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyDraftDimensionValue,
+  applyConstraintVisibilityState,
   applyGeometryDragPreview,
   applyLockedDraftDimensions,
   applyDirectSelectionClick,
@@ -14,6 +15,7 @@ import {
   getArcAngleDimensionScreenGeometry,
   getCenterRectangleCorners,
   getConstraintGlyphGroups,
+  getConstraintGlyphLeader,
   getConstraintGlyphText,
   getVisibleConstraintGlyphGroups,
   getDefaultActiveDimensionKey,
@@ -1575,6 +1577,41 @@ test("constraint glyph groups show all constraints and keep dragged screen offse
   assert.ok(movedGroup);
   assert.deepEqual(movedGroup.anchorScreenPoint, { x: 60, y: 90 });
   assert.deepEqual(movedGroup.point, { x: 84, y: 78 });
+});
+
+test("dragged constraint glyph groups expose leader geometry to the reference anchor", () => {
+  const state = createConstraintGlyphState(true);
+  state.constraintGroupOffsets.set("constraint-group:edge-a", { x: 40, y: -30 });
+
+  const group = getConstraintGlyphGroups(state)
+    .find(candidate => candidate.key === "constraint-group:edge-a");
+  const leader = getConstraintGlyphLeader(group);
+
+  assert.ok(leader);
+  assert.deepEqual(leader.start, { x: 60, y: 90 });
+  assert.ok(leader.end.x > leader.start.x);
+  assert.ok(leader.end.y < leader.start.y);
+});
+
+test("default-position constraint glyph groups do not expose leader geometry", () => {
+  const state = createConstraintGlyphState(true);
+  const group = getConstraintGlyphGroups(state)
+    .find(candidate => candidate.key === "constraint-group:edge-a");
+
+  assert.equal(getConstraintGlyphLeader(group), null);
+});
+
+test("changing constraint visibility clears dragged glyph offsets", () => {
+  const state = createConstraintGlyphState(true);
+  state.constraintGroupOffsets.set("constraint-group:edge-a", { x: 24, y: -12 });
+  state.constraintGroupDrag = { groupKey: "constraint-group:edge-a" };
+
+  const changed = applyConstraintVisibilityState(state, false);
+
+  assert.equal(changed, true);
+  assert.equal(state.showAllConstraints, false);
+  assert.equal(state.constraintGroupOffsets.size, 0);
+  assert.equal(state.constraintGroupDrag, null);
 });
 
 test("constraint tool hover filtering matches eligible reference types", () => {

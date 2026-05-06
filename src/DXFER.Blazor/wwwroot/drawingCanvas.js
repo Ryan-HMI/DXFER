@@ -28,6 +28,7 @@ const SKETCH_CHAIN_DIMENSION_SUPPRESS_TOLERANCE = SNAP_POINT_TOLERANCE * 3;
 const CONSTRAINT_GLYPH_SIZE = 16;
 const CONSTRAINT_GLYPH_GAP = 4;
 const CONSTRAINT_GROUP_HIT_PADDING = 4;
+const CONSTRAINT_LEADER_MIN_DISTANCE = 10;
 const POWER_TRIM_PATH_MIN_SCREEN_DISTANCE = 2;
 
 export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) {
@@ -186,7 +187,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     },
 
     setShowAllConstraints(visible) {
-      state.showAllConstraints = Boolean(visible);
+      applyConstraintVisibilityState(state, visible);
       state.canvas.dataset.showAllConstraints = state.showAllConstraints ? "true" : "false";
       updateDebugAttributes(state);
       draw(state);
@@ -2764,6 +2765,8 @@ function drawConstraintGlyphGroup(state, group) {
     context.shadowBlur = 10;
   }
 
+  drawConstraintGlyphLeader(state, group);
+
   for (let index = 0; index < group.constraints.length; index++) {
     const constraint = group.constraints[index];
     const text = getConstraintGlyphText(getSketchItemKind(constraint));
@@ -2771,6 +2774,29 @@ function drawConstraintGlyphGroup(state, group) {
     drawConstraintGlyph(state, text, point, constraint);
   }
 
+  context.restore();
+}
+
+function drawConstraintGlyphLeader(state, group) {
+  const leader = getConstraintGlyphLeader(group);
+  if (!leader) {
+    return;
+  }
+
+  const { context } = state;
+  context.save();
+  context.strokeStyle = "rgba(143, 161, 182, 0.82)";
+  context.fillStyle = "rgba(143, 161, 182, 0.82)";
+  context.lineWidth = 1;
+  context.setLineDash([4, 3]);
+  context.beginPath();
+  context.moveTo(leader.start.x, leader.start.y);
+  context.lineTo(leader.end.x, leader.end.y);
+  context.stroke();
+  context.setLineDash([]);
+  context.beginPath();
+  context.arc(leader.start.x, leader.start.y, 2, 0, Math.PI * 2);
+  context.fill();
   context.restore();
 }
 
@@ -2790,6 +2816,26 @@ export function getVisibleConstraintGlyphGroups(state) {
   }
 
   return groups.filter(group => isConstraintGroupRelatedToTarget(group, state.hoveredTarget));
+}
+
+export function applyConstraintVisibilityState(state, visible) {
+  if (!state) {
+    return false;
+  }
+
+  const nextVisible = Boolean(visible);
+  const changed = state.showAllConstraints !== nextVisible;
+  state.showAllConstraints = nextVisible;
+
+  if (changed) {
+    if (state.constraintGroupOffsets && typeof state.constraintGroupOffsets.clear === "function") {
+      state.constraintGroupOffsets.clear();
+    }
+
+    state.constraintGroupDrag = null;
+  }
+
+  return changed;
 }
 
 export function getConstraintGlyphGroups(state) {
@@ -2862,6 +2908,23 @@ function finalizeConstraintGlyphGroup(state, group) {
   };
   result.rect = getConstraintGlyphGroupRect(result);
   return result;
+}
+
+export function getConstraintGlyphLeader(group) {
+  if (!group || !group.anchorScreenPoint || !group.point || !group.rect) {
+    return null;
+  }
+
+  const start = group.anchorScreenPoint;
+  const dx = group.point.x - start.x;
+  const dy = group.point.y - start.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < CONSTRAINT_LEADER_MIN_DISTANCE || isPointInScreenRect(start, group.rect)) {
+    return null;
+  }
+
+  const end = getScreenSegmentRectEntryPoint(start, group.point, group.rect);
+  return end ? { start, end } : null;
 }
 
 function compareConstraintsById(first, second) {
@@ -3073,6 +3136,61 @@ function getConstraintGlyphGroupScreenDistance(group, screenPoint) {
   const dx = Math.max(0, group.rect.minX - screenPoint.x, screenPoint.x - group.rect.maxX);
   const dy = Math.max(0, group.rect.minY - screenPoint.y, screenPoint.y - group.rect.maxY);
   return Math.hypot(dx, dy);
+}
+
+function isPointInScreenRect(point, rect) {
+  return point
+    && rect
+    && point.x >= rect.minX
+    && point.x <= rect.maxX
+    && point.y >= rect.minY
+    && point.y <= rect.maxY;
+}
+
+function getScreenSegmentRectEntryPoint(start, end, rect) {
+  if (!start || !end || !rect) {
+    return null;
+  }
+
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  if (Math.hypot(dx, dy) <= CONSTRAINT_LEADER_MIN_DISTANCE) {
+    return null;
+  }
+
+  const candidates = [];
+  addRectIntersectionCandidate(candidates, start, dx, dy, rect, "x", rect.minX);
+  addRectIntersectionCandidate(candidates, start, dx, dy, rect, "x", rect.maxX);
+  addRectIntersectionCandidate(candidates, start, dx, dy, rect, "y", rect.minY);
+  addRectIntersectionCandidate(candidates, start, dx, dy, rect, "y", rect.maxY);
+  candidates.sort((first, second) => first.t - second.t);
+
+  return candidates.length > 0 ? candidates[0].point : null;
+}
+
+function addRectIntersectionCandidate(candidates, start, dx, dy, rect, axis, value) {
+  const denominator = axis === "x" ? dx : dy;
+  if (Math.abs(denominator) <= 0.000001) {
+    return;
+  }
+
+  const t = (value - (axis === "x" ? start.x : start.y)) / denominator;
+  if (t <= 0 || t > 1) {
+    return;
+  }
+
+  const point = {
+    x: start.x + dx * t,
+    y: start.y + dy * t
+  };
+  if (point.x < rect.minX - 0.000001
+    || point.x > rect.maxX + 0.000001
+    || point.y < rect.minY - 0.000001
+    || point.y > rect.maxY + 0.000001) {
+    return;
+  }
+
+  candidates.push({ t, point });
 }
 
 function startConstraintGroupDrag(state, candidate, screenPoint) {
