@@ -11,6 +11,7 @@ import {
   clampDimensionInputScreenPoint,
   getAlignedRectangleCorners,
   getAngleDimensionScreenGeometry,
+  getArcAngleDimensionScreenGeometry,
   getCenterRectangleCorners,
   getConstraintGlyphGroups,
   getConstraintGlyphText,
@@ -37,6 +38,7 @@ import {
   getPostCommitSketchToolState,
   getTangentArc,
   getPointTargetMarker,
+  getPowerTrimCrossingRequests,
   getNextDimensionKey,
   getPowerTrimRequest,
   getSplitAtPointRequest,
@@ -50,8 +52,10 @@ import {
   resolveActiveDimensionKey,
   isDynamicTargetCurrentToPointer,
   isInferenceGuideWithinScreenDistance,
+  isTargetEligibleForConstraintTool,
   isPanPointerDownForTool,
   prepareSelectionForToolEntry,
+  pruneExpiredAcquiredSnapPoints,
   shouldAutoSelectDimensionInputValue,
   shouldCommitDimensionInputOnChange,
   shouldCommitDimensionInputOnBlur,
@@ -950,6 +954,46 @@ test("two acquired ortho projection keeps both guides when it lands on highlight
   assert.deepEqual(hit.target.guides.map(guide => guide.orientation).sort(), ["horizontal", "vertical"]);
 });
 
+test("used acquired ortho projection refreshes its inactivity timer", () => {
+  const now = performance.now();
+  const state = {
+    activeTool: "line",
+    document: {
+      entities: [
+        {
+          id: "horizontal",
+          kind: "line",
+          points: [{ x: 0, y: 10 }, { x: 30, y: 10 }]
+        }
+      ]
+    },
+    acquiredSnapPoints: [
+      { key: "lower", label: "lower", point: { x: 20, y: 0 }, acquiredAt: now - 2500 }
+    ],
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 200
+    },
+    toolDraft: {
+      points: [{ x: -5, y: -5 }]
+    }
+  };
+  const highlightedTarget = {
+    entity: state.document.entities[0],
+    snapPoint: { x: 20, y: 10 }
+  };
+  const previousTimestamp = state.acquiredSnapPoints[0].acquiredAt;
+
+  const hit = getDynamicSketchSnapHit(state, { x: 200, y: 100 }, highlightedTarget);
+
+  assert.equal(hit.target.point.x, 20);
+  assert.equal(hit.target.point.y, 10);
+  assert.ok(state.acquiredSnapPoints[0].acquiredAt > previousTimestamp);
+  assert.equal(pruneExpiredAcquiredSnapPoints(state, state.acquiredSnapPoints[0].acquiredAt + 2500), false);
+  assert.deepEqual(state.acquiredSnapPoints.map(point => point.key), ["lower"]);
+});
+
 test("dimension input screen position is clamped inside the canvas", () => {
   const state = {
     canvas: {
@@ -1177,6 +1221,64 @@ test("radial dimension arrow flips when the text anchor is inside", () => {
   ]);
 });
 
+test("arc radial dimension leader starts at the arc edge instead of crossing the center", () => {
+  const geometry = getRadialDimensionScreenGeometry(
+    { x: 100, y: 100 },
+    30,
+    { x: 105, y: 80 },
+    false,
+    0,
+    { x: 100, y: 70 }
+  );
+
+  assert.deepEqual(geometry.arrows, [
+    { point: { x: 100, y: 70 }, toward: { x: 100, y: 100 } }
+  ]);
+  assert.equal(geometry.segments.length, 1);
+  assert.deepEqual(geometry.segments[0].start, { x: 100, y: 70 });
+  assert.notDeepEqual(geometry.segments[0].start, { x: 100, y: 100 });
+  assert.notDeepEqual(geometry.segments[0].end, { x: 100, y: 100 });
+});
+
+test("arc angle dimension extension lines start at arc endpoints", () => {
+  const state = {
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 100
+    }
+  };
+
+  const geometry = getArcAngleDimensionScreenGeometry(
+    state,
+    { x: 0, y: 0 },
+    5,
+    0,
+    90,
+    { x: 7, y: 7 });
+
+  assert.deepEqual(geometry.vertex, { x: 0, y: 100 });
+  assert.deepEqual(geometry.extensionSegments[0].start, { x: 50, y: 100 });
+  assertApproxPoint(geometry.extensionSegments[1].start, { x: 0, y: 50 });
+  assert.notDeepEqual(geometry.extensionSegments[0].start, geometry.vertex);
+  assert.notDeepEqual(geometry.extensionSegments[1].start, geometry.vertex);
+  assert.equal(geometry.arrows.length, 2);
+});
+
+test("acquired snap points expire after a short inactivity window", () => {
+  const state = {
+    acquiredSnapPoints: [
+      { key: "old", label: "old", point: { x: 0, y: 0 }, acquiredAt: 0 },
+      { key: "fresh", label: "fresh", point: { x: 1, y: 1 }, acquiredAt: 2500 }
+    ]
+  };
+
+  const changed = pruneExpiredAcquiredSnapPoints(state, 4001);
+
+  assert.equal(changed, true);
+  assert.deepEqual(state.acquiredSnapPoints.map(point => point.key), ["fresh"]);
+});
+
 test("linear dimension graphics leave a text gap and extend past the dimension line", () => {
   const geometry = getLinearDimensionScreenGeometry(
     { x: 0, y: 20 },
@@ -1314,12 +1416,11 @@ test("persistent dimension descriptors resolve arc angle references to sweep geo
   const descriptors = getPersistentDimensionDescriptors(state);
 
   assert.equal(descriptors.length, 1);
-  assert.equal(descriptors[0].geometry.type, "angle");
-  assert.deepEqual(descriptors[0].geometry.vertex, { x: 0, y: 0 });
-  assert.deepEqual(descriptors[0].geometry.firstLine.start, { x: 0, y: 0 });
-  assert.deepEqual(descriptors[0].geometry.firstLine.end, { x: 2, y: 0 });
-  assertApproxEqual(descriptors[0].geometry.secondLine.end.x, -1);
-  assertApproxEqual(descriptors[0].geometry.secondLine.end.y, Math.sqrt(3));
+  assert.equal(descriptors[0].geometry.type, "arcangle");
+  assert.deepEqual(descriptors[0].geometry.center, { x: 0, y: 0 });
+  assert.equal(descriptors[0].geometry.radius, 2);
+  assert.equal(descriptors[0].geometry.startAngleDegrees, 0);
+  assert.equal(descriptors[0].geometry.endAngleDegrees, 120);
 });
 
 test("persistent dimension descriptors resolve polyline segment endpoints", () => {
@@ -1460,6 +1561,26 @@ test("constraint glyph groups show all constraints and keep dragged screen offse
   assert.ok(movedGroup);
   assert.deepEqual(movedGroup.anchorScreenPoint, { x: 60, y: 90 });
   assert.deepEqual(movedGroup.point, { x: 84, y: 78 });
+});
+
+test("constraint tool hover filtering matches eligible reference types", () => {
+  const lineTarget = { kind: "entity", entity: { kind: "line" }, key: "edge" };
+  const circleTarget = { kind: "entity", entity: { kind: "circle" }, key: "circle" };
+  const arcTarget = { kind: "entity", entity: { kind: "arc" }, key: "arc" };
+  const pointTarget = { kind: "point", entity: { kind: "line" }, label: "start", key: "edge|point|start|0|0" };
+  const midpointTarget = { kind: "point", entity: { kind: "line" }, label: "mid", key: "edge|point|mid|5|0" };
+
+  assert.equal(isTargetEligibleForConstraintTool("tangent", lineTarget), true);
+  assert.equal(isTargetEligibleForConstraintTool("tangent", circleTarget), true);
+  assert.equal(isTargetEligibleForConstraintTool("tangent", pointTarget), false);
+  assert.equal(isTargetEligibleForConstraintTool("concentric", circleTarget), true);
+  assert.equal(isTargetEligibleForConstraintTool("concentric", arcTarget), true);
+  assert.equal(isTargetEligibleForConstraintTool("concentric", lineTarget), false);
+  assert.equal(isTargetEligibleForConstraintTool("coincident", pointTarget), true);
+  assert.equal(isTargetEligibleForConstraintTool("coincident", midpointTarget), false);
+  assert.equal(isTargetEligibleForConstraintTool("horizontal", lineTarget), true);
+  assert.equal(isTargetEligibleForConstraintTool("horizontal", pointTarget), true);
+  assert.equal(isTargetEligibleForConstraintTool("horizontal", circleTarget), false);
 });
 
 test("point target marker uses a dedicated tangent snap symbol", () => {
@@ -1610,6 +1731,41 @@ test("power trim request targets clicked entity with projected point", () => {
   assertApproxEqual(request.point.y, 0);
 });
 
+test("power trim drag request captures crossed line targets", () => {
+  const state = createHitTestState([
+    {
+      id: "first",
+      kind: "line",
+      points: [{ x: 2, y: -2 }, { x: 2, y: 2 }]
+    },
+    {
+      id: "second",
+      kind: "line",
+      points: [{ x: 6, y: -2 }, { x: 6, y: 2 }]
+    },
+    {
+      id: "arc",
+      kind: "arc",
+      center: { x: 8, y: 0 },
+      radius: 1,
+      startAngleDegrees: 0,
+      endAngleDegrees: 90
+    }
+  ]);
+  state.activeTool = "powertrim";
+
+  const requests = getPowerTrimCrossingRequests(state, [
+    { x: 0, y: 100 },
+    { x: 80, y: 100 }
+  ]);
+
+  assert.deepEqual(requests.map(request => request.targetKey), ["first", "second"]);
+  assertApproxEqual(requests[0].point.x, 2);
+  assertApproxEqual(requests[0].point.y, 0);
+  assertApproxEqual(requests[1].point.x, 6);
+  assertApproxEqual(requests[1].point.y, 0);
+});
+
 test("construction toggle request targets the hovered entity while construction tool is active", () => {
   const state = createHitTestState([
     {
@@ -1686,6 +1842,11 @@ function createConstraintGlyphState(showAllConstraints) {
 
 function assertApproxEqual(actual, expected, tolerance = 0.000001) {
   assert.ok(Math.abs(actual - expected) <= tolerance, `expected ${actual} to equal ${expected}`);
+}
+
+function assertApproxPoint(actual, expected, tolerance = 0.000001) {
+  assertApproxEqual(actual.x, expected.x, tolerance);
+  assertApproxEqual(actual.y, expected.y, tolerance);
 }
 
 function distanceBetweenTestPoints(first, second) {

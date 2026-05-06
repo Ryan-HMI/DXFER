@@ -25,12 +25,19 @@ public static class SelectionDeleteResolver
         var wholeEntityIds = new HashSet<string>(StringComparer.Ordinal);
         var segmentSelections = new Dictionary<string, SortedSet<int>>(StringComparer.Ordinal);
         var dimensionIds = new HashSet<string>(StringComparer.Ordinal);
+        var constraintIds = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var selectionKey in selectionKeys.Where(key => !string.IsNullOrWhiteSpace(key)))
         {
             if (TryParseDimensionSelectionKey(selectionKey, document, out var dimensionId))
             {
                 dimensionIds.Add(dimensionId);
+                continue;
+            }
+
+            if (TryParseConstraintSelectionKey(selectionKey, document, out var constraintId))
+            {
+                constraintIds.Add(constraintId);
                 continue;
             }
 
@@ -54,9 +61,9 @@ public static class SelectionDeleteResolver
             wholeEntityIds.Add(selectionKey);
         }
 
-        if (wholeEntityIds.Count == 0 && segmentSelections.Count == 0 && dimensionIds.Count == 0)
+        if (wholeEntityIds.Count == 0 && segmentSelections.Count == 0 && dimensionIds.Count == 0 && constraintIds.Count == 0)
         {
-            return new SelectionDeleteResult(document, 0, 0, 0);
+            return new SelectionDeleteResult(document, 0, 0, 0, 0);
         }
 
         var usedEntityIds = document.Entities
@@ -96,20 +103,21 @@ public static class SelectionDeleteResolver
             .Where(dimension => !dimensionIds.Contains(dimension.Id))
             .Where(dimension => !deletedGeometry || SketchItemReferencesAreValid(dimension.ReferenceKeys, nextEntities))
             .ToArray();
-        var nextConstraints = deletedGeometry
-            ? document.Constraints
-                .Where(constraint => SketchItemReferencesAreValid(constraint.ReferenceKeys, nextEntities))
-                .ToArray()
-            : document.Constraints.ToArray();
+        var nextConstraints = document.Constraints
+            .Where(constraint => !constraintIds.Contains(constraint.Id))
+            .Where(constraint => !deletedGeometry || SketchItemReferencesAreValid(constraint.ReferenceKeys, nextEntities))
+            .ToArray();
         var deletedDimensions = document.Dimensions.Count - nextDimensions.Length;
+        var deletedConstraints = document.Constraints.Count - nextConstraints.Length;
 
-        return deletedEntities == 0 && deletedSegments == 0 && deletedDimensions == 0
-            ? new SelectionDeleteResult(document, 0, 0, 0)
+        return deletedEntities == 0 && deletedSegments == 0 && deletedDimensions == 0 && deletedConstraints == 0
+            ? new SelectionDeleteResult(document, 0, 0, 0, 0)
             : new SelectionDeleteResult(
                 new DrawingDocument(nextEntities, nextDimensions, nextConstraints),
                 deletedEntities,
                 deletedSegments,
-                deletedDimensions);
+                deletedDimensions,
+                deletedConstraints);
     }
 
     private static PolylineDeleteResult DeletePolylineSegments(
@@ -238,6 +246,27 @@ public static class SelectionDeleteResolver
         return false;
     }
 
+    private static bool TryParseConstraintSelectionKey(
+        string selectionKey,
+        DrawingDocument document,
+        out string constraintId)
+    {
+        const string constraintKeyPrefix = "constraint:";
+
+        if (selectionKey.StartsWith(constraintKeyPrefix, StringComparison.Ordinal))
+        {
+            var candidateId = selectionKey[constraintKeyPrefix.Length..];
+            if (document.Constraints.Any(constraint => StringComparer.Ordinal.Equals(constraint.Id, candidateId)))
+            {
+                constraintId = candidateId;
+                return true;
+            }
+        }
+
+        constraintId = string.Empty;
+        return false;
+    }
+
     private static bool SketchItemReferencesAreValid(
         IEnumerable<string> referenceKeys,
         IReadOnlyList<DrawingEntity> entities)
@@ -279,9 +308,10 @@ public readonly record struct SelectionDeleteResult(
     DrawingDocument Document,
     int DeletedEntities,
     int DeletedSegments,
-    int DeletedDimensions)
+    int DeletedDimensions,
+    int DeletedConstraints = 0)
 {
     public int DeletedGeometryCount => DeletedEntities + DeletedSegments;
 
-    public int DeletedCount => DeletedGeometryCount + DeletedDimensions;
+    public int DeletedCount => DeletedGeometryCount + DeletedDimensions + DeletedConstraints;
 }

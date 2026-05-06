@@ -2,9 +2,16 @@
 
 @foreach (var group in Groups)
 {
-    <details class="dxfer-tool-section dxfer-tool-section-collapsible" open>
+    <details class="dxfer-tool-section dxfer-tool-section-collapsible" open="@group.InitiallyOpen">
         <summary class="dxfer-tool-section-summary">
-            <span class="dxfer-section-title">@group.Name</span>
+            <span class="dxfer-tool-section-heading">
+                <span class="dxfer-section-title">@group.Name</span>
+                @if (!string.IsNullOrWhiteSpace(group.Label))
+                {
+                    <span class="dxfer-tool-section-label">@group.Label</span>
+                }
+            </span>
+            <span class="dxfer-tool-section-count">@group.Commands.Count</span>
         </summary>
         <div class="dxfer-command-strip" role="toolbar" aria-label="@($"{group.Name} tools")">
             @foreach (var command in group.Commands)

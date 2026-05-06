@@ -2,6 +2,7 @@ namespace DXFER.Blazor.Components;
 
 public enum WorkbenchCommandId
 {
+    NewBlankDocument,
     LoadSample,
     ExportDxfText,
     SaveDxf,
@@ -66,5 +67,6 @@ public enum WorkbenchCommandId
     ShowConstraints,
     VectorToX,
     VectorToY,
+    RemoveDuplicates,
     ToolHotkeys
 }

@@ -2,6 +2,7 @@ namespace DXFER.Blazor.Components;
 
 public enum CadIconName
 {
+    NewFile,
     FolderOpen,
     Sample,
     Export,
@@ -68,5 +69,6 @@ public enum CadIconName
     OriginAxes,
     ShowConstraints,
     VectorToX,
-    VectorToY
+    VectorToY,
+    RemoveDuplicates
 }

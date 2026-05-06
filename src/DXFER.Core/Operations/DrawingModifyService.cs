@@ -3,6 +3,10 @@ using DXFER.Core.Geometry;
 
 namespace DXFER.Core.Operations;
 
+public readonly record struct PowerTrimLinePick(
+    string TargetEntityId,
+    Point2 PickedPoint);
+
 public static class DrawingModifyService
 {
     private const double GeometryTolerance = 0.000001;
@@ -391,6 +395,41 @@ public static class DrawingModifyService
         }
 
         return ReplaceTargetLine(document, target, target with { Start = PointAtParameter(target, right) }, out nextDocument);
+    }
+
+    public static int PowerTrimOrExtendLines(
+        DrawingDocument document,
+        IEnumerable<PowerTrimLinePick> picks,
+        Func<string, EntityId> createEntityId,
+        out DrawingDocument nextDocument)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(picks);
+        ArgumentNullException.ThrowIfNull(createEntityId);
+
+        nextDocument = document;
+        var appliedCount = 0;
+        var appliedTargets = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var pick in picks)
+        {
+            if (!appliedTargets.Add(pick.TargetEntityId))
+            {
+                continue;
+            }
+
+            if (TryPowerTrimOrExtendLine(
+                    nextDocument,
+                    pick.TargetEntityId,
+                    pick.PickedPoint,
+                    createEntityId,
+                    out var candidateDocument))
+            {
+                nextDocument = candidateDocument;
+                appliedCount++;
+            }
+        }
+
+        return appliedCount;
     }
 
     private static DrawingDocument ReplaceSelected(

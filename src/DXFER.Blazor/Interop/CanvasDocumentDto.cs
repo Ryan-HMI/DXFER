@@ -166,6 +166,10 @@ public sealed record CanvasPointDto(
     [property: JsonPropertyName("x")] double X,
     [property: JsonPropertyName("y")] double Y);
 
+public sealed record CanvasPowerTrimPickDto(
+    string TargetKey,
+    CanvasPointDto Point);
+
 public sealed record CanvasBoundsDto(
     [property: JsonPropertyName("minX")] double MinX,
     [property: JsonPropertyName("minY")] double MinY,

@@ -30,9 +30,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private const int DefaultPatternInstanceCount = 3;
 
     private DrawingCanvas? _canvas;
-    private DrawingDocument _document = SampleDrawingFactory.CreateCanvasPrototype();
-    private string _fileName = "Sample flat pattern";
-    private string _status = "Ready. Select a line to align a vector or load a DXF.";
+    private DrawingDocument _document = CreateBlankDocument();
+    private string _fileName = "Untitled.dxf";
+    private string _status = "Blank drawing ready. Sketch geometry or open a DXF.";
     private string? _hoveredEntityId;
     private string? _activeSelectionKey;
     private string _exportText = string.Empty;
@@ -199,7 +199,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 pressed: _showAllConstraints,
                 tooltip: "Show constraints. When off, constraints appear only while hovering referenced geometry."),
             Command(WorkbenchCommandId.ToolHotkeys, null, CadIconName.Hotkeys, "Tool hotkeys")
-        }),
+        }, "Display"),
         new WorkbenchToolGroup("Sketch", new[]
         {
             Command(WorkbenchCommandId.Line, WorkbenchTool.Line, CadIconName.Line, "Line"),
@@ -221,7 +221,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.Point, WorkbenchTool.Point, CadIconName.Point, "Point"),
             Command(WorkbenchCommandId.Text, WorkbenchTool.Text, CadIconName.Text, "Text", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Slot, WorkbenchTool.Slot, CadIconName.Slot, "Slot")
-        }),
+        }, "Create"),
         new WorkbenchToolGroup("Modify", new[]
         {
             Command(WorkbenchCommandId.Undo, null, CadIconName.Undo, "Undo", !CanUndo),
@@ -239,40 +239,45 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.Fillet, null, CadIconName.Fillet, "Fillet", !CanFilletOrChamferSelectedLines),
             Command(WorkbenchCommandId.Chamfer, null, CadIconName.Chamfer, "Chamfer", !CanFilletOrChamferSelectedLines),
             Command(WorkbenchCommandId.Dimension, WorkbenchTool.Dimension, CadIconName.Dimension, "Dimension")
-        }),
+        }, "Edit"),
         new WorkbenchToolGroup("Transform", new[]
         {
             Command(WorkbenchCommandId.Translate, WorkbenchTool.Translate, CadIconName.Move, "Translate", !CanModifySelectedGeometry),
             Command(WorkbenchCommandId.Rotate, WorkbenchTool.Rotate, CadIconName.Rotate, "Rotate", !CanModifySelectedGeometry),
-            Command(WorkbenchCommandId.Rotate90Clockwise, null, CadIconName.Rotate90Clockwise, "Rotate 90 CW", !HasDocument),
-            Command(WorkbenchCommandId.Rotate90CounterClockwise, null, CadIconName.Rotate90CounterClockwise, "Rotate 90 CCW", !HasDocument),
             Command(WorkbenchCommandId.Scale, WorkbenchTool.Scale, CadIconName.Scale, "Scale", !CanModifySelectedGeometry),
-            Command(WorkbenchCommandId.Mirror, WorkbenchTool.Mirror, CadIconName.Mirror, "Mirror", !CanModifySelectedGeometry),
-            Command(WorkbenchCommandId.BoundsToOrigin, null, CadIconName.BoundsToOrigin, "Move bounds minimum to origin", !HasDocument),
-            Command(WorkbenchCommandId.PointToOrigin, null, CadIconName.PointToOrigin, "Move selected point to origin", !CanMoveSelectedPointToOrigin),
-            Command(WorkbenchCommandId.VectorToX, null, CadIconName.VectorToX, "Align selected vector to X", !CanAlignSelectedVector),
-            Command(WorkbenchCommandId.VectorToY, null, CadIconName.VectorToY, "Align selected vector to Y", !CanAlignSelectedVector)
-        }),
+            Command(WorkbenchCommandId.Mirror, WorkbenchTool.Mirror, CadIconName.Mirror, "Mirror", !CanModifySelectedGeometry)
+        }, "Move"),
         new WorkbenchToolGroup("Pattern", new[]
         {
             Command(WorkbenchCommandId.LinearPattern, WorkbenchTool.LinearPattern, CadIconName.LinearPattern, "Linear pattern", !CanModifySelectedGeometry),
             Command(WorkbenchCommandId.CircularPattern, WorkbenchTool.CircularPattern, CadIconName.CircularPattern, "Circular pattern", !CanModifySelectedGeometry)
-        }),
+        }, "Repeat", InitiallyOpen: false),
         new WorkbenchToolGroup("Constraints", new[]
         {
-            Command(WorkbenchCommandId.Coincident, null, CadIconName.Coincident, "Coincident", !CanCreateConstraint(SketchConstraintKind.Coincident)),
-            Command(WorkbenchCommandId.Concentric, null, CadIconName.Concentric, "Concentric", !CanCreateConstraint(SketchConstraintKind.Concentric)),
-            Command(WorkbenchCommandId.Parallel, null, CadIconName.Parallel, "Parallel", !CanCreateConstraint(SketchConstraintKind.Parallel)),
-            Command(WorkbenchCommandId.Tangent, null, CadIconName.Tangent, "Tangent", !CanCreateConstraint(SketchConstraintKind.Tangent)),
-            Command(WorkbenchCommandId.Horizontal, null, CadIconName.Horizontal, "Horizontal", !CanCreateConstraint(SketchConstraintKind.Horizontal)),
-            Command(WorkbenchCommandId.Vertical, null, CadIconName.Vertical, "Vertical", !CanCreateConstraint(SketchConstraintKind.Vertical)),
-            Command(WorkbenchCommandId.Perpendicular, null, CadIconName.Perpendicular, "Perpendicular", !CanCreateConstraint(SketchConstraintKind.Perpendicular)),
-            Command(WorkbenchCommandId.Equal, null, CadIconName.Equal, "Equal", !CanCreateConstraint(SketchConstraintKind.Equal)),
-            Command(WorkbenchCommandId.Midpoint, null, CadIconName.Midpoint, "Midpoint", !CanCreateConstraint(SketchConstraintKind.Midpoint)),
+            Command(WorkbenchCommandId.Coincident, WorkbenchTool.Coincident, CadIconName.Coincident, "Coincident", tooltip: ConstraintTooltip(SketchConstraintKind.Coincident)),
+            Command(WorkbenchCommandId.Concentric, WorkbenchTool.Concentric, CadIconName.Concentric, "Concentric", tooltip: ConstraintTooltip(SketchConstraintKind.Concentric)),
+            Command(WorkbenchCommandId.Parallel, WorkbenchTool.Parallel, CadIconName.Parallel, "Parallel", tooltip: ConstraintTooltip(SketchConstraintKind.Parallel)),
+            Command(WorkbenchCommandId.Tangent, WorkbenchTool.Tangent, CadIconName.Tangent, "Tangent", tooltip: ConstraintTooltip(SketchConstraintKind.Tangent)),
+            Command(WorkbenchCommandId.Horizontal, WorkbenchTool.Horizontal, CadIconName.Horizontal, "Horizontal", tooltip: ConstraintTooltip(SketchConstraintKind.Horizontal)),
+            Command(WorkbenchCommandId.Vertical, WorkbenchTool.Vertical, CadIconName.Vertical, "Vertical", tooltip: ConstraintTooltip(SketchConstraintKind.Vertical)),
+            Command(WorkbenchCommandId.Perpendicular, WorkbenchTool.Perpendicular, CadIconName.Perpendicular, "Perpendicular", tooltip: ConstraintTooltip(SketchConstraintKind.Perpendicular)),
+            Command(WorkbenchCommandId.Equal, WorkbenchTool.Equal, CadIconName.Equal, "Equal", tooltip: ConstraintTooltip(SketchConstraintKind.Equal)),
+            Command(WorkbenchCommandId.Midpoint, WorkbenchTool.Midpoint, CadIconName.Midpoint, "Midpoint", tooltip: ConstraintTooltip(SketchConstraintKind.Midpoint)),
             Command(WorkbenchCommandId.Normal, WorkbenchTool.Normal, CadIconName.Normal, "Normal", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Symmetric, WorkbenchTool.Symmetric, CadIconName.Symmetric, "Symmetric", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Fix, null, CadIconName.Fix, "Fix", !CanCreateConstraint(SketchConstraintKind.Fix))
-        })
+            Command(WorkbenchCommandId.Fix, WorkbenchTool.Fix, CadIconName.Fix, "Fix", tooltip: ConstraintTooltip(SketchConstraintKind.Fix))
+        }, "Solve", InitiallyOpen: false)
+    };
+
+    private IReadOnlyList<WorkbenchToolCommand> CleanupCommands => new[]
+    {
+        Command(WorkbenchCommandId.Rotate90Clockwise, null, CadIconName.Rotate90Clockwise, "Rotate 90 CW", !HasDocument),
+        Command(WorkbenchCommandId.Rotate90CounterClockwise, null, CadIconName.Rotate90CounterClockwise, "Rotate 90 CCW", !HasDocument),
+        Command(WorkbenchCommandId.BoundsToOrigin, null, CadIconName.BoundsToOrigin, "Bounds to origin", !HasDocument, tooltip: "Move drawing bounds minimum to global origin."),
+        Command(WorkbenchCommandId.PointToOrigin, null, CadIconName.PointToOrigin, "Point to origin", !CanMoveSelectedPointToOrigin, tooltip: "Move the selected point to global origin."),
+        Command(WorkbenchCommandId.VectorToX, null, CadIconName.VectorToX, "Vector to X", !CanAlignSelectedVector, tooltip: "Align the selected line, segment, or two selected points to global X."),
+        Command(WorkbenchCommandId.VectorToY, null, CadIconName.VectorToY, "Vector to Y", !CanAlignSelectedVector, tooltip: "Align the selected line, segment, or two selected points to global Y."),
+        Command(WorkbenchCommandId.RemoveDuplicates, null, CadIconName.RemoveDuplicates, "Remove duplicates", disabled: true, isFuture: true, tooltip: "Remove duplicate geometry. Planned cleanup command; not implemented yet.")
     };
 
     private string WorkbenchCssClass
@@ -463,10 +468,27 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         ResetSelection();
     }
 
+    private void NewBlankDocument()
+    {
+        _document = CreateBlankDocument();
+        _documentFitToken++;
+        _fileName = "Untitled.dxf";
+        _status = "Blank drawing ready.";
+        _exportText = string.Empty;
+        _grainDirection = GrainDirection.None;
+        _activeTool = null;
+        _constructionMode = false;
+        ClearHistory();
+        ResetSelection();
+    }
+
     private async Task InvokeWorkbenchCommand(WorkbenchCommandId commandId)
     {
         switch (commandId)
         {
+            case WorkbenchCommandId.NewBlankDocument:
+                NewBlankDocument();
+                break;
             case WorkbenchCommandId.LoadSample:
                 LoadSample();
                 break;
@@ -553,44 +575,17 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                     "Dimension active. Click geometry or points, move to place, then click to set. Shift: diameter for arcs. Esc to cancel.");
                 break;
             case WorkbenchCommandId.Coincident:
-                await SyncSelectionFromCanvasAsync();
-                AddSketchConstraint(SketchConstraintKind.Coincident);
-                break;
             case WorkbenchCommandId.Concentric:
-                await SyncSelectionFromCanvasAsync();
-                AddSketchConstraint(SketchConstraintKind.Concentric);
-                break;
             case WorkbenchCommandId.Parallel:
-                await SyncSelectionFromCanvasAsync();
-                AddSketchConstraint(SketchConstraintKind.Parallel);
-                break;
             case WorkbenchCommandId.Tangent:
-                await SyncSelectionFromCanvasAsync();
-                AddSketchConstraint(SketchConstraintKind.Tangent);
-                break;
             case WorkbenchCommandId.Horizontal:
-                await SyncSelectionFromCanvasAsync();
-                AddSketchConstraint(SketchConstraintKind.Horizontal);
-                break;
             case WorkbenchCommandId.Vertical:
-                await SyncSelectionFromCanvasAsync();
-                AddSketchConstraint(SketchConstraintKind.Vertical);
-                break;
             case WorkbenchCommandId.Perpendicular:
-                await SyncSelectionFromCanvasAsync();
-                AddSketchConstraint(SketchConstraintKind.Perpendicular);
-                break;
             case WorkbenchCommandId.Equal:
-                await SyncSelectionFromCanvasAsync();
-                AddSketchConstraint(SketchConstraintKind.Equal);
-                break;
             case WorkbenchCommandId.Midpoint:
-                await SyncSelectionFromCanvasAsync();
-                AddSketchConstraint(SketchConstraintKind.Midpoint);
-                break;
             case WorkbenchCommandId.Fix:
                 await SyncSelectionFromCanvasAsync();
-                AddSketchConstraint(SketchConstraintKind.Fix);
+                StartConstraintTool(commandId);
                 break;
             case WorkbenchCommandId.BoundsToOrigin:
                 MoveBoundsToOrigin();
@@ -615,6 +610,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 break;
             case WorkbenchCommandId.ToolHotkeys:
                 MenuCommandService.OpenHotkeyOptions();
+                break;
+            case WorkbenchCommandId.RemoveDuplicates:
+                _status = "Remove duplicates is planned for cleanup and is not implemented yet.";
                 break;
             default:
                 if (TryGetImplementedSketchTool(commandId, out var tool))
@@ -646,13 +644,21 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             newEntities,
             dimensionValues,
             CreateDimensionId);
+        var newConstraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            toolName,
+            newEntities,
+            CreateConstraintId);
 
-        ApplyDocumentChange(
-            new DrawingDocument(
-                _document.Entities.Concat(newEntities),
-                _document.Dimensions.Concat(newDimensions),
-                _document.Constraints),
-            $"{FormatCreatedToolName(toolName)} added.");
+        var nextDocument = new DrawingDocument(
+            _document.Entities.Concat(newEntities),
+            _document.Dimensions.Concat(newDimensions),
+            _document.Constraints);
+        if (newConstraints.Count > 0)
+        {
+            nextDocument = SketchConstraintService.ApplyConstraints(nextDocument, newConstraints);
+        }
+
+        ApplyDocumentChange(nextDocument, $"{FormatCreatedToolName(toolName)} added.");
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);
     }
@@ -769,6 +775,35 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _ = InvokeAsync(StateHasChanged);
     }
 
+    private void OnPowerTrimCrossingRequested(IReadOnlyList<CanvasPowerTrimPickDto> picks)
+    {
+        var trimPicks = new List<PowerTrimLinePick>();
+        foreach (var pick in picks)
+        {
+            if (TryGetEntityIdForOperationTarget(pick.TargetKey, out var entityId)
+                && FindEntity(entityId) is LineEntity)
+            {
+                trimPicks.Add(new PowerTrimLinePick(entityId, ToPoint(pick.Point)));
+            }
+        }
+
+        var nextDocument = _document;
+        var appliedCount = trimPicks.Count == 0
+            ? 0
+            : DrawingModifyService.PowerTrimOrExtendLines(_document, trimPicks, CreateEntityId, out nextDocument);
+        if (appliedCount == 0)
+        {
+            _status = "Power trim drag needs one or more line sections crossed by the cursor path.";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        ApplyDocumentChange(nextDocument, $"Power trim drag applied to {appliedCount} line picks. Drag another path, or Esc to cancel.");
+        _activeTool = WorkbenchTool.PowerTrim;
+        ResetSelection();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     private void OnToolCanceled()
     {
         if (_activeTool is null)
@@ -842,7 +877,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         var result = SelectionDeleteResolver.DeleteSelection(_document, _selectedEntityIds);
         if (result.DeletedCount == 0)
         {
-            _status = "Select whole geometry, polyline segments, or dimensions before deleting.";
+            _status = "Select whole geometry, polyline segments, dimensions, or constraints before deleting.";
             return;
         }
 
@@ -1176,7 +1211,30 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private void AddSketchConstraint(SketchConstraintKind kind)
+    private void StartConstraintTool(WorkbenchCommandId commandId)
+    {
+        if (!TryGetConstraintKind(commandId, out var kind)
+            || !TryGetConstraintTool(kind, out var tool))
+        {
+            return;
+        }
+
+        if (TryApplySketchConstraint(kind, keepModal: true))
+        {
+            return;
+        }
+
+        if (_selectedEntityIds.Count > 0)
+        {
+            ResetSelection();
+        }
+
+        ActivateTool(
+            tool,
+            $"{FormatCommandName(commandId)} active. {GetConstraintPrompt(kind)} Esc: cancel.");
+    }
+
+    private bool TryApplySketchConstraint(SketchConstraintKind kind, bool keepModal)
     {
         if (!SketchCommandFactory.TryBuildConstraint(
                 _document,
@@ -1189,7 +1247,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         {
             _status = status;
             _ = InvokeAsync(StateHasChanged);
-            return;
+            return false;
         }
 
         var nextDocument = SketchConstraintService.ApplyConstraint(_document, constraint);
@@ -1198,7 +1256,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             ? $"{status} Constraint is currently unsatisfied."
             : status;
         ApplyDocumentChange(nextDocument, appliedStatus);
+        if (keepModal && TryGetConstraintTool(kind, out var tool))
+        {
+            _activeTool = tool;
+            _status = $"{appliedStatus} {FormatConstraintKind(kind)} stays active; select the next eligible references or Esc to cancel.";
+            ResetSelection();
+        }
+
         _ = InvokeAsync(StateHasChanged);
+        return true;
     }
 
     private void OnSketchDimensionValueChanged(string dimensionId, double value)
@@ -1514,6 +1580,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         if (_activeSelectionKey is not null && !_selectedEntityIds.Contains(_activeSelectionKey))
         {
             _activeSelectionKey = null;
+        }
+
+        if (_selectedEntityIds.Count > 0
+            && TryGetConstraintKind(_activeTool, out var constraintKind)
+            && TryApplySketchConstraint(constraintKind, keepModal: true))
+        {
+            return;
         }
 
         _ = InvokeAsync(StateHasChanged);
@@ -2023,6 +2096,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             or WorkbenchCommandId.Mirror
             or WorkbenchCommandId.LinearPattern
             or WorkbenchCommandId.CircularPattern
+            or WorkbenchCommandId.Rotate90Clockwise
+            or WorkbenchCommandId.Rotate90CounterClockwise
+            or WorkbenchCommandId.BoundsToOrigin
+            or WorkbenchCommandId.PointToOrigin
+            or WorkbenchCommandId.VectorToX
+            or WorkbenchCommandId.VectorToY
             or WorkbenchCommandId.Coincident
             or WorkbenchCommandId.Concentric
             or WorkbenchCommandId.Parallel
@@ -2062,6 +2141,22 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         return tool.HasValue
             ? $"{label}.{hotkeyText} Enters a modal tool; press Esc to return to selection."
             : $"{label}.{hotkeyText}".TrimEnd();
+    }
+
+    private static string? BuildCommandClass(WorkbenchToolCommand command)
+    {
+        var classes = new List<string>();
+        if (command.IsFuture)
+        {
+            classes.Add("dxfer-icon-button-future");
+        }
+
+        if (command.IsConfirmedWorking)
+        {
+            classes.Add("dxfer-icon-button-confirmed");
+        }
+
+        return classes.Count == 0 ? null : string.Join(" ", classes);
     }
 
     private void OnToolHotkeysChanged() => _ = InvokeAsync(StateHasChanged);
@@ -2233,6 +2328,132 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
     }
 
+    private static bool TryGetConstraintKind(WorkbenchCommandId commandId, out SketchConstraintKind kind)
+    {
+        switch (commandId)
+        {
+            case WorkbenchCommandId.Coincident:
+                kind = SketchConstraintKind.Coincident;
+                return true;
+            case WorkbenchCommandId.Concentric:
+                kind = SketchConstraintKind.Concentric;
+                return true;
+            case WorkbenchCommandId.Parallel:
+                kind = SketchConstraintKind.Parallel;
+                return true;
+            case WorkbenchCommandId.Tangent:
+                kind = SketchConstraintKind.Tangent;
+                return true;
+            case WorkbenchCommandId.Horizontal:
+                kind = SketchConstraintKind.Horizontal;
+                return true;
+            case WorkbenchCommandId.Vertical:
+                kind = SketchConstraintKind.Vertical;
+                return true;
+            case WorkbenchCommandId.Perpendicular:
+                kind = SketchConstraintKind.Perpendicular;
+                return true;
+            case WorkbenchCommandId.Equal:
+                kind = SketchConstraintKind.Equal;
+                return true;
+            case WorkbenchCommandId.Midpoint:
+                kind = SketchConstraintKind.Midpoint;
+                return true;
+            case WorkbenchCommandId.Fix:
+                kind = SketchConstraintKind.Fix;
+                return true;
+            default:
+                kind = default;
+                return false;
+        }
+    }
+
+    private static bool TryGetConstraintKind(WorkbenchTool? tool, out SketchConstraintKind kind)
+    {
+        if (tool is null)
+        {
+            kind = default;
+            return false;
+        }
+
+        switch (tool.Value)
+        {
+            case WorkbenchTool.Coincident:
+                kind = SketchConstraintKind.Coincident;
+                return true;
+            case WorkbenchTool.Concentric:
+                kind = SketchConstraintKind.Concentric;
+                return true;
+            case WorkbenchTool.Parallel:
+                kind = SketchConstraintKind.Parallel;
+                return true;
+            case WorkbenchTool.Tangent:
+                kind = SketchConstraintKind.Tangent;
+                return true;
+            case WorkbenchTool.Horizontal:
+                kind = SketchConstraintKind.Horizontal;
+                return true;
+            case WorkbenchTool.Vertical:
+                kind = SketchConstraintKind.Vertical;
+                return true;
+            case WorkbenchTool.Perpendicular:
+                kind = SketchConstraintKind.Perpendicular;
+                return true;
+            case WorkbenchTool.Equal:
+                kind = SketchConstraintKind.Equal;
+                return true;
+            case WorkbenchTool.Midpoint:
+                kind = SketchConstraintKind.Midpoint;
+                return true;
+            case WorkbenchTool.Fix:
+                kind = SketchConstraintKind.Fix;
+                return true;
+            default:
+                kind = default;
+                return false;
+        }
+    }
+
+    private static bool TryGetConstraintTool(SketchConstraintKind kind, out WorkbenchTool tool)
+    {
+        switch (kind)
+        {
+            case SketchConstraintKind.Coincident:
+                tool = WorkbenchTool.Coincident;
+                return true;
+            case SketchConstraintKind.Concentric:
+                tool = WorkbenchTool.Concentric;
+                return true;
+            case SketchConstraintKind.Parallel:
+                tool = WorkbenchTool.Parallel;
+                return true;
+            case SketchConstraintKind.Tangent:
+                tool = WorkbenchTool.Tangent;
+                return true;
+            case SketchConstraintKind.Horizontal:
+                tool = WorkbenchTool.Horizontal;
+                return true;
+            case SketchConstraintKind.Vertical:
+                tool = WorkbenchTool.Vertical;
+                return true;
+            case SketchConstraintKind.Perpendicular:
+                tool = WorkbenchTool.Perpendicular;
+                return true;
+            case SketchConstraintKind.Equal:
+                tool = WorkbenchTool.Equal;
+                return true;
+            case SketchConstraintKind.Midpoint:
+                tool = WorkbenchTool.Midpoint;
+                return true;
+            case SketchConstraintKind.Fix:
+                tool = WorkbenchTool.Fix;
+                return true;
+            default:
+                tool = default;
+                return false;
+        }
+    }
+
     private static string GetToolPrompt(WorkbenchTool tool) => tool switch
     {
         WorkbenchTool.Line => "Pick points. Hover the last vertex to switch to tangent arc.",
@@ -2264,7 +2485,42 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _ => "Pick two points on the canvas."
     };
 
+    private static string ConstraintTooltip(SketchConstraintKind kind) =>
+        $"{FormatConstraintKind(kind)}. {GetConstraintPrompt(kind)} Works with preselection or post-selection; Esc cancels.";
+
+    private static string GetConstraintPrompt(SketchConstraintKind kind) => kind switch
+    {
+        SketchConstraintKind.Coincident => "Select two editable points.",
+        SketchConstraintKind.Concentric => "Select two circles or arcs.",
+        SketchConstraintKind.Parallel => "Select two lines or polyline segments.",
+        SketchConstraintKind.Tangent => "Select a line/circle/arc plus another circle/arc or line.",
+        SketchConstraintKind.Horizontal => "Select one line or two editable points.",
+        SketchConstraintKind.Vertical => "Select one line or two editable points.",
+        SketchConstraintKind.Perpendicular => "Select two lines or polyline segments.",
+        SketchConstraintKind.Equal => "Select two lines or two circle/arc radii.",
+        SketchConstraintKind.Midpoint => "Select one line and one editable point.",
+        SketchConstraintKind.Fix => "Select geometry or editable points to fix.",
+        _ => "Select eligible references."
+    };
+
+    private static string FormatConstraintKind(SketchConstraintKind kind) => kind switch
+    {
+        SketchConstraintKind.Coincident => "Coincident",
+        SketchConstraintKind.Concentric => "Concentric",
+        SketchConstraintKind.Parallel => "Parallel",
+        SketchConstraintKind.Tangent => "Tangent",
+        SketchConstraintKind.Horizontal => "Horizontal",
+        SketchConstraintKind.Vertical => "Vertical",
+        SketchConstraintKind.Perpendicular => "Perpendicular",
+        SketchConstraintKind.Equal => "Equal",
+        SketchConstraintKind.Midpoint => "Midpoint",
+        SketchConstraintKind.Fix => "Fix",
+        _ => kind.ToString()
+    };
+
     private static Point2 ToPoint(CanvasPointDto point) => new(point.X, point.Y);
+
+    private static DrawingDocument CreateBlankDocument() => new(Array.Empty<DrawingEntity>());
 
     private static string NormalizeToolName(string toolName) =>
         toolName.Replace("-", string.Empty, StringComparison.Ordinal)
@@ -2273,6 +2529,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private static string FormatCommandName(WorkbenchCommandId commandId) => commandId switch
     {
+        WorkbenchCommandId.NewBlankDocument => "New File",
         WorkbenchCommandId.MidpointLine => "Midpoint line",
         WorkbenchCommandId.TwoPointRectangle => "Two-point rectangle",
         WorkbenchCommandId.CenterRectangle => "Center rectangle",
@@ -2294,6 +2551,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchCommandId.CircularPattern => "Circular pattern",
         WorkbenchCommandId.Rotate90Clockwise => "Rotate 90 CW",
         WorkbenchCommandId.Rotate90CounterClockwise => "Rotate 90 CCW",
+        WorkbenchCommandId.RemoveDuplicates => "Remove duplicates",
         WorkbenchCommandId.ToolHotkeys => "Tool hotkeys",
         _ => commandId.ToString()
     };
@@ -2346,18 +2604,36 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private static string FormatDeleteStatus(SelectionDeleteResult result)
     {
-        if (result.DeletedGeometryCount == 0 && result.DeletedDimensions > 0)
+        if (result.DeletedGeometryCount == 0 && result.DeletedDimensions == 0 && result.DeletedConstraints > 0)
+        {
+            return result.DeletedConstraints == 1
+                ? "Deleted 1 constraint."
+                : $"Deleted {result.DeletedConstraints} constraints.";
+        }
+
+        if (result.DeletedGeometryCount == 0 && result.DeletedConstraints == 0 && result.DeletedDimensions > 0)
         {
             return result.DeletedDimensions == 1
                 ? "Deleted 1 dimension."
                 : $"Deleted {result.DeletedDimensions} dimensions.";
         }
 
-        if (result.DeletedDimensions > 0)
+        if (result.DeletedDimensions > 0 || result.DeletedConstraints > 0)
         {
-            return result.DeletedDimensions == 1
-                ? $"Deleted {FormatGeometryDeleteSummary(result)} and 1 dimension."
-                : $"Deleted {FormatGeometryDeleteSummary(result)} and {result.DeletedDimensions} dimensions.";
+            var sketchItems = new List<string>();
+            if (result.DeletedDimensions > 0)
+            {
+                sketchItems.Add(result.DeletedDimensions == 1 ? "1 dimension" : $"{result.DeletedDimensions} dimensions");
+            }
+
+            if (result.DeletedConstraints > 0)
+            {
+                sketchItems.Add(result.DeletedConstraints == 1 ? "1 constraint" : $"{result.DeletedConstraints} constraints");
+            }
+
+            return result.DeletedGeometryCount == 0
+                ? $"Deleted {string.Join(" and ", sketchItems)}."
+                : $"Deleted {FormatGeometryDeleteSummary(result)} and {string.Join(" and ", sketchItems)}.";
         }
 
         return FormatGeometryDeleteStatus(result);

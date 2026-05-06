@@ -117,4 +117,33 @@ public sealed class DrawingModifyServiceTests
         next.Entities[0].Should().Be(new LineEntity(EntityId.Create("target"), new Point2(0, 0), new Point2(3, 0)));
         next.Entities[1].Should().Be(new LineEntity(EntityId.Create("line-split"), new Point2(7, 0), new Point2(10, 0)));
     }
+
+    [Fact]
+    public void PowerTrimBatchAppliesDragCrossedLinePicks()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("top"), new Point2(0, 2), new Point2(10, 2)),
+            new LineEntity(EntityId.Create("bottom"), new Point2(0, -2), new Point2(10, -2)),
+            new LineEntity(EntityId.Create("left"), new Point2(3, -4), new Point2(3, 4)),
+            new LineEntity(EntityId.Create("right"), new Point2(7, -4), new Point2(7, 4))
+        });
+
+        var applied = DrawingModifyService.PowerTrimOrExtendLines(
+            document,
+            new[]
+            {
+                new PowerTrimLinePick("top", new Point2(5, 2)),
+                new PowerTrimLinePick("bottom", new Point2(5, -2))
+            },
+            prefix => EntityId.Create($"{prefix}-split-{Guid.NewGuid():N}"),
+            out var next);
+
+        applied.Should().Be(2);
+        next.Entities.Should().HaveCount(6);
+        next.Entities.OfType<LineEntity>().Should().Contain(line =>
+            line.Id.Value == "top" && line.Start == new Point2(0, 2) && line.End == new Point2(3, 2));
+        next.Entities.OfType<LineEntity>().Should().Contain(line =>
+            line.Id.Value == "bottom" && line.Start == new Point2(0, -2) && line.End == new Point2(3, -2));
+    }
 }

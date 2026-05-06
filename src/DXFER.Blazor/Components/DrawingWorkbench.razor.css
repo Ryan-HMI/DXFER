@@ -228,6 +228,7 @@
     cursor: pointer;
     display: flex;
     gap: 0.4rem;
+    justify-content: space-between;
     list-style: none;
     min-height: 1.25rem;
 }
@@ -262,12 +263,41 @@
     text-transform: uppercase;
 }
 
+.dxfer-tool-section-heading {
+    align-items: baseline;
+    display: flex;
+    gap: 0.38rem;
+    min-width: 0;
+}
+
+.dxfer-tool-section-label {
+    color: #8295a2;
+    font-size: 0.68rem;
+    line-height: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dxfer-tool-section-count {
+    color: #7f929f;
+    font-size: 0.68rem;
+    line-height: 1;
+}
+
 .dxfer-command-strip {
     display: flex;
     flex-wrap: wrap;
     gap: 0.45rem;
     align-items: center;
     margin-top: 0.58rem;
+}
+
+.dxfer-cleanup-section .dxfer-command-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 2.15rem);
+    gap: 0.36rem;
+    margin-top: 0.48rem;
 }
 
 .dxfer-file-picker {
@@ -362,12 +392,71 @@
     border-color: #313941;
 }
 
-.dxfer-radio {
+.dxfer-grain-fieldset {
+    display: grid;
+    gap: 0.38rem;
+    margin: 0.58rem 0 0;
+    padding: 0;
+    border: 0;
+}
+
+.dxfer-grain-fieldset legend {
+    float: left;
+    width: 100%;
+    margin: 0 0 0.35rem;
+    padding: 0;
+    color: #9aacb8;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.dxfer-segmented-control {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: hidden;
+    border: 1px solid #34414b;
+    border-radius: 4px;
+    background: #11181e;
+}
+
+.dxfer-segmented-option {
+    position: relative;
+    display: grid;
+    min-width: 0;
+}
+
+.dxfer-segmented-option input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+}
+
+.dxfer-segmented-option span {
     display: flex;
     align-items: center;
-    gap: 0.45rem;
+    justify-content: center;
+    min-height: 1.65rem;
     color: #c7d1d8;
-    font-size: 0.84rem;
+    border-right: 1px solid #34414b;
+    font-size: 0.74rem;
+    line-height: 1;
+}
+
+.dxfer-segmented-option:last-child span {
+    border-right: 0;
+}
+
+.dxfer-segmented-option input:checked + span {
+    color: #f8fbfd;
+    background: #1f4b5f;
+}
+
+.dxfer-segmented-option input:focus-visible + span {
+    outline: 2px solid rgba(56, 189, 248, 0.55);
+    outline-offset: -2px;
 }
 
 .dxfer-file-name {

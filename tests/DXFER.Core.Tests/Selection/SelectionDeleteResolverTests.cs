@@ -109,6 +109,29 @@ public sealed class SelectionDeleteResolverTests
     }
 
     [Fact]
+    public void DeletesSelectedConstraints()
+    {
+        var constraint = new SketchConstraint(
+            "constraint-1",
+            SketchConstraintKind.Horizontal,
+            new[] { "edge" });
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(10, 0))
+            },
+            Array.Empty<SketchDimension>(),
+            new[] { constraint });
+
+        var result = SelectionDeleteResolver.DeleteSelection(document, new[] { "constraint:constraint-1" });
+
+        result.DeletedConstraints.Should().Be(1);
+        result.DeletedCount.Should().Be(1);
+        result.Document.Entities.Should().ContainSingle();
+        result.Document.Constraints.Should().BeEmpty();
+    }
+
+    [Fact]
     public void DeletesSketchItemsThatReferenceDeletedGeometry()
     {
         var referencingDimension = new SketchDimension(

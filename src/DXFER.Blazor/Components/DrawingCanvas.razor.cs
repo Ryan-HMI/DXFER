@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260505-arc-sweep-dimensions";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260505-ortho-snap-refresh";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -76,6 +76,9 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public Action<string, CanvasPointDto>? PowerTrimRequested { get; set; }
+
+    [Parameter]
+    public Action<IReadOnlyList<CanvasPowerTrimPickDto>>? PowerTrimCrossingRequested { get; set; }
 
     [Parameter]
     public Action? ToolCancelRequested { get; set; }
@@ -325,6 +328,21 @@ public partial class DrawingCanvas : IAsyncDisposable
     public Task OnPowerTrimRequested(string targetKey, double x, double y)
     {
         PowerTrimRequested?.Invoke(targetKey, new CanvasPointDto(x, y));
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnPowerTrimCrossingRequested(string[] targetKeys, double[] coordinates)
+    {
+        var picks = new List<CanvasPowerTrimPickDto>();
+        for (var index = 0; index < targetKeys.Length && index * 2 + 1 < coordinates.Length; index++)
+        {
+            picks.Add(new CanvasPowerTrimPickDto(
+                targetKeys[index],
+                new CanvasPointDto(coordinates[index * 2], coordinates[index * 2 + 1])));
+        }
+
+        PowerTrimCrossingRequested?.Invoke(picks);
         return Task.CompletedTask;
     }
 

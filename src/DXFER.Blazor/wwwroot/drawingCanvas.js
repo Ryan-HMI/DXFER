@@ -6,8 +6,10 @@ const MIN_VIEW_SCALE = 0.000001;
 const MAX_VIEW_SCALE = 1000000;
 const FULL_CIRCLE_DEGREES = 360;
 const MAX_ACQUIRED_SNAP_POINTS = 2;
+const ACQUIRED_SNAP_POINT_TTL_MS = 3000;
 const SEGMENT_KEY_SEPARATOR = "|segment|";
 const POINT_KEY_SEPARATOR = "|point|";
+const CONSTRAINT_KEY_PREFIX = "constraint:";
 const DYNAMIC_POINT_KEY_PREFIX = "__dynamic";
 const WORLD_GEOMETRY_TOLERANCE = 0.000001;
 const ORTHO_POLAR_SNAP_TOLERANCE = 6;
@@ -25,6 +27,7 @@ const SKETCH_CHAIN_DIMENSION_SUPPRESS_TOLERANCE = SNAP_POINT_TOLERANCE * 3;
 const CONSTRAINT_GLYPH_SIZE = 16;
 const CONSTRAINT_GLYPH_GAP = 4;
 const CONSTRAINT_GROUP_HIT_PADDING = 4;
+const POWER_TRIM_PATH_MIN_SCREEN_DISTANCE = 2;
 
 export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) {
   const context = canvas.getContext("2d");
@@ -45,6 +48,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     visibleDimensionKeys: [],
     dimensionDrag: null,
     geometryDrag: null,
+    powerTrimDrag: null,
     suppressDimensionInputCommit: false,
     document: null,
     showOriginAxes: false,
@@ -568,6 +572,10 @@ function draw(state) {
     drawSelectionBox(state);
   }
 
+  if (state.powerTrimDrag) {
+    drawPowerTrimDrag(state);
+  }
+
   const constraintGlyphGroups = getVisibleConstraintGlyphGroups(state);
   drawConstraintGlyphGroups(state, constraintGlyphGroups);
   const persistentDimensions = getPersistentDimensionDescriptors(state);
@@ -768,6 +776,7 @@ function isDimensionTargetBeingEdited(state, target) {
 }
 
 function drawAcquiredSnapPoints(state) {
+  pruneExpiredAcquiredSnapPoints(state);
   if (!getSketchCreationTool(state) || state.acquiredSnapPoints.length === 0) {
     return;
   }
@@ -788,6 +797,45 @@ function drawAcquiredSnapPoints(state) {
   }
 
   context.restore();
+}
+
+function getInteractionTimestamp() {
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
+
+export function pruneExpiredAcquiredSnapPoints(state, now = getInteractionTimestamp()) {
+  if (!state || !Array.isArray(state.acquiredSnapPoints)) {
+    return false;
+  }
+
+  let changed = false;
+  const retained = [];
+  for (const acquired of state.acquiredSnapPoints) {
+    if (!acquired) {
+      changed = true;
+      continue;
+    }
+
+    if (!Number.isFinite(acquired.acquiredAt)) {
+      acquired.acquiredAt = now;
+      retained.push(acquired);
+      continue;
+    }
+
+    if (now - acquired.acquiredAt <= ACQUIRED_SNAP_POINT_TTL_MS) {
+      retained.push(acquired);
+    } else {
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    state.acquiredSnapPoints = retained;
+  }
+
+  return changed;
 }
 
 function drawInferenceGuides(state, size) {
@@ -920,6 +968,27 @@ function drawSelectionBox(state) {
   context.setLineDash(isCrossing ? [6, 4] : []);
   context.fillRect(rect.minX, rect.minY, rect.maxX - rect.minX, rect.maxY - rect.minY);
   context.strokeRect(rect.minX, rect.minY, rect.maxX - rect.minX, rect.maxY - rect.minY);
+  context.restore();
+}
+
+function drawPowerTrimDrag(state) {
+  const { context, powerTrimDrag } = state;
+  if (!powerTrimDrag || powerTrimDrag.points.length < 2) {
+    return;
+  }
+
+  context.save();
+  context.strokeStyle = "#f59e0b";
+  context.lineWidth = 2.25;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.setLineDash([7, 4]);
+  context.beginPath();
+  context.moveTo(powerTrimDrag.points[0].x, powerTrimDrag.points[0].y);
+  for (let index = 1; index < powerTrimDrag.points.length; index += 1) {
+    context.lineTo(powerTrimDrag.points[index].x, powerTrimDrag.points[index].y);
+  }
+  context.stroke();
   context.restore();
 }
 
@@ -1683,10 +1752,11 @@ function getDimensionGeometry(state, kind, referenceKeys, anchorPoint) {
     const arcAngle = resolveSketchArcAngleReference(state, referenceKeys[0]);
     if (arcAngle) {
       return {
-        type: "angle",
-        firstLine: arcAngle.firstLine,
-        secondLine: arcAngle.secondLine,
-        vertex: arcAngle.center,
+        type: "arcangle",
+        center: arcAngle.center,
+        radius: arcAngle.radius,
+        startAngleDegrees: arcAngle.startAngleDegrees,
+        endAngleDegrees: arcAngle.endAngleDegrees,
         anchorPoint
       };
     }
@@ -1736,6 +1806,8 @@ function drawDimensionGraphics(state, dimension, isPreview) {
     drawLinearDimensionGraphics(state, dimension, isPreview);
   } else if (dimension.geometry.type === "radial") {
     drawRadialDimensionGraphics(state, dimension, isPreview);
+  } else if (dimension.geometry.type === "arcangle") {
+    drawArcAngleDimensionGraphics(state, dimension, isPreview);
   } else if (dimension.geometry.type === "angle") {
     drawAngleDimensionGraphics(state, dimension, isPreview);
   }
@@ -1947,6 +2019,13 @@ export function getRadialDimensionScreenGeometry(center, radius, anchor, diamete
     };
   }
 
+  if (edgeOverride) {
+    return {
+      segments: getLeaderSegmentsToAnchor(edge, anchor, textGap),
+      arrows: [{ point: edge, toward: center }]
+    };
+  }
+
   if (isInside) {
     return {
       segments: getSegmentPartsAroundPoint(center, edge, anchor, textGap),
@@ -2079,6 +2158,40 @@ function drawAngleDimensionGraphics(state, dimension, isPreview) {
   drawDimensionCanvasText(state, dimension, isPreview);
 }
 
+function drawArcAngleDimensionGraphics(state, dimension, isPreview) {
+  const geometry = getArcAngleDimensionScreenGeometry(
+    state,
+    dimension.geometry.center,
+    dimension.geometry.radius,
+    dimension.geometry.startAngleDegrees,
+    dimension.geometry.endAngleDegrees,
+    dimension.geometry.anchorPoint);
+  if (!geometry) {
+    return;
+  }
+
+  const { context } = state;
+  const style = getDimensionRenderStyle(isPreview);
+  context.save();
+  context.strokeStyle = style.strokeStyle;
+  context.fillStyle = style.strokeStyle;
+  context.lineWidth = 1.15;
+  context.setLineDash(style.lineDash);
+  for (const segment of geometry.extensionSegments) {
+    drawScreenLine(context, segment.start, segment.end);
+  }
+
+  context.beginPath();
+  context.arc(geometry.vertex.x, geometry.vertex.y, geometry.radius, geometry.sweep.start, geometry.sweep.end);
+  context.stroke();
+  for (const arrow of geometry.arrows) {
+    drawArrowhead(context, arrow.point, arrow.toward, DIMENSION_ARROWHEAD_SIZE);
+  }
+
+  context.restore();
+  drawDimensionCanvasText(state, dimension, isPreview);
+}
+
 export function getAngleDimensionScreenGeometry(state, firstLine, secondLine, vertex, anchor) {
   if (!vertex || !anchor) {
     return null;
@@ -2122,6 +2235,63 @@ export function getAngleDimensionScreenGeometry(state, firstLine, secondLine, ve
       {
         point: arcEnd,
         toward: pointFromScreenAngle(screenVertex, sweep.end - arrowSweep, radius)
+      }
+    ]
+  };
+}
+
+export function getArcAngleDimensionScreenGeometry(state, center, radius, startAngleDegrees, endAngleDegrees, anchor) {
+  if (!center || !anchor || !isFinitePositive(radius)) {
+    return null;
+  }
+
+  const screenCenter = worldToScreen(state, center);
+  const screenAnchor = worldToScreen(state, anchor);
+  const screenRadius = radius * state.view.scale;
+  if (!isFinitePositive(screenRadius)) {
+    return null;
+  }
+
+  const arcStart = worldToScreen(state, pointOnCircle(center, radius, startAngleDegrees));
+  const arcEnd = worldToScreen(state, pointOnCircle(center, radius, endAngleDegrees));
+  const startScreenAngle = Math.atan2(arcStart.y - screenCenter.y, arcStart.x - screenCenter.x);
+  const endScreenAngle = Math.atan2(arcEnd.y - screenCenter.y, arcEnd.x - screenCenter.x);
+  const sweep = getShortestScreenAngleSweep(startScreenAngle, endScreenAngle);
+  const anchorDistance = distanceBetweenScreenPoints(screenCenter, screenAnchor);
+  const outsideRadius = Math.max(screenRadius + 18, anchorDistance);
+  const insideRadius = Math.max(18, Math.min(screenRadius - 10, anchorDistance));
+  const dimensionRadius = anchorDistance < screenRadius && screenRadius > 34
+    ? insideRadius
+    : outsideRadius;
+  const extensionPastDimension = 6;
+  const startExtensionEnd = pointFromScreenAngle(
+    screenCenter,
+    startScreenAngle,
+    dimensionRadius + Math.sign(dimensionRadius - screenRadius) * extensionPastDimension);
+  const endExtensionEnd = pointFromScreenAngle(
+    screenCenter,
+    endScreenAngle,
+    dimensionRadius + Math.sign(dimensionRadius - screenRadius) * extensionPastDimension);
+  const arcDimensionStart = pointFromScreenAngle(screenCenter, sweep.start, dimensionRadius);
+  const arcDimensionEnd = pointFromScreenAngle(screenCenter, sweep.end, dimensionRadius);
+  const arrowSweep = Math.max(0.05, Math.min(0.18, Math.abs(sweep.end - sweep.start) / 5));
+
+  return {
+    vertex: screenCenter,
+    radius: dimensionRadius,
+    sweep,
+    extensionSegments: [
+      { start: arcStart, end: startExtensionEnd },
+      { start: arcEnd, end: endExtensionEnd }
+    ],
+    arrows: [
+      {
+        point: arcDimensionStart,
+        toward: pointFromScreenAngle(screenCenter, sweep.start + arrowSweep, dimensionRadius)
+      },
+      {
+        point: arcDimensionEnd,
+        toward: pointFromScreenAngle(screenCenter, sweep.end - arrowSweep, dimensionRadius)
       }
     ]
   };
@@ -2848,7 +3018,10 @@ function getConstraintGlyphGroupHit(state, screenPoint) {
 
   let nearestHit = null;
   for (const group of getVisibleConstraintGlyphGroups(state)) {
-    const distance = getConstraintGlyphGroupScreenDistance(group, screenPoint);
+    const itemHit = getConstraintGlyphItemHit(group, screenPoint);
+    const distance = itemHit
+      ? itemHit.distance
+      : getConstraintGlyphGroupScreenDistance(group, screenPoint);
     if (distance > CONSTRAINT_GROUP_HIT_PADDING) {
       continue;
     }
@@ -2856,8 +3029,35 @@ function getConstraintGlyphGroupHit(state, screenPoint) {
     if (!nearestHit || distance < nearestHit.distance) {
       nearestHit = {
         group,
+        target: itemHit ? createConstraintTarget(itemHit.constraint) : null,
         distance
       };
+    }
+  }
+
+  return nearestHit;
+}
+
+function getConstraintGlyphItemHit(group, screenPoint) {
+  if (!group || !Array.isArray(group.constraints) || !screenPoint) {
+    return null;
+  }
+
+  let nearestHit = null;
+  for (let index = 0; index < group.constraints.length; index += 1) {
+    const constraint = group.constraints[index];
+    const point = getConstraintGlyphItemPoint(group, index);
+    const rect = {
+      minX: point.x - CONSTRAINT_GLYPH_SIZE / 2,
+      minY: point.y - CONSTRAINT_GLYPH_SIZE / 2,
+      maxX: point.x + CONSTRAINT_GLYPH_SIZE / 2,
+      maxY: point.y + CONSTRAINT_GLYPH_SIZE / 2
+    };
+    const dx = Math.max(0, rect.minX - screenPoint.x, screenPoint.x - rect.maxX);
+    const dy = Math.max(0, rect.minY - screenPoint.y, screenPoint.y - rect.maxY);
+    const distance = Math.hypot(dx, dy);
+    if (!nearestHit || distance < nearestHit.distance) {
+      nearestHit = { constraint, distance };
     }
   }
 
@@ -2934,21 +3134,24 @@ function drawConstraintGlyph(state, text, point, constraint) {
 
   const { context } = state;
   const stateText = getSketchConstraintState(constraint);
+  const selected = state.selectedKeys && state.selectedKeys.has(`${CONSTRAINT_KEY_PREFIX}${getSketchItemId(constraint)}`);
   context.save();
   context.font = "700 9px Segoe UI, system-ui, sans-serif";
   context.textAlign = "center";
   context.textBaseline = "middle";
-  context.fillStyle = stateText === "unsatisfied"
+  context.fillStyle = selected
+    ? "rgba(14, 165, 233, 0.82)"
+    : stateText === "unsatisfied"
     ? "rgba(127, 29, 29, 0.78)"
     : "rgba(51, 65, 85, 0.82)";
-  context.strokeStyle = stateText === "unsatisfied" ? "#f87171" : "#64748b";
-  context.lineWidth = 1;
+  context.strokeStyle = selected ? "#bae6fd" : stateText === "unsatisfied" ? "#f87171" : "#64748b";
+  context.lineWidth = selected ? 1.35 : 1;
   context.setLineDash([]);
   context.beginPath();
   context.rect(point.x - 8, point.y - 8, 16, 16);
   context.fill();
   context.stroke();
-  context.fillStyle = stateText === "unsatisfied" ? "#fecaca" : "#e2e8f0";
+  context.fillStyle = selected ? "#ffffff" : stateText === "unsatisfied" ? "#fecaca" : "#e2e8f0";
   context.fillText(text, point.x, point.y + 0.5);
   context.restore();
 }
@@ -3654,10 +3857,25 @@ function handlePointerMove(state, event) {
       draw(state);
     }
 
+    if (isPowerTrimTool(state) && state.powerTrimDrag && state.powerTrimDrag.pointerId === event.pointerId) {
+      updatePowerTrimDrag(state, screenPoint);
+      event.preventDefault();
+      updateDebugAttributes(state);
+      draw(state);
+      return;
+    }
+
     if (state.clickCandidate) {
       const moveDistance = distanceBetweenScreenPoints(screenPoint, state.clickCandidate.screenPoint);
       if (moveDistance > CLICK_MOVE_TOLERANCE) {
         state.clickCandidate.cancelled = true;
+        if (isPowerTrimTool(state) && state.clickCandidate.pointerId === event.pointerId) {
+          startPowerTrimDrag(state, state.clickCandidate, screenPoint);
+          event.preventDefault();
+          updateDebugAttributes(state);
+          draw(state);
+          return;
+        }
       }
     }
 
@@ -3785,7 +4003,8 @@ function handlePointerDown(state, event) {
         pointerId: event.pointerId,
         cancelled: false,
         constraintGroupKey: constraintGroupHit.group.key,
-        constraintGroupAnchorScreenPoint: constraintGroupHit.group.anchorScreenPoint
+        constraintGroupAnchorScreenPoint: constraintGroupHit.group.anchorScreenPoint,
+        constraintTarget: constraintGroupHit.target
       };
       event.preventDefault();
       return;
@@ -3846,6 +4065,28 @@ function handlePointerUp(state, event) {
     updateConstraintGroupDrag(state, screenPoint);
     state.constraintGroupDrag = null;
     state.clickCandidate = null;
+    updateDebugAttributes(state);
+    draw(state);
+    releasePointer(state.canvas, event.pointerId);
+    event.preventDefault();
+    return;
+  }
+
+  if (state.powerTrimDrag && state.powerTrimDrag.pointerId === event.pointerId) {
+    updatePowerTrimDrag(state, screenPoint);
+    const requests = getPowerTrimCrossingRequests(state, state.powerTrimDrag.points);
+    state.powerTrimDrag = null;
+    state.clickCandidate = null;
+    if (requests.length > 0) {
+      invokeDotNet(
+        state,
+        "OnPowerTrimCrossingRequested",
+        requests.map(request => request.targetKey),
+        flattenPointCoordinates(requests.map(request => request.point)));
+    }
+
+    const nearestTarget = findNearestTarget(state, screenPoint);
+    setHoveredTarget(state, nearestTarget);
     updateDebugAttributes(state);
     draw(state);
     releasePointer(state.canvas, event.pointerId);
@@ -3942,6 +4183,9 @@ function handlePointerUp(state, event) {
       }
 
       if (candidate.constraintGroupKey) {
+        if (candidate.constraintTarget && applyDirectSelectionClick(state, candidate.constraintTarget.key)) {
+          notifySelectionChanged(state);
+        }
         updateDebugAttributes(state);
         draw(state);
         releasePointer(state.canvas, event.pointerId);
@@ -4561,6 +4805,7 @@ function commitSketchToolPoints(state, tool, points) {
 
 function handlePointerCancel(state, event) {
   cancelGeometryDrag(state);
+  state.powerTrimDrag = null;
   state.constraintGroupDrag = null;
   state.panning = false;
   state.lastPointerScreen = null;
@@ -4577,7 +4822,7 @@ function handlePointerCancel(state, event) {
 }
 
 function handlePointerLeave(state) {
-  if (state.panning || state.geometryDrag || state.constraintGroupDrag) {
+  if (state.panning || state.geometryDrag || state.constraintGroupDrag || state.powerTrimDrag) {
     return;
   }
 
@@ -4623,6 +4868,7 @@ function cancelActiveTool(state) {
 
   state.activeTool = "select";
   state.toolDraft = createEmptyToolDraft();
+  state.powerTrimDrag = null;
   state.sketchChainContext = null;
   state.sketchChainVertexHovering = false;
   state.sketchChainAutoTool = false;
@@ -4794,21 +5040,32 @@ function getSketchWorldPoint(state, screenPoint, target = state.hoveredTarget, e
 export function findNearestTarget(state, screenPoint) {
   let nearestPointHit = null;
   let nearestEdgeHit = null;
+  const constraintTool = getConstraintTool(state);
 
   for (const entity of getDocumentEntities(state.document)) {
     const pointHit = getEntityPointHit(state, entity, screenPoint);
-    if (pointHit && (!nearestPointHit || pointHit.distance < nearestPointHit.distance)) {
+    if (pointHit
+      && (!constraintTool || isTargetEligibleForConstraintTool(constraintTool, pointHit.target))
+      && (!nearestPointHit || pointHit.distance < nearestPointHit.distance)) {
       nearestPointHit = pointHit;
     }
 
     const edgeHit = getEntityEdgeHit(state, entity, screenPoint);
-    if (edgeHit && (!nearestEdgeHit || edgeHit.distance < nearestEdgeHit.distance)) {
+    if (edgeHit
+      && (!constraintTool || isTargetEligibleForConstraintTool(constraintTool, edgeHit.target))
+      && (!nearestEdgeHit || edgeHit.distance < nearestEdgeHit.distance)) {
       nearestEdgeHit = edgeHit;
     }
   }
 
   if (nearestPointHit && nearestPointHit.distance <= SNAP_POINT_TOLERANCE) {
     return nearestPointHit.target;
+  }
+
+  if (constraintTool) {
+    return nearestEdgeHit && nearestEdgeHit.distance <= HIT_TEST_TOLERANCE
+      ? nearestEdgeHit.target
+      : null;
   }
 
   const dimensionHit = getPersistentDimensionHit(state, screenPoint);
@@ -4907,8 +5164,26 @@ function getDimensionGeometryScreenDistance(state, dimension, screenPoint) {
     const anchor = worldToScreen(state, geometry.anchorPoint);
     const radius = geometry.radius * state.view.scale;
     const textWidth = measureDimensionCanvasText(state, getDimensionDisplayText(dimension));
-    const screenGeometry = getRadialDimensionScreenGeometry(center, radius, anchor, geometry.diameter, textWidth);
+    const edgeOverride = getArcRadialDimensionEdgeOverride(state, geometry);
+    const screenGeometry = getRadialDimensionScreenGeometry(center, radius, anchor, geometry.diameter, textWidth, edgeOverride);
     return getScreenSegmentsDistance(screenPoint, screenGeometry.segments);
+  }
+
+  if (geometry.type === "arcangle") {
+    const angleGeometry = getArcAngleDimensionScreenGeometry(
+      state,
+      geometry.center,
+      geometry.radius,
+      geometry.startAngleDegrees,
+      geometry.endAngleDegrees,
+      geometry.anchorPoint);
+    if (!angleGeometry) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    const extensionDistance = getScreenSegmentsDistance(screenPoint, angleGeometry.extensionSegments);
+    const radialDistance = Math.abs(distanceBetweenScreenPoints(screenPoint, angleGeometry.vertex) - angleGeometry.radius);
+    return Math.min(extensionDistance, radialDistance);
   }
 
   if (geometry.type === "angle") {
@@ -5030,6 +5305,7 @@ export function getDynamicSketchSnapHit(state, screenPoint, highlightedTarget = 
 }
 
 function addAcquiredProjectionSnapCandidates(candidates, state, worldPoint) {
+  pruneExpiredAcquiredSnapPoints(state);
   if (state.acquiredSnapPoints.length === 0) {
     return;
   }
@@ -5045,6 +5321,7 @@ function addAcquiredProjectionSnapCandidates(candidates, state, worldPoint) {
   for (const acquired of state.acquiredSnapPoints) {
     const verticalPoint = { x: acquired.point.x, y: worldPoint.y };
     if (isWorldPointWithinScreenDistance(state, acquired.point, verticalPoint)) {
+      touchAcquiredSnapPoint(acquired);
       candidates.push({
         label: `project-v-${acquired.label}`,
         point: verticalPoint,
@@ -5055,6 +5332,7 @@ function addAcquiredProjectionSnapCandidates(candidates, state, worldPoint) {
 
     const horizontalPoint = { x: worldPoint.x, y: acquired.point.y };
     if (isWorldPointWithinScreenDistance(state, acquired.point, horizontalPoint)) {
+      touchAcquiredSnapPoint(acquired);
       candidates.push({
         label: `project-h-${acquired.label}`,
         point: horizontalPoint,
@@ -5076,6 +5354,8 @@ function addAcquiredMidpointCandidate(candidates, state, first, second) {
     return;
   }
 
+  touchAcquiredSnapPoint(first);
+  touchAcquiredSnapPoint(second);
   candidates.push({
     label: `midpoint-${first.label}-${second.label}`,
     point,
@@ -5099,6 +5379,8 @@ function addAcquiredIntersectionCandidate(candidates, state, verticalSource, hor
     return;
   }
 
+  touchAcquiredSnapPoint(verticalSource);
+  touchAcquiredSnapPoint(horizontalSource);
   candidates.push({
     label: `project-${verticalSource.label}-${horizontalSource.label}`,
     point,
@@ -5126,6 +5408,7 @@ function addHighlightedGeometryOrthoSnapCandidates(candidates, state, highlighte
         continue;
       }
 
+      touchAcquiredSnapPoint(acquired);
       candidates.push({
         label: `project-${snap.orientation}-${acquired.label}-${entityId}-${snap.index}`,
         point: snap.point,
@@ -5133,6 +5416,12 @@ function addHighlightedGeometryOrthoSnapCandidates(candidates, state, highlighte
         priority: 7
       });
     }
+  }
+}
+
+function touchAcquiredSnapPoint(acquired) {
+  if (acquired) {
+    acquired.acquiredAt = getInteractionTimestamp();
   }
 }
 
@@ -6498,6 +6787,20 @@ function createDimensionTarget(dimension) {
   };
 }
 
+function createConstraintTarget(constraint) {
+  const id = getSketchItemId(constraint);
+  if (!id) {
+    return null;
+  }
+
+  return {
+    kind: "constraint",
+    key: `${CONSTRAINT_KEY_PREFIX}${id}`,
+    constraintId: id,
+    constraint
+  };
+}
+
 function createDynamicPointTarget(label, point, guides = []) {
   return {
     kind: "point",
@@ -6546,9 +6849,25 @@ function resolveSelectionTarget(state, key) {
     return dimensionTarget;
   }
 
+  const constraintTarget = parseConstraintTargetKey(state, key);
+  if (constraintTarget) {
+    return constraintTarget;
+  }
+
   const entity = getDocumentEntities(state.document)
     .find(candidate => StringComparer(getEntityId(candidate), key));
   return entity ? createEntityTarget(entity) : null;
+}
+
+function parseConstraintTargetKey(state, key) {
+  if (!String(key || "").startsWith(CONSTRAINT_KEY_PREFIX)) {
+    return null;
+  }
+
+  const constraintId = key.slice(CONSTRAINT_KEY_PREFIX.length);
+  const constraint = getDocumentConstraints(state.document)
+    .find(candidate => StringComparer(getSketchItemId(candidate), constraintId));
+  return constraint ? createConstraintTarget(constraint) : null;
 }
 
 function parsePointTargetKey(state, key) {
@@ -7762,6 +8081,7 @@ function sameOptionalWorldPoint(first, second) {
 }
 
 function rememberAcquiredSnapPoint(state, target) {
+  pruneExpiredAcquiredSnapPoints(state);
   const isPersistentPointTarget = target
     && target.kind === "entity"
     && getEntityKind(target.entity) === "point"
@@ -7787,7 +8107,8 @@ function rememberAcquiredSnapPoint(state, target) {
   state.acquiredSnapPoints.push({
     key: target.key,
     label: sanitizeKeyPart(target.label || target.entityId || "point"),
-    point: acquiredPoint
+    point: acquiredPoint,
+    acquiredAt: getInteractionTimestamp()
   });
 
   while (state.acquiredSnapPoints.length > MAX_ACQUIRED_SNAP_POINTS) {
@@ -7815,6 +8136,7 @@ function pruneInteractionState(state, removePointTargets = false) {
 
 function clearInteractionState(state) {
   cancelGeometryDrag(state);
+  state.powerTrimDrag = null;
   state.constraintGroupDrag = null;
   state.hoveredTarget = null;
   state.selectedKeys.clear();
@@ -8097,6 +8419,73 @@ function getModifyTool(state) {
   }
 }
 
+function getConstraintTool(state) {
+  const tool = normalizeToolName(state && state.activeTool);
+  switch (tool) {
+    case "coincident":
+    case "concentric":
+    case "parallel":
+    case "tangent":
+    case "horizontal":
+    case "vertical":
+    case "perpendicular":
+    case "equal":
+    case "midpoint":
+    case "fix":
+      return tool;
+    default:
+      return null;
+  }
+}
+
+export function isTargetEligibleForConstraintTool(tool, target) {
+  const normalizedTool = normalizeToolName(tool);
+  if (!normalizedTool || !target || target.dynamic || target.kind === "dimension" || target.kind === "constraint") {
+    return false;
+  }
+
+  const kind = target.entity ? getEntityKind(target.entity) : "";
+  const isPoint = isEditableConstraintPointTarget(target, kind);
+  const isLine = target.kind === "segment" || (target.kind === "entity" && kind === "line");
+  const isCircleLike = kind === "circle" || kind === "arc";
+
+  switch (normalizedTool) {
+    case "coincident":
+      return isPoint;
+    case "horizontal":
+    case "vertical":
+      return isPoint || isLine;
+    case "parallel":
+    case "perpendicular":
+      return isLine;
+    case "tangent":
+      return isLine || isCircleLike;
+    case "concentric":
+      return isCircleLike;
+    case "equal":
+      return isLine || isCircleLike;
+    case "midpoint":
+      return isPoint || isLine;
+    case "fix":
+      return target.kind === "entity" || target.kind === "segment" || isPoint;
+    default:
+      return false;
+  }
+}
+
+function isEditableConstraintPointTarget(target, kind) {
+  if (target.kind === "entity" && kind === "point") {
+    return true;
+  }
+
+  if (target.kind !== "point" || !target.entity) {
+    return false;
+  }
+
+  const label = String(target.label || "").split("|")[0].toLowerCase();
+  return label === "start" || label === "end" || label === "center";
+}
+
 export function getSketchToolPointCount(tool) {
   switch (tool) {
     case "point":
@@ -8186,6 +8575,112 @@ export function getPowerTrimRequest(state, screenPoint) {
     targetKey,
     point
   };
+}
+
+function startPowerTrimDrag(state, candidate, screenPoint) {
+  state.powerTrimDrag = {
+    pointerId: candidate.pointerId,
+    points: [candidate.screenPoint]
+  };
+  updatePowerTrimDrag(state, screenPoint);
+  setHoveredTarget(state, null);
+}
+
+function updatePowerTrimDrag(state, screenPoint) {
+  if (!state.powerTrimDrag) {
+    return;
+  }
+
+  const points = state.powerTrimDrag.points;
+  const lastPoint = points[points.length - 1];
+  if (!lastPoint || distanceBetweenScreenPoints(lastPoint, screenPoint) >= POWER_TRIM_PATH_MIN_SCREEN_DISTANCE) {
+    points.push(screenPoint);
+  }
+}
+
+export function getPowerTrimCrossingRequests(state, screenPoints) {
+  if (!isPowerTrimTool(state) || !Array.isArray(screenPoints) || screenPoints.length < 2) {
+    return [];
+  }
+
+  const requestsByTarget = new Map();
+  for (let index = 1; index < screenPoints.length; index += 1) {
+    addPowerTrimCrossingRequestsForScreenSegment(
+      state,
+      screenPoints[index - 1],
+      screenPoints[index],
+      requestsByTarget);
+  }
+
+  return Array.from(requestsByTarget.values());
+}
+
+function addPowerTrimCrossingRequestsForScreenSegment(state, pathStart, pathEnd, requestsByTarget) {
+  if (distanceBetweenScreenPoints(pathStart, pathEnd) <= WORLD_GEOMETRY_TOLERANCE) {
+    return;
+  }
+
+  for (const entity of getDocumentEntities(state.document)) {
+    if (getEntityKind(entity) !== "line") {
+      continue;
+    }
+
+    const target = createEntityTarget(entity);
+    if (!target || requestsByTarget.has(target.key)) {
+      continue;
+    }
+
+    const segments = getEntityScreenSegments(state, entity);
+    for (const segment of segments) {
+      const intersection = getScreenSegmentIntersectionPoint(pathStart, pathEnd, segment.start, segment.end);
+      if (!intersection) {
+        continue;
+      }
+
+      requestsByTarget.set(target.key, {
+        targetKey: target.key,
+        point: screenToWorld(state, intersection)
+      });
+      break;
+    }
+  }
+}
+
+function getScreenSegmentIntersectionPoint(firstStart, firstEnd, secondStart, secondEnd) {
+  const firstDelta = {
+    x: firstEnd.x - firstStart.x,
+    y: firstEnd.y - firstStart.y
+  };
+  const secondDelta = {
+    x: secondEnd.x - secondStart.x,
+    y: secondEnd.y - secondStart.y
+  };
+  const denominator = crossScreen(firstDelta, secondDelta);
+  if (Math.abs(denominator) <= 0.000001) {
+    return null;
+  }
+
+  const offset = {
+    x: secondStart.x - firstStart.x,
+    y: secondStart.y - firstStart.y
+  };
+  const firstParameter = crossScreen(offset, secondDelta) / denominator;
+  const secondParameter = crossScreen(offset, firstDelta) / denominator;
+  if (firstParameter < -0.000001
+    || firstParameter > 1.000001
+    || secondParameter < -0.000001
+    || secondParameter > 1.000001) {
+    return null;
+  }
+
+  return {
+    x: firstStart.x + firstDelta.x * firstParameter,
+    y: firstStart.y + firstDelta.y * firstParameter
+  };
+}
+
+function crossScreen(first, second) {
+  return first.x * second.y - first.y * second.x;
 }
 
 export function getConstructionToggleRequest(state, screenPoint) {

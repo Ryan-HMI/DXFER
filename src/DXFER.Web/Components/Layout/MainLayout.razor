@@ -19,7 +19,8 @@
                             <span class="app-menu-arrow" aria-hidden="true">></span>
                         </button>
                         <div class="app-submenu" role="menu">
-                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.LoadSample)">New sample</button>
+                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.NewBlankDocument)">New File</button>
+                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.LoadSample)">Open sample</button>
                             <label class="app-menu-command app-menu-file-command">
                                 <span>Open DXF/DWG...</span>
                                 <InputFile OnChange="OpenHeaderFileAsync"
@@ -69,7 +70,7 @@
                     </div>
                     <div class="app-menu-group">
                         <button type="button" class="app-menu-item app-menu-parent">
-                            <span>Transform</span>
+                            <span>Cleanup</span>
                             <span class="app-menu-arrow" aria-hidden="true">></span>
                         </button>
                         <div class="app-submenu" role="menu">
@@ -79,6 +80,7 @@
                             <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.PointToOrigin)">Point to origin</button>
                             <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.VectorToX)">Vector to X</button>
                             <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.VectorToY)">Vector to Y</button>
+                            <button type="button" class="app-menu-command" disabled title="Remove duplicate geometry. Planned cleanup command; not implemented yet.">Remove duplicates</button>
                         </div>
                     </div>
                     <div class="app-menu-separator"></div>

@@ -26,22 +26,44 @@
 
         <WorkbenchToolPalette Groups="@ToolGroups" OnCommandInvoked="InvokeWorkbenchCommand" />
 
-        <details class="dxfer-tool-section dxfer-tool-section-collapsible" open>
+        <details class="dxfer-tool-section dxfer-tool-section-collapsible dxfer-cleanup-section" open>
             <summary class="dxfer-tool-section-summary">
-                <span class="dxfer-section-title">Grain</span>
+                <span class="dxfer-tool-section-heading">
+                    <span class="dxfer-section-title">Cleanup</span>
+                    <span class="dxfer-tool-section-label">Prep</span>
+                </span>
+                <span class="dxfer-tool-section-count">@CleanupCommands.Count</span>
             </summary>
-            <label class="dxfer-radio">
-                <input type="radio" name="grain-direction" checked="@(_grainDirection == GrainDirection.None)" @onchange="() => SetGrainDirection(GrainDirection.None)" />
-                <span>No grain</span>
-            </label>
-            <label class="dxfer-radio">
-                <input type="radio" name="grain-direction" checked="@(_grainDirection == GrainDirection.GlobalX)" @onchange="() => SetGrainDirection(GrainDirection.GlobalX)" />
-                <span>Global X</span>
-            </label>
-            <label class="dxfer-radio">
-                <input type="radio" name="grain-direction" checked="@(_grainDirection == GrainDirection.GlobalY)" @onchange="() => SetGrainDirection(GrainDirection.GlobalY)" />
-                <span>Global Y</span>
-            </label>
+            <div class="dxfer-command-strip" role="toolbar" aria-label="Cleanup tools">
+                @foreach (var command in CleanupCommands)
+                {
+                    <CadIconButton Icon="@command.Icon"
+                                   Label="@command.Label"
+                                   Tooltip="@command.TooltipText"
+                                   Hotkey="@command.Hotkey"
+                                   Disabled="@command.Disabled"
+                                   Pressed="@command.Pressed"
+                                   Class="@BuildCommandClass(command)"
+                                   OnClick="@(() => InvokeWorkbenchCommand(command.Id))" />
+                }
+            </div>
+            <fieldset class="dxfer-grain-fieldset">
+                <legend>Grain</legend>
+                <div class="dxfer-segmented-control" role="radiogroup" aria-label="Grain direction">
+                    <label class="dxfer-segmented-option">
+                        <input type="radio" name="grain-direction" checked="@(_grainDirection == GrainDirection.None)" @onchange="() => SetGrainDirection(GrainDirection.None)" />
+                        <span>None</span>
+                    </label>
+                    <label class="dxfer-segmented-option">
+                        <input type="radio" name="grain-direction" checked="@(_grainDirection == GrainDirection.GlobalX)" @onchange="() => SetGrainDirection(GrainDirection.GlobalX)" />
+                        <span>X</span>
+                    </label>
+                    <label class="dxfer-segmented-option">
+                        <input type="radio" name="grain-direction" checked="@(_grainDirection == GrainDirection.GlobalY)" @onchange="() => SetGrainDirection(GrainDirection.GlobalY)" />
+                        <span>Y</span>
+                    </label>
+                </div>
+            </fieldset>
         </details>
 
         @if (IsParametricCommandActive)
@@ -91,6 +113,7 @@
                        ConstructionToggleRequested="OnConstructionToggleRequested"
                        ModifyToolCommitRequested="OnModifyToolCommitRequested"
                        PowerTrimRequested="OnPowerTrimRequested"
+                       PowerTrimCrossingRequested="OnPowerTrimCrossingRequested"
                        ToolCancelRequested="OnToolCanceled"
                        SketchDimensionValueChanged="OnSketchDimensionValueChanged"
                        SketchDimensionAnchorChanged="OnSketchDimensionAnchorChanged"
