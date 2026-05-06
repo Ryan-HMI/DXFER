@@ -1171,7 +1171,16 @@ function drawToolPreview(state) {
     const polygonPoints = getPolygonWorldPoints(first, second, tool === "circumscribedpolygon", getPolygonSideCount(state));
     drawWorldPolyline(state, polygonPoints.concat(polygonPoints[0]));
     addPolygonPreviewDimension(dimensions, state, first, second, tool === "circumscribedpolygon");
-  } else if (tool === "spline" || tool === "bezier" || tool === "splinecontrolpoint") {
+  } else if (tool === "spline") {
+    const draftPoints = points.concat(third).slice(0, getSketchToolPointCount(tool));
+    if (draftPoints.length < 3) {
+      drawWorldPolyline(state, draftPoints);
+    } else {
+      drawWorldPolyline(state, getSplineFitWorldPoints(draftPoints));
+      drawWorldPolyline(state, draftPoints);
+      drawSplineTangentHandles(state, draftPoints);
+    }
+  } else if (tool === "bezier" || tool === "splinecontrolpoint") {
     const draftPoints = points.concat(third).slice(0, getSketchToolPointCount(tool));
     if (draftPoints.length < 3) {
       drawWorldPolyline(state, draftPoints);
@@ -1528,6 +1537,38 @@ function drawWorldPolyline(state, points) {
     state.context.lineTo(point.x, point.y);
   }
   state.context.stroke();
+}
+
+function drawSplineTangentHandles(state, fitPoints) {
+  const handles = getSplineTangentHandles(fitPoints);
+  if (handles.length === 0) {
+    return;
+  }
+
+  const { context } = state;
+  context.save();
+  context.strokeStyle = "rgba(103, 232, 249, 0.58)";
+  context.fillStyle = "rgba(103, 232, 249, 0.86)";
+  context.lineWidth = 1;
+  context.setLineDash([3, 3]);
+
+  for (const handle of handles) {
+    const point = worldToScreen(state, handle.point);
+    for (const endpoint of [handle.backward, handle.forward]) {
+      if (!endpoint) {
+        continue;
+      }
+
+      const screenEndpoint = worldToScreen(state, endpoint);
+      context.beginPath();
+      context.moveTo(point.x, point.y);
+      context.lineTo(screenEndpoint.x, screenEndpoint.y);
+      context.stroke();
+      context.fillRect(screenEndpoint.x - 2, screenEndpoint.y - 2, 4, 4);
+    }
+  }
+
+  context.restore();
 }
 
 function drawWorldArcPreview(state, arc) {
@@ -10382,6 +10423,94 @@ function getCubicBezierWorldPoints(points, segmentCount = 40) {
         + 3 * inverse * inverse * t * points[1].y
         + 3 * inverse * t * t * points[2].y
         + t * t * t * points[3].y
+    };
+  });
+}
+
+export function getSplineFitWorldPoints(points, segmentCountPerSpan = 16) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return [];
+  }
+
+  if (points.length === 2) {
+    return points.slice();
+  }
+
+  const segmentCount = Math.max(2, Math.floor(segmentCountPerSpan));
+  const samples = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const previous = index === 0 ? points[index] : points[index - 1];
+    const start = points[index];
+    const end = points[index + 1];
+    const next = index + 2 < points.length ? points[index + 2] : end;
+
+    for (let step = 0; step <= segmentCount; step += 1) {
+      if (index > 0 && step === 0) {
+        continue;
+      }
+
+      if (step === 0) {
+        samples.push(copyPoint(start));
+      } else if (step === segmentCount) {
+        samples.push(copyPoint(end));
+      } else {
+        samples.push(getCatmullRomWorldPoint(previous, start, end, next, step / segmentCount));
+      }
+    }
+  }
+
+  return samples;
+}
+
+function getCatmullRomWorldPoint(previous, start, end, next, t) {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return {
+    x: 0.5 * ((2 * start.x)
+      + (-previous.x + end.x) * t
+      + ((2 * previous.x) - (5 * start.x) + (4 * end.x) - next.x) * t2
+      + (-previous.x + (3 * start.x) - (3 * end.x) + next.x) * t3),
+    y: 0.5 * ((2 * start.y)
+      + (-previous.y + end.y) * t
+      + ((2 * previous.y) - (5 * start.y) + (4 * end.y) - next.y) * t2
+      + (-previous.y + (3 * start.y) - (3 * end.y) + next.y) * t3)
+  };
+}
+
+export function getSplineTangentHandles(points, handleScale = 0.25) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return [];
+  }
+
+  return points.map((point, index) => {
+    const previous = index > 0 ? points[index - 1] : null;
+    const next = index + 1 < points.length ? points[index + 1] : null;
+    const tangentSourceStart = previous || point;
+    const tangentSourceEnd = next || point;
+    const tangent = normalizeWorldVector(subtractPoints(tangentSourceEnd, tangentSourceStart));
+    if (!tangent) {
+      return {
+        point: copyPoint(point),
+        backward: null,
+        forward: null
+      };
+    }
+
+    const previousDistance = previous ? distanceBetweenWorldPoints(point, previous) : null;
+    const nextDistance = next ? distanceBetweenWorldPoints(point, next) : null;
+    const fallbackDistance = previousDistance ?? nextDistance ?? 0;
+    const handleLength = Math.max(
+      WORLD_GEOMETRY_TOLERANCE,
+      Math.min(previousDistance ?? fallbackDistance, nextDistance ?? fallbackDistance) * handleScale);
+
+    return {
+      point: copyPoint(point),
+      backward: previous
+        ? { x: point.x - tangent.x * handleLength, y: point.y - tangent.y * handleLength }
+        : null,
+      forward: next
+        ? { x: point.x + tangent.x * handleLength, y: point.y + tangent.y * handleLength }
+        : null
     };
   });
 }

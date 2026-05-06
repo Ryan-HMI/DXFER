@@ -218,6 +218,44 @@ EOF
     }
 
     [Fact]
+    public void WritesAndReadsFitPointSplines()
+    {
+        var fitPoints = new[]
+        {
+            new Point2(0, 0),
+            new Point2(1, 2),
+            new Point2(3, 1),
+            new Point2(5, 4),
+            new Point2(7, 0)
+        };
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            SplineEntity.FromFitPoints(EntityId.Create("fit-spline"), fitPoints)
+        });
+
+        var dxf = DxfDocumentWriter.Write(document);
+        var roundTripped = DxfDocumentReader.Read(dxf);
+        var normalizedDxf = dxf.Replace("\r\n", "\n");
+
+        normalizedDxf.Should().Contain("""
+74
+5
+""");
+        normalizedDxf.Should().Contain("""
+11
+0
+21
+0
+""");
+        var spline = roundTripped.Entities.Should().ContainSingle().Subject.Should().BeOfType<SplineEntity>().Subject;
+        spline.FitPoints.Should().Equal(fitPoints);
+        foreach (var point in fitPoints)
+        {
+            spline.GetSamplePoints().Should().Contain(point);
+        }
+    }
+
+    [Fact]
     public void SkipsConstructionGeometryWhenWritingCutDxf()
     {
         var document = new DrawingDocument(new DrawingEntity[]

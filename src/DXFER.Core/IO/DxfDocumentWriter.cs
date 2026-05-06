@@ -135,7 +135,7 @@ public static class DxfDocumentWriter
         WritePair(builder, 71, spline.Degree.ToString(CultureInfo.InvariantCulture));
         WritePair(builder, 72, spline.Knots.Count.ToString(CultureInfo.InvariantCulture));
         WritePair(builder, 73, spline.ControlPoints.Count.ToString(CultureInfo.InvariantCulture));
-        WritePair(builder, 74, "0");
+        WritePair(builder, 74, spline.FitPoints.Count.ToString(CultureInfo.InvariantCulture));
 
         foreach (var knot in spline.Knots)
         {
@@ -153,6 +153,11 @@ public static class DxfDocumentWriter
         foreach (var point in spline.ControlPoints)
         {
             WritePoint(builder, point, 10, 20);
+        }
+
+        foreach (var point in spline.FitPoints)
+        {
+            WritePoint(builder, point, 11, 21);
         }
     }
 

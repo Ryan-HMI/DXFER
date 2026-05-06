@@ -43,6 +43,8 @@ import {
   getModifyToolPointCount,
   getSketchToolPointCount,
   getPostCommitSketchToolState,
+  getSplineFitWorldPoints,
+  getSplineTangentHandles,
   getTangentArc,
   getPointTargetMarker,
   getPowerTrimCrossingRequests,
@@ -207,6 +209,51 @@ test("creation tool point counts cover remaining sketch tools", () => {
   assert.equal(getSketchToolPointCount("spline"), Number.MAX_SAFE_INTEGER);
   assert.equal(getSketchToolPointCount("splinecontrolpoint"), Number.MAX_SAFE_INTEGER);
   assert.equal(getSketchToolPointCount("slot"), 3);
+});
+
+test("spline fit preview interpolates every fit point", () => {
+  const fitPoints = [
+    { x: 0, y: 0 },
+    { x: 1, y: 2 },
+    { x: 3, y: 1 },
+    { x: 5, y: 4 },
+    { x: 7, y: 0 },
+    { x: 8, y: 1 }
+  ];
+
+  const samples = getSplineFitWorldPoints(fitPoints, 12);
+
+  assert.equal(samples.length > fitPoints.length, true);
+  for (const point of fitPoints) {
+    assert.equal(
+      samples.some(sample => distanceBetweenTestPoints(sample, point) <= 0.000001),
+      true,
+      `expected spline preview to pass through ${JSON.stringify(point)}`);
+  }
+
+  assert.deepEqual(samples[0], fitPoints[0]);
+  assert.deepEqual(samples.at(-1), fitPoints.at(-1));
+});
+
+test("spline tangent handles are generated from fit point neighbors", () => {
+  const fitPoints = [
+    { x: 0, y: 0 },
+    { x: 1, y: 2 },
+    { x: 3, y: 1 },
+    { x: 5, y: 4 },
+    { x: 7, y: 0 }
+  ];
+
+  const handles = getSplineTangentHandles(fitPoints);
+
+  assert.equal(handles.length, fitPoints.length);
+  assert.deepEqual(handles[0].point, fitPoints[0]);
+  assert.equal(handles[0].backward, null);
+  assert.ok(handles[0].forward);
+  assert.ok(handles[2].backward);
+  assert.ok(handles[2].forward);
+  assert.ok(handles.at(-1).backward);
+  assert.equal(handles.at(-1).forward, null);
 });
 
 test("polygon helper distinguishes inscribed and circumscribed radii", () => {

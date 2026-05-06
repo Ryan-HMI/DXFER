@@ -687,7 +687,8 @@ public static class DrawingModifyService
             spline.ControlPoints.Select(point => Add(point, offsetVector)),
             spline.Knots,
             spline.Weights,
-            spline.IsConstruction);
+            spline.IsConstruction,
+            spline.FitPoints.Select(point => Add(point, offsetVector)));
         return true;
     }
 
@@ -726,7 +727,8 @@ public static class DrawingModifyService
                 spline.ControlPoints.Select(point => ScalePoint(point, center, scale)),
                 spline.Knots,
                 spline.Weights,
-                spline.IsConstruction),
+                spline.IsConstruction,
+                spline.FitPoints.Select(point => ScalePoint(point, center, scale))),
             _ => entity
         };
 
@@ -752,7 +754,8 @@ public static class DrawingModifyService
                 spline.ControlPoints.Select(point => MirrorPoint(point, axisStart, axisEnd)),
                 spline.Knots,
                 spline.Weights,
-                spline.IsConstruction),
+                spline.IsConstruction,
+                spline.FitPoints.Select(point => MirrorPoint(point, axisStart, axisEnd))),
             _ => entity
         };
 
@@ -779,7 +782,7 @@ public static class DrawingModifyService
             ArcEntity arc => arc with { Id = id },
             PolygonEntity polygon => polygon with { Id = id, SideCount = polygon.NormalizedSideCount },
             PointEntity point => point with { Id = id },
-            SplineEntity spline => new SplineEntity(id, spline.Degree, spline.ControlPoints, spline.Knots, spline.Weights, spline.IsConstruction),
+            SplineEntity spline => new SplineEntity(id, spline.Degree, spline.ControlPoints, spline.Knots, spline.Weights, spline.IsConstruction, spline.FitPoints),
             _ => entity
         };
 

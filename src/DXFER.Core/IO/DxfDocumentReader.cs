@@ -263,11 +263,23 @@ public static class DxfDocumentReader
     private static bool TryCreateSpline(IReadOnlyList<DxfPair> pairs, EntityId id, out SplineEntity spline)
     {
         var controlPoints = ReadPointSequence(pairs, 10, 20);
+        var fitPoints = ReadPointSequence(pairs, 11, 21);
         var knots = ReadDoubleSequence(pairs, 40);
         var weights = ReadDoubleSequence(pairs, 41);
 
-        if (controlPoints.Count < 2
-            || !TryReadDouble(pairs, 71, out var rawDegree))
+        if (controlPoints.Count < 2)
+        {
+            if (fitPoints.Count >= 2)
+            {
+                spline = SplineEntity.FromFitPoints(id, fitPoints);
+                return true;
+            }
+
+            spline = default!;
+            return false;
+        }
+
+        if (!TryReadDouble(pairs, 71, out var rawDegree))
         {
             spline = default!;
             return false;
@@ -280,7 +292,7 @@ public static class DxfDocumentReader
             return false;
         }
 
-        spline = new SplineEntity(id, degree, controlPoints, knots, weights);
+        spline = new SplineEntity(id, degree, controlPoints, knots, weights, fitPoints: fitPoints);
         return true;
     }
 

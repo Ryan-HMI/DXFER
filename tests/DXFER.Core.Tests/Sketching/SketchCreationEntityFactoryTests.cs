@@ -117,6 +117,28 @@ public sealed class SketchCreationEntityFactoryTests
         slot.OfType<LineEntity>().Should().Contain(line => line.IsConstruction);
     }
 
+    [Fact]
+    public void CreatesSplineAsFitPointSpline()
+    {
+        var fitPoints = new[]
+        {
+            new Point2(0, 0),
+            new Point2(1, 2),
+            new Point2(3, 1),
+            new Point2(5, 4),
+            new Point2(7, 0)
+        };
+
+        var spline = Create("spline", fitPoints)
+            .Should().ContainSingle().Subject.Should().BeOfType<SplineEntity>().Subject;
+
+        spline.FitPoints.Should().Equal(fitPoints);
+        foreach (var point in fitPoints)
+        {
+            spline.GetSamplePoints().Should().Contain(point);
+        }
+    }
+
     private IReadOnlyList<DrawingEntity> Create(string toolName, params Point2[] points) =>
         SketchCreationEntityFactory.CreateEntitiesForTool(toolName, points, CreateEntityId, isConstruction: false);
 

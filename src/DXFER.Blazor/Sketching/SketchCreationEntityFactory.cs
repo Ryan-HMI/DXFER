@@ -132,6 +132,8 @@ public static class SketchCreationEntityFactory
                     isConstruction));
                 break;
             case "spline" when points.Count >= 2:
+                entities.Add(SplineEntity.FromFitPoints(createEntityId("spline"), points.ToArray(), isConstruction));
+                break;
             case "splinecontrolpoint" when points.Count >= 2:
                 entities.Add(CreateSpline(createEntityId("spline"), points.ToArray(), isConstruction));
                 break;
