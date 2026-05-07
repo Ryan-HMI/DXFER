@@ -297,16 +297,8 @@ EOF
         var roundTripped = DxfDocumentReader.Read(dxf);
         var normalizedDxf = dxf.Replace("\r\n", "\n");
 
-        normalizedDxf.Should().Contain("""
-74
-5
-""");
-        normalizedDxf.Should().Contain("""
-11
-0
-21
-0
-""");
+        normalizedDxf.Should().Contain("74\n5");
+        normalizedDxf.Should().Contain("11\n0\n21\n0");
         var spline = roundTripped.Entities.Should().ContainSingle().Subject.Should().BeOfType<SplineEntity>().Subject;
         spline.FitPoints.Should().Equal(fitPoints);
         foreach (var point in fitPoints)

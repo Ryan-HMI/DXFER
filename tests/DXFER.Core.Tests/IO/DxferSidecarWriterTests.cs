@@ -59,7 +59,7 @@ public sealed class DxferSidecarWriterTests
             sourceContent: "abc",
             normalizedContent: "normalized dxf");
 
-        json.Should().Be("""
+        json.ReplaceLineEndings("\n").Should().Be("""
 {
   "schemaVersion": 1,
   "source": {
@@ -101,7 +101,7 @@ public sealed class DxferSidecarWriterTests
     "3DSOLID": 1
   }
 }
-""");
+""".ReplaceLineEndings("\n"));
     }
 
     [Fact]
