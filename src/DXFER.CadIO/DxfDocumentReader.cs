@@ -1,8 +1,9 @@
 using System.Globalization;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
+using DXFER.Core.Sketching;
 
-namespace DXFER.Core.IO;
+namespace DXFER.CadIO;
 
 public static class DxfDocumentReader
 {
@@ -12,6 +13,7 @@ public static class DxfDocumentReader
 
         var pairs = ReadPairs(dxfText).ToArray();
         var entities = new List<DrawingEntity>();
+        var unsupportedEntityCounts = new SortedDictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var generatedId = 1;
 
         for (var index = 0; index < pairs.Length; index++)
@@ -102,11 +104,69 @@ public static class DxfDocumentReader
                     }
 
                     break;
+
+                default:
+                    if (ShouldCountUnsupportedEntity(entityType))
+                    {
+                        unsupportedEntityCounts[entityType] =
+                            unsupportedEntityCounts.GetValueOrDefault(entityType) + 1;
+                        if (TryReadEntityPairs(pairs, index + 1, out _, out var nextUnsupportedIndex))
+                        {
+                            index = nextUnsupportedIndex - 1;
+                        }
+                    }
+
+                    break;
             }
         }
 
-        return new DrawingDocument(entities);
+        var metadata = DrawingDocumentMetadata.Empty with
+        {
+            Warnings = CreateImportWarnings(unsupportedEntityCounts),
+            UnsupportedEntityCounts = unsupportedEntityCounts
+        };
+
+        return new DrawingDocument(
+            entities,
+            Array.Empty<SketchDimension>(),
+            Array.Empty<SketchConstraint>(),
+            metadata);
     }
+
+    private static IReadOnlyList<DrawingDocumentWarning> CreateImportWarnings(
+        IReadOnlyDictionary<string, int> unsupportedEntityCounts)
+    {
+        var warnings = new List<DrawingDocumentWarning>
+        {
+            new(
+                "missing-units",
+                DrawingDocumentWarningSeverity.Warning,
+                "DXF units were not specified; geometry coordinates were imported as document units.")
+        };
+
+        if (unsupportedEntityCounts.Count > 0)
+        {
+            var unsupportedSummary = string.Join(
+                ", ",
+                unsupportedEntityCounts.Select(pair => $"{pair.Key} ({pair.Value})"));
+            warnings.Insert(
+                0,
+                new DrawingDocumentWarning(
+                    "unsupported-entity",
+                    DrawingDocumentWarningSeverity.Warning,
+                    $"Skipped unsupported DXF entities: {unsupportedSummary}."));
+        }
+
+        return warnings;
+    }
+
+    private static bool ShouldCountUnsupportedEntity(string entityType) =>
+        entityType switch
+        {
+            "SECTION" or "ENDSEC" or "EOF" or "HEADER" or "TABLES" or "TABLE" or "ENDTAB" or "BLOCKS"
+                or "ENTITIES" or "OBJECTS" or "CLASSES" or "VERTEX" or "SEQEND" => false,
+            _ => true
+        };
 
     private static bool TryReadEntityPairs(
         IReadOnlyList<DxfPair> pairs,

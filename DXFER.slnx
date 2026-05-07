@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/DXFER.Blazor/DXFER.Blazor.csproj" />
+    <Project Path="src/DXFER.CadIO/DXFER.CadIO.csproj" />
     <Project Path="src/DXFER.Core/DXFER.Core.csproj" />
     <Project Path="src/DXFER.Web/DXFER.Web.csproj" />
   </Folder>

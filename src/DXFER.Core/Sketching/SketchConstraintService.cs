@@ -31,7 +31,8 @@ public static class SketchConstraintService
             return new DrawingDocument(
                 document.Entities,
                 document.Dimensions,
-                UpsertConstraint(document.Constraints, constraint));
+                UpsertConstraint(document.Constraints, constraint),
+                document.Metadata);
         }
 
         var entities = document.Entities.ToArray();
@@ -42,12 +43,15 @@ public static class SketchConstraintService
 
         var validated = constraint.Kind == SketchConstraintKind.Fix
             ? WithState(constraint, SketchConstraintState.Satisfied)
-            : ValidateConstraint(new DrawingDocument(entities), constraint);
+            : ValidateConstraint(
+                new DrawingDocument(entities, document.Dimensions, document.Constraints, document.Metadata),
+                constraint);
 
         return new DrawingDocument(
             entities,
             document.Dimensions,
-            UpsertConstraint(document.Constraints, validated));
+            UpsertConstraint(document.Constraints, validated),
+            document.Metadata);
     }
 
     public static SketchConstraint ValidateConstraint(DrawingDocument document, SketchConstraint constraint)

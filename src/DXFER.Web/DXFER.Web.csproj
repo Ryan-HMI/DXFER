@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DXFER.Blazor\DXFER.Blazor.csproj" />
+    <ProjectReference Include="..\DXFER.CadIO\DXFER.CadIO.csproj" />
     <ProjectReference Include="..\DXFER.Core\DXFER.Core.csproj" />
   </ItemGroup>
 

@@ -102,6 +102,55 @@ public sealed class SketchDimensionSolverServiceTests
     }
 
     [Fact]
+    public void AppliesParallelLineToLineDistanceByMovingSecondLine()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("base"), new Point2(0, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("offset"), new Point2(2, 2), new Point2(8, 2))
+        });
+
+        var solved = SketchDimensionSolverService.ApplyDimension(
+            document,
+            DrivingDimension(
+                "offset",
+                SketchDimensionKind.PointToLineDistance,
+                5,
+                "base",
+                "offset"));
+
+        var offset = solved.Entities[1].Should().BeOfType<LineEntity>().Subject;
+        offset.Start.Should().Be(new Point2(2, 5));
+        offset.End.Should().Be(new Point2(8, 5));
+    }
+
+    [Fact]
+    public void AppliesParallelPolylineSegmentToLineDistanceByMovingSecondSegment()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("base"), new Point2(0, 0), new Point2(10, 0)),
+            new PolylineEntity(
+                EntityId.Create("offset"),
+                new[] { new Point2(2, 2), new Point2(8, 2), new Point2(8, 4) })
+        });
+
+        var solved = SketchDimensionSolverService.ApplyDimension(
+            document,
+            DrivingDimension(
+                "offset",
+                SketchDimensionKind.PointToLineDistance,
+                5,
+                "base",
+                "offset|segment|0"));
+
+        var offset = solved.Entities[1].Should().BeOfType<PolylineEntity>().Subject;
+        offset.Vertices[0].Should().Be(new Point2(2, 5));
+        offset.Vertices[1].Should().Be(new Point2(8, 5));
+        offset.Vertices[2].Should().Be(new Point2(8, 4));
+    }
+
+    [Fact]
     public void AppliesCircleRadius()
     {
         var document = new DrawingDocument(new DrawingEntity[]

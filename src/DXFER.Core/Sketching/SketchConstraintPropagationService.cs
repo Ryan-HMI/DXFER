@@ -46,6 +46,9 @@ internal static class SketchConstraintPropagationService
                     case SketchConstraintKind.Parallel:
                         PropagateLineRelation(entities, fixedReferences, constraint, changedReference, perpendicular: false, queue, queued);
                         break;
+                    case SketchConstraintKind.Perpendicular:
+                        PropagateLineRelation(entities, fixedReferences, constraint, changedReference, perpendicular: true, queue, queued);
+                        break;
                 }
             }
         }

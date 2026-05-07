@@ -175,5 +175,107 @@ public sealed class SketchCreationConstraintFactoryTests
         solved.Entities.Should().Equal(entities);
     }
 
+    [Fact]
+    public void CreatesCoincidentConstraintForInsertedLineContinuingFromExistingEndpoint()
+    {
+        var existing = new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("previous"), new Point2(0, 0), new Point2(10, 0))
+        };
+        var created = new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("next"), new Point2(10, 0), new Point2(15, 0))
+        };
+
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForInsertion(
+            "line",
+            existing,
+            created,
+            CreateConstraintId);
+
+        constraints.Should().Contain(constraint =>
+            constraint.Kind == SketchConstraintKind.Coincident
+            && constraint.State == SketchConstraintState.Satisfied
+            && constraint.ReferenceKeys.SequenceEqual(new[] { "previous:end", "next:start" }));
+    }
+
+    [Fact]
+    public void CreatesPerpendicularConstraintForInsertedLineFromExistingEndpoint()
+    {
+        var existing = new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("previous"), new Point2(0, 0), new Point2(10, 0))
+        };
+        var created = new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("next"), new Point2(10, 0), new Point2(10, 6))
+        };
+
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForInsertion(
+            "line",
+            existing,
+            created,
+            CreateConstraintId);
+
+        constraints.Should().Contain(constraint =>
+            constraint.Kind == SketchConstraintKind.Coincident
+            && constraint.ReferenceKeys.SequenceEqual(new[] { "previous:end", "next:start" }));
+        constraints.Should().Contain(constraint =>
+            constraint.Kind == SketchConstraintKind.Perpendicular
+            && constraint.ReferenceKeys.SequenceEqual(new[] { "previous", "next" }));
+    }
+
+    [Fact]
+    public void CreatesMidpointAndPerpendicularConstraintsForInsertedLineFromExistingMidpoint()
+    {
+        var existing = new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("baseline"), new Point2(0, 0), new Point2(10, 0))
+        };
+        var created = new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("upright"), new Point2(5, 0), new Point2(5, 4))
+        };
+
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForInsertion(
+            "line",
+            existing,
+            created,
+            CreateConstraintId);
+
+        constraints.Should().Contain(constraint =>
+            constraint.Kind == SketchConstraintKind.Midpoint
+            && constraint.ReferenceKeys.SequenceEqual(new[] { "baseline", "upright:start" }));
+        constraints.Should().Contain(constraint =>
+            constraint.Kind == SketchConstraintKind.Perpendicular
+            && constraint.ReferenceKeys.SequenceEqual(new[] { "baseline", "upright" }));
+    }
+
+    [Fact]
+    public void CreatesCoincidentAndTangentConstraintsForInsertedTangentArc()
+    {
+        var existing = new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("previous"), new Point2(0, 0), new Point2(10, 0))
+        };
+        var created = new DrawingEntity[]
+        {
+            new ArcEntity(EntityId.Create("arc"), new Point2(10, 5), 5, -90, 0)
+        };
+
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForInsertion(
+            "tangentarc",
+            existing,
+            created,
+            CreateConstraintId);
+
+        constraints.Should().Contain(constraint =>
+            constraint.Kind == SketchConstraintKind.Coincident
+            && constraint.ReferenceKeys.SequenceEqual(new[] { "previous:end", "arc:start" }));
+        constraints.Should().Contain(constraint =>
+            constraint.Kind == SketchConstraintKind.Tangent
+            && constraint.ReferenceKeys.SequenceEqual(new[] { "previous", "arc" }));
+    }
+
     private static string CreateConstraintId(SketchConstraintKind kind) => $"constraint-{kind}-{Guid.NewGuid():N}";
 }

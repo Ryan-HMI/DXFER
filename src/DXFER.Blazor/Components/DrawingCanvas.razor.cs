@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260505-dimension-layer-contrast";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260507-geometry-drag-rollback";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;

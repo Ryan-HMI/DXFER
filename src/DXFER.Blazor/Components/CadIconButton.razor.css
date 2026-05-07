@@ -29,22 +29,6 @@
     border-style: dashed;
 }
 
-.dxfer-icon-button-confirmed:not(:disabled) {
-    background: #223a34;
-    border-color: #34d399;
-}
-
-.dxfer-icon-button-confirmed:hover:not(:disabled),
-.dxfer-icon-button-confirmed:focus-visible:not(:disabled) {
-    background: #29483f;
-    border-color: #6ee7b7;
-}
-
-.dxfer-icon-button-confirmed.dxfer-icon-button-active {
-    background: #1f4b5f;
-    border-color: #38bdf8;
-}
-
 .dxfer-icon-button:disabled {
     color: #697781;
     background: #1d242a;

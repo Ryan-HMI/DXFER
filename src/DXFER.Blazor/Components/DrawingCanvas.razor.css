@@ -121,6 +121,11 @@
     text-shadow: 0 0 10px rgba(186, 230, 253, 0.7);
 }
 
+::deep .drawing-persistent-dimension-input-unsatisfied {
+    color: #fecaca;
+    text-shadow: 0 0 9px rgba(248, 113, 113, 0.7);
+}
+
 ::deep .drawing-persistent-dimension-input[data-dimension-dragging="true"] {
     cursor: grabbing;
 }

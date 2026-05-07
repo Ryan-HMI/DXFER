@@ -3,7 +3,7 @@ using System.Text;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
 
-namespace DXFER.Core.IO;
+namespace DXFER.CadIO;
 
 public static class DxfDocumentWriter
 {

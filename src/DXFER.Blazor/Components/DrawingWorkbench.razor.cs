@@ -1,5 +1,8 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using DXFER.CadIO;
 using DXFER.Blazor.IO;
 using DXFER.Blazor.Interop;
 using DXFER.Blazor.Selection;
@@ -266,7 +269,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.Normal, WorkbenchTool.Normal, CadIconName.Normal, "Normal", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Symmetric, WorkbenchTool.Symmetric, CadIconName.Symmetric, "Symmetric", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Fix, WorkbenchTool.Fix, CadIconName.Fix, "Fix", tooltip: ConstraintTooltip(SketchConstraintKind.Fix))
-        }, "Solve", InitiallyOpen: false)
+        }, "Solve", InitiallyOpen: false),
+        new WorkbenchToolGroup("Cleanup", CleanupCommands, "Prep", InitiallyOpen: false)
     };
 
     private IReadOnlyList<WorkbenchToolCommand> CleanupCommands => new[]
@@ -372,7 +376,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.Point => "Point: click to place a persistent sketch point. Esc: cancel.",
         WorkbenchTool.Slot => "Slot: click first center, second center, then radius point. Esc: cancel.",
         WorkbenchTool.Construction => "Construction: click geometry to toggle construction state. Esc: cancel.",
-        WorkbenchTool.PowerTrim => "Power trim/extend: click a line section to trim, or click past an endpoint to extend to another line. Esc: cancel.",
+        WorkbenchTool.PowerTrim => "Power trim/extend: click a line, polyline, polygon, circle, arc, ellipse, spline, or point section to trim, or click past a line endpoint to extend. Esc: cancel.",
         WorkbenchTool.SplitAtPoint => "Split at point: click a line or arc, or pick two points on a circle. Esc: cancel.",
         WorkbenchTool.Offset => "Offset: select whole geometry, then click the through side or radius point. Esc: cancel.",
         WorkbenchTool.Translate => "Translate: select whole geometry, click from point, then to point. Esc: cancel.",
@@ -414,6 +418,16 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                     fileName = _fileName,
                     entityCount = _document.Entities.Count,
                     grainDirection = _grainDirection.ToString(),
+                    units = _document.Metadata.Units.ToString(),
+                    mode = _document.Metadata.Mode.ToString(),
+                    trustedSource = _document.Metadata.TrustedSource,
+                    warnings = _document.Metadata.Warnings.Select(warning => new
+                    {
+                        warning.Code,
+                        Severity = warning.Severity.ToString(),
+                        warning.Message
+                    }),
+                    unsupportedEntityCounts = _document.Metadata.UnsupportedEntityCounts,
                     bounds = new
                     {
                         minX = Round(bounds.MinX),
@@ -430,31 +444,59 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private async Task OpenFileAsync(IBrowserFile file)
     {
-        _fileName = file.Name;
-        _exportText = string.Empty;
-
-        if (file.Name.EndsWith(".dwg", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            _status = "DWG selected. V1 keeps DWG as an external viewer handoff; DXFER editing stays DXF-only.";
-            return;
+            _fileName = file.Name;
+            _exportText = string.Empty;
+
+            if (file.Name.EndsWith(".dwg", StringComparison.OrdinalIgnoreCase))
+            {
+                _status = "DWG selected. V1 keeps DWG as an external viewer handoff; DXFER editing stays DXF-only.";
+                return;
+            }
+
+            await using var stream = file.OpenReadStream(MaxDxfFileSize);
+            using var reader = new StreamReader(stream);
+            var text = await reader.ReadToEndAsync();
+            var document = WithOpenFileMetadata(DxfDocumentReader.Read(text), file.Name, text);
+
+            if (document.Entities.Count == 0)
+            {
+                _status = "No supported DXF entities were found. V1 reads LINE, CIRCLE, ARC, POINT, LWPOLYLINE, POLYLINE, and SPLINE."
+                    + FormatWarningSummary(document.Metadata.Warnings);
+                return;
+            }
+
+            _document = document;
+            _documentFitToken++;
+            ClearHistory();
+            ResetSelection();
+            _status = $"Loaded {document.Entities.Count} supported entities from DXF."
+                + FormatWarningSummary(document.Metadata.Warnings);
         }
-
-        await using var stream = file.OpenReadStream(MaxDxfFileSize);
-        using var reader = new StreamReader(stream);
-        var text = await reader.ReadToEndAsync();
-        var document = DxfDocumentReader.Read(text);
-
-        if (document.Entities.Count == 0)
+        finally
         {
-            _status = "No supported DXF entities were found. V1 reads LINE, CIRCLE, ARC, POINT, LWPOLYLINE, POLYLINE, and SPLINE.";
-            return;
+            await InvokeAsync(StateHasChanged);
         }
+    }
 
-        _document = document;
-        _documentFitToken++;
-        ClearHistory();
-        ResetSelection();
-        _status = $"Loaded {document.Entities.Count} supported entities from DXF.";
+    private static DrawingDocument WithOpenFileMetadata(
+        DrawingDocument document,
+        string fileName,
+        string sourceText)
+    {
+        var metadata = document.Metadata with
+        {
+            SourceFileName = fileName,
+            SourceSha256 = ComputeSha256(sourceText),
+            TrustedSource = false
+        };
+
+        return new DrawingDocument(
+            document.Entities,
+            document.Dimensions,
+            document.Constraints,
+            metadata);
     }
 
     private void LoadSample()
@@ -537,7 +579,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchCommandId.PowerTrim:
                 ActivateTool(
                     WorkbenchTool.PowerTrim,
-                    "Power trim/extend active. Click a line section to trim, or click past an endpoint to extend to another line.");
+                    "Power trim/extend active. Click a line, polyline, polygon, circle, arc, ellipse, spline, or point section to trim, or click past a line endpoint to extend.");
                 break;
             case WorkbenchCommandId.Offset:
             case WorkbenchCommandId.Translate:
@@ -625,6 +667,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 _status = $"{FormatCommandName(commandId)} is not implemented yet.";
                 break;
         }
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private void OnToolCommitRequested(
@@ -644,15 +688,17 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             newEntities,
             dimensionValues,
             CreateDimensionId);
-        var newConstraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+        var newConstraints = SketchCreationConstraintFactory.CreateConstraintsForInsertion(
             toolName,
+            _document.Entities,
             newEntities,
             CreateConstraintId);
 
         var nextDocument = new DrawingDocument(
             _document.Entities.Concat(newEntities),
             _document.Dimensions.Concat(newDimensions),
-            _document.Constraints);
+            _document.Constraints,
+            _document.Metadata);
         if (newConstraints.Count > 0)
         {
             nextDocument = SketchConstraintService.ApplyConstraints(nextDocument, newConstraints);
@@ -750,9 +796,16 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private void OnPowerTrimRequested(string targetKey, CanvasPointDto point)
     {
         if (!TryGetEntityIdForOperationTarget(targetKey, out var entityId)
-            || FindEntity(entityId) is null)
+            || FindEntity(entityId) is not { } targetEntity)
         {
             _status = "Power trim/extend needs a geometry target.";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (targetEntity is not LineEntity and not PolylineEntity and not PolygonEntity and not CircleEntity and not ArcEntity and not EllipseEntity and not SplineEntity and not PointEntity)
+        {
+            _status = "Power trim/extend currently supports line, polyline, polygon, circle, arc, ellipse, spline, and point targets only.";
             _ = InvokeAsync(StateHasChanged);
             return;
         }
@@ -778,12 +831,20 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private void OnPowerTrimCrossingRequested(IReadOnlyList<CanvasPowerTrimPickDto> picks)
     {
         var trimPicks = new List<PowerTrimLinePick>();
+        var unsupportedTargets = 0;
         foreach (var pick in picks)
         {
             if (TryGetEntityIdForOperationTarget(pick.TargetKey, out var entityId)
-                && FindEntity(entityId) is not null)
+                && FindEntity(entityId) is { } targetEntity)
             {
-                trimPicks.Add(new PowerTrimLinePick(entityId, ToPoint(pick.Point)));
+                if (targetEntity is LineEntity or PolylineEntity or PolygonEntity or CircleEntity or ArcEntity or EllipseEntity or SplineEntity or PointEntity)
+                {
+                    trimPicks.Add(new PowerTrimLinePick(entityId, ToPoint(pick.Point)));
+                }
+                else
+                {
+                    unsupportedTargets++;
+                }
             }
         }
 
@@ -793,12 +854,14 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             : DrawingModifyService.PowerTrimOrExtendLines(_document, trimPicks, CreateEntityId, out nextDocument);
         if (appliedCount == 0)
         {
-            _status = "Power trim drag needs one or more geometry sections crossed by the cursor path.";
+            _status = unsupportedTargets > 0
+                ? "Power trim drag currently supports crossed line, polyline, polygon, circle, arc, ellipse, spline, and point sections only."
+                : "Power trim drag needs one or more geometry sections crossed by the cursor path.";
             _ = InvokeAsync(StateHasChanged);
             return;
         }
 
-        ApplyDocumentChange(nextDocument, $"Power trim drag applied to {appliedCount} line picks. Drag another path, or Esc to cancel.");
+        ApplyDocumentChange(nextDocument, $"Power trim drag applied to {appliedCount} geometry picks. Drag another path, or Esc to cancel.");
         _activeTool = WorkbenchTool.PowerTrim;
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);
@@ -1324,7 +1387,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             .Select(dimension => StringComparer.Ordinal.Equals(dimension.Id, dimensionId) ? nextDimension : dimension)
             .ToArray();
         ApplyDocumentChange(
-            new DrawingDocument(_document.Entities, nextDimensions, _document.Constraints),
+            new DrawingDocument(_document.Entities, nextDimensions, _document.Constraints, _document.Metadata),
             "Moved dimension.");
         _ = InvokeAsync(StateHasChanged);
     }
@@ -1519,6 +1582,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
+        if (_document.Metadata.Mode == DrawingDocumentMode.ReferenceOnly)
+        {
+            _status = "Reference-only document cannot be edited.";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
         _undoStack.Push(_document);
         _redoStack.Clear();
         _document = nextDocument;
@@ -1553,6 +1623,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         var exportText = DxfDocumentWriter.Write(_document);
         var downloadName = DxfDownloadFileName.FromSourceName(_fileName);
+        var sidecarName = DxfDownloadFileName.SidecarFromSourceName(_fileName);
+        var sidecarText = DxferSidecarWriter.Write(
+            CreateExportDocument(downloadName),
+            normalizedContent: exportText);
         _exportText = exportText;
         _downloadModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", DownloadModulePath);
         await _downloadModule.InvokeVoidAsync(
@@ -1560,7 +1634,44 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             downloadName,
             exportText,
             "application/dxf;charset=utf-8");
-        _status = $"Saved {downloadName}.";
+        await _downloadModule.InvokeVoidAsync(
+            "downloadTextFile",
+            sidecarName,
+            sidecarText,
+            "application/json;charset=utf-8");
+        _status = $"Saved {downloadName} and {sidecarName}.";
+    }
+
+    private DrawingDocument CreateExportDocument(string normalizedFileName)
+    {
+        var metadata = _document.Metadata with
+        {
+            SourceFileName = _document.Metadata.SourceFileName ?? _fileName,
+            NormalizedFileName = normalizedFileName
+        };
+
+        return new DrawingDocument(
+            _document.Entities,
+            _document.Dimensions,
+            _document.Constraints,
+            metadata);
+    }
+
+    private static string FormatWarningSummary(IReadOnlyList<DrawingDocumentWarning> warnings)
+    {
+        if (warnings.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        return $" Warnings: {string.Join("; ", warnings.Select(warning => warning.Message))}";
+    }
+
+    private static string ComputeSha256(string content)
+    {
+        using var sha256 = SHA256.Create();
+        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(content));
+        return string.Concat(hash.Select(part => part.ToString("x2", CultureInfo.InvariantCulture)));
     }
 
     private void OnHoveredEntityChanged(string? entityId)
@@ -2058,60 +2169,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             disabled,
             ResolvePressedState(tool, disabled, pressed),
             isFuture,
-            IsConfirmedWorkingCommand(id),
             tooltip ?? BuildTooltip(id, label, tool, isFuture),
             ToolHotkeys.GetKey(id));
-
-    private static bool IsConfirmedWorkingCommand(WorkbenchCommandId id) =>
-        id is WorkbenchCommandId.Line
-            or WorkbenchCommandId.MidpointLine
-            or WorkbenchCommandId.TwoPointRectangle
-            or WorkbenchCommandId.CenterRectangle
-            or WorkbenchCommandId.AlignedRectangle
-            or WorkbenchCommandId.CenterCircle
-            or WorkbenchCommandId.ThreePointCircle
-            or WorkbenchCommandId.Ellipse
-            or WorkbenchCommandId.ThreePointArc
-            or WorkbenchCommandId.TangentArc
-            or WorkbenchCommandId.CenterPointArc
-            or WorkbenchCommandId.EllipticalArc
-            or WorkbenchCommandId.Conic
-            or WorkbenchCommandId.InscribedPolygon
-            or WorkbenchCommandId.CircumscribedPolygon
-            or WorkbenchCommandId.Spline
-            or WorkbenchCommandId.SplineControlPoint
-            or WorkbenchCommandId.Point
-            or WorkbenchCommandId.Construction
-            or WorkbenchCommandId.Slot
-            or WorkbenchCommandId.DeleteSelection
-            or WorkbenchCommandId.PowerTrim
-            or WorkbenchCommandId.SplitAtPoint
-            or WorkbenchCommandId.Offset
-            or WorkbenchCommandId.Fillet
-            or WorkbenchCommandId.Chamfer
-            or WorkbenchCommandId.Dimension
-            or WorkbenchCommandId.Translate
-            or WorkbenchCommandId.Rotate
-            or WorkbenchCommandId.Scale
-            or WorkbenchCommandId.Mirror
-            or WorkbenchCommandId.LinearPattern
-            or WorkbenchCommandId.CircularPattern
-            or WorkbenchCommandId.Rotate90Clockwise
-            or WorkbenchCommandId.Rotate90CounterClockwise
-            or WorkbenchCommandId.BoundsToOrigin
-            or WorkbenchCommandId.PointToOrigin
-            or WorkbenchCommandId.VectorToX
-            or WorkbenchCommandId.VectorToY
-            or WorkbenchCommandId.Coincident
-            or WorkbenchCommandId.Concentric
-            or WorkbenchCommandId.Parallel
-            or WorkbenchCommandId.Tangent
-            or WorkbenchCommandId.Horizontal
-            or WorkbenchCommandId.Vertical
-            or WorkbenchCommandId.Perpendicular
-            or WorkbenchCommandId.Equal
-            or WorkbenchCommandId.Midpoint
-            or WorkbenchCommandId.Fix;
 
     private bool? ResolvePressedState(WorkbenchTool? tool, bool disabled, bool? pressed)
     {
@@ -2149,11 +2208,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         if (command.IsFuture)
         {
             classes.Add("dxfer-icon-button-future");
-        }
-
-        if (command.IsConfirmedWorking)
-        {
-            classes.Add("dxfer-icon-button-confirmed");
         }
 
         return classes.Count == 0 ? null : string.Join(" ", classes);
@@ -2474,7 +2528,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.Point => "Pick a point on the canvas.",
         WorkbenchTool.Construction => "Click geometry to toggle construction state.",
         WorkbenchTool.Slot => "Pick first center, second center, then radius point.",
-        WorkbenchTool.PowerTrim => "Click a line section to trim, or click past an endpoint to extend.",
+        WorkbenchTool.PowerTrim => "Click a line, polyline, polygon, circle, arc, ellipse, spline, or point section to trim, or click past a line endpoint to extend.",
         WorkbenchTool.Offset => "Click the through side or radius point.",
         WorkbenchTool.Translate => "Pick from point, then to point.",
         WorkbenchTool.Rotate => "Pick center, reference point, then target point.",

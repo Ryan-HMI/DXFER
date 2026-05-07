@@ -21,7 +21,7 @@ public sealed record CanvasDocumentDto(
     {
         var bounds = document.GetBounds();
         var entities = document.Entities.Select(FromEntity).ToArray();
-        var dimensions = document.Dimensions.Select(FromDimension).ToArray();
+        var dimensions = document.Dimensions.Select(dimension => FromDimension(document, dimension)).ToArray();
         var constraints = document.Constraints.Select(FromConstraint).ToArray();
 
         return new CanvasDocumentDto(entities, FromBounds(bounds), dimensions, constraints);
@@ -112,7 +112,11 @@ public sealed record CanvasDocumentDto(
                 null,
                 null,
                 null,
-                spline.IsConstruction),
+                spline.IsConstruction,
+                ControlPoints: spline.ControlPoints.Select(FromPoint).ToArray(),
+                FitPoints: spline.FitPoints.Count >= 2
+                    ? spline.FitPoints.Select(FromPoint).ToArray()
+                    : null),
             _ => new CanvasEntityDto(
                 id,
                 kind,
@@ -130,21 +134,31 @@ public sealed record CanvasDocumentDto(
     private static CanvasBoundsDto FromBounds(Bounds2 bounds) =>
         new(bounds.MinX, bounds.MinY, bounds.MaxX, bounds.MaxY);
 
-    private static CanvasSketchDimensionDto FromDimension(SketchDimension dimension) =>
-        new(
+    private static CanvasSketchDimensionDto FromDimension(DrawingDocument document, SketchDimension dimension)
+    {
+        var state = SketchDimensionSolverService.GetDimensionState(document, dimension);
+        return new CanvasSketchDimensionDto(
             dimension.Id,
             dimension.Kind.ToString(),
             dimension.ReferenceKeys,
             dimension.Value,
             dimension.Anchor is null ? null : FromPoint(dimension.Anchor.Value),
-            dimension.IsDriving);
+            dimension.IsDriving,
+            state.ToString(),
+            state == SketchConstraintState.Unsatisfied
+                ? dimension.ReferenceKeys
+                : Array.Empty<string>());
+    }
 
     private static CanvasSketchConstraintDto FromConstraint(SketchConstraint constraint) =>
         new(
             constraint.Id,
             constraint.Kind.ToString(),
             constraint.ReferenceKeys,
-            constraint.State.ToString());
+            constraint.State.ToString(),
+            constraint.State == SketchConstraintState.Unsatisfied
+                ? constraint.ReferenceKeys
+                : Array.Empty<string>());
 }
 
 public sealed record CanvasEntityDto(
@@ -160,7 +174,9 @@ public sealed record CanvasEntityDto(
     [property: JsonPropertyName("minorRadiusRatio")] double? MinorRadiusRatio = null,
     [property: JsonPropertyName("rotationAngleDegrees")] double? RotationAngleDegrees = null,
     [property: JsonPropertyName("sideCount")] int? SideCount = null,
-    [property: JsonPropertyName("circumscribed")] bool? Circumscribed = null);
+    [property: JsonPropertyName("circumscribed")] bool? Circumscribed = null,
+    [property: JsonPropertyName("controlPoints")] IReadOnlyList<CanvasPointDto>? ControlPoints = null,
+    [property: JsonPropertyName("fitPoints")] IReadOnlyList<CanvasPointDto>? FitPoints = null);
 
 public sealed record CanvasPointDto(
     [property: JsonPropertyName("x")] double X,
@@ -182,10 +198,13 @@ public sealed record CanvasSketchDimensionDto(
     [property: JsonPropertyName("referenceKeys")] IReadOnlyList<string> ReferenceKeys,
     [property: JsonPropertyName("value")] double Value,
     [property: JsonPropertyName("anchor")] CanvasPointDto? Anchor,
-    [property: JsonPropertyName("isDriving")] bool IsDriving);
+    [property: JsonPropertyName("isDriving")] bool IsDriving,
+    [property: JsonPropertyName("state")] string State,
+    [property: JsonPropertyName("affectedReferenceKeys")] IReadOnlyList<string> AffectedReferenceKeys);
 
 public sealed record CanvasSketchConstraintDto(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("kind")] string Kind,
     [property: JsonPropertyName("referenceKeys")] IReadOnlyList<string> ReferenceKeys,
-    [property: JsonPropertyName("state")] string State);
+    [property: JsonPropertyName("state")] string State,
+    [property: JsonPropertyName("affectedReferenceKeys")] IReadOnlyList<string> AffectedReferenceKeys);

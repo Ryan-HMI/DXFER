@@ -45,7 +45,7 @@ public static class CurveSplitService
         }
 
         nextDocument = split
-            ? new DrawingDocument(nextEntities, document.Dimensions, document.Constraints)
+            ? new DrawingDocument(nextEntities, document.Dimensions, document.Constraints, document.Metadata)
             : document;
         return split;
     }
@@ -84,7 +84,7 @@ public static class CurveSplitService
         }
 
         nextDocument = split
-            ? new DrawingDocument(nextEntities, document.Dimensions, document.Constraints)
+            ? new DrawingDocument(nextEntities, document.Dimensions, document.Constraints, document.Metadata)
             : document;
         return split;
     }

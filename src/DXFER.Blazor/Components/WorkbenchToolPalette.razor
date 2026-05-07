@@ -1,40 +1,311 @@
 @namespace DXFER.Blazor.Components
 
-@foreach (var group in Groups)
-{
-    <details class="dxfer-tool-section dxfer-tool-section-collapsible" open="@group.InitiallyOpen">
-        <summary class="dxfer-tool-section-summary">
-            <span class="dxfer-tool-section-heading">
-                <span class="dxfer-section-title">@group.Name</span>
-                @if (!string.IsNullOrWhiteSpace(group.Label))
-                {
-                    <span class="dxfer-tool-section-label">@group.Label</span>
-                }
-            </span>
-            <span class="dxfer-tool-section-count">@group.Commands.Count</span>
-        </summary>
+<div class="@PaletteCssClass"
+     @onpointermove="OnPalettePointerMove"
+     @onpointerup="OnPalettePointerUp"
+     @onpointercancel="OnPalettePointerUp">
+    <div class="@BuildDockZoneClass(ToolGroupDockSide.Left)" aria-label="Left docked tool groups">
+        @foreach (var group in GroupsForDock(ToolGroupDockSide.Left))
+        {
+            @RenderToolGroup(group)
+        }
+    </div>
+    <div class="@BuildDockZoneClass(ToolGroupDockSide.Right)" aria-label="Right docked tool groups">
+        @foreach (var group in GroupsForDock(ToolGroupDockSide.Right))
+        {
+            @RenderToolGroup(group)
+        }
+    </div>
+    <div class="@BuildDockZoneClass(ToolGroupDockSide.Top)" aria-label="Top docked tool groups">
+        @foreach (var group in GroupsForDock(ToolGroupDockSide.Top))
+        {
+            @RenderToolGroup(group)
+        }
+    </div>
+    <div class="@BuildDockZoneClass(ToolGroupDockSide.Bottom)" aria-label="Bottom docked tool groups">
+        @foreach (var group in GroupsForDock(ToolGroupDockSide.Bottom))
+        {
+            @RenderToolGroup(group)
+        }
+    </div>
+    <div class="@BuildFloatingLayerClass()" aria-label="Floating tool groups">
+        @foreach (var group in GroupsForDock(ToolGroupDockSide.Floating))
+        {
+            @RenderToolGroup(group)
+        }
+    </div>
+</div>
+
+@code {
+    private const double DockThreshold = 120;
+    private const double RightDockThreshold = 1120;
+    private const double BottomDockThreshold = 620;
+    private const double DragGripOffset = 16;
+    private const double PaletteViewportTop = 48;
+    private readonly Dictionary<string, ToolGroupDockState> _groupDockStates = new(StringComparer.Ordinal);
+    private DraggedToolGroup? _draggedGroup;
+    private ToolGroupDockSide? _previewDropSide;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<WorkbenchToolGroup> Groups { get; set; } = Array.Empty<WorkbenchToolGroup>();
+
+    [Parameter]
+    public EventCallback<WorkbenchCommandId> OnCommandInvoked { get; set; }
+
+    private string PaletteCssClass => _draggedGroup is null
+        ? "dxfer-workbench-tool-palette"
+        : "dxfer-workbench-tool-palette dxfer-workbench-tool-palette-dragging";
+
+    private string BuildDockZoneClass(ToolGroupDockSide dockSide)
+    {
+        var classes = new List<string>
+        {
+            "dxfer-tool-dock-zone",
+            $"dxfer-tool-dock-zone-{dockSide.ToString().ToLowerInvariant()}"
+        };
+
+        if (_previewDropSide == dockSide)
+        {
+            classes.Add("dxfer-tool-dock-zone-preview");
+        }
+
+        return string.Join(" ", classes);
+    }
+
+    private string BuildFloatingLayerClass() =>
+        _previewDropSide is ToolGroupDockSide.Floating
+            ? "dxfer-tool-floating-layer dxfer-tool-floating-layer-preview"
+            : "dxfer-tool-floating-layer";
+
+    protected override void OnParametersSet()
+    {
+        for (var index = 0; index < Groups.Count; index++)
+        {
+            var group = Groups[index];
+            if (_groupDockStates.ContainsKey(group.Name))
+            {
+                continue;
+            }
+
+            _groupDockStates[group.Name] = new ToolGroupDockState
+            {
+                GroupName = group.Name,
+                Side = ToolGroupDockSide.Left,
+                Compaction = ToolGroupCompaction.Expanded,
+                DockOrder = 60 + index * 100,
+                FloatingX = 24 + (index % 4) * 24,
+                FloatingY = 24 + index * 18
+            };
+        }
+    }
+
+    private RenderFragment RenderToolGroup(WorkbenchToolGroup group) => @<section @key="group.Name"
+        class="@BuildToolGroupClass(GetDockState(group))"
+        style="@BuildToolGroupStyle(GetDockState(group))">
+        @if (ShouldShowGroupHeader(GetDockState(group)))
+        {
+            <div class="dxfer-tool-section-summary dxfer-tool-group-drag-header"
+                 role="button"
+                 tabindex="0"
+                 title="@($"Drag {group.Name} tools. Double-click to compact.")"
+                 aria-label="@($"Drag {group.Name} tools")"
+                 @onpointerdown="@((PointerEventArgs args) => BeginGroupDrag(group, args))"
+                 @ondblclick="@(() => CycleGroupCompaction(group))">
+                <span class="dxfer-tool-group-grip" aria-hidden="true"></span>
+                <span class="dxfer-tool-section-heading">
+                    <span class="dxfer-section-title">@group.Name</span>
+                </span>
+                <span class="dxfer-tool-section-count">@group.Commands.Count</span>
+            </div>
+        }
+        else
+        {
+            <div class="dxfer-tool-group-grip dxfer-tool-group-compact-grip"
+                 role="button"
+                 tabindex="0"
+                 title="@($"Drag {group.Name} tools. Double-click to expand.")"
+                 aria-label="@($"Drag {group.Name} tools")"
+                 @onpointerdown="@((PointerEventArgs args) => BeginGroupDrag(group, args))"
+                 @ondblclick="@(() => CycleGroupCompaction(group))"></div>
+        }
         <div class="dxfer-command-strip" role="toolbar" aria-label="@($"{group.Name} tools")">
             @foreach (var command in group.Commands)
             {
                 <CadIconButton Icon="@command.Icon"
                                Label="@command.Label"
                                Tooltip="@command.TooltipText"
-                               Hotkey="@command.Hotkey"
+                               Hotkey="@(IsCompactDock(GetDockState(group)) ? null : command.Hotkey)"
                                Disabled="@command.Disabled"
                                Pressed="@command.Pressed"
                                Class="@BuildCommandClass(command)"
                                OnClick="@(() => OnCommandInvoked.InvokeAsync(command.Id))" />
             }
         </div>
-    </details>
-}
+    </section>;
 
-@code {
-    [Parameter, EditorRequired]
-    public IReadOnlyList<WorkbenchToolGroup> Groups { get; set; } = Array.Empty<WorkbenchToolGroup>();
+    private IEnumerable<WorkbenchToolGroup> GroupsForDock(ToolGroupDockSide dockSide) =>
+        Groups.Where(group => GetDockState(group).Side == dockSide)
+            .OrderBy(group => GetDockState(group).DockOrder)
+            .ThenBy(GetGroupIndex);
 
-    [Parameter]
-    public EventCallback<WorkbenchCommandId> OnCommandInvoked { get; set; }
+    private int GetGroupIndex(WorkbenchToolGroup group)
+    {
+        for (var index = 0; index < Groups.Count; index++)
+        {
+            if (ReferenceEquals(Groups[index], group) || Groups[index].Name == group.Name)
+            {
+                return index;
+            }
+        }
+
+        return int.MaxValue;
+    }
+
+    private ToolGroupDockState GetDockState(WorkbenchToolGroup group) => _groupDockStates[group.Name];
+
+    private string BuildToolGroupClass(ToolGroupDockState state)
+    {
+        var classes = new List<string>
+        {
+            "dxfer-tool-section",
+            "dxfer-tool-group",
+            $"dxfer-tool-group-{state.Side.ToString().ToLowerInvariant()}"
+        };
+
+        if (IsCompactDock(state))
+        {
+            classes.Add("dxfer-tool-group-compact");
+            classes.Add(state.Compaction is ToolGroupCompaction.SingleColumn
+                ? "dxfer-tool-group-single"
+                : "dxfer-tool-group-double");
+            if (state.Side is ToolGroupDockSide.Top or ToolGroupDockSide.Bottom)
+            {
+                classes.Add("dxfer-tool-group-horizontal");
+            }
+        }
+        else
+        {
+            classes.Add("dxfer-tool-group-expanded");
+        }
+
+        if (_draggedGroup?.GroupName == state.GroupName)
+        {
+            classes.Add("dxfer-tool-group-dragging");
+        }
+
+        return string.Join(" ", classes);
+    }
+
+    private string? BuildToolGroupStyle(ToolGroupDockState state)
+    {
+        if (state.Side is not ToolGroupDockSide.Floating)
+        {
+            return $"--dxfer-group-columns:{(state.Compaction is ToolGroupCompaction.SingleColumn ? 1 : 2)};order:{state.DockOrder:0};";
+        }
+
+        return $"left:{state.FloatingX:0}px;top:{state.FloatingY:0}px;--dxfer-group-columns:2;";
+    }
+
+    private static bool ShouldShowGroupHeader(ToolGroupDockState state) =>
+        state.Side is ToolGroupDockSide.Floating
+            || state.Compaction is ToolGroupCompaction.Expanded && state.Side is ToolGroupDockSide.Left or ToolGroupDockSide.Right;
+
+    private static bool IsCompactDock(ToolGroupDockState state) =>
+        state.Side is ToolGroupDockSide.Top or ToolGroupDockSide.Bottom
+            || state.Side is ToolGroupDockSide.Left or ToolGroupDockSide.Right && state.Compaction is not ToolGroupCompaction.Expanded;
+
+    private void BeginGroupDrag(WorkbenchToolGroup group, PointerEventArgs args)
+    {
+        var state = GetDockState(group);
+        state.Side = ToolGroupDockSide.Floating;
+        state.FloatingX = Math.Max(0, args.ClientX - DragGripOffset);
+        state.FloatingY = Math.Max(0, args.ClientY - PaletteViewportTop - DragGripOffset);
+        _draggedGroup = new DraggedToolGroup(group.Name, DragGripOffset, DragGripOffset);
+        _previewDropSide = GetDropSide(args);
+    }
+
+    private void CycleGroupCompaction(WorkbenchToolGroup group)
+    {
+        var state = GetDockState(group);
+        if (state.Side is ToolGroupDockSide.Top or ToolGroupDockSide.Bottom)
+        {
+            state.Compaction = ToolGroupCompaction.DoubleColumn;
+            return;
+        }
+
+        state.Compaction = state.Compaction switch
+        {
+            ToolGroupCompaction.Expanded => ToolGroupCompaction.DoubleColumn,
+            ToolGroupCompaction.DoubleColumn => ToolGroupCompaction.SingleColumn,
+            _ => ToolGroupCompaction.Expanded
+        };
+    }
+
+    private void OnPalettePointerMove(PointerEventArgs args)
+    {
+        if (_draggedGroup is null || !_groupDockStates.TryGetValue(_draggedGroup.GroupName, out var state))
+        {
+            return;
+        }
+
+        state.FloatingX = Math.Max(0, args.ClientX - _draggedGroup.OffsetX);
+        state.FloatingY = Math.Max(0, args.ClientY - PaletteViewportTop - _draggedGroup.OffsetY);
+        _previewDropSide = GetDropSide(args);
+    }
+
+    private void OnPalettePointerUp(PointerEventArgs args)
+    {
+        if (_draggedGroup is null || !_groupDockStates.TryGetValue(_draggedGroup.GroupName, out var state))
+        {
+            _draggedGroup = null;
+            _previewDropSide = null;
+            return;
+        }
+
+        state.Side = _previewDropSide ?? GetDropSide(args);
+        state.DockOrder = GetDockOrder(state.Side, args);
+        if (state.Side is ToolGroupDockSide.Top or ToolGroupDockSide.Bottom)
+        {
+            state.Compaction = ToolGroupCompaction.DoubleColumn;
+        }
+        else if (state.Side is ToolGroupDockSide.Left or ToolGroupDockSide.Right or ToolGroupDockSide.Floating)
+        {
+            state.Compaction = ToolGroupCompaction.Expanded;
+        }
+
+        _draggedGroup = null;
+        _previewDropSide = null;
+    }
+
+    private static ToolGroupDockSide GetDropSide(PointerEventArgs args)
+    {
+        if (args.ClientX <= DockThreshold)
+        {
+            return ToolGroupDockSide.Left;
+        }
+
+        if (args.ClientY <= DockThreshold)
+        {
+            return ToolGroupDockSide.Top;
+        }
+
+        if (args.ClientY >= BottomDockThreshold)
+        {
+            return ToolGroupDockSide.Bottom;
+        }
+
+        if (args.ClientX >= RightDockThreshold)
+        {
+            return ToolGroupDockSide.Right;
+        }
+
+        return ToolGroupDockSide.Floating;
+    }
+
+    private static double GetDockOrder(ToolGroupDockSide side, PointerEventArgs args) =>
+        side is ToolGroupDockSide.Top or ToolGroupDockSide.Bottom
+            ? args.ClientX
+            : args.ClientY;
 
     private static string? BuildCommandClass(WorkbenchToolCommand command)
     {
@@ -44,11 +315,39 @@
             classes.Add("dxfer-icon-button-future");
         }
 
-        if (command.IsConfirmedWorking)
-        {
-            classes.Add("dxfer-icon-button-confirmed");
-        }
-
         return classes.Count == 0 ? null : string.Join(" ", classes);
+    }
+
+    private sealed class ToolGroupDockState
+    {
+        public string GroupName { get; init; } = string.Empty;
+
+        public ToolGroupDockSide Side { get; set; }
+
+        public ToolGroupCompaction Compaction { get; set; }
+
+        public double DockOrder { get; set; }
+
+        public double FloatingX { get; set; }
+
+        public double FloatingY { get; set; }
+    }
+
+    private sealed record DraggedToolGroup(string GroupName, double OffsetX, double OffsetY);
+
+    private enum ToolGroupDockSide
+    {
+        Floating,
+        Left,
+        Right,
+        Top,
+        Bottom
+    }
+
+    private enum ToolGroupCompaction
+    {
+        SingleColumn,
+        DoubleColumn,
+        Expanded
     }
 }

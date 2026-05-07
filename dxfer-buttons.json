@@ -1,0 +1,562 @@
+[
+  {
+    "i": 0,
+    "text": "",
+    "aria": "Open application menu",
+    "title": "Application menu",
+    "classes": "app-menu-toggle"
+  },
+  {
+    "i": 1,
+    "text": "File\n                            >",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-item app-menu-parent"
+  },
+  {
+    "i": 2,
+    "text": "New File",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 3,
+    "text": "Open sample",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 4,
+    "text": "Save DXF",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 5,
+    "text": "Export DXF text",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 6,
+    "text": "Edit\n                            >",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-item app-menu-parent"
+  },
+  {
+    "i": 7,
+    "text": "Undo",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 8,
+    "text": "Redo",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 9,
+    "text": "Delete selection",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 10,
+    "text": "Split at point",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 11,
+    "text": "View\n                            >",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-item app-menu-parent"
+  },
+  {
+    "i": 12,
+    "text": "Fit extents",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 13,
+    "text": "Toggle origin axes",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 14,
+    "text": "Toggle constraints",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 15,
+    "text": "Panels",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 16,
+    "text": "Sketch\n                            >",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-item app-menu-parent"
+  },
+  {
+    "i": 17,
+    "text": "Line",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 18,
+    "text": "Midpoint line",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 19,
+    "text": "Corner rectangle",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 20,
+    "text": "Center circle",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 21,
+    "text": "Point",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 22,
+    "text": "Cleanup\n                            >",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-item app-menu-parent"
+  },
+  {
+    "i": 23,
+    "text": "Rotate 90 CW",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 24,
+    "text": "Rotate 90 CCW",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 25,
+    "text": "Bounds to origin",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 26,
+    "text": "Point to origin",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 27,
+    "text": "Vector to X",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 28,
+    "text": "Vector to Y",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 29,
+    "text": "Remove duplicates",
+    "aria": null,
+    "title": "Remove duplicate geometry. Planned cleanup command; not implemented yet.",
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 30,
+    "text": "Tool hotkeys...",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 31,
+    "text": "Settings\n                            >",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-item app-menu-parent"
+  },
+  {
+    "i": 32,
+    "text": "Tool hotkeys...",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 33,
+    "text": "Units: document",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 34,
+    "text": "Polar snap: 45 deg",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 35,
+    "text": "Theme: dark",
+    "aria": null,
+    "title": null,
+    "classes": "app-menu-command"
+  },
+  {
+    "i": 36,
+    "text": "Q",
+    "aria": "Measure",
+    "title": "Measure. Hotkey: Q. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 37,
+    "text": "",
+    "aria": "Fit extents",
+    "title": "Fit extents.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 38,
+    "text": "",
+    "aria": "Origin axes",
+    "title": "Origin axes.",
+    "classes": "dxfer-icon-button dxfer-icon-button-active"
+  },
+  {
+    "i": 39,
+    "text": "",
+    "aria": "Show constraints",
+    "title": "Show constraints. When off, constraints appear only while hovering referenced geometry.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 40,
+    "text": "",
+    "aria": "Tool hotkeys",
+    "title": "Tool hotkeys.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 41,
+    "text": "Shift+A",
+    "aria": "Line",
+    "title": "Line. Hotkey: Shift+A. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 42,
+    "text": "M",
+    "aria": "Midpoint line",
+    "title": "Midpoint line. Hotkey: M. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 43,
+    "text": "R",
+    "aria": "Two-point rectangle",
+    "title": "Two-point rectangle. Hotkey: R. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 44,
+    "text": "",
+    "aria": "Center rectangle",
+    "title": "Center rectangle. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 45,
+    "text": "",
+    "aria": "Aligned rectangle",
+    "title": "Aligned rectangle. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 46,
+    "text": "C",
+    "aria": "Center circle",
+    "title": "Center circle. Hotkey: C. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 47,
+    "text": "",
+    "aria": "Three-point circle",
+    "title": "Three-point circle. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 48,
+    "text": "",
+    "aria": "Ellipse",
+    "title": "Ellipse. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 49,
+    "text": "",
+    "aria": "Three-point arc",
+    "title": "Three-point arc. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 50,
+    "text": "",
+    "aria": "Center point arc",
+    "title": "Center point arc. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 51,
+    "text": "",
+    "aria": "Elliptical arc",
+    "title": "Elliptical arc. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 52,
+    "text": "",
+    "aria": "Conic",
+    "title": "Conic. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 53,
+    "text": "",
+    "aria": "Inscribed polygon",
+    "title": "Inscribed polygon. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 54,
+    "text": "",
+    "aria": "Circumscribed polygon",
+    "title": "Circumscribed polygon. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 55,
+    "text": "",
+    "aria": "Spline",
+    "title": "Spline. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 56,
+    "text": "",
+    "aria": "Spline control point",
+    "title": "Spline control point. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 57,
+    "text": "",
+    "aria": "Point",
+    "title": "Point. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 58,
+    "text": "",
+    "aria": "Text",
+    "title": "Text. Not implemented yet.",
+    "classes": "dxfer-icon-button dxfer-icon-button-future"
+  },
+  {
+    "i": 59,
+    "text": "",
+    "aria": "Slot",
+    "title": "Slot. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 60,
+    "text": "Ctrl+Z",
+    "aria": "Undo",
+    "title": "Undo. Hotkey: Ctrl+Z.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 61,
+    "text": "Ctrl+Shift+Z",
+    "aria": "Redo",
+    "title": "Redo. Hotkey: Ctrl+Shift+Z.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 62,
+    "text": "",
+    "aria": "Construction",
+    "title": "Construction. Converts preselected geometry once; with no selection, enters a modal convert tool until Esc.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 63,
+    "text": "",
+    "aria": "Delete selected geometry",
+    "title": "Delete selected geometry.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 64,
+    "text": "",
+    "aria": "Power trim/extend",
+    "title": "Power trim/extend. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 65,
+    "text": "",
+    "aria": "Split at point",
+    "title": "Split at point. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 66,
+    "text": "",
+    "aria": "Offset",
+    "title": "Offset. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 67,
+    "text": "",
+    "aria": "Fillet",
+    "title": "Fillet.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 68,
+    "text": "",
+    "aria": "Chamfer",
+    "title": "Chamfer.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 69,
+    "text": "",
+    "aria": "Dimension",
+    "title": "Dimension. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 70,
+    "text": "",
+    "aria": "Translate",
+    "title": "Translate. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 71,
+    "text": "",
+    "aria": "Rotate",
+    "title": "Rotate. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 72,
+    "text": "",
+    "aria": "Scale",
+    "title": "Scale. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 73,
+    "text": "",
+    "aria": "Mirror",
+    "title": "Mirror. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 74,
+    "text": "",
+    "aria": "Linear pattern",
+    "title": "Linear pattern. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 75,
+    "text": "",
+    "aria": "Circular pattern",
+    "title": "Circular pattern. Enters a modal tool; press Esc to return to selection.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 76,
+    "text": "",
+    "aria": "Coincident",
+    "title": "Coincident. Select two editable points. Works with preselection or post-selection; Esc cancels.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 77,
+    "text": "",
+    "aria": "Concentric",
+    "title": "Concentric. Select two circles or arcs. Works with preselection or post-selection; Esc cancels.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 78,
+    "text": "",
+    "aria": "Parallel",
+    "title": "Parallel. Select two lines or polyline segments. Works with preselection or post-selection; Esc cancels.",
+    "classes": "dxfer-icon-button"
+  },
+  {
+    "i": 79,
+    "text": "",
+    "aria": "Tangent",
+    "title": "Tangent. Select a line/circle/arc plus another circle/arc or line. Works with preselection or post-selection; Esc cancels.",
+    "classes": "dxfer-icon-button"
+  }
+]

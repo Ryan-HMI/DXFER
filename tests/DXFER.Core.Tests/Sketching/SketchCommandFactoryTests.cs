@@ -146,6 +146,58 @@ public sealed class SketchCommandFactoryTests
     }
 
     [Fact]
+    public void BuildsPointToLineDimensionFromParallelLines()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("base"), new Point2(0, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("offset"), new Point2(2, 4), new Point2(8, 4))
+        });
+
+        var result = SketchCommandFactory.TryBuildDimension(
+            document,
+            new[] { "base", "offset" },
+            "dim-1",
+            out var dimension,
+            out var status);
+
+        result.Should().BeTrue();
+        status.Should().Be("Added parallel line distance dimension.");
+        dimension.Kind.Should().Be(SketchDimensionKind.PointToLineDistance);
+        dimension.ReferenceKeys.Should().Equal("base", "offset");
+        dimension.Value.Should().Be(4);
+        dimension.Anchor.Should().Be(new Point2(5, 2));
+        dimension.IsDriving.Should().BeTrue();
+    }
+
+    [Fact]
+    public void BuildsPointToLineDimensionFromParallelPolylineSegments()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new PolylineEntity(
+                EntityId.Create("base"),
+                new[] { new Point2(0, 0), new Point2(10, 0), new Point2(12, 3) }),
+            new PolylineEntity(
+                EntityId.Create("offset"),
+                new[] { new Point2(2, 5), new Point2(8, 5), new Point2(8, 7) })
+        });
+
+        var result = SketchCommandFactory.TryBuildDimension(
+            document,
+            new[] { "base|segment|0", "offset|segment|0" },
+            "dim-1",
+            out var dimension,
+            out _);
+
+        result.Should().BeTrue();
+        dimension.Kind.Should().Be(SketchDimensionKind.PointToLineDistance);
+        dimension.ReferenceKeys.Should().Equal("base|segment|0", "offset|segment|0");
+        dimension.Value.Should().Be(5);
+        dimension.Anchor.Should().Be(new Point2(5, 2.5));
+    }
+
+    [Fact]
     public void BuildsDiameterDimensionFromCircle()
     {
         var document = new DrawingDocument(new DrawingEntity[]
