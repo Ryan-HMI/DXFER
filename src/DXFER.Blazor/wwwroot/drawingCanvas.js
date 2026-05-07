@@ -1,3 +1,111 @@
+import {
+  addUniqueNumber,
+  addUniquePoint,
+  angleBetweenWorldLines,
+  areWorldLinesParallel,
+  clamp,
+  closestPointOnScreenSegment,
+  closestPointOnWorldSegment,
+  crossPoints,
+  degreesToRadians,
+  distanceBetweenScreenPoints,
+  distanceBetweenWorldPoints,
+  dotPoints,
+  dotScreenPoints,
+  getCounterClockwiseDeltaDegrees,
+  getParallelWorldLineDistance,
+  getPositiveSweepDegrees,
+  getWorldLineIntersection,
+  isAngleOnArc,
+  isCircleTangentToCurveAtPoint,
+  isCircleTangentToLinearSegmentAtPoint,
+  isFinitePositive,
+  isPointOnCurvePrimitive,
+  isPointOnSegmentPrimitive,
+  isUnitParameter,
+  midpoint,
+  mirrorPoint,
+  normalizeAngleDegrees,
+  normalizeScreenVector,
+  projectPointToWorldLine,
+  radiansToDegrees,
+  solveQuadratic,
+  subtractPoints,
+  subtractScreenPoints
+} from "./canvas/geometry.js";
+import {
+  getLinearDimensionScreenGeometry,
+  getRadialDimensionScreenGeometry
+} from "./canvas/dimensions.js";
+import {
+  formatDimensionValue,
+  getDimensionDisplayText,
+  getDimensionInputClassName,
+  getDimensionLabel,
+  getDimensionRenderStyle,
+  shouldAutoSelectDimensionInputValue,
+  shouldCommitDimensionInputOnBlur,
+  shouldCommitDimensionInputOnChange,
+  shouldRefreshDimensionInputValue
+} from "./canvas/dimensionPresentation.js";
+import {
+  getDefaultActiveDimensionKey,
+  getDimensionKeys,
+  getNextDimensionKey,
+  getPendingPersistentDimensionEditId,
+  getVisibleDimensionDescriptors,
+  resolveActiveDimensionKey
+} from "./canvas/dimensionInputState.js";
+import {
+  getPersistentDimensionCommitValue
+} from "./canvas/dimensionInputParsing.js";
+import {
+  getPointTargetMarker,
+  isDynamicTargetCurrentToPointer,
+  isPanPointerDownForTool,
+  isTargetEligibleForConstraintTool,
+  shouldDrawSelectionTargetOverlay
+} from "./canvas/targets.js";
+import {
+  CONSTRAINT_KEY_PREFIX,
+  POINT_KEY_SEPARATOR,
+  SEGMENT_KEY_SEPARATOR,
+  parsePointTargetKeyParts,
+  parseSegmentTargetKeyParts
+} from "./canvas/targetKeys.js";
+
+export {
+  getLinearDimensionScreenGeometry,
+  getRadialDimensionScreenGeometry
+} from "./canvas/dimensions.js";
+export {
+  getDimensionDisplayText,
+  getDimensionInputClassName,
+  getDimensionRenderStyle,
+  shouldAutoSelectDimensionInputValue,
+  shouldCommitDimensionInputOnBlur,
+  shouldCommitDimensionInputOnChange,
+  shouldRefreshDimensionInputValue
+} from "./canvas/dimensionPresentation.js";
+export {
+  getDefaultActiveDimensionKey,
+  getDimensionKeys,
+  getNextDimensionKey,
+  getPendingPersistentDimensionEditId,
+  getVisibleDimensionDescriptors,
+  resolveActiveDimensionKey
+} from "./canvas/dimensionInputState.js";
+export {
+  getPersistentDimensionCommitValue
+} from "./canvas/dimensionInputParsing.js";
+export {
+  getPointTargetMarker,
+  isDynamicTargetCurrentToPointer,
+  isPanPointerDownForTool,
+  isTargetEligibleForConstraintTool,
+  shouldDrawSelectionTargetOverlay
+} from "./canvas/targets.js";
+
 const DEFAULT_FIT_MARGIN = 32;
 const DEFAULT_BLANK_VIEW_SCALE = 24;
 const HIT_TEST_TOLERANCE = 9;
@@ -8,18 +116,12 @@ const MAX_VIEW_SCALE = 1000000;
 const FULL_CIRCLE_DEGREES = 360;
 const MAX_ACQUIRED_SNAP_POINTS = 2;
 const ACQUIRED_SNAP_POINT_TTL_MS = 3000;
-const SEGMENT_KEY_SEPARATOR = "|segment|";
-const POINT_KEY_SEPARATOR = "|point|";
-const CONSTRAINT_KEY_PREFIX = "constraint:";
 const DYNAMIC_POINT_KEY_PREFIX = "__dynamic";
 const WORLD_GEOMETRY_TOLERANCE = 0.000001;
 const ORTHO_POLAR_SNAP_TOLERANCE = 6;
 const MAX_INFERENCE_GUIDE_SCREEN_DISTANCE = 360;
 const DIMENSION_INPUT_SCREEN_MARGIN_X = 52;
 const DIMENSION_INPUT_SCREEN_MARGIN_Y = 18;
-const DIMENSION_LAYER_STROKE_STYLE = "#d5dde8";
-const DIMENSION_LAYER_TEXT_STYLE = "#f3f6fb";
-const DIMENSION_PREVIEW_STROKE_STYLE = "#facc15";
 const DIMENSION_ARROWHEAD_SIZE = 15;
 const DIMENSION_TEXT_GAP_PADDING = 5;
 const DIMENSION_INPUT_LEADER_GAP = 12;
@@ -29,7 +131,10 @@ const CONSTRAINT_GLYPH_SIZE = 16;
 const CONSTRAINT_GLYPH_GAP = 4;
 const CONSTRAINT_GROUP_HIT_PADDING = 4;
 const CONSTRAINT_LEADER_MIN_DISTANCE = 10;
+const CONSTRAINT_DEFAULT_OFFSET_DISTANCE = 26;
 const POWER_TRIM_PATH_MIN_SCREEN_DISTANCE = 2;
+const POWER_TRIM_EXTEND_HIT_TEST_TOLERANCE = 18;
+const SPLINE_TANGENT_HANDLE_SCALE = 0.25;
 
 export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) {
   const context = canvas.getContext("2d");
@@ -438,7 +543,8 @@ export function tryToggleSketchChainToolAtPoint(state, screenPoint, target = nul
     return false;
   }
 
-  if (!isSketchChainVertexTarget(target, chainPoint)) {
+  if (!isSketchChainVertexTarget(target, chainPoint)
+    && chainDistance > SNAP_POINT_TOLERANCE) {
     return false;
   }
 
@@ -536,12 +642,15 @@ function draw(state) {
   }
 
   const entities = getDocumentEntities(state.document);
+  const diagnosticEntityIds = getSketchDiagnosticEntityIds(state.document);
   for (const entity of entities) {
+    const affectedByDiagnostics = diagnosticEntityIds.has(getEntityId(entity));
     drawEntity(state, entity, {
-      strokeStyle: entity.isConstruction ? "#64748b" : "#94a3b8",
-      lineWidth: entity.isConstruction ? 1.1 : 1.5,
+      strokeStyle: affectedByDiagnostics ? "#f87171" : entity.isConstruction ? "#64748b" : "#94a3b8",
+      lineWidth: affectedByDiagnostics ? 2.15 : entity.isConstruction ? 1.1 : 1.5,
       lineDash: entity.isConstruction ? [8, 5] : []
     });
+    drawPersistentSplineTangentHandles(state, entity);
   }
 
   for (const selectedKey of state.selectedKeys) {
@@ -560,17 +669,22 @@ function draw(state) {
   drawAcquiredSnapPoints(state);
   drawInferenceGuides(state, size);
 
+  const powerTrimHoverMode = getPowerTrimHoverModeForState(state);
   if (state.hoveredTarget
     && shouldDrawSelectionTargetOverlay(state.hoveredTarget)
     && !isDimensionTargetBeingEdited(state, state.hoveredTarget)) {
     const isSelected = state.selectedKeys.has(state.hoveredTarget.key);
     const isActive = state.hoveredTarget.key === state.activeSelectionKey;
+    const isPowerTrimExtendHover = powerTrimHoverMode === "extend";
     drawTarget(state, state.hoveredTarget, {
-      strokeStyle: isActive ? "#bae6fd" : isSelected ? "#38bdf8" : "#f59e0b",
+      strokeStyle: isPowerTrimExtendHover ? "#22d3ee" : isActive ? "#bae6fd" : isSelected ? "#38bdf8" : "#f59e0b",
       lineWidth: state.hoveredTarget.kind === "point" ? isActive ? 3 : 1.8 : isActive ? 4.5 : isSelected ? 2.5 : 3.5,
-      lineDash: getTargetSelectionLineDash(state.hoveredTarget, isSelected ? [6, 4] : []),
-      glow: isActive
+      lineDash: isPowerTrimExtendHover ? [10, 4] : getTargetSelectionLineDash(state.hoveredTarget, isSelected ? [6, 4] : []),
+      glow: isActive || isPowerTrimExtendHover
     });
+    if (isPowerTrimExtendHover) {
+      drawPowerTrimExtendIndicator(state, state.hoveredTarget, state.pointerScreenPoint);
+    }
   }
 
   if (state.selectionBox) {
@@ -719,10 +833,6 @@ function drawScreenLine(context, start, end) {
 
 function drawArrowhead(context, point, toward, size = 9) {
   drawArrowHead(context, point, Math.atan2(toward.y - point.y, toward.x - point.x), size);
-}
-
-export function shouldDrawSelectionTargetOverlay(target) {
-  return Boolean(target) && target.kind !== "dimension";
 }
 
 function drawTarget(state, target, style) {
@@ -1001,6 +1111,31 @@ function drawPowerTrimDrag(state) {
   context.restore();
 }
 
+function drawPowerTrimExtendIndicator(state, target, screenPoint) {
+  if (!target || !target.snapPoint || !screenPoint) {
+    return;
+  }
+
+  const { context } = state;
+  const endpoint = worldToScreen(state, target.snapPoint);
+  context.save();
+  context.strokeStyle = "#22d3ee";
+  context.fillStyle = "rgba(34, 211, 238, 0.16)";
+  context.lineWidth = 2;
+  context.lineCap = "round";
+  context.setLineDash([5, 4]);
+  context.beginPath();
+  context.moveTo(endpoint.x, endpoint.y);
+  context.lineTo(screenPoint.x, screenPoint.y);
+  context.stroke();
+  context.setLineDash([]);
+  context.beginPath();
+  context.arc(screenPoint.x, screenPoint.y, 5, 0, Math.Tau);
+  context.fill();
+  context.stroke();
+  context.restore();
+}
+
 function drawToolPreview(state) {
   const tool = getSketchCreationTool(state);
   const modifyTool = getModifyTool(state);
@@ -1097,8 +1232,11 @@ function drawToolPreview(state) {
     }
   } else if (tool === "ellipse") {
     if (points.length === 1) {
-      drawWorldPolyline(state, [first, second]);
-      addLinearPreviewDimension(dimensions, state, "major", "Major", first, second);
+      const major = getCenteredAxisDiameterPoints(first, second);
+      if (major) {
+        drawWorldPolyline(state, [major.start, major.end]);
+        addLinearPreviewDimension(dimensions, state, "major", "Major diameter", major.start, major.end);
+      }
     } else {
       const ellipse = getEllipseFromPoints(first, second, third);
       if (ellipse) {
@@ -1129,7 +1267,7 @@ function drawToolPreview(state) {
           addRadiusPreviewDimension(dimensions, state, arc.center, first);
         }
       } else {
-        drawWorldPolyline(state, [second, third]);
+        drawWorldPolyline(state, getTangentArcFallbackPreviewPoints(first, second, third));
       }
     }
   } else if (tool === "centerpointarc") {
@@ -1168,6 +1306,7 @@ function drawToolPreview(state) {
       drawWorldPolyline(state, [first, second, third]);
     }
   } else if (tool === "inscribedpolygon" || tool === "circumscribedpolygon") {
+    drawWorldPolyline(state, getPolygonGuideCircleWorldPoints(first, second));
     const polygonPoints = getPolygonWorldPoints(first, second, tool === "circumscribedpolygon", getPolygonSideCount(state));
     drawWorldPolyline(state, polygonPoints.concat(polygonPoints[0]));
     addPolygonPreviewDimension(dimensions, state, first, second, tool === "circumscribedpolygon");
@@ -1203,7 +1342,7 @@ function drawToolPreview(state) {
   }
 
   context.setLineDash([]);
-  for (const point of points) {
+  for (const point of getSketchToolPreviewMarkerPoints(tool, points)) {
     const marker = worldToScreen(state, point);
     context.beginPath();
     context.arc(marker.x, marker.y, 3.5, 0, Math.PI * 2);
@@ -1211,6 +1350,28 @@ function drawToolPreview(state) {
   }
   context.restore();
   return dimensions;
+}
+
+export function getSketchToolPreviewMarkerPoints(tool, points) {
+  if (!Array.isArray(points)) {
+    return [];
+  }
+
+  if (normalizeToolName(tool) === "tangentarc" && points.length > 1) {
+    return [copyPoint(points[0])];
+  }
+
+  return points.map(copyPoint);
+}
+
+export function getTangentArcFallbackPreviewPoints(first, tangentPoint, end) {
+  if (!first
+    || !end
+    || distanceBetweenWorldPoints(first, end) <= WORLD_GEOMETRY_TOLERANCE) {
+    return [];
+  }
+
+  return [copyPoint(first), copyPoint(end)];
 }
 
 function getTargetSelectionLineDash(target, fallback = []) {
@@ -1540,7 +1701,37 @@ function drawWorldPolyline(state, points) {
 }
 
 function drawSplineTangentHandles(state, fitPoints) {
-  const handles = getSplineTangentHandles(fitPoints);
+  drawSplineTangentHandleSet(state, getSplineTangentHandles(fitPoints));
+}
+
+function drawPersistentSplineTangentHandles(state, entity) {
+  drawPersistentSplineEditPoints(state, entity);
+  drawSplineTangentHandleSet(state, getPersistentSplineTangentHandlesForEntity(entity));
+}
+
+function drawPersistentSplineEditPoints(state, entity) {
+  const points = getSplineEditableSnapPoints(entity);
+  if (points.length === 0) {
+    return;
+  }
+
+  const { context } = state;
+  context.save();
+  context.strokeStyle = "rgba(103, 232, 249, 0.62)";
+  context.fillStyle = "rgba(103, 232, 249, 0.24)";
+  context.lineWidth = 1;
+  for (const item of points) {
+    const point = worldToScreen(state, item.point);
+    context.beginPath();
+    context.arc(point.x, point.y, 3.5, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+  }
+
+  context.restore();
+}
+
+function drawSplineTangentHandleSet(state, handles) {
   if (handles.length === 0) {
     return;
   }
@@ -1727,13 +1918,13 @@ function addPolygonSideCountPreviewDimension(dimensions, state, center, radiusPo
 }
 
 export function getThreePointArcPreviewDimensions(state, first, through, end) {
-  const arcState = getThreePointArcConstructionState(first, through, end);
-  if (!arcState) {
+  const arc = getThreePointArc(first, through, end);
+  if (!arc) {
     return [];
   }
 
   const dimensions = [];
-  addArcRadiusPreviewDimension(dimensions, state, arcState);
+  addArcRadiusPreviewDimension(dimensions, state, arc);
   return dimensions;
 }
 
@@ -1816,6 +2007,8 @@ function getPersistentDimensionDescriptor(state, dimension) {
   const referenceKeys = getSketchReferenceKeys(dimension);
   const value = Number(readProperty(dimension, "value", "Value"));
   const anchor = readPoint(readProperty(dimension, "anchor", "Anchor"));
+  const stateText = getSketchDimensionState(dimension);
+  const affectedReferenceKeys = getSketchAffectedReferenceKeys(dimension);
   if (!id || !kind || !Number.isFinite(value)) {
     return null;
   }
@@ -1831,6 +2024,8 @@ function getPersistentDimensionDescriptor(state, dimension) {
     kind,
     label: getDimensionLabel(kind),
     value,
+    state: stateText,
+    affectedReferenceKeys,
     anchorPoint,
     point: worldToScreen(state, anchorPoint),
     geometry: getDimensionGeometry(state, kind, referenceKeys, anchorPoint)
@@ -1858,7 +2053,8 @@ function getPersistentDimensionVisualState(state, dimension) {
   return {
     selected,
     active,
-    hovered
+    hovered,
+    unsatisfied: getSketchDimensionState(dimension) === "unsatisfied"
   };
 }
 
@@ -1967,6 +2163,14 @@ function getDimensionModelFromReferences(state, referenceKeys, radialDiameter = 
     const firstLine = resolveSketchLineReference(state, referenceKeys[0]);
     const secondLine = resolveSketchLineReference(state, referenceKeys[1]);
     if (firstLine && secondLine) {
+      if (areWorldLinesParallel(firstLine, secondLine)) {
+        return {
+          kind: "pointtolinedistance",
+          referenceKeys: referenceKeys.slice(0, 2),
+          value: getParallelWorldLineDistance(firstLine, secondLine)
+        };
+      }
+
       return {
         kind: "angle",
         referenceKeys: referenceKeys.slice(0, 2),
@@ -2050,6 +2254,16 @@ function getDimensionGeometry(state, kind, referenceKeys, anchorPoint) {
     const secondPoint = resolveSketchReferencePoint(state, referenceKeys[1]);
     const firstLine = resolveSketchLineReference(state, referenceKeys[0]);
     const secondLine = resolveSketchLineReference(state, referenceKeys[1]);
+    if (firstLine && secondLine && areWorldLinesParallel(firstLine, secondLine)) {
+      const point = midpoint(secondLine.start, secondLine.end);
+      return {
+        type: "linear",
+        start: point,
+        end: projectPointToWorldLine(point, firstLine),
+        anchorPoint
+      };
+    }
+
     const point = firstPoint || secondPoint;
     const line = firstLine || secondLine;
     if (!point || !line) {
@@ -2163,107 +2377,6 @@ function drawLinearDimensionGraphics(state, dimension, isPreview, visualState = 
   drawDimensionCanvasText(state, dimension, isPreview, visualState);
 }
 
-export function getLinearDimensionScreenGeometry(start, end, anchor, textWidth = 0) {
-  const vector = normalizeScreenVector({ x: end.x - start.x, y: end.y - start.y });
-  if (!vector) {
-    return null;
-  }
-
-  const startOffset = dotScreenPoints(subtractScreenPoints(start, anchor), vector);
-  const endOffset = dotScreenPoints(subtractScreenPoints(end, anchor), vector);
-  const dimensionStart = { x: anchor.x + vector.x * startOffset, y: anchor.y + vector.y * startOffset };
-  const dimensionEnd = { x: anchor.x + vector.x * endOffset, y: anchor.y + vector.y * endOffset };
-  const dimensionLength = distanceBetweenScreenPoints(dimensionStart, dimensionEnd);
-  const textGapHalfWidth = Math.min(dimensionLength / 2, Math.max(14, textWidth / 2 + DIMENSION_TEXT_GAP_PADDING));
-  const firstExtension = getExtensionSegmentPastDimensionLine(start, dimensionStart);
-  const secondExtension = getExtensionSegmentPastDimensionLine(end, dimensionEnd);
-  const useInsideArrows = dimensionLength >= Math.max(36, textWidth + (DIMENSION_ARROWHEAD_SIZE * 4));
-  const arrows = useInsideArrows
-    ? [
-      {
-        point: dimensionStart,
-        toward: { x: dimensionStart.x - vector.x, y: dimensionStart.y - vector.y }
-      },
-      {
-        point: dimensionEnd,
-        toward: { x: dimensionEnd.x + vector.x, y: dimensionEnd.y + vector.y }
-      }
-    ]
-    : [
-      {
-        point: dimensionStart,
-        toward: { x: dimensionStart.x + vector.x, y: dimensionStart.y + vector.y }
-      },
-      {
-        point: dimensionEnd,
-        toward: { x: dimensionEnd.x - vector.x, y: dimensionEnd.y - vector.y }
-      }
-    ];
-
-  return {
-    extensionSegments: [
-      { start, end: firstExtension },
-      { start: end, end: secondExtension }
-    ],
-    dimensionSegments: getLinearDimensionSegmentsAroundText(dimensionStart, dimensionEnd, anchor, textGapHalfWidth),
-    arrows
-  };
-}
-
-function getLinearDimensionSegmentsAroundText(start, end, anchor, textGap) {
-  const direction = normalizeScreenVector({
-    x: end.x - start.x,
-    y: end.y - start.y
-  });
-  if (!direction) {
-    return [];
-  }
-
-  const totalLength = distanceBetweenScreenPoints(start, end);
-  const centerOffset = dotScreenPoints(subtractScreenPoints(anchor, start), direction);
-  const gapStartOffset = centerOffset - textGap;
-  const gapEndOffset = centerOffset + textGap;
-  if (gapStartOffset > totalLength) {
-    return [
-      { start, end },
-      {
-        start: end,
-        end: {
-          x: start.x + direction.x * gapStartOffset,
-          y: start.y + direction.y * gapStartOffset
-        }
-      }
-    ];
-  }
-
-  if (gapEndOffset < 0) {
-    return [
-      {
-        start: {
-          x: start.x + direction.x * gapEndOffset,
-          y: start.y + direction.y * gapEndOffset
-        },
-        end: start
-      },
-      { start, end }
-    ];
-  }
-
-  return getSegmentPartsAroundPoint(start, end, anchor, textGap);
-}
-
-function getExtensionSegmentPastDimensionLine(referencePoint, dimensionPoint) {
-  const direction = normalizeScreenVector(subtractScreenPoints(dimensionPoint, referencePoint));
-  if (!direction) {
-    return dimensionPoint;
-  }
-
-  return {
-    x: dimensionPoint.x + direction.x * 6,
-    y: dimensionPoint.y + direction.y * 6
-  };
-}
-
 function drawRadialDimensionGraphics(state, dimension, isPreview, visualState = null) {
   const geometry = dimension.geometry;
   const center = worldToScreen(state, geometry.center);
@@ -2289,64 +2402,6 @@ function drawRadialDimensionGraphics(state, dimension, isPreview, visualState = 
 
   context.restore();
   drawDimensionCanvasText(state, dimension, isPreview, visualState);
-}
-
-export function getRadialDimensionScreenGeometry(center, radius, anchor, diameter = false, textWidth = 0, edgeOverride = null) {
-  const direction = normalizeScreenVector({
-    x: anchor.x - center.x,
-    y: anchor.y - center.y
-  }) || { x: 1, y: 0 };
-  const anchorDistance = distanceBetweenScreenPoints(center, anchor);
-  const isInside = anchorDistance < radius;
-  const textGap = Math.max(DIMENSION_INPUT_LEADER_GAP, textWidth / 2 + DIMENSION_TEXT_GAP_PADDING);
-  const edge = edgeOverride || {
-    x: center.x + direction.x * radius,
-    y: center.y + direction.y * radius
-  };
-  const edgeDirection = normalizeScreenVector({
-    x: edge.x - center.x,
-    y: edge.y - center.y
-  }) || direction;
-
-  if (diameter) {
-    if (isInside) {
-      const oppositeEdge = {
-        x: center.x - edgeDirection.x * radius,
-        y: center.y - edgeDirection.y * radius
-      };
-      return {
-        segments: getSegmentPartsAroundPoint(oppositeEdge, edge, anchor, textGap),
-        arrows: [
-          { point: oppositeEdge, toward: { x: oppositeEdge.x - edgeDirection.x, y: oppositeEdge.y - edgeDirection.y } },
-          { point: edge, toward: { x: edge.x + edgeDirection.x, y: edge.y + edgeDirection.y } }
-        ]
-      };
-    }
-
-    return {
-      segments: getLeaderSegmentsToAnchor(edge, anchor, textGap),
-      arrows: [{ point: edge, toward: center }]
-    };
-  }
-
-  if (edgeOverride) {
-    return {
-      segments: getLeaderSegmentsToAnchor(edge, anchor, textGap),
-      arrows: [{ point: edge, toward: center }]
-    };
-  }
-
-  if (isInside) {
-    return {
-      segments: getSegmentPartsAroundPoint(center, edge, anchor, textGap),
-      arrows: [{ point: edge, toward: { x: edge.x + edgeDirection.x, y: edge.y + edgeDirection.y } }]
-    };
-  }
-
-  return {
-    segments: getLeaderSegmentsToAnchor(edge, anchor, textGap),
-    arrows: [{ point: edge, toward: center }]
-  };
 }
 
 function getArcRadialDimensionEdgeOverride(state, geometry) {
@@ -2376,63 +2431,6 @@ function getClosestAngleOnSweep(angle, startAngle, endAngle) {
   return normalizedOffset - sweep < 360 - normalizedOffset
     ? startAngle + sweep
     : startAngle;
-}
-
-function getLeaderSegmentsToAnchor(start, anchor, textGap) {
-  const directionToStart = normalizeScreenVector({
-    x: start.x - anchor.x,
-    y: start.y - anchor.y
-  });
-  if (!directionToStart) {
-    return [];
-  }
-
-  const distance = distanceBetweenScreenPoints(start, anchor);
-  const gap = Math.min(Math.max(0, distance - 2), textGap);
-  const leaderEnd = {
-    x: anchor.x + directionToStart.x * gap,
-    y: anchor.y + directionToStart.y * gap
-  };
-  return distance > gap + WORLD_GEOMETRY_TOLERANCE
-    ? [{ start, end: leaderEnd }]
-    : [];
-}
-
-function getSegmentPartsAroundPoint(start, end, gapCenter, textGap) {
-  const direction = normalizeScreenVector({
-    x: end.x - start.x,
-    y: end.y - start.y
-  });
-  if (!direction) {
-    return [];
-  }
-
-  const totalLength = distanceBetweenScreenPoints(start, end);
-  const centerOffset = clamp(
-    dotScreenPoints(subtractScreenPoints(gapCenter, start), direction),
-    0,
-    totalLength);
-  const gap = Math.min(textGap, totalLength / 2);
-  const gapStartOffset = clamp(centerOffset - gap, 0, totalLength);
-  const gapEndOffset = clamp(centerOffset + gap, 0, totalLength);
-  const gapStart = {
-    x: start.x + direction.x * gapStartOffset,
-    y: start.y + direction.y * gapStartOffset
-  };
-  const gapEnd = {
-    x: start.x + direction.x * gapEndOffset,
-    y: start.y + direction.y * gapEndOffset
-  };
-  const segments = [];
-  if (gapStartOffset > WORLD_GEOMETRY_TOLERANCE) {
-    segments.push({ start, end: gapStart });
-  }
-
-  if (totalLength - gapEndOffset > WORLD_GEOMETRY_TOLERANCE) {
-    segments.push({ start: gapEnd, end });
-  }
-
-  return segments;
 }
 
 function drawAngleDimensionGraphics(state, dimension, isPreview, visualState = null) {
@@ -2708,71 +2706,6 @@ function measureDimensionCanvasText(state, text) {
   return width;
 }
 
-export function getDimensionRenderStyle(isPreview, visualState = null) {
-  const normalizedVisualState = normalizeDimensionVisualState(visualState);
-  if (!isPreview && normalizedVisualState.active) {
-    return {
-      strokeStyle: "#bae6fd",
-      textStyle: "#f8fdff",
-      lineDash: [],
-      lineWidth: 1.95,
-      glow: true
-    };
-  }
-
-  if (!isPreview && normalizedVisualState.selected) {
-    return {
-      strokeStyle: "#7dd3fc",
-      textStyle: "#e0f2fe",
-      lineDash: [],
-      lineWidth: 1.7,
-      glow: true
-    };
-  }
-
-  if (!isPreview && normalizedVisualState.hovered) {
-    return {
-      strokeStyle: "#e2e8f0",
-      textStyle: "#ffffff",
-      lineDash: [],
-      lineWidth: 1.45,
-      glow: false
-    };
-  }
-
-  return {
-    strokeStyle: isPreview ? DIMENSION_PREVIEW_STROKE_STYLE : DIMENSION_LAYER_STROKE_STYLE,
-    textStyle: isPreview ? DIMENSION_PREVIEW_STROKE_STYLE : DIMENSION_LAYER_TEXT_STYLE,
-    lineDash: isPreview ? [5, 4] : [],
-    lineWidth: 1.15,
-    glow: false
-  };
-}
-
-function normalizeDimensionVisualState(visualState) {
-  if (!visualState) {
-    return {
-      selected: false,
-      active: false,
-      hovered: false
-    };
-  }
-
-  if (typeof visualState === "boolean") {
-    return {
-      selected: visualState,
-      active: false,
-      hovered: false
-    };
-  }
-
-  return {
-    selected: Boolean(visualState.selected || visualState.active),
-    active: Boolean(visualState.active),
-    hovered: Boolean(visualState.hovered)
-  };
-}
-
 function applyDimensionGraphicsStyle(context, style) {
   context.strokeStyle = style.strokeStyle;
   context.fillStyle = style.strokeStyle;
@@ -2781,50 +2714,6 @@ function applyDimensionGraphicsStyle(context, style) {
   if (style.glow) {
     context.shadowColor = "rgba(125, 211, 252, 0.5)";
     context.shadowBlur = 8;
-  }
-}
-
-export function getDimensionDisplayText(dimension) {
-  if (String(dimension && dimension.kind || "").toLowerCase() === "count") {
-    const value = Number(dimension && dimension.value);
-    return Number.isFinite(value) ? String(clamp(Math.round(value), 3, 64)) : "";
-  }
-
-  const value = formatDimensionValue(dimension && dimension.value);
-  if (!value) {
-    return "";
-  }
-
-  switch (String(dimension && dimension.kind || "").toLowerCase()) {
-    case "radius":
-      return `R${value}`;
-    case "diameter":
-      return `\u2300${value}`;
-    case "angle":
-      return value;
-    default:
-      return value;
-  }
-}
-
-function getDimensionLabel(kind) {
-  switch (kind) {
-    case "radius":
-      return "Radius";
-    case "diameter":
-      return "Diameter";
-    case "angle":
-      return "Angle";
-    case "horizontaldistance":
-      return "Horizontal distance";
-    case "verticaldistance":
-      return "Vertical distance";
-    case "pointtolinedistance":
-      return "Point-to-line distance";
-    case "count":
-      return "Sides";
-    default:
-      return "Distance";
   }
 }
 
@@ -2864,7 +2753,8 @@ function updatePersistentDimensionInputs(state, dimensions) {
       persistent: true,
       selected: visualState.selected,
       active: visualState.active,
-      editing: isEditing
+      editing: isEditing,
+      unsatisfied: visualState.unsatisfied
     });
     input.dataset.dimensionId = dimension.id;
     input.dataset.dimensionLabel = dimension.label;
@@ -2877,27 +2767,6 @@ function updatePersistentDimensionInputs(state, dimensions) {
   }
 
   focusPendingPersistentDimensionEditIfNeeded(state, dimensions);
-}
-
-export function getDimensionInputClassName(options = {}) {
-  const classes = ["drawing-dimension-input"];
-  if (options.persistent) {
-    classes.push("drawing-persistent-dimension-input");
-  }
-
-  if (options.editing) {
-    classes.push("drawing-dimension-input-active");
-  }
-
-  if (options.selected) {
-    classes.push("drawing-persistent-dimension-input-selected");
-  }
-
-  if (options.active) {
-    classes.push("drawing-persistent-dimension-input-active");
-  }
-
-  return classes.join(" ");
 }
 
 function getOrCreatePersistentDimensionInput(state, dimension) {
@@ -3151,21 +3020,6 @@ function focusPendingPersistentDimensionEditIfNeeded(state, dimensions) {
   return true;
 }
 
-export function getPendingPersistentDimensionEditId(dimensions, previousIds) {
-  if (!previousIds || typeof previousIds.has !== "function" || !Array.isArray(dimensions)) {
-    return null;
-  }
-
-  for (const dimension of dimensions) {
-    const id = String(dimension && dimension.id || "");
-    if (id && !previousIds.has(id)) {
-      return id;
-    }
-  }
-
-  return null;
-}
-
 function getCurrentPersistentDimensionIds(state) {
   return new Set(getDocumentDimensions(state.document)
     .map(dimension => String(getSketchItemId(dimension) || ""))
@@ -3182,30 +3036,6 @@ function requestDimensionRedraw(state) {
       draw(state);
     }
   });
-}
-
-export function getPersistentDimensionCommitValue(text, fallbackValue) {
-  const fallback = Number(fallbackValue);
-  const safeFallback = Number.isFinite(fallback) ? fallback : 0;
-  const value = parseDimensionInputNumber(text);
-  if (!Number.isFinite(value) || value <= WORLD_GEOMETRY_TOLERANCE) {
-    return {
-      shouldCommit: false,
-      value: safeFallback
-    };
-  }
-
-  return {
-    shouldCommit: true,
-    value
-  };
-}
-
-function parseDimensionInputNumber(text) {
-  const match = String(text || "")
-    .trim()
-    .match(/[+-]?(?:\d+(?:\.\d*)?|\.\d+)/);
-  return match ? Number(match[0]) : Number.NaN;
 }
 
 function clearPersistentDimensionInputs(state) {
@@ -3366,7 +3196,8 @@ function finalizeConstraintGlyphGroup(state, group) {
     y: group.anchor.y / group.anchorCount
   };
   const anchorScreenPoint = worldToScreen(state, anchor);
-  const offset = getConstraintGroupOffset(state, group.key);
+  const storedOffset = getStoredConstraintGroupOffset(state, group.key);
+  const offset = storedOffset || getDefaultConstraintGroupOffset(state, group, anchorScreenPoint);
   const point = {
     x: anchorScreenPoint.x + offset.x,
     y: anchorScreenPoint.y + offset.y
@@ -3378,7 +3209,8 @@ function finalizeConstraintGlyphGroup(state, group) {
     referenceKeys: Array.from(group.referenceKeys),
     anchor,
     anchorScreenPoint,
-    point
+    point,
+    manualOffset: storedOffset !== null
   };
   result.rect = getConstraintGlyphGroupRect(result);
   return result;
@@ -3386,6 +3218,10 @@ function finalizeConstraintGlyphGroup(state, group) {
 
 export function getConstraintGlyphLeader(group) {
   if (!group || !group.anchorScreenPoint || !group.point || !group.rect) {
+    return null;
+  }
+
+  if (!group.manualOffset) {
     return null;
   }
 
@@ -3476,6 +3312,11 @@ function isConstraintGroupRelatedToTarget(group, target) {
     return false;
   }
 
+  if (target.kind === "constraint" && target.constraintId) {
+    return Array.isArray(group.constraints)
+      && group.constraints.some(constraint => StringComparer(getSketchItemId(constraint), target.constraintId));
+  }
+
   const relationKeys = new Set(group.referenceKeys || []);
   for (const targetKey of getConstraintTargetRelationKeys(target)) {
     if (relationKeys.has(targetKey)) {
@@ -3514,11 +3355,87 @@ function getConstraintTargetRelationKeys(target) {
   return keys;
 }
 
-function getConstraintGroupOffset(state, groupKey) {
+function getStoredConstraintGroupOffset(state, groupKey) {
   const offset = state.constraintGroupOffsets && state.constraintGroupOffsets.get(groupKey);
   return offset && Number.isFinite(offset.x) && Number.isFinite(offset.y)
     ? offset
-    : { x: 0, y: 0 };
+    : null;
+}
+
+function getDefaultConstraintGroupOffset(state, group, anchorScreenPoint) {
+  const normal = getConstraintGroupReferenceNormal(state, group) || getAnchorOutwardScreenNormal(state, anchorScreenPoint) || { x: 0, y: -1 };
+  return {
+    x: normal.x * CONSTRAINT_DEFAULT_OFFSET_DISTANCE,
+    y: normal.y * CONSTRAINT_DEFAULT_OFFSET_DISTANCE
+  };
+}
+
+function getConstraintGroupReferenceNormal(state, group) {
+  if (!group || !Array.isArray(group.constraints)) {
+    return null;
+  }
+
+  for (const constraint of group.constraints) {
+    for (const referenceKey of getSketchReferenceKeys(constraint)) {
+      const line = resolveSketchReferenceHostLine(state, referenceKey);
+      if (!line) {
+        continue;
+      }
+
+      const normal = getScreenNormal(worldToScreen(state, line.start), worldToScreen(state, line.end));
+      if (normal && Number.isFinite(normal.x) && Number.isFinite(normal.y)) {
+        return normal.y > 0 ? { x: -normal.x, y: -normal.y } : normal;
+      }
+    }
+  }
+
+  return null;
+}
+
+function getAnchorOutwardScreenNormal(state, anchorScreenPoint) {
+  if (!state || !anchorScreenPoint) {
+    return null;
+  }
+
+  const size = getCanvasCssSize(state);
+  const center = { x: size.width / 2, y: size.height / 2 };
+  return normalizeScreenVector({
+    x: anchorScreenPoint.x - center.x,
+    y: anchorScreenPoint.y - center.y
+  });
+}
+
+function resolveSketchReferenceHostLine(state, referenceKey) {
+  const directLine = resolveSketchLineReference(state, referenceKey);
+  if (directLine) {
+    return directLine;
+  }
+
+  const reference = parseSketchReference(referenceKey);
+  if (!reference) {
+    return null;
+  }
+
+  const entity = findDocumentEntity(state, reference.entityId);
+  if (!entity) {
+    return null;
+  }
+
+  if (Number.isInteger(reference.segmentIndex)) {
+    const points = getEntityPoints(entity);
+    return reference.segmentIndex >= 0 && reference.segmentIndex < points.length - 1
+      ? { start: points[reference.segmentIndex], end: points[reference.segmentIndex + 1] }
+      : null;
+  }
+
+  if (getEntityKind(entity) !== "line") {
+    return null;
+  }
+
+  const points = getEntityPoints(entity);
+  return points.length >= 2
+    ? { start: points[0], end: points[1] }
+    : null;
 }
 
 function setConstraintGroupOffset(state, groupKey, offset) {
@@ -3549,8 +3466,8 @@ function pruneConstraintGroupOffsets(state) {
   }
 }
 
-function getConstraintGlyphGroupHit(state, screenPoint) {
-  if (!state.showAllConstraints || !screenPoint) {
+export function getConstraintGlyphGroupHit(state, screenPoint) {
+  if (!screenPoint) {
     return null;
   }
 
@@ -3919,84 +3836,6 @@ function updateDimensionInputs(state, dimensions) {
   focusActiveDimensionInputIfNeeded(state, dimensions);
 }
 
-export function getDefaultActiveDimensionKey(dimensions, requestedKey) {
-  const keys = getDimensionKeys(dimensions);
-  if (keys.length === 0) {
-    return null;
-  }
-
-  return keys.includes(requestedKey)
-    ? requestedKey
-    : keys[0];
-}
-
-export function resolveActiveDimensionKey(dimensions, requestedKey, pendingKey = null, focusedKey = null) {
-  const keys = getDimensionKeys(dimensions);
-  const requested = requestedKey || null;
-  const pending = pendingKey || null;
-  const focused = focusedKey || null;
-
-  if (keys.length === 0) {
-    return {
-      activeKey: null,
-      pendingKey: pending
-    };
-  }
-
-  if (pending && keys.includes(pending)) {
-    return {
-      activeKey: pending,
-      pendingKey: null
-    };
-  }
-
-  return {
-    activeKey: keys.includes(focused) ? focused : keys.includes(requested) ? requested : keys[0],
-    pendingKey: null
-  };
-}
-
-export function getNextDimensionKey(dimensions, currentKey, reverse = false) {
-  const keys = getDimensionKeys(dimensions);
-  if (keys.length === 0) {
-    return null;
-  }
-
-  const currentIndex = Math.max(0, keys.indexOf(currentKey));
-  const offset = reverse ? -1 : 1;
-  const nextIndex = (currentIndex + offset + keys.length) % keys.length;
-  return keys[nextIndex];
-}
-
-function getDimensionKeys(dimensions) {
-  if (!Array.isArray(dimensions) || dimensions.length === 0) {
-    return [];
-  }
-
-  return dimensions
-    .map(dimension => dimension && dimension.key)
-    .filter(key => Boolean(key));
-}
-
-export function shouldRefreshDimensionInputValue(isFocused, hasLockedValue, hasTransientEdit = false) {
-  return !hasTransientEdit && (!isFocused || !hasLockedValue);
-}
-
-export function shouldAutoSelectDimensionInputValue(isFocused, hasLockedValue, hasTransientEdit = false, isActiveDimension = false) {
-  return isFocused && isActiveDimension && !hasLockedValue && !hasTransientEdit;
-}
-
-export function shouldCommitDimensionInputOnBlur(
-  suppressDimensionInputCommit = false,
-  skipNextBlurCommit = false,
-  hasTransientEdit = false) {
-  return hasTransientEdit && !suppressDimensionInputCommit && !skipNextBlurCommit;
-}
-
-export function shouldCommitDimensionInputOnChange(skipNextChangeCommit = false, hasTransientEdit = false) {
-  return hasTransientEdit && !skipNextChangeCommit;
-}
-
 export function clampDimensionInputScreenPoint(
   state,
   point,
@@ -4254,16 +4093,6 @@ function isDimensionTypingKey(event) {
   }
 
   return /[0-9.+-]/.test(event.key);
-}
-
-export function getVisibleDimensionDescriptors(state) {
-  const keys = Array.isArray(state.visibleDimensionKeys) && state.visibleDimensionKeys.length > 0
-    ? state.visibleDimensionKeys
-    : Array.from(state.dimensionInputs.keys());
-
-  return keys
-    .filter(key => state.dimensionInputs.has(key))
-    .map(key => ({ key }));
 }
 
 function isLastDimensionInput(dimensions, input) {
@@ -4538,7 +4367,9 @@ function handlePointerMove(state, event) {
   }
 
   if (isPowerTrimTool(state) || isSplitAtPointTool(state) || isConstructionTool(state)) {
-    const nearestTarget = findNearestTarget(state, screenPoint);
+    const nearestTarget = isPowerTrimTool(state)
+      ? findNearestPowerTrimTarget(state, screenPoint)
+      : findNearestTarget(state, screenPoint);
     if (setHoveredTarget(state, nearestTarget)) {
       draw(state);
     }
@@ -4645,6 +4476,15 @@ function handlePointerMove(state, event) {
     event.preventDefault();
     updateDebugAttributes(state);
     draw(state);
+    return;
+  }
+
+  const constraintGroupHit = getConstraintGlyphGroupHit(state, screenPoint);
+  if (constraintGroupHit && constraintGroupHit.target) {
+    if (setHoveredTarget(state, constraintGroupHit.target)) {
+      draw(state);
+    }
+
     return;
   }
 
@@ -4910,7 +4750,7 @@ function canStartGeometryDrag(state, target) {
 
   return target.kind === "point"
     || target.kind === "segment"
-    || (target.kind === "entity" && getEntityKind(target.entity) !== "spline");
+    || target.kind === "entity";
 }
 
 function startGeometryDrag(state, candidate, screenPoint, event = {}) {
@@ -5024,7 +4864,7 @@ function getSelectionEntityId(selectionKey) {
   return key || null;
 }
 
-function finishGeometryDrag(state, screenPoint, event = {}) {
+export function finishGeometryDrag(state, screenPoint, event = {}) {
   const drag = state.geometryDrag;
   if (!drag) {
     return false;
@@ -5032,9 +4872,7 @@ function finishGeometryDrag(state, screenPoint, event = {}) {
 
   updateGeometryDrag(state, screenPoint, event);
   const endWorldPoint = drag.currentWorldPoint || screenToWorld(state, screenPoint);
-  if (!drag.moved) {
-    state.document = drag.originalDocument;
-  }
+  state.document = drag.originalDocument;
 
   state.geometryDrag = null;
   if (drag.moved) {
@@ -5355,13 +5193,13 @@ export function getDimensionPlacementRequest(state, screenPoint, event = {}) {
   };
 }
 
-function getDimensionSelectionKey(target) {
+export function getDimensionSelectionKey(target) {
   if (!target || target.dynamic) {
     return null;
   }
 
   if (target.kind === "point" && target.entityId) {
-    return target.key;
+    return getDimensionLineLikeReferenceFromPointTarget(target) || target.key;
   }
 
   if (target.kind === "entity") {
@@ -5373,6 +5211,27 @@ function getDimensionSelectionKey(target) {
 
   if (target.kind === "segment" && target.entityId && Number.isInteger(target.segmentIndex)) {
     return target.key;
+  }
+
+  return null;
+}
+
+function getDimensionLineLikeReferenceFromPointTarget(target) {
+  if (!target || !target.entity || !target.entityId) {
+    return null;
+  }
+
+  const kind = getEntityKind(target.entity);
+  const label = String(target.label || "").toLowerCase();
+  if (kind === "line" && label === "mid") {
+    return target.entityId;
+  }
+
+  if (kind === "polyline") {
+    const segmentIndex = parseIndexedPointLabel(label, "mid-");
+    if (segmentIndex !== null) {
+      return `${target.entityId}${SEGMENT_KEY_SEPARATOR}${segmentIndex}`;
+    }
   }
 
   return null;
@@ -5772,25 +5631,8 @@ function getSketchWorldPoint(state, screenPoint, target = state.hoveredTarget, e
 }
 
 export function findNearestTarget(state, screenPoint) {
-  let nearestPointHit = null;
-  let nearestEdgeHit = null;
   const constraintTool = getConstraintTool(state);
-
-  for (const entity of getDocumentEntities(state.document)) {
-    const pointHit = getEntityPointHit(state, entity, screenPoint);
-    if (pointHit
-      && (!constraintTool || isTargetEligibleForConstraintTool(constraintTool, pointHit.target))
-      && (!nearestPointHit || pointHit.distance < nearestPointHit.distance)) {
-      nearestPointHit = pointHit;
-    }
-
-    const edgeHit = getEntityEdgeHit(state, entity, screenPoint);
-    if (edgeHit
-      && (!constraintTool || isTargetEligibleForConstraintTool(constraintTool, edgeHit.target))
-      && (!nearestEdgeHit || edgeHit.distance < nearestEdgeHit.distance)) {
-      nearestEdgeHit = edgeHit;
-    }
-  }
+  const { nearestPointHit, nearestEdgeHit } = getNearestEntityHits(state, screenPoint, constraintTool);
 
   if (nearestPointHit && nearestPointHit.distance <= SNAP_POINT_TOLERANCE) {
     return nearestPointHit.target;
@@ -5817,6 +5659,78 @@ export function findNearestTarget(state, screenPoint) {
   }
 
   return null;
+}
+
+function findNearestPowerTrimTarget(state, screenPoint) {
+  const { nearestPointHit, nearestEdgeHit, edgeHits } = getNearestEntityHits(state, screenPoint, null, true);
+  const rawPoint = screenToWorld(state, screenPoint);
+  const alternateEdgeHit = getPowerTrimAlternateEdgeHit(nearestPointHit, edgeHits);
+  if (alternateEdgeHit) {
+    return alternateEdgeHit.target;
+  }
+
+  if (nearestEdgeHit && nearestEdgeHit.distance <= HIT_TEST_TOLERANCE) {
+    return nearestEdgeHit.target;
+  }
+
+  if (nearestEdgeHit
+    && nearestEdgeHit.distance <= POWER_TRIM_EXTEND_HIT_TEST_TOLERANCE
+    && isPowerTrimExtendPick(nearestEdgeHit.target, rawPoint)) {
+    return nearestEdgeHit.target;
+  }
+
+  return nearestPointHit && nearestPointHit.distance <= SNAP_POINT_TOLERANCE
+    ? nearestPointHit.target
+    : null;
+}
+
+function getPowerTrimAlternateEdgeHit(pointHit, edgeHits) {
+  if (!pointHit
+    || pointHit.distance > SNAP_POINT_TOLERANCE
+    || !Array.isArray(edgeHits)
+    || edgeHits.length === 0) {
+    return null;
+  }
+
+  const pointEntityKind = getEntityKind(pointHit.target && pointHit.target.entity);
+  if (pointEntityKind !== "line" && pointEntityKind !== "polyline" && pointEntityKind !== "polygon") {
+    return null;
+  }
+
+  return edgeHits
+    .filter(hit => hit
+      && hit.distance <= HIT_TEST_TOLERANCE
+      && hit.target
+      && hit.target.entityId !== pointHit.target.entityId)
+    .sort((first, second) => first.distance - second.distance)[0] || null;
+}
+
+function getNearestEntityHits(state, screenPoint, constraintTool = null, includeEdgeHits = false) {
+  let nearestPointHit = null;
+  let nearestEdgeHit = null;
+  const edgeHits = includeEdgeHits ? [] : null;
+
+  for (const entity of getDocumentEntities(state.document)) {
+    const pointHit = getEntityPointHit(state, entity, screenPoint);
+    if (pointHit
+      && (!constraintTool || isTargetEligibleForConstraintTool(constraintTool, pointHit.target))
+      && (!nearestPointHit || pointHit.distance < nearestPointHit.distance)) {
+      nearestPointHit = pointHit;
+    }
+
+    const edgeHit = getEntityEdgeHit(state, entity, screenPoint);
+    if (edgeHit
+      && (!constraintTool || isTargetEligibleForConstraintTool(constraintTool, edgeHit.target))
+      && (!nearestEdgeHit || edgeHit.distance < nearestEdgeHit.distance)) {
+      nearestEdgeHit = edgeHit;
+    }
+
+    if (edgeHits && edgeHit && (!constraintTool || isTargetEligibleForConstraintTool(constraintTool, edgeHit.target))) {
+      edgeHits.push(edgeHit);
+    }
+  }
+
+  return { nearestPointHit, nearestEdgeHit, edgeHits };
 }
 
 function findNearestWholeEntityTarget(state, screenPoint) {
@@ -5996,7 +5910,7 @@ function getEntityEdgeHit(state, entity, screenPoint) {
     case "arc":
       return getArcEdgeHit(state, entity, screenPoint);
     case "ellipse":
-      return getSampledCurveEdgeHit(state, entity, screenPoint);
+      return getEllipseEdgeHit(state, entity, screenPoint);
     default:
       return null;
   }
@@ -6522,6 +6436,20 @@ function getSampledCurveEdgeHit(state, entity, screenPoint) {
     return null;
   }
 
+  return getSampledWorldPointsEdgeHit(state, target, points, screenPoint);
+}
+
+function getEllipseEdgeHit(state, entity, screenPoint) {
+  const target = createEntityTarget(entity);
+  const points = getEllipseWorldPointsFromEntity(entity);
+  if (!target || points.length < 2) {
+    return null;
+  }
+
+  return getSampledWorldPointsEdgeHit(state, target, points, screenPoint);
+}
+
+function getSampledWorldPointsEdgeHit(state, target, points, screenPoint) {
   let closestDistance = Number.POSITIVE_INFINITY;
   let closestProjectionPoint = null;
 
@@ -6877,18 +6805,86 @@ function getPolygonSnapPoints(entity, entities) {
 
 function getSplineSnapPoints(entity, entities) {
   const points = getEntityPoints(entity);
+  const snapPoints = [
+    ...getSplineEditableSnapPoints(entity),
+    ...getSplineTangentHandleSnapPoints(entity)
+  ];
+
   if (points.length < 2) {
-    return [];
+    addIntersectionSnapPoints(snapPoints, entity, entities);
+    return snapPoints;
   }
 
-  const snapPoints = [
+  const defaultSnapPoints = [
     { label: "start", point: points[0] },
     { label: "end", point: points[points.length - 1] },
     { label: "mid", point: points[Math.floor(points.length / 2)] }
   ];
 
+  for (const point of defaultSnapPoints) {
+    addUniqueSnapPoint(snapPoints, point.label, point.point, 0);
+  }
+
   addIntersectionSnapPoints(snapPoints, entity, entities);
   return snapPoints;
+}
+
+function getSplineEditableSnapPoints(entity) {
+  const fitPoints = getEntityFitPoints(entity);
+  if (fitPoints.length >= 2) {
+    return fitPoints.map((point, index) => ({
+      label: `fit-${index}`,
+      point,
+      priority: 30
+    }));
+  }
+
+  const controlPoints = getEntityControlPoints(entity);
+  if (controlPoints.length >= 2) {
+    return controlPoints.map((point, index) => ({
+      label: `control-${index}`,
+      point,
+      priority: 30
+    }));
+  }
+
+  return [];
+}
+
+function getSplineTangentHandleSnapPoints(entity) {
+  const handlePoints = getEditableSplineHandleSourcePoints(entity);
+  if (handlePoints.length < 2) {
+    return [];
+  }
+
+  const handles = getSplineTangentHandles(handlePoints, SPLINE_TANGENT_HANDLE_SCALE);
+  const snapPoints = [];
+  if (handles[0]?.forward) {
+    snapPoints.push({
+      label: "tangent-start",
+      point: handles[0].forward,
+      priority: 40
+    });
+  }
+
+  if (handles[1]?.backward) {
+    snapPoints.push({
+      label: "tangent-end",
+      point: handles[1].backward,
+      priority: 40
+    });
+  }
+
+  return snapPoints;
+}
+
+function getEditableSplineHandleSourcePoints(entity) {
+  const fitPoints = getEntityFitPoints(entity);
+  if (fitPoints.length >= 2) {
+    return fitPoints;
+  }
+
+  return getEntityControlPoints(entity);
 }
 
 function getCircleSnapPoints(entity, entities) {
@@ -7548,19 +7544,6 @@ function createDynamicPointTarget(label, point, guides = []) {
   };
 }
 
-export function getPointTargetMarker(target) {
-  const label = String(target && target.label ? target.label : "").toLowerCase();
-  if (label.includes("tangent")) {
-    return "tangent";
-  }
-
-  if (label === "mid" || label.startsWith("mid-") || label.startsWith("midpoint-")) {
-    return "midpoint";
-  }
-
-  return "point";
-}
-
 function withSnapPoint(target, snapPoint) {
   return target
     ? { ...target, snapPoint }
@@ -7605,37 +7588,24 @@ function parseConstraintTargetKey(state, key) {
 }
 
 function parsePointTargetKey(state, key) {
-  const separatorIndex = key.indexOf(POINT_KEY_SEPARATOR);
-  if (separatorIndex < 0) {
-    return null;
-  }
-
-  const entityId = key.slice(0, separatorIndex);
-  const parts = key.slice(separatorIndex + POINT_KEY_SEPARATOR.length).split("|");
-  if (parts.length < 3) {
-    return null;
-  }
-
-  const x = Number(parts[parts.length - 2]);
-  const y = Number(parts[parts.length - 1]);
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+  const parts = parsePointTargetKeyParts(key);
+  if (!parts) {
     return null;
   }
 
   const entity = getDocumentEntities(state.document)
-    .find(candidate => StringComparer(getEntityId(candidate), entityId));
+    .find(candidate => StringComparer(getEntityId(candidate), parts.entityId));
   if (!entity) {
     return null;
   }
 
-  const label = parts.slice(0, parts.length - 2).join("|");
   return {
     kind: "point",
     key,
-    entityId,
+    entityId: parts.entityId,
     entity,
-    label,
-    point: resolveCurrentPointTargetPoint(entity, label, { x, y })
+    label: parts.label,
+    point: resolveCurrentPointTargetPoint(entity, parts.label, parts.point)
   };
 }
 
@@ -7879,7 +7849,128 @@ function applyPreviewPointDrag(document, entity, label, delta, dragEnd, constrai
     return true;
   }
 
+  if (kind === "ellipse") {
+    return applyPreviewEllipsePointDrag(entity, normalizedLabel, delta, dragEnd);
+  }
+
+  if (kind === "spline") {
+    return applyPreviewSplinePointDrag(entity, normalizedLabel, delta, dragEnd);
+  }
+
   return false;
+}
+
+function applyPreviewEllipsePointDrag(entity, normalizedLabel, delta, dragEnd) {
+  const center = getEntityCenter(entity);
+  const ellipse = getEllipseFromEntity(entity);
+  if (!center || !ellipse) {
+    return false;
+  }
+
+  if (normalizedLabel === "center") {
+    entity.center = addWorldPoints(center, delta);
+    return true;
+  }
+
+  if (normalizedLabel === "start"
+    || normalizedLabel === "end"
+    || normalizedLabel === "quadrant-0") {
+    return setPreviewEllipseMajorAxis(entity, subtractPoints(dragEnd, center), ellipse.minorRadiusRatio);
+  }
+
+  if (normalizedLabel === "quadrant-180") {
+    return setPreviewEllipseMajorAxis(entity, subtractPoints(center, dragEnd), ellipse.minorRadiusRatio);
+  }
+
+  if (normalizedLabel === "quadrant-90" || normalizedLabel === "quadrant-270") {
+    const minorLength = Math.abs(dotPoints(subtractPoints(dragEnd, center), ellipse.minorUnit));
+    if (minorLength <= WORLD_GEOMETRY_TOLERANCE || ellipse.majorLength <= WORLD_GEOMETRY_TOLERANCE) {
+      return false;
+    }
+
+    entity.minorRadiusRatio = minorLength / ellipse.majorLength;
+    return true;
+  }
+
+  return false;
+}
+
+function setPreviewEllipseMajorAxis(entity, majorAxisEndPoint, minorRadiusRatio) {
+  if (Math.hypot(majorAxisEndPoint.x, majorAxisEndPoint.y) <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
+  entity.majorAxisEndPoint = {
+    x: majorAxisEndPoint.x,
+    y: majorAxisEndPoint.y
+  };
+  entity.minorRadiusRatio = minorRadiusRatio;
+  return true;
+}
+
+function applyPreviewSplinePointDrag(entity, normalizedLabel, delta, dragEnd) {
+  const fitPoints = getEntityFitPoints(entity);
+  if (fitPoints.length >= 2) {
+    return applyPreviewSplineEditablePointDrag(entity, fitPoints, "fit", normalizedLabel, delta, dragEnd);
+  }
+
+  const controlPoints = getEntityControlPoints(entity);
+  return controlPoints.length >= 2
+    ? applyPreviewSplineEditablePointDrag(entity, controlPoints, "control", normalizedLabel, delta, dragEnd)
+    : false;
+}
+
+function applyPreviewSplineEditablePointDrag(entity, sourcePoints, sourceKind, normalizedLabel, delta, dragEnd) {
+  const points = sourcePoints.map(point => ({ ...point }));
+  const pointPrefix = `${sourceKind}-`;
+  let pointIndex = parseIndexedPointLabel(normalizedLabel, pointPrefix);
+  if (pointIndex === null && normalizedLabel === "start") {
+    pointIndex = 0;
+  } else if (pointIndex === null && normalizedLabel === "end") {
+    pointIndex = points.length - 1;
+  }
+
+  if (pointIndex !== null) {
+    if (pointIndex < 0 || pointIndex >= points.length) {
+      return false;
+    }
+
+    points[pointIndex] = addWorldPoints(points[pointIndex], delta);
+    setPreviewSplineEditablePoints(entity, sourceKind, points);
+    return true;
+  }
+
+  if (normalizedLabel === "tangent-start" || normalizedLabel === "tangent-end") {
+    const endpointIndex = normalizedLabel === "tangent-start" ? 0 : points.length - 1;
+    const adjacentIndex = normalizedLabel === "tangent-start" ? 1 : points.length - 2;
+    const endpoint = points[endpointIndex];
+    const vector = subtractPoints(dragEnd, endpoint);
+    if (Math.hypot(vector.x, vector.y) <= WORLD_GEOMETRY_TOLERANCE) {
+      return false;
+    }
+
+    points[adjacentIndex] = {
+      x: endpoint.x + vector.x / SPLINE_TANGENT_HANDLE_SCALE,
+      y: endpoint.y + vector.y / SPLINE_TANGENT_HANDLE_SCALE
+    };
+    setPreviewSplineEditablePoints(entity, sourceKind, points);
+    return true;
+  }
+
+  return false;
+}
+
+function setPreviewSplineEditablePoints(entity, sourceKind, points) {
+  const copiedPoints = points.map(point => ({ ...point }));
+  if (sourceKind === "fit") {
+    entity.fitPoints = copiedPoints.map(point => ({ ...point }));
+    entity.controlPoints = copiedPoints.map(point => ({ ...point }));
+    entity.points = getSplineFitWorldPoints(copiedPoints);
+    return;
+  }
+
+  entity.controlPoints = copiedPoints.map(point => ({ ...point }));
+  entity.points = copiedPoints.map(point => ({ ...point }));
 }
 
 function applyPreviewEntityDrag(document, entity, delta, dragEnd) {
@@ -7911,6 +8002,31 @@ function applyPreviewEntityDrag(document, entity, delta, dragEnd) {
     }
 
     entity.radius = radius;
+    return true;
+  }
+
+  if (kind === "ellipse") {
+    const center = getEntityCenter(entity);
+    if (!center) {
+      return false;
+    }
+
+    entity.center = addWorldPoints(center, delta);
+    return true;
+  }
+
+  if (kind === "spline") {
+    entity.points = getEntityPoints(entity).map(point => addWorldPoints(point, delta));
+    const fitPoints = getEntityFitPoints(entity);
+    if (fitPoints.length > 0) {
+      entity.fitPoints = fitPoints.map(point => addWorldPoints(point, delta));
+    }
+
+    const controlPoints = getEntityControlPoints(entity);
+    if (controlPoints.length > 0) {
+      entity.controlPoints = controlPoints.map(point => addWorldPoints(point, delta));
+    }
+
     return true;
   }
 
@@ -7975,7 +8091,7 @@ function getTranslatedDimensionEntityId(document, selectionKey) {
     const label = String(pointReference.label || "").split("|")[0].toLowerCase();
     if ((kind === "line" && label === "mid")
       || (kind === "polyline" && label.startsWith("mid-"))
-      || ((kind === "circle" || kind === "arc") && label === "center")
+      || ((kind === "circle" || kind === "arc" || kind === "ellipse") && label === "center")
       || (kind === "point" && label === "point")) {
       return pointReference.entityId;
     }
@@ -7985,7 +8101,7 @@ function getTranslatedDimensionEntityId(document, selectionKey) {
 
   const entity = findCanvasDocumentEntity(document, key);
   const kind = getEntityKind(entity);
-  return kind === "line" || kind === "polyline" || kind === "point"
+  return kind === "line" || kind === "polyline" || kind === "ellipse" || kind === "point"
     ? key
     : null;
 }
@@ -8038,15 +8154,21 @@ function cloneCanvasEntity(entity) {
   const radius = getEntityRadius(entity);
   const startAngle = getEntityStartAngle(entity);
   const endAngle = getEntityEndAngle(entity);
+  const majorAxisEndPoint = getEntityMajorAxisEndPoint(entity);
+  const minorRadiusRatio = getEntityMinorRadiusRatio(entity);
   return {
     ...entity,
     id: getEntityId(entity),
     kind: getEntityKind(entity),
     points: getEntityPoints(entity).map(point => ({ ...point })),
+    fitPoints: getEntityFitPoints(entity).map(point => ({ ...point })),
+    controlPoints: getEntityControlPoints(entity).map(point => ({ ...point })),
     center: center ? { ...center } : null,
     radius: Number.isFinite(radius) ? radius : null,
     startAngleDegrees: Number.isFinite(startAngle) ? startAngle : null,
     endAngleDegrees: Number.isFinite(endAngle) ? endAngle : null,
+    majorAxisEndPoint: majorAxisEndPoint ? { ...majorAxisEndPoint } : null,
+    minorRadiusRatio: Number.isFinite(minorRadiusRatio) ? minorRadiusRatio : null,
     isConstruction: Boolean(readProperty(entity, "isConstruction", "IsConstruction"))
   };
 }
@@ -8107,20 +8229,14 @@ function projectWorldPointToLine(point, start, end) {
 }
 
 function parseSegmentTargetKey(state, key) {
-  const separatorIndex = key.indexOf(SEGMENT_KEY_SEPARATOR);
-  if (separatorIndex < 0) {
-    return null;
-  }
-
-  const entityId = key.slice(0, separatorIndex);
-  const segmentIndex = Number(key.slice(separatorIndex + SEGMENT_KEY_SEPARATOR.length));
-  if (!Number.isInteger(segmentIndex)) {
+  const parts = parseSegmentTargetKeyParts(key);
+  if (!parts) {
     return null;
   }
 
   const entity = getDocumentEntities(state.document)
-    .find(candidate => StringComparer(getEntityId(candidate), entityId));
-  return entity ? createPolylineSegmentTarget(entity, segmentIndex, null) : null;
+    .find(candidate => StringComparer(getEntityId(candidate), parts.entityId));
+  return entity ? createPolylineSegmentTarget(entity, parts.segmentIndex, null) : null;
 }
 
 function parseDimensionTargetKey(state, key) {
@@ -8240,6 +8356,8 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
     }
   } else if (tool === "centerpointarc" && dimension === "sweep" && points.length >= 2) {
     nextPreviewPoint = getCenterPointArcEndPointWithSweep(points[0], points[1], previewPoint, numericValue);
+  } else if (tool === "tangentarc" && dimension === "radius" && points.length >= 2) {
+    nextPreviewPoint = getTangentArcEndPointWithRadius(points[0], points[1], previewPoint, numericValue);
   } else if (tool === "threepointarc" && dimension === "radius" && points.length >= 2) {
     nextPreviewPoint = getThreePointArcEndPointWithRadius(points[0], points[1], previewPoint, numericValue);
   } else if (tool === "threepointarc" && dimension === "sweep" && points.length >= 2) {
@@ -8446,19 +8564,6 @@ function adjustPolygonSideCount(state, wheelDelta) {
   return true;
 }
 
-export function isDynamicTargetCurrentToPointer(state, target) {
-  if (!target || !target.dynamic) {
-    return true;
-  }
-
-  if (!state || !state.pointerScreenPoint || !target.point) {
-    return false;
-  }
-
-  const targetScreenPoint = worldToScreen(state, target.point);
-  return distanceBetweenScreenPoints(state.pointerScreenPoint, targetScreenPoint) <= SNAP_POINT_TOLERANCE;
-}
-
 function pointFromAnchorWithLength(anchor, referencePoint, length) {
   const dx = referencePoint.x - anchor.x;
   const dy = referencePoint.y - anchor.y;
@@ -8510,6 +8615,42 @@ function getCenterPointArcEndPointWithSweep(center, startRadiusPoint, currentEnd
   const counterClockwiseDelta = getCounterClockwiseDeltaDegrees(startAngle, currentEndAngle);
   const direction = counterClockwiseDelta <= FULL_CIRCLE_DEGREES / 2 ? 1 : -1;
   return pointOnCircle(center, radius, startAngle + direction * sweepDegrees);
+}
+
+function getTangentArcEndPointWithRadius(start, tangentPoint, currentEnd, radius) {
+  const tangentLength = distanceBetweenWorldPoints(start, tangentPoint);
+  if (!Number.isFinite(radius)
+    || radius <= WORLD_GEOMETRY_TOLERANCE
+    || tangentLength <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const tangent = {
+    x: (tangentPoint.x - start.x) / tangentLength,
+    y: (tangentPoint.y - start.y) / tangentLength
+  };
+  const normal = { x: -tangent.y, y: tangent.x };
+  const currentArc = getTangentArc(start, tangentPoint, currentEnd);
+  const sideValue = currentArc
+    ? dotPoints(subtractPoints(currentArc.center, start), normal)
+    : dotPoints(subtractPoints(currentEnd, start), normal);
+  const side = Math.abs(sideValue) > WORLD_GEOMETRY_TOLERANCE
+    ? Math.sign(sideValue)
+    : 1;
+  const center = {
+    x: start.x + normal.x * radius * side,
+    y: start.y + normal.y * radius * side
+  };
+
+  if (currentArc) {
+    return pointOnCircle(
+      center,
+      radius,
+      getPointAngleDegrees(currentArc.center, currentEnd));
+  }
+
+  const startAngle = getPointAngleDegrees(center, start);
+  return pointOnCircle(center, radius, startAngle + side * 90);
 }
 
 function getThreePointArcEndPointWithRadius(first, through, currentEnd, radius) {
@@ -8962,6 +9103,7 @@ function updateDebugAttributes(state) {
   state.canvas.dataset.hoveredSnapPoint = state.hoveredTarget && state.hoveredTarget.snapPoint
     ? `${formatKeyNumber(state.hoveredTarget.snapPoint.x)},${formatKeyNumber(state.hoveredTarget.snapPoint.y)}`
     : "";
+  state.canvas.dataset.powerTrimMode = getPowerTrimHoverModeForState(state) || "";
   state.canvas.dataset.acquiredSnapCount = String(state.acquiredSnapPoints.length);
   state.canvas.dataset.selectionBoxMode = state.selectionBox
     ? `${state.selectionBox.operation}:${isCrossingSelection(state.selectionBox) ? "crossing" : "window"}`
@@ -9031,10 +9173,6 @@ function getPointerScreenPoint(state, event) {
 
 function isPanPointerDown(event) {
   return isPanPointerDownForTool(event, null);
-}
-
-export function isPanPointerDownForTool(event, toolName) {
-  return event.button === 1;
 }
 
 function isPrimaryPointerButton(event) {
@@ -9243,54 +9381,6 @@ function getConstraintTool(state) {
   }
 }
 
-export function isTargetEligibleForConstraintTool(tool, target) {
-  const normalizedTool = normalizeToolName(tool);
-  if (!normalizedTool || !target || target.dynamic || target.kind === "dimension" || target.kind === "constraint") {
-    return false;
-  }
-
-  const kind = target.entity ? getEntityKind(target.entity) : "";
-  const isPoint = isEditableConstraintPointTarget(target, kind);
-  const isLine = target.kind === "segment" || (target.kind === "entity" && kind === "line");
-  const isCircleLike = kind === "circle" || kind === "arc";
-
-  switch (normalizedTool) {
-    case "coincident":
-      return isPoint;
-    case "horizontal":
-    case "vertical":
-      return isPoint || isLine;
-    case "parallel":
-    case "perpendicular":
-      return isLine;
-    case "tangent":
-      return isLine || isCircleLike;
-    case "concentric":
-      return isCircleLike;
-    case "equal":
-      return isLine || isCircleLike;
-    case "midpoint":
-      return isPoint || isLine;
-    case "fix":
-      return target.kind === "entity" || target.kind === "segment" || isPoint;
-    default:
-      return false;
-  }
-}
-
-function isEditableConstraintPointTarget(target, kind) {
-  if (target.kind === "entity" && kind === "point") {
-    return true;
-  }
-
-  if (target.kind !== "point" || !target.entity) {
-    return false;
-  }
-
-  const label = String(target.label || "").split("|")[0].toLowerCase();
-  return label === "start" || label === "end" || label === "center";
-}
-
 export function getSketchToolPointCount(tool) {
   switch (tool) {
     case "point":
@@ -9365,8 +9455,9 @@ export function getPowerTrimRequest(state, screenPoint) {
     return null;
   }
 
-  const target = findNearestTarget(state, screenPoint);
-  const point = screenToWorld(state, screenPoint);
+  const target = findNearestPowerTrimTarget(state, screenPoint);
+  const rawPoint = screenToWorld(state, screenPoint);
+  const point = getPowerTrimPickPoint(target, rawPoint);
   const targetKey = target && target.kind === "entity"
     ? target.key
     : target && (target.kind === "point" || target.kind === "segment")
@@ -9380,6 +9471,164 @@ export function getPowerTrimRequest(state, screenPoint) {
     targetKey,
     point
   };
+}
+
+export function getPowerTrimRequestMode(state, screenPoint) {
+  if (!isPowerTrimTool(state)) {
+    return null;
+  }
+
+  const target = findNearestPowerTrimTarget(state, screenPoint);
+  const rawPoint = screenToWorld(state, screenPoint);
+  const point = getPowerTrimPickPoint(target, rawPoint);
+  const targetKey = target && target.kind === "entity"
+    ? target.key
+    : target && (target.kind === "point" || target.kind === "segment")
+      ? target.entityId
+      : null;
+  if (!target || target.dynamic || !targetKey || !point) {
+    return null;
+  }
+
+  return isPowerTrimExtendPick(target, rawPoint) ? "extend" : "trim";
+}
+
+function getPowerTrimHoverModeForState(state) {
+  return isPowerTrimTool(state) && state.pointerScreenPoint
+    ? getPowerTrimRequestMode(state, state.pointerScreenPoint)
+    : null;
+}
+
+function getPowerTrimPickPoint(target, rawPoint) {
+  if (!target) {
+    return rawPoint;
+  }
+
+  if (isPowerTrimExtendPick(target, rawPoint)) {
+    return rawPoint;
+  }
+
+  return target.snapPoint || rawPoint;
+}
+
+function isPowerTrimExtendPick(target, rawPoint) {
+  return Boolean(target && target.snapPoint && isOffEndOpenPathPowerTrimPick(target, rawPoint));
+}
+
+function isOffEndOpenPathPowerTrimPick(target, rawPoint) {
+  if (!rawPoint || !target || !target.entity) {
+    return false;
+  }
+
+  const kind = getEntityKind(target.entity);
+  if (kind === "arc" && target.kind === "entity") {
+    return isOffEndArcPowerTrimPick(target.entity, rawPoint);
+  }
+
+  if (kind === "ellipse" && target.kind === "entity") {
+    return isOffEndEllipsePowerTrimPick(target.entity, rawPoint);
+  }
+
+  const points = getEntityPoints(target.entity);
+  if (points.length < 2) {
+    return false;
+  }
+
+  if (kind === "line" && target.kind === "entity") {
+    const projection = closestPointOnWorldSegment(rawPoint, points[0], points[1]);
+    return projection
+      && (projection.parameter < -WORLD_GEOMETRY_TOLERANCE
+        || projection.parameter > 1 + WORLD_GEOMETRY_TOLERANCE);
+  }
+
+  if (kind === "spline" && target.kind === "entity") {
+    return isOffEndPointSequencePowerTrimPick(points, rawPoint);
+  }
+
+  if (kind !== "polyline" || target.kind !== "segment") {
+    return false;
+  }
+
+  const segmentIndex = Number(target.segmentIndex);
+  if (!Number.isInteger(segmentIndex) || segmentIndex < 0 || segmentIndex >= points.length - 1) {
+    return false;
+  }
+
+  const projection = closestPointOnWorldSegment(rawPoint, points[segmentIndex], points[segmentIndex + 1]);
+  if (!projection) {
+    return false;
+  }
+
+  if (segmentIndex === 0 && projection.parameter < -WORLD_GEOMETRY_TOLERANCE) {
+    return true;
+  }
+
+  return projection
+    && segmentIndex === points.length - 2
+    && projection.parameter > 1 + WORLD_GEOMETRY_TOLERANCE;
+}
+
+function isOffEndArcPowerTrimPick(entity, rawPoint) {
+  const center = getEntityCenter(entity);
+  const radius = getEntityRadius(entity);
+  if (!center || !isFinitePositive(radius)) {
+    return false;
+  }
+
+  const startAngle = getEntityStartAngle(entity);
+  const sweep = getPositiveSweepDegrees(startAngle, getEntityEndAngle(entity));
+  if (sweep >= FULL_CIRCLE_DEGREES) {
+    return false;
+  }
+
+  const distance = distanceBetweenWorldPoints(center, rawPoint);
+  if (distance <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
+  const rawAngle = radiansToDegrees(Math.atan2(rawPoint.y - center.y, rawPoint.x - center.x));
+  return isParameterOutsideOpenSweep(startAngle, rawAngle, sweep);
+}
+
+function isOffEndEllipsePowerTrimPick(entity, rawPoint) {
+  const ellipse = getEllipseFromEntity(entity);
+  if (!ellipse) {
+    return false;
+  }
+
+  const sweep = getPositiveSweepDegrees(ellipse.startParameterDegrees, ellipse.endParameterDegrees);
+  if (sweep >= FULL_CIRCLE_DEGREES) {
+    return false;
+  }
+
+  const offset = subtractPoints(rawPoint, ellipse.center);
+  const localX = dotPoints(offset, ellipse.majorUnit) / ellipse.majorLength;
+  const localY = dotPoints(offset, ellipse.minorUnit) / ellipse.minorLength;
+  if (Math.hypot(localX, localY) <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
+  const rawParameter = radiansToDegrees(Math.atan2(localY, localX));
+  return isParameterOutsideOpenSweep(ellipse.startParameterDegrees, rawParameter, sweep);
+}
+
+function isParameterOutsideOpenSweep(startParameterDegrees, rawParameterDegrees, sweepDegrees) {
+  const delta = getCounterClockwiseDeltaDegrees(startParameterDegrees, rawParameterDegrees);
+  return delta > sweepDegrees + WORLD_GEOMETRY_TOLERANCE;
+}
+
+function isOffEndPointSequencePowerTrimPick(points, rawPoint) {
+  if (!Array.isArray(points) || points.length < 2 || !rawPoint) {
+    return false;
+  }
+
+  const firstProjection = closestPointOnWorldSegment(rawPoint, points[0], points[1]);
+  if (firstProjection && firstProjection.parameter < -WORLD_GEOMETRY_TOLERANCE) {
+    return true;
+  }
+
+  const lastProjection = closestPointOnWorldSegment(rawPoint, points[points.length - 2], points[points.length - 1]);
+  return lastProjection && lastProjection.parameter > 1 + WORLD_GEOMETRY_TOLERANCE;
 }
 
 function startPowerTrimDrag(state, candidate, screenPoint) {
@@ -9776,9 +10025,49 @@ function getSketchReferenceKeys(item) {
     : [];
 }
 
-function getSketchConstraintState(item) {
+function getSketchAffectedReferenceKeys(item) {
+  const affectedReferenceKeys = readProperty(item, "affectedReferenceKeys", "AffectedReferenceKeys");
+  if (Array.isArray(affectedReferenceKeys) && affectedReferenceKeys.length > 0) {
+    return affectedReferenceKeys.map(key => String(key));
+  }
+
+  return getSketchReferenceKeys(item);
+}
+
+function getSketchItemState(item) {
   const state = readProperty(item, "state", "State");
   return state === null || state === undefined ? "" : String(state).toLowerCase();
+}
+
+function getSketchConstraintState(item) {
+  return getSketchItemState(item);
+}
+
+export function getSketchDimensionState(item) {
+  return getSketchItemState(item);
+}
+
+export function getSketchDiagnosticEntityIds(document) {
+  const entityIds = new Set();
+  const diagnosticItems = [
+    ...getDocumentConstraints(document),
+    ...getDocumentDimensions(document)
+  ];
+
+  for (const item of diagnosticItems) {
+    if (getSketchItemState(item) !== "unsatisfied") {
+      continue;
+    }
+
+    for (const referenceKey of getSketchAffectedReferenceKeys(item)) {
+      const reference = parseSketchReference(referenceKey);
+      if (reference && reference.entityId) {
+        entityIds.add(reference.entityId);
+      }
+    }
+  }
+
+  return entityIds;
 }
 
 function resolveSketchReferencePoint(state, referenceKey) {
@@ -10073,12 +10362,22 @@ function findDocumentEntity(state, entityId) {
 
 function getEntityStartAngle(entity) {
   const value = Number(readProperty(entity, "startAngleDegrees", "StartAngleDegrees"));
-  return Number.isFinite(value) ? value : 0;
+  if (Number.isFinite(value)) {
+    return value;
+  }
+
+  const parameterValue = Number(readProperty(entity, "startParameterDegrees", "StartParameterDegrees"));
+  return Number.isFinite(parameterValue) ? parameterValue : 0;
 }
 
 function getEntityEndAngle(entity) {
   const value = Number(readProperty(entity, "endAngleDegrees", "EndAngleDegrees"));
-  return Number.isFinite(value) ? value : FULL_CIRCLE_DEGREES;
+  if (Number.isFinite(value)) {
+    return value;
+  }
+
+  const parameterValue = Number(readProperty(entity, "endParameterDegrees", "EndParameterDegrees"));
+  return Number.isFinite(parameterValue) ? parameterValue : FULL_CIRCLE_DEGREES;
 }
 
 function readPoint(value) {
@@ -10270,6 +10569,28 @@ export function getEllipseAxisDiameterPoints(ellipse, axis) {
   };
 }
 
+export function getCenteredAxisDiameterPoints(center, axisPoint) {
+  if (!center || !axisPoint) {
+    return null;
+  }
+
+  const vector = subtractPoints(axisPoint, center);
+  if (Math.hypot(vector.x, vector.y) <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  return {
+    start: {
+      x: center.x - vector.x,
+      y: center.y - vector.y
+    },
+    end: {
+      x: center.x + vector.x,
+      y: center.y + vector.y
+    }
+  };
+}
+
 function getEllipseFromEntity(entity) {
   const center = getEntityCenter(entity);
   const majorAxisEndPoint = getEntityMajorAxisEndPoint(entity);
@@ -10391,6 +10712,13 @@ export function getPolygonWorldPoints(center, radiusPoint, circumscribed = false
   }));
 }
 
+export function getPolygonGuideCircleWorldPoints(center, radiusPoint) {
+  const radius = distanceBetweenWorldPoints(center, radiusPoint);
+  return Number.isFinite(radius) && radius > WORLD_GEOMETRY_TOLERANCE
+    ? getCircleWorldPoints(center, radius)
+    : [];
+}
+
 function getQuadraticBezierWorldPoints(start, control, end, segmentCount = 32) {
   return Array.from({ length: segmentCount + 1 }, (_, index) => {
     const t = index / segmentCount;
@@ -10482,37 +10810,91 @@ export function getSplineTangentHandles(points, handleScale = 0.25) {
     return [];
   }
 
-  return points.map((point, index) => {
-    const previous = index > 0 ? points[index - 1] : null;
-    const next = index + 1 < points.length ? points[index + 1] : null;
-    const tangentSourceStart = previous || point;
-    const tangentSourceEnd = next || point;
-    const tangent = normalizeWorldVector(subtractPoints(tangentSourceEnd, tangentSourceStart));
-    if (!tangent) {
-      return {
-        point: copyPoint(point),
-        backward: null,
-        forward: null
-      };
+  const first = points[0];
+  const last = points[points.length - 1];
+  const firstNeighbor = getNearestDistinctSplinePoint(points, 1, 1);
+  const lastNeighbor = getNearestDistinctSplinePoint(points, points.length - 2, -1);
+
+  return [
+    getSplineEndpointTangentHandle(first, firstNeighbor, handleScale, true),
+    getSplineEndpointTangentHandle(last, lastNeighbor, handleScale, false)
+  ];
+}
+
+export function getPersistentSplineTangentHandlesForEntity(entity) {
+  if (getEntityKind(entity) !== "spline") {
+    return [];
+  }
+
+  const fitPoints = getEntityFitPoints(entity);
+  const controlPoints = getEntityControlPoints(entity);
+  const handlePoints = fitPoints.length >= 2
+    ? fitPoints
+    : controlPoints.length >= 2
+      ? controlPoints
+      : getEntityPoints(entity);
+  return getSplineTangentHandles(handlePoints, SPLINE_TANGENT_HANDLE_SCALE);
+}
+
+function getEntityFitPoints(entity) {
+  const rawPoints = readProperty(entity, "fitPoints", "FitPoints");
+
+  if (!Array.isArray(rawPoints)) {
+    return [];
+  }
+
+  return rawPoints
+    .map(readPoint)
+    .filter(point => point !== null);
+}
+
+function getEntityControlPoints(entity) {
+  const rawPoints = readProperty(entity, "controlPoints", "ControlPoints");
+
+  if (!Array.isArray(rawPoints)) {
+    return [];
+  }
+
+  return rawPoints
+    .map(readPoint)
+    .filter(point => point !== null);
+}
+
+function getNearestDistinctSplinePoint(points, startIndex, step) {
+  for (let index = startIndex; index >= 0 && index < points.length; index += step) {
+    if (distanceBetweenWorldPoints(points[index], points[startIndex - step]) > WORLD_GEOMETRY_TOLERANCE) {
+      return points[index];
     }
+  }
 
-    const previousDistance = previous ? distanceBetweenWorldPoints(point, previous) : null;
-    const nextDistance = next ? distanceBetweenWorldPoints(point, next) : null;
-    const fallbackDistance = previousDistance ?? nextDistance ?? 0;
-    const handleLength = Math.max(
-      WORLD_GEOMETRY_TOLERANCE,
-      Math.min(previousDistance ?? fallbackDistance, nextDistance ?? fallbackDistance) * handleScale);
+  return null;
+}
 
+function getSplineEndpointTangentHandle(point, neighbor, handleScale, isStart) {
+  const direction = neighbor
+    ? normalizeWorldVector(subtractPoints(neighbor, point))
+    : null;
+  if (!direction) {
     return {
       point: copyPoint(point),
-      backward: previous
-        ? { x: point.x - tangent.x * handleLength, y: point.y - tangent.y * handleLength }
-        : null,
-      forward: next
-        ? { x: point.x + tangent.x * handleLength, y: point.y + tangent.y * handleLength }
-        : null
+      backward: null,
+      forward: null
     };
-  });
+  }
+
+  const handleLength = Math.max(
+    WORLD_GEOMETRY_TOLERANCE,
+    distanceBetweenWorldPoints(point, neighbor) * handleScale);
+  const endpoint = {
+    x: point.x + direction.x * handleLength,
+    y: point.y + direction.y * handleLength
+  };
+
+  return {
+    point: copyPoint(point),
+    backward: isStart ? null : endpoint,
+    forward: isStart ? endpoint : null
+  };
 }
 
 function getSlotPreviewGeometry(startCenter, endCenter, radiusPoint) {
@@ -10570,315 +10952,8 @@ function getSlotRadiusPointWithLength(startCenter, endCenter, referencePoint, ra
   };
 }
 
-function midpoint(start, end) {
-  return {
-    x: (start.x + end.x) / 2,
-    y: (start.y + end.y) / 2
-  };
-}
-
-function mirrorPoint(center, point) {
-  return {
-    x: (2 * center.x) - point.x,
-    y: (2 * center.y) - point.y
-  };
-}
-
-function subtractPoints(first, second) {
-  return {
-    x: first.x - second.x,
-    y: first.y - second.y
-  };
-}
-
-function subtractScreenPoints(first, second) {
-  return subtractPoints(first, second);
-}
-
-function dotPoints(first, second) {
-  return first.x * second.x + first.y * second.y;
-}
-
-function dotScreenPoints(first, second) {
-  return dotPoints(first, second);
-}
-
-function normalizeScreenVector(vector) {
-  const length = Math.hypot(vector.x, vector.y);
-  return length <= WORLD_GEOMETRY_TOLERANCE
-    ? null
-    : {
-      x: vector.x / length,
-      y: vector.y / length
-    };
-}
-
-function projectPointToWorldLine(point, line) {
-  const deltaX = line.end.x - line.start.x;
-  const deltaY = line.end.y - line.start.y;
-  const lengthSquared = deltaX * deltaX + deltaY * deltaY;
-  if (lengthSquared <= WORLD_GEOMETRY_TOLERANCE) {
-    return line.start;
-  }
-
-  const scalar = (((point.x - line.start.x) * deltaX) + ((point.y - line.start.y) * deltaY)) / lengthSquared;
-  return {
-    x: line.start.x + deltaX * scalar,
-    y: line.start.y + deltaY * scalar
-  };
-}
-
-function getWorldLineIntersection(first, second) {
-  if (!first || !second || !first.start || !first.end || !second.start || !second.end) {
-    return null;
-  }
-
-  const firstVector = subtractPoints(first.end, first.start);
-  const secondVector = subtractPoints(second.end, second.start);
-  const denominator = crossPoints(firstVector, secondVector);
-  if (Math.abs(denominator) <= WORLD_GEOMETRY_TOLERANCE) {
-    return null;
-  }
-
-  const offset = subtractPoints(second.start, first.start);
-  const scalar = crossPoints(offset, secondVector) / denominator;
-  return {
-    x: first.start.x + firstVector.x * scalar,
-    y: first.start.y + firstVector.y * scalar
-  };
-}
-
-function angleBetweenWorldLines(first, second) {
-  const firstAngle = Math.atan2(first.end.y - first.start.y, first.end.x - first.start.x);
-  const secondAngle = Math.atan2(second.end.y - second.start.y, second.end.x - second.start.x);
-  const delta = Math.abs(radiansToDegrees(secondAngle - firstAngle)) % 180;
-  return delta > 90 ? 180 - delta : delta;
-}
-
-function crossPoints(first, second) {
-  return first.x * second.y - first.y * second.x;
-}
-
-function addUniquePoint(points, point) {
-  const duplicate = points.some(existing =>
-    distanceBetweenWorldPoints(existing, point) <= WORLD_GEOMETRY_TOLERANCE);
-
-  if (!duplicate) {
-    points.push(point);
-  }
-}
-
-function addUniqueNumber(values, value, tolerance = 0.000001) {
-  if (!Number.isFinite(value)) {
-    return;
-  }
-
-  const normalizedValue = normalizeAngleDegrees(value);
-  const duplicate = values.some(existing => {
-    const delta = Math.abs(normalizeAngleDegrees(existing) - normalizedValue);
-    return Math.min(delta, FULL_CIRCLE_DEGREES - delta) <= tolerance;
-  });
-  if (!duplicate) {
-    values.push(value);
-  }
-}
-
-function solveQuadratic(a, b, c) {
-  if (Math.abs(a) <= WORLD_GEOMETRY_TOLERANCE) {
-    if (Math.abs(b) <= WORLD_GEOMETRY_TOLERANCE) {
-      return [];
-    }
-
-    return [-c / b];
-  }
-
-  const discriminant = (b * b) - (4 * a * c);
-  if (discriminant < -WORLD_GEOMETRY_TOLERANCE) {
-    return [];
-  }
-
-  if (Math.abs(discriminant) <= WORLD_GEOMETRY_TOLERANCE) {
-    return [-b / (2 * a)];
-  }
-
-  const root = Math.sqrt(Math.max(0, discriminant));
-  return [
-    (-b - root) / (2 * a),
-    (-b + root) / (2 * a)
-  ];
-}
-
-function isCircleTangentToLinearSegmentAtPoint(circle, segment, point) {
-  const direction = subtractPoints(segment.end, segment.start);
-  const radius = subtractPoints(point, circle.center);
-  const directionLength = Math.hypot(direction.x, direction.y);
-  const radiusLength = Math.hypot(radius.x, radius.y);
-  if (directionLength <= WORLD_GEOMETRY_TOLERANCE || radiusLength <= WORLD_GEOMETRY_TOLERANCE) {
-    return false;
-  }
-
-  return Math.abs(dotPoints(direction, radius) / (directionLength * radiusLength)) <= 0.000001;
-}
-
-function isCircleTangentToCurveAtPoint(circle, curveCenter, point) {
-  const candidateRadius = subtractPoints(point, circle.center);
-  const targetRadius = subtractPoints(point, curveCenter);
-  const candidateLength = Math.hypot(candidateRadius.x, candidateRadius.y);
-  const targetLength = Math.hypot(targetRadius.x, targetRadius.y);
-  if (candidateLength <= WORLD_GEOMETRY_TOLERANCE || targetLength <= WORLD_GEOMETRY_TOLERANCE) {
-    return false;
-  }
-
-  return Math.abs(crossPoints(candidateRadius, targetRadius) / (candidateLength * targetLength)) <= 0.000001;
-}
-
-function isUnitParameter(parameter) {
-  return parameter >= -WORLD_GEOMETRY_TOLERANCE && parameter <= 1 + WORLD_GEOMETRY_TOLERANCE;
-}
-
-function isPointOnSegmentPrimitive(point, segment) {
-  const projection = closestPointOnWorldSegment(point, segment.start, segment.end);
-  return projection
-    && isUnitParameter(projection.parameter)
-    && projection.distance <= WORLD_GEOMETRY_TOLERANCE;
-}
-
-function isPointOnCurvePrimitive(point, curve) {
-  const distance = distanceBetweenWorldPoints(point, curve.center);
-  const radialTolerance = Math.max(WORLD_GEOMETRY_TOLERANCE, curve.radius * 0.000001);
-  if (Math.abs(distance - curve.radius) > radialTolerance) {
-    return false;
-  }
-
-  if (curve.startAngle === null || curve.endAngle === null) {
-    return true;
-  }
-
-  const angleDegrees = radiansToDegrees(Math.atan2(point.y - curve.center.y, point.x - curve.center.x));
-  return isAngleOnArc(angleDegrees, curve.startAngle, curve.endAngle);
-}
-
-function isAngleOnArc(angleDegrees, startAngleDegrees, endAngleDegrees) {
-  const sweep = getPositiveSweepDegrees(startAngleDegrees, endAngleDegrees);
-  if (sweep >= FULL_CIRCLE_DEGREES) {
-    return true;
-  }
-
-  const delta = getCounterClockwiseDeltaDegrees(startAngleDegrees, angleDegrees);
-  return delta <= sweep + 0.000001;
-}
-
-function getPositiveSweepDegrees(startAngleDegrees, endAngleDegrees) {
-  const rawSweep = endAngleDegrees - startAngleDegrees;
-  if (Math.abs(rawSweep) >= FULL_CIRCLE_DEGREES) {
-    return FULL_CIRCLE_DEGREES;
-  }
-
-  let sweep = rawSweep % FULL_CIRCLE_DEGREES;
-  if (sweep <= 0) {
-    sweep += FULL_CIRCLE_DEGREES;
-  }
-
-  return sweep;
-}
-
-function getCounterClockwiseDeltaDegrees(startAngleDegrees, angleDegrees) {
-  const delta = (angleDegrees - startAngleDegrees) % FULL_CIRCLE_DEGREES;
-  return delta < 0 ? delta + FULL_CIRCLE_DEGREES : delta;
-}
-
-function closestPointOnScreenSegment(point, start, end) {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const lengthSquared = dx * dx + dy * dy;
-
-  if (lengthSquared === 0) {
-    return {
-      point: start,
-      distance: distanceBetweenScreenPoints(point, start)
-    };
-  }
-
-  const projected = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
-  const clamped = clamp(projected, 0, 1);
-  const closestPoint = {
-    x: start.x + dx * clamped,
-    y: start.y + dy * clamped
-  };
-
-  return {
-    point: closestPoint,
-    distance: distanceBetweenScreenPoints(point, closestPoint)
-  };
-}
-
-function closestPointOnWorldSegment(point, start, end) {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const lengthSquared = dx * dx + dy * dy;
-
-  if (lengthSquared <= WORLD_GEOMETRY_TOLERANCE * WORLD_GEOMETRY_TOLERANCE) {
-    return {
-      point: start,
-      distance: distanceBetweenWorldPoints(point, start),
-      parameter: 0
-    };
-  }
-
-  const parameter = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
-  const clamped = clamp(parameter, 0, 1);
-  const closestPoint = {
-    x: start.x + dx * clamped,
-    y: start.y + dy * clamped
-  };
-
-  return {
-    point: closestPoint,
-    distance: distanceBetweenWorldPoints(point, closestPoint),
-    parameter
-  };
-}
-
-function distanceBetweenScreenPoints(first, second) {
-  return Math.hypot(first.x - second.x, first.y - second.y);
-}
-
-function distanceBetweenWorldPoints(first, second) {
-  return Math.hypot(first.x - second.x, first.y - second.y);
-}
-
-function degreesToRadians(degrees) {
-  return degrees * Math.PI / 180;
-}
-
-function radiansToDegrees(radians) {
-  return radians * 180 / Math.PI;
-}
-
-function normalizeAngleDegrees(angleDegrees) {
-  const normalized = angleDegrees % FULL_CIRCLE_DEGREES;
-  return normalized < 0 ? normalized + FULL_CIRCLE_DEGREES : normalized;
-}
-
-function isFinitePositive(value) {
-  return Number.isFinite(value) && value > 0;
-}
-
-function clamp(value, minimum, maximum) {
-  return Math.min(maximum, Math.max(minimum, value));
-}
-
 function formatKeyNumber(value) {
   return String(Math.round(value * 1000000) / 1000000);
-}
-
-function formatDimensionValue(value) {
-  if (!Number.isFinite(value)) {
-    return "";
-  }
-
-  const rounded = Math.round(value * 1000) / 1000;
-  return rounded.toFixed(3).replace(/\.?0+$/, "");
 }
 
 function sanitizeKeyPart(value) {

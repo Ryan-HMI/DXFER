@@ -24,32 +24,42 @@ import {
   getDynamicSketchSnapHit,
   getCenterPointArc,
   getChainedSketchToolDraft,
+  getConstraintGlyphGroupHit,
   getDimensionAnchorUpdateRequest,
   getDimensionDisplayText,
   getDimensionInputClassName,
   getDimensionPlacementRequest,
   getDimensionRenderStyle,
+  getDimensionSelectionKey,
+  getCenteredAxisDiameterPoints,
   getEllipseAxisDiameterPoints,
   getFitViewForDocument,
   getEllipseFromPoints,
+  getSketchDiagnosticEntityIds,
+  getSketchDimensionState,
   getPersistentDimensionDescriptors,
   getPersistentDimensionCommitValue,
   getPolygonWorldPoints,
+  getPolygonGuideCircleWorldPoints,
   getPendingPersistentDimensionEditId,
   getRadialDimensionScreenGeometry,
   getRadialDimensionPreference,
   getSketchToolDimensionLocks,
+  getSketchToolPreviewMarkerPoints,
   getSketchChainContextFromCommittedTool,
   getModifyToolPointCount,
   getSketchToolPointCount,
   getPostCommitSketchToolState,
+  getPersistentSplineTangentHandlesForEntity,
   getSplineFitWorldPoints,
   getSplineTangentHandles,
   getTangentArc,
+  getTangentArcFallbackPreviewPoints,
   getPointTargetMarker,
   getPowerTrimCrossingRequests,
   getNextDimensionKey,
   getNextSketchToolDimensionFocusKey,
+  getPowerTrimRequestMode,
   getPowerTrimRequest,
   getSplitAtPointRequest,
   getThreePointCircle,
@@ -58,6 +68,7 @@ import {
   getThreePointArcPreviewDimensions,
   getLinearDimensionScreenGeometry,
   findNearestTarget,
+  finishGeometryDrag,
   releaseDimensionDraftSelection,
   resolveActiveDimensionKey,
   isDynamicTargetCurrentToPointer,
@@ -200,6 +211,15 @@ test("ellipse axis dimension helpers use full diameter endpoints", () => {
   assert.deepEqual(minor.end, { x: 0, y: 2 });
 });
 
+test("ellipse major preview uses centered diameter endpoints before minor point", () => {
+  const major = getCenteredAxisDiameterPoints(
+    { x: 0, y: 0 },
+    { x: 4, y: 0 });
+
+  assert.deepEqual(major.start, { x: -4, y: 0 });
+  assert.deepEqual(major.end, { x: 4, y: 0 });
+});
+
 test("creation tool point counts cover remaining sketch tools", () => {
   assert.equal(getSketchToolPointCount("ellipse"), 3);
   assert.equal(getSketchToolPointCount("ellipticalarc"), 4);
@@ -235,7 +255,7 @@ test("spline fit preview interpolates every fit point", () => {
   assert.deepEqual(samples.at(-1), fitPoints.at(-1));
 });
 
-test("spline tangent handles are generated from fit point neighbors", () => {
+test("spline tangent handles are generated only from endpoint fit point neighbors", () => {
   const fitPoints = [
     { x: 0, y: 0 },
     { x: 1, y: 2 },
@@ -246,14 +266,135 @@ test("spline tangent handles are generated from fit point neighbors", () => {
 
   const handles = getSplineTangentHandles(fitPoints);
 
-  assert.equal(handles.length, fitPoints.length);
+  assert.equal(handles.length, 2);
   assert.deepEqual(handles[0].point, fitPoints[0]);
   assert.equal(handles[0].backward, null);
   assert.ok(handles[0].forward);
-  assert.ok(handles[2].backward);
-  assert.ok(handles[2].forward);
+  assert.deepEqual(handles[1].point, fitPoints.at(-1));
   assert.ok(handles.at(-1).backward);
   assert.equal(handles.at(-1).forward, null);
+  assert.equal(handles.some(handle => handle.point === fitPoints[2]), false);
+});
+
+test("created spline entities expose persistent endpoint tangent handles", () => {
+  const spline = {
+    id: "spline-a",
+    kind: "spline",
+    points: [
+      { x: 0, y: 0 },
+      { x: 1, y: 1 },
+      { x: 2, y: 0 },
+      { x: 3, y: 1 }
+    ]
+  };
+
+  const handles = getPersistentSplineTangentHandlesForEntity(spline);
+
+  assert.equal(handles.length, 2);
+  assert.deepEqual(handles[0].point, { x: 0, y: 0 });
+  assert.deepEqual(handles[1].point, { x: 3, y: 1 });
+});
+
+test("spline fit points are selectable point targets", () => {
+  const spline = {
+    id: "spline-a",
+    kind: "spline",
+    points: [
+      { x: 0, y: 0 },
+      { x: 2, y: 2 },
+      { x: 4, y: -1 },
+      { x: 6, y: 0 }
+    ],
+    fitPoints: [
+      { x: 0, y: 0 },
+      { x: 2, y: 2 },
+      { x: 4, y: -1 },
+      { x: 6, y: 0 }
+    ]
+  };
+
+  const target = findNearestTarget(createHitTestState([spline]), { x: 20, y: 80 });
+
+  assert.equal(target?.kind, "point");
+  assert.equal(target?.key, "spline-a|point|fit-1|2|2");
+});
+
+test("spline endpoint tangent handles are selectable point targets", () => {
+  const spline = {
+    id: "spline-a",
+    kind: "spline",
+    points: [
+      { x: 0, y: 0 },
+      { x: 4, y: 0 },
+      { x: 8, y: 2 }
+    ],
+    fitPoints: [
+      { x: 0, y: 0 },
+      { x: 4, y: 0 },
+      { x: 8, y: 2 }
+    ]
+  };
+
+  const target = findNearestTarget(createHitTestState([spline]), { x: 10, y: 100 });
+
+  assert.equal(target?.kind, "point");
+  assert.equal(target?.key, "spline-a|point|tangent-start|1|0");
+});
+
+test("spline fit point drag preview moves the fit point", () => {
+  const document = {
+    entities: [{
+      id: "spline-a",
+      kind: "spline",
+      points: [
+        { x: 0, y: 0 },
+        { x: 4, y: 0 },
+        { x: 8, y: 2 }
+      ],
+      fitPoints: [
+        { x: 0, y: 0 },
+        { x: 4, y: 0 },
+        { x: 8, y: 2 }
+      ]
+    }]
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "spline-a|point|fit-1|4|0",
+    { x: 4, y: 0 },
+    { x: 4, y: 2 });
+
+  assert.deepEqual(preview.entities[0].fitPoints[1], { x: 4, y: 2 });
+  assert.deepEqual(document.entities[0].fitPoints[1], { x: 4, y: 0 });
+});
+
+test("spline tangent handle drag preview moves the adjacent fit point", () => {
+  const document = {
+    entities: [{
+      id: "spline-a",
+      kind: "spline",
+      points: [
+        { x: 0, y: 0 },
+        { x: 4, y: 0 },
+        { x: 8, y: 2 }
+      ],
+      fitPoints: [
+        { x: 0, y: 0 },
+        { x: 4, y: 0 },
+        { x: 8, y: 2 }
+      ]
+    }]
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "spline-a|point|tangent-start|1|0",
+    { x: 1, y: 0 },
+    { x: 1, y: 1 });
+
+  assert.deepEqual(preview.entities[0].fitPoints[1], { x: 4, y: 4 });
+  assert.deepEqual(document.entities[0].fitPoints[1], { x: 4, y: 0 });
 });
 
 test("polygon helper distinguishes inscribed and circumscribed radii", () => {
@@ -264,6 +405,15 @@ test("polygon helper distinguishes inscribed and circumscribed radii", () => {
   assert.equal(circumscribed.length, 6);
   assertApproxEqual(Math.hypot(inscribed[0].x, inscribed[0].y), 10);
   assertApproxEqual(Math.hypot(circumscribed[0].x, circumscribed[0].y), 10 / Math.cos(Math.PI / 6));
+});
+
+test("polygon preview guide circle follows the picked radius or apothem", () => {
+  const guide = getPolygonGuideCircleWorldPoints({ x: 2, y: 3 }, { x: 7, y: 3 });
+
+  assert.equal(guide.length > 16, true);
+  for (const point of guide) {
+    assertApproxEqual(distanceBetweenTestPoints(point, { x: 2, y: 3 }), 5);
+  }
 });
 
 test("draft polygon side dimension is permanent editable state", () => {
@@ -467,6 +617,8 @@ test("three point arc preview prompts only radius", () => {
 
   assert.deepEqual(dimensions.map(dimension => dimension.key), ["radius"]);
   assertApproxEqual(dimensions[0].value, 1);
+  assert.equal(Number.isFinite(dimensions[0].point.x), true);
+  assert.equal(Number.isFinite(dimensions[0].point.y), true);
 });
 
 test("three point arc sweep dimension updates the preview endpoint", () => {
@@ -613,7 +765,7 @@ test("line chain hover toggles to a tangent arc draft and back to a line draft",
     }
   };
 
-  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 40, y: 100 }), false);
+  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 70, y: 100 }), false);
   assert.equal(state.activeTool, "line");
 
   const chainVertexTarget = {
@@ -669,6 +821,60 @@ test("tangent arc commit stays in arc mode until the next last vertex hover", ()
   assert.equal(state.sketchChainToggleRequiresExit, true);
 });
 
+test("tangent arc preview does not mark the tangent control point as a vertex", () => {
+  const markers = getSketchToolPreviewMarkerPoints(
+    "tangentarc",
+    [{ x: 4, y: 0 }, { x: 8, y: 0 }]
+  );
+
+  assert.deepEqual(markers, [{ x: 4, y: 0 }]);
+});
+
+test("tangent arc invalid fallback does not draw the mirrored tangent-control segment", () => {
+  assert.deepEqual(
+    getTangentArcFallbackPreviewPoints(
+      { x: 4, y: 0 },
+      { x: 8, y: 0 },
+      { x: 5, y: 0 }
+    ),
+    [{ x: 4, y: 0 }, { x: 5, y: 0 }]
+  );
+
+  assert.deepEqual(
+    getTangentArcFallbackPreviewPoints(
+      { x: 4, y: 0 },
+      { x: 8, y: 0 },
+      { x: 4, y: 0 }
+    ),
+    []
+  );
+});
+
+test("tangent arc radius key-in updates the preview and creates a radius lock", () => {
+  const state = {
+    activeTool: "tangentarc",
+    toolDraft: {
+      points: [{ x: 0, y: 0 }, { x: 1, y: 0 }],
+      previewPoint: { x: 2, y: 2 },
+      dimensionValues: {}
+    }
+  };
+
+  assert.equal(applyDraftDimensionValue(state, "radius", 5), true);
+
+  const arc = getTangentArc(
+    state.toolDraft.points[0],
+    state.toolDraft.points[1],
+    state.toolDraft.previewPoint
+  );
+
+  assertApproxEqual(arc.radius, 5);
+  assert.deepEqual(getSketchToolDimensionLocks(state.toolDraft), {
+    keys: ["radius"],
+    values: [5]
+  });
+});
+
 test("center point arc sweep dimension updates the preview endpoint", () => {
   const state = {
     activeTool: "centerpointarc",
@@ -717,6 +923,27 @@ test("chain tool toggle is suppressed until the pointer leaves the committed ver
   assert.equal(state.sketchChainToggleRequiresExit, false);
 
   assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 40, y: 100 }, chainVertexTarget), true);
+  assert.equal(state.activeTool, "tangentarc");
+});
+
+test("line chain hover toggles at the committed vertex even without a point target hit", () => {
+  const state = {
+    ...getPostCommitSketchToolState(
+      "line",
+      [{ x: 0, y: 0 }, { x: 4, y: 0 }]
+    ),
+    dimensionInputs: new Map(),
+    acquiredSnapPoints: [],
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 100
+    }
+  };
+
+  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 70, y: 100 }), false);
+  assert.equal(state.sketchChainToggleRequiresExit, false);
+  assert.equal(tryToggleSketchChainToolAtPoint(state, { x: 40, y: 100 }, null), true);
   assert.equal(state.activeTool, "tangentarc");
 });
 
@@ -1279,6 +1506,34 @@ test("dimension tool can extend a selected line to an angle dimension", () => {
   assert.equal(canExtendDimensionSelection(state, ["horizontal"], "vertical"), true);
 });
 
+test("dimension selection promotes line midpoint snap targets to line references", () => {
+  const lineState = createHitTestState([
+    {
+      id: "base",
+      kind: "line",
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+    }
+  ]);
+  const lineMidpointTarget = findNearestTarget(lineState, { x: 50, y: 100 });
+
+  assert.equal(lineMidpointTarget.kind, "point");
+  assert.equal(lineMidpointTarget.label, "mid");
+  assert.equal(getDimensionSelectionKey(lineMidpointTarget), "base");
+
+  const polylineState = createHitTestState([
+    {
+      id: "path",
+      kind: "polyline",
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 5 }]
+    }
+  ]);
+  const segmentMidpointTarget = findNearestTarget(polylineState, { x: 50, y: 100 });
+
+  assert.equal(segmentMidpointTarget.kind, "point");
+  assert.equal(segmentMidpointTarget.label, "mid-0");
+  assert.equal(getDimensionSelectionKey(segmentMidpointTarget), "path|segment|0");
+});
+
 test("dimension tool can extend a selected line to a point-line dimension", () => {
   const state = createHitTestState([
     {
@@ -1493,8 +1748,78 @@ test("selected persistent dimension style paints the full dimension differently"
   assert.equal(selectedStyle.glow, true);
 });
 
+test("unsatisfied persistent dimension style paints red", () => {
+  const normalStyle = getDimensionRenderStyle(false);
+  const unsatisfiedStyle = getDimensionRenderStyle(false, { unsatisfied: true });
+
+  assert.equal(unsatisfiedStyle.strokeStyle, "#f87171");
+  assert.equal(unsatisfiedStyle.textStyle, "#fecaca");
+  assert.notEqual(unsatisfiedStyle.strokeStyle, normalStyle.strokeStyle);
+});
+
+test("persistent dimension descriptors carry solver state", () => {
+  const state = {
+    document: {
+      entities: [
+        { id: "edge", kind: "line", points: [{ x: 0, y: 0 }, { x: 4, y: 0 }] }
+      ],
+      dimensions: [
+        {
+          id: "distance",
+          kind: "LinearDistance",
+          referenceKeys: ["edge:start", "edge:end"],
+          value: 10,
+          state: "Unsatisfied",
+          affectedReferenceKeys: ["edge:start", "edge:end"]
+        }
+      ]
+    },
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 0
+    },
+    dimensionAnchorOverrides: new Map()
+  };
+
+  const descriptors = getPersistentDimensionDescriptors(state);
+
+  assert.equal(descriptors.length, 1);
+  assert.equal(descriptors[0].state, "unsatisfied");
+  assert.deepEqual(descriptors[0].affectedReferenceKeys, ["edge:start", "edge:end"]);
+  assert.equal(getSketchDimensionState(state.document.dimensions[0]), "unsatisfied");
+});
+
+test("unsatisfied sketch diagnostics identify affected entity ids", () => {
+  const document = {
+    entities: [
+      { id: "edge", kind: "line", points: [{ x: 0, y: 0 }, { x: 4, y: 0 }] },
+      { id: "other", kind: "line", points: [{ x: 0, y: 5 }, { x: 4, y: 5 }] }
+    ],
+    dimensions: [
+      {
+        id: "distance",
+        kind: "LinearDistance",
+        state: "Unsatisfied",
+        affectedReferenceKeys: ["edge:start", "edge:end"]
+      }
+    ],
+    constraints: [
+      {
+        id: "parallel",
+        kind: "Parallel",
+        state: "Unsatisfied",
+        affectedReferenceKeys: ["edge", "other"]
+      }
+    ]
+  };
+
+  assert.deepEqual(getSketchDiagnosticEntityIds(document), new Set(["edge", "other"]));
+});
+
 test("dimension target selection uses full-dimension painting instead of a text rectangle", () => {
   assert.equal(shouldDrawSelectionTargetOverlay({ kind: "dimension" }), false);
+  assert.equal(shouldDrawSelectionTargetOverlay({ kind: "constraint" }), false);
   assert.equal(shouldDrawSelectionTargetOverlay({ kind: "entity" }), true);
 });
 
@@ -1509,6 +1834,15 @@ test("persistent dimension input classes mark selected text without edit chrome"
   assert.equal(className.includes("drawing-persistent-dimension-input-selected"), true);
   assert.equal(className.includes("drawing-persistent-dimension-input-active"), true);
   assert.equal(className.includes("drawing-dimension-input-active"), false);
+});
+
+test("persistent dimension input classes mark unsatisfied dimensions", () => {
+  const className = getDimensionInputClassName({
+    persistent: true,
+    unsatisfied: true
+  });
+
+  assert.equal(className.includes("drawing-persistent-dimension-input-unsatisfied"), true);
 });
 
 test("new persistent dimensions are detected for immediate edit focus", () => {
@@ -1585,6 +1919,48 @@ test("persistent dimension descriptors resolve line references to overlay positi
   assert.equal(descriptors[0].label, "Distance");
   assert.equal(descriptors[0].value, 5);
   assert.deepEqual(descriptors[0].point, { x: 115, y: 180 });
+});
+
+test("persistent dimension descriptors resolve parallel line distance references", () => {
+  const state = {
+    document: {
+      entities: [
+        {
+          id: "base",
+          kind: "line",
+          points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+        },
+        {
+          id: "offset",
+          kind: "line",
+          points: [{ x: 2, y: 4 }, { x: 8, y: 4 }]
+        }
+      ],
+      dimensions: [
+        {
+          id: "dim-offset",
+          kind: "PointToLineDistance",
+          referenceKeys: ["base", "offset"],
+          value: 4,
+          isDriving: true
+        }
+      ]
+    },
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 100
+    }
+  };
+
+  const descriptors = getPersistentDimensionDescriptors(state);
+
+  assert.equal(descriptors.length, 1);
+  assert.equal(descriptors[0].id, "dim-offset");
+  assert.equal(descriptors[0].geometry.type, "linear");
+  assert.deepEqual(descriptors[0].geometry.start, { x: 5, y: 4 });
+  assert.deepEqual(descriptors[0].geometry.end, { x: 5, y: 0 });
+  assert.equal(descriptors[0].value, 4);
 });
 
 test("persistent dimension descriptors resolve arc angle references to sweep geometry", () => {
@@ -1785,12 +2161,60 @@ test("dragged constraint glyph groups expose leader geometry to the reference an
   assert.ok(leader.end.y < leader.start.y);
 });
 
+test("default constraint glyph groups do not cover their anchor point", () => {
+  const state = createConstraintGlyphState(true);
+  const group = getConstraintGlyphGroups(state)
+    .find(candidate => candidate.key === "constraint-group:edge-a");
+
+  assert.ok(group);
+  assert.equal(
+    group.anchorScreenPoint.x >= group.rect.minX
+      && group.anchorScreenPoint.x <= group.rect.maxX
+      && group.anchorScreenPoint.y >= group.rect.minY
+      && group.anchorScreenPoint.y <= group.rect.maxY,
+    false);
+});
+
 test("default-position constraint glyph groups do not expose leader geometry", () => {
   const state = createConstraintGlyphState(true);
   const group = getConstraintGlyphGroups(state)
     .find(candidate => candidate.key === "constraint-group:edge-a");
 
   assert.equal(getConstraintGlyphLeader(group), null);
+});
+
+test("visible hover constraint glyphs are selectable when show all is off", () => {
+  const state = createConstraintGlyphState(false);
+  state.hoveredTarget = {
+    kind: "entity",
+    key: "edge-a",
+    entityId: "edge-a"
+  };
+
+  const group = getVisibleConstraintGlyphGroups(state)
+    .find(candidate => candidate.key === "constraint-group:edge-a");
+  const hit = getConstraintGlyphGroupHit(state, {
+    x: group.rect.minX + 8,
+    y: group.point.y
+  });
+
+  assert.ok(hit);
+  assert.equal(hit.target.kind, "constraint");
+  assert.equal(hit.target.key, "constraint:fix-a");
+});
+
+test("hovered constraint targets keep their glyph group visible", () => {
+  const state = createConstraintGlyphState(false);
+  state.hoveredTarget = {
+    kind: "constraint",
+    key: "constraint:fix-a",
+    constraintId: "fix-a"
+  };
+
+  const groups = getVisibleConstraintGlyphGroups(state);
+
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].key, "constraint-group:edge-a");
 });
 
 test("changing constraint visibility clears dragged glyph offsets", () => {
@@ -1856,6 +2280,62 @@ test("geometry drag preview moves one line endpoint", () => {
   assert.deepEqual(document.entities[0].points, [{ x: 0, y: 0 }, { x: 10, y: 0 }]);
 });
 
+test("finishing geometry drag restores the original document before server confirmation", () => {
+  const originalDocument = {
+    entities: [{
+      id: "edge",
+      kind: "line",
+      start: { x: 0, y: 0 },
+      end: { x: 10, y: 0 }
+    }],
+    dimensions: [],
+    constraints: []
+  };
+  const previewDocument = applyGeometryDragPreview(
+    originalDocument,
+    "edge|point|end|10|0",
+    { x: 10, y: 0 },
+    { x: 14, y: 0 });
+  const calls = [];
+  const state = {
+    activeTool: "select",
+    document: previewDocument,
+    selectedKeys: new Set(),
+    activeSelectionKey: null,
+    geometryDrag: {
+      pointerId: 1,
+      targetKey: "edge|point|end|10|0",
+      startScreenPoint: { x: 10, y: 0 },
+      currentScreenPoint: { x: 20, y: 0 },
+      startWorldPoint: { x: 10, y: 0 },
+      currentWorldPoint: { x: 14, y: 0 },
+      originalDocument,
+      constrainToCurrentVector: false,
+      moved: true
+    },
+    view: {
+      scale: 1,
+      offsetX: 0,
+      offsetY: 0
+    },
+    canvas: {
+      dataset: {}
+    },
+    dotnetRef: {
+      invokeMethodAsync: (...args) => {
+        calls.push(args);
+        return Promise.resolve();
+      }
+    }
+  };
+
+  assert.equal(finishGeometryDrag(state, { x: 20, y: 0 }, { pointerId: 1 }), true);
+  assert.equal(state.document, originalDocument);
+  assert.equal(state.geometryDrag, null);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], "OnGeometryDragRequested");
+});
+
 test("geometry drag preview translates a line midpoint", () => {
   const document = {
     entities: [
@@ -1907,6 +2387,77 @@ test("geometry drag preview translates dimension anchors for moved geometry", ()
 
   assert.deepEqual(preview.dimensions[0].anchor, { x: 7, y: 5 });
   assert.deepEqual(document.dimensions[0].anchor, { x: 5, y: 2 });
+});
+
+test("geometry drag preview updates ellipse major and minor handles", () => {
+  const document = {
+    entities: [
+      {
+        id: "ellipse",
+        kind: "ellipse",
+        center: { x: 0, y: 0 },
+        majorAxisEndPoint: { x: 4, y: 0 },
+        minorRadiusRatio: 0.5,
+        startAngleDegrees: 0,
+        endAngleDegrees: 360
+      }
+    ],
+    dimensions: [],
+    constraints: []
+  };
+
+  const majorPreview = applyGeometryDragPreview(
+    document,
+    "ellipse|point|quadrant-0|4|0",
+    { x: 4, y: 0 },
+    { x: 6, y: 0 });
+
+  assert.deepEqual(majorPreview.entities[0].majorAxisEndPoint, { x: 6, y: 0 });
+  assert.equal(majorPreview.entities[0].minorRadiusRatio, 0.5);
+
+  const minorPreview = applyGeometryDragPreview(
+    document,
+    "ellipse|point|quadrant-90|0|2",
+    { x: 0, y: 2 },
+    { x: 0, y: 3 });
+
+  assert.equal(minorPreview.entities[0].minorRadiusRatio, 0.75);
+});
+
+test("geometry drag preview translates whole ellipse and dimension anchors", () => {
+  const document = {
+    entities: [
+      {
+        id: "ellipse",
+        kind: "ellipse",
+        center: { x: 1, y: 2 },
+        majorAxisEndPoint: { x: 4, y: 0 },
+        minorRadiusRatio: 0.5,
+        startAngleDegrees: 0,
+        endAngleDegrees: 360
+      }
+    ],
+    dimensions: [
+      {
+        id: "ellipse-major",
+        kind: "lineardistance",
+        referenceKeys: ["ellipse:start", "ellipse:end"],
+        value: 8,
+        anchor: { x: 1, y: 4 }
+      }
+    ],
+    constraints: []
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "ellipse",
+    { x: 1, y: 2 },
+    { x: 4, y: 6 });
+
+  assert.deepEqual(preview.entities[0].center, { x: 4, y: 6 });
+  assert.deepEqual(preview.entities[0].majorAxisEndPoint, { x: 4, y: 0 });
+  assert.deepEqual(preview.dimensions[0].anchor, { x: 4, y: 8 });
 });
 
 test("point sketch tool needs one click", () => {
@@ -1974,6 +2525,228 @@ test("power trim request targets clicked entity with projected point", () => {
   assertApproxEqual(request.point.y, 0);
 });
 
+test("power trim request preserves off-end line edge pick for extend", () => {
+  const state = createHitTestState([
+    {
+      id: "edge",
+      kind: "line",
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+    }
+  ]);
+  state.activeTool = "powertrim";
+
+  const request = getPowerTrimRequest(state, { x: 109, y: 100 });
+
+  assert.equal(request.targetKey, "edge");
+  assertApproxEqual(request.point.x, 10.9);
+  assertApproxEqual(request.point.y, 0);
+});
+
+test("power trim request uses extended off-end tolerance for line extend picks", () => {
+  const state = createHitTestState([
+    {
+      id: "edge",
+      kind: "line",
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+    }
+  ]);
+  state.activeTool = "powertrim";
+
+  const request = getPowerTrimRequest(state, { x: 114, y: 100 });
+  const mode = getPowerTrimRequestMode(state, { x: 114, y: 100 });
+
+  assert.equal(request.targetKey, "edge");
+  assert.equal(mode, "extend");
+  assertApproxEqual(request.point.x, 11.4);
+  assertApproxEqual(request.point.y, 0);
+});
+
+test("power trim request mode classifies on-edge picks as trim", () => {
+  const state = createHitTestState([
+    {
+      id: "edge",
+      kind: "line",
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+    }
+  ]);
+  state.activeTool = "powertrim";
+
+  const mode = getPowerTrimRequestMode(state, { x: 40, y: 100 });
+
+  assert.equal(mode, "trim");
+});
+
+test("power trim request preserves off-end polyline edge pick for extend", () => {
+  const state = createHitTestState([
+    {
+      id: "edge",
+      kind: "polyline",
+      points: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 }]
+    }
+  ]);
+  state.activeTool = "powertrim";
+
+  const request = getPowerTrimRequest(state, { x: 109, y: 100 });
+
+  assert.equal(request.targetKey, "edge");
+  assertApproxEqual(request.point.x, 10.9);
+  assertApproxEqual(request.point.y, 0);
+});
+
+test("power trim request preserves off-end spline edge pick for extend", () => {
+  const state = createHitTestState([
+    {
+      id: "edge",
+      kind: "spline",
+      points: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 }]
+    }
+  ]);
+  state.activeTool = "powertrim";
+
+  const request = getPowerTrimRequest(state, { x: 109, y: 100 });
+
+  assert.equal(request.targetKey, "edge");
+  assertApproxEqual(request.point.x, 10.9);
+  assertApproxEqual(request.point.y, 0);
+});
+
+test("power trim request preserves off-end arc edge pick for extend", () => {
+  const state = createHitTestState([
+    {
+      id: "arc",
+      kind: "arc",
+      center: { x: 0, y: 0 },
+      radius: 10,
+      startAngleDegrees: 0,
+      endAngleDegrees: 90
+    }
+  ]);
+  state.activeTool = "powertrim";
+  const raw = {
+    x: 10 * Math.cos(95 * Math.PI / 180),
+    y: 10 * Math.sin(95 * Math.PI / 180)
+  };
+
+  const request = getPowerTrimRequest(state, { x: raw.x * 10, y: 100 - raw.y * 10 });
+
+  assert.equal(request.targetKey, "arc");
+  assertApproxEqual(request.point.x, raw.x);
+  assertApproxEqual(request.point.y, raw.y);
+});
+
+test("power trim request preserves off-end elliptical arc edge pick for extend", () => {
+  const state = createHitTestState([
+    {
+      id: "ellipse",
+      kind: "ellipse",
+      center: { x: 0, y: 0 },
+      majorAxisEndPoint: { x: 10, y: 0 },
+      minorRadiusRatio: 0.5,
+      startParameterDegrees: 0,
+      endParameterDegrees: 90
+    }
+  ]);
+  state.activeTool = "powertrim";
+  const raw = {
+    x: 10 * Math.cos(95 * Math.PI / 180),
+    y: 5 * Math.sin(95 * Math.PI / 180)
+  };
+
+  const request = getPowerTrimRequest(state, { x: raw.x * 10, y: 100 - raw.y * 10 });
+
+  assert.equal(request.targetKey, "ellipse");
+  assertApproxEqual(request.point.x, raw.x);
+  assertApproxEqual(request.point.y, raw.y);
+});
+
+test("power trim request projects closed circle edge picks instead of preserving raw extend picks", () => {
+  const state = createHitTestState([
+    {
+      id: "circle",
+      kind: "circle",
+      center: { x: 0, y: 0 },
+      radius: 5
+    }
+  ]);
+  state.activeTool = "powertrim";
+
+  const request = getPowerTrimRequest(state, { x: 54, y: 96 });
+
+  assert.equal(request.targetKey, "circle");
+  assertApproxEqual(Math.hypot(request.point.x, request.point.y), 5);
+  assert.notEqual(request.point.x, 5.4);
+  assert.notEqual(request.point.y, 0.4);
+});
+
+test("power trim request projects closed polygon edge picks instead of preserving raw extend picks", () => {
+  const state = createHitTestState([
+    {
+      id: "polygon",
+      kind: "polygon",
+      points: [
+        { x: -5, y: -5 },
+        { x: 5, y: -5 },
+        { x: 5, y: 5 },
+        { x: -5, y: 5 }
+      ]
+    }
+  ]);
+  state.activeTool = "powertrim";
+
+  const request = getPowerTrimRequest(state, { x: 20, y: 46 });
+
+  assert.equal(request.targetKey, "polygon");
+  assertApproxEqual(request.point.x, 2);
+  assertApproxEqual(request.point.y, 5);
+});
+
+test("power trim request uses projected ellipse edge point for near-edge clicks", () => {
+  const state = createHitTestState([
+    {
+      id: "ellipse",
+      kind: "ellipse",
+      center: { x: 0, y: 0 },
+      majorAxisEndPoint: { x: 4, y: 0 },
+      minorRadiusRatio: 0.5,
+      startAngleDegrees: 0,
+      endAngleDegrees: 360
+    }
+  ]);
+  state.activeTool = "powertrim";
+
+  const request = getPowerTrimRequest(state, { x: 28, y: 80 });
+
+  assert.equal(request.targetKey, "ellipse");
+  assert.equal(request.point.y < 2, true);
+  assert.notEqual(request.point.y, 2);
+});
+
+test("power trim request prefers ellipse edge over coincident cutter endpoint", () => {
+  const state = createHitTestState([
+    {
+      id: "ellipse",
+      kind: "ellipse",
+      center: { x: 0, y: 0 },
+      majorAxisEndPoint: { x: 5, y: 0 },
+      minorRadiusRatio: 0.5,
+      startAngleDegrees: 0,
+      endAngleDegrees: 360
+    },
+    {
+      id: "cutter",
+      kind: "line",
+      points: [{ x: 0, y: 0 }, { x: 2.5, y: 2.165064 }]
+    }
+  ]);
+  state.activeTool = "powertrim";
+
+  const request = getPowerTrimRequest(state, { x: 25, y: 78.34936 });
+
+  assert.equal(request.targetKey, "ellipse");
+  assertApproxEqual(request.point.x, 2.5, 0.01);
+  assertApproxEqual(request.point.y, 2.165064, 0.01);
+});
+
 test("power trim drag request captures crossed line targets", () => {
   const state = createHitTestState([
     {
@@ -2007,6 +2780,27 @@ test("power trim drag request captures crossed line targets", () => {
   assertApproxEqual(requests[0].point.y, 0);
   assertApproxEqual(requests[1].point.x, 6);
   assertApproxEqual(requests[1].point.y, 0);
+});
+
+test("ellipse entity edge is hoverable from sampled geometry", () => {
+  const state = createHitTestState([
+    {
+      id: "ellipse",
+      kind: "ellipse",
+      center: { x: 0, y: 0 },
+      majorAxisEndPoint: { x: 4, y: 0 },
+      minorRadiusRatio: 0.5,
+      startAngleDegrees: 0,
+      endAngleDegrees: 360
+    }
+  ]);
+
+  const target = findNearestTarget(state, { x: 28, y: 86 });
+
+  assert.equal(target.key, "ellipse");
+  assert.equal(target.kind, "entity");
+  assertApproxEqual(target.snapPoint.x, 2.8, 0.2);
+  assertApproxEqual(target.snapPoint.y, 1.4, 0.2);
 });
 
 test("power trim drag request captures crossed curve targets", () => {

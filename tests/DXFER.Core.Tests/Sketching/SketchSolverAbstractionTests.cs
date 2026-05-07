@@ -94,4 +94,44 @@ public sealed class SketchSolverAbstractionTests
         result.Diagnostics.Should().ContainSingle()
             .Which.Should().Contain("PlaneGCS");
     }
+
+    [Fact]
+    public void FallbackSolverReportsAffectedReferencesForUnsatisfiedDimensions()
+    {
+        var fixStart = new SketchConstraint(
+            "fix-start",
+            SketchConstraintKind.Fix,
+            new[] { "edge:start" },
+            SketchConstraintState.Satisfied);
+        var fixEnd = new SketchConstraint(
+            "fix-end",
+            SketchConstraintKind.Fix,
+            new[] { "edge:end" },
+            SketchConstraintState.Satisfied);
+        var distance = new SketchDimension(
+            "distance",
+            SketchDimensionKind.LinearDistance,
+            new[] { "edge:start", "edge:end" },
+            10,
+            isDriving: true);
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(4, 0))
+            },
+            Array.Empty<SketchDimension>(),
+            new[] { fixStart, fixEnd });
+        ISketchSolver solver = new LegacySketchSolverAdapter();
+
+        var result = solver.Solve(new SketchSolveRequest(document, new[] { fixStart, fixEnd }, new[] { distance }));
+
+        result.Status.Should().Be(SketchSolveStatus.Failed);
+        result.AffectedDiagnostics.Should().ContainSingle()
+            .Which.Should().Match<SketchSolveDiagnostic>(diagnostic =>
+                diagnostic.ItemId == "distance"
+                && diagnostic.ItemKind == "dimension"
+                && diagnostic.ReferenceKeys.SequenceEqual(new[] { "edge:start", "edge:end" }));
+        result.Diagnostics.Should().ContainSingle()
+            .Which.Should().Contain("distance");
+    }
 }

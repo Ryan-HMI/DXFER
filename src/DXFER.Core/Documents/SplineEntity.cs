@@ -8,6 +8,8 @@ public sealed record SplineEntity : DrawingEntity
     private const int SamplesPerKnotSpan = 16;
     private const int MaximumSampleIntervals = 256;
 
+    private readonly Lazy<IReadOnlyList<Point2>> _samplePoints;
+
     public SplineEntity(
         EntityId id,
         int degree,
@@ -41,6 +43,7 @@ public sealed record SplineEntity : DrawingEntity
         Knots = Array.AsReadOnly(knotValues);
         Weights = Array.AsReadOnly(weightValues);
         FitPoints = Array.AsReadOnly(fits);
+        _samplePoints = new Lazy<IReadOnlyList<Point2>>(BuildSamplePoints);
     }
 
     public override string Kind => "spline";
@@ -93,11 +96,18 @@ public sealed record SplineEntity : DrawingEntity
     public override DrawingEntity WithConstruction(bool isConstruction) =>
         new SplineEntity(Id, Degree, ControlPoints, Knots, Weights, isConstruction, FitPoints);
 
-    public IReadOnlyList<Point2> GetSamplePoints()
+    public IReadOnlyList<Point2> GetSamplePoints() => _samplePoints.Value;
+
+    private IReadOnlyList<Point2> BuildSamplePoints()
     {
         if (FitPoints.Count >= 2)
         {
             return GetFitSamplePoints(FitPoints);
+        }
+
+        if (Degree == 1)
+        {
+            return ControlPoints.ToArray();
         }
 
         var domainStart = Knots[Degree];
@@ -120,6 +130,44 @@ public sealed record SplineEntity : DrawingEntity
         }
 
         return points.Count >= 2 ? points : ControlPoints;
+    }
+
+    internal IEnumerable<(double Start, double End)> GetKnotParameterSpans()
+    {
+        if (FitPoints.Count >= 2)
+        {
+            yield break;
+        }
+
+        for (var index = Degree; index < ControlPoints.Count; index++)
+        {
+            var start = Knots[index];
+            var end = Knots[index + 1];
+            if (double.IsFinite(start) && double.IsFinite(end) && end > start)
+            {
+                yield return (start, end);
+            }
+        }
+    }
+
+    internal bool TryEvaluateKnotParameter(double parameter, out Point2 point)
+    {
+        if (FitPoints.Count >= 2 || Knots.Count <= ControlPoints.Count)
+        {
+            point = default;
+            return false;
+        }
+
+        var domainStart = Knots[Degree];
+        var domainEnd = Knots[ControlPoints.Count];
+        if (!double.IsFinite(domainStart) || !double.IsFinite(domainEnd) || domainEnd <= domainStart)
+        {
+            point = default;
+            return false;
+        }
+
+        point = Evaluate(Math.Clamp(parameter, domainStart, domainEnd));
+        return true;
     }
 
     private static IReadOnlyList<Point2> GetFitSamplePoints(IReadOnlyList<Point2> fitPoints)

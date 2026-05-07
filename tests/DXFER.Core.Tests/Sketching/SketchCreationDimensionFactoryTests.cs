@@ -83,6 +83,7 @@ public sealed class SketchCreationDimensionFactoryTests
 
     [Theory]
     [InlineData("threepointarc")]
+    [InlineData("tangentarc")]
     [InlineData("centerpointarc")]
     public void CreatesRadiusDimensionForKeyedArc(string toolName)
     {
@@ -202,6 +203,26 @@ public sealed class SketchCreationDimensionFactoryTests
             dimension.Kind == SketchDimensionKind.Count
             && dimension.ReferenceKeys.SequenceEqual(new[] { "poly-a" })
             && dimension.Value == 6);
+    }
+
+    [Fact]
+    public void PlacesPolygonRadiusDimensionAnchorAwayFromRadiusCorner()
+    {
+        var entities = new DrawingEntity[]
+        {
+            new PolygonEntity(EntityId.Create("poly-a"), new Point2(0, 0), 10, 90, 6)
+        };
+
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            "inscribedpolygon",
+            entities,
+            new Dictionary<string, double> { ["radius"] = 10 },
+            CreateDimensionId);
+
+        var radiusDimension = dimensions.Single(dimension => dimension.Kind == SketchDimensionKind.Radius);
+        radiusDimension.Anchor.Should().NotBeNull();
+        radiusDimension.Anchor!.Value.X.Should().BeApproximately(0, 0.000001);
+        radiusDimension.Anchor.Value.Y.Should().BeGreaterThan(10);
     }
 
     private static string CreateDimensionId() => Guid.NewGuid().ToString("N");

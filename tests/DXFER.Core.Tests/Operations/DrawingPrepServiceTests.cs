@@ -131,8 +131,31 @@ public sealed class DrawingPrepServiceTests
     }
 
     [Fact]
+    public void ReportsSelectedEntityBoundsWhenMultipleEntitiesAreSelected()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new Point2(-2, 1), new Point2(2, 3)),
+            new CircleEntity(EntityId.Create("hole"), new Point2(5, 1), 2)
+        });
+
+        DrawingPrepService.TryGetMeasurement(document, new[] { "edge", "hole" }, out var measurement)
+            .Should().BeTrue();
+
+        measurement.DeltaX.Should().Be(9);
+        measurement.DeltaY.Should().Be(4);
+        measurement.Distance.Should().BeApproximately(Math.Sqrt(97), 0.0001);
+    }
+
+    [Fact]
     public void TransformPreservesSketchData()
     {
+        var metadata = DrawingDocumentMetadata.Empty with
+        {
+            SourceFileName = "source.dxf",
+            Units = DrawingUnits.Inches,
+            TrustedSource = true
+        };
         var dimension = new SketchDimension(
             "dim-1",
             SketchDimensionKind.LinearDistance,
@@ -148,7 +171,8 @@ public sealed class DrawingPrepServiceTests
                 new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(10, 0))
             },
             new[] { dimension },
-            new[] { constraint });
+            new[] { constraint },
+            metadata);
 
         var transformed = DrawingPrepService.Transform(document, Transform2.Translation(1, 2));
 
@@ -156,5 +180,6 @@ public sealed class DrawingPrepServiceTests
             .Which.Should().BeSameAs(dimension);
         transformed.Constraints.Should().ContainSingle()
             .Which.Should().BeSameAs(constraint);
+        transformed.Metadata.Should().BeEquivalentTo(metadata);
     }
 }

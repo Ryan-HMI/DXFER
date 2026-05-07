@@ -8,6 +8,7 @@ public static class SketchGeometryDragService
 {
     private const string PointKeySeparator = "|point|";
     private const string SegmentKeySeparator = "|segment|";
+    private const double SplineTangentHandleScale = 0.25;
 
     public static bool TryApplyDrag(
         DrawingDocument document,
@@ -43,14 +44,21 @@ public static class SketchGeometryDragService
         }
 
         SketchConstraintPropagationService.PropagateFromChanges(originalEntities, entities, document.Constraints, fixedReferences);
+        if (!DrivingDimensionsRemainSatisfied(entities, document.Dimensions))
+        {
+            status = "Selected geometry is constrained by a driving dimension.";
+            return false;
+        }
+
         var dimensions = TryGetTranslatedDimensionEntityId(document, selectionKey, out var translatedEntityId)
             ? TranslateDimensionAnchors(document.Dimensions, translatedEntityId, delta)
             : document.Dimensions;
-        var draggedDocument = new DrawingDocument(entities, dimensions, document.Constraints);
+        var draggedDocument = new DrawingDocument(entities, dimensions, document.Constraints, document.Metadata);
         draggedDocument = new DrawingDocument(
             draggedDocument.Entities,
             draggedDocument.Dimensions,
-            SketchConstraintPropagationService.ValidateConstraints(draggedDocument, document.Constraints));
+            SketchConstraintPropagationService.ValidateConstraints(draggedDocument, document.Constraints),
+            document.Metadata);
         if (GeometryMatches(document.Entities, draggedDocument.Entities))
         {
             status = "Selected geometry is constrained.";
@@ -156,6 +164,27 @@ public static class SketchGeometryDragService
                     dragEnd,
                     delta,
                     constrainToCurrentVector,
+                    out status);
+            case EllipseEntity ellipse:
+                return TryApplyEllipsePointDrag(
+                    entities,
+                    fixedReferences,
+                    entityIndex,
+                    ellipse,
+                    label,
+                    targetPoint,
+                    dragEnd,
+                    delta,
+                    out status);
+            case SplineEntity spline:
+                return TryApplySplinePointDrag(
+                    entities,
+                    fixedReferences,
+                    entityIndex,
+                    spline,
+                    label,
+                    delta,
+                    dragEnd,
                     out status);
             case PointEntity pointEntity:
                 return TrySetPointEntityLocation(entities, fixedReferences, entityIndex, pointEntity, Add(pointEntity.Location, delta), out status);
@@ -400,6 +429,235 @@ public static class SketchGeometryDragService
         return true;
     }
 
+    private static bool TryApplyEllipsePointDrag(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        int entityIndex,
+        EllipseEntity ellipse,
+        string label,
+        Point2 targetPoint,
+        Point2 dragEnd,
+        Point2 delta,
+        out string status)
+    {
+        var reference = new SketchReference(ellipse.Id.Value, SketchReferenceTarget.Entity);
+        if (label == "center")
+        {
+            if (!fixedReferences.CanMoveCircleLikeCenter(reference))
+            {
+                status = "Ellipse center is constrained.";
+                return false;
+            }
+
+            entities[entityIndex] = ellipse with { Center = Add(ellipse.Center, delta) };
+            status = "Moved ellipse center.";
+            return true;
+        }
+
+        if (!fixedReferences.CanChangeCircleLikeRadius(reference))
+        {
+            status = "Ellipse axes are constrained.";
+            return false;
+        }
+
+        var majorLength = SketchGeometryEditor.Distance(new Point2(0, 0), ellipse.MajorAxisEndPoint);
+        if (majorLength <= SketchGeometryEditor.Tolerance)
+        {
+            status = "Ellipse major axis must stay positive.";
+            return false;
+        }
+
+        if (TryGetDraggedEllipseMajorAxis(ellipse, label, targetPoint, dragEnd, out var majorAxis))
+        {
+            if (SketchGeometryEditor.Distance(new Point2(0, 0), majorAxis) <= SketchGeometryEditor.Tolerance)
+            {
+                status = "Ellipse major axis must stay positive.";
+                return false;
+            }
+
+            entities[entityIndex] = ellipse with { MajorAxisEndPoint = majorAxis };
+            status = "Changed ellipse major axis.";
+            return true;
+        }
+
+        if (label == "quadrant-90" || label == "quadrant-270")
+        {
+            var majorUnit = new Point2(ellipse.MajorAxisEndPoint.X / majorLength, ellipse.MajorAxisEndPoint.Y / majorLength);
+            var minorUnit = new Point2(-majorUnit.Y, majorUnit.X);
+            var fromCenter = new Point2(dragEnd.X - ellipse.Center.X, dragEnd.Y - ellipse.Center.Y);
+            var minorLength = Math.Abs((fromCenter.X * minorUnit.X) + (fromCenter.Y * minorUnit.Y));
+            var ratio = minorLength / majorLength;
+            if (ratio <= SketchGeometryEditor.Tolerance)
+            {
+                status = "Ellipse minor axis must stay positive.";
+                return false;
+            }
+
+            entities[entityIndex] = ellipse with { MinorRadiusRatio = ratio };
+            status = "Changed ellipse minor axis.";
+            return true;
+        }
+
+        status = "Drag the ellipse center or quadrant point.";
+        return false;
+    }
+
+    private static bool TryApplySplinePointDrag(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        int entityIndex,
+        SplineEntity spline,
+        string label,
+        Point2 delta,
+        Point2 dragEnd,
+        out string status)
+    {
+        var reference = new SketchReference(spline.Id.Value, SketchReferenceTarget.Entity);
+        if (fixedReferences.IsWholeEntityFixed(reference))
+        {
+            status = "Spline is constrained.";
+            return false;
+        }
+
+        if (spline.FitPoints.Count >= 2)
+        {
+            return TryApplySplineEditablePointDrag(
+                entities,
+                entityIndex,
+                spline,
+                spline.FitPoints,
+                isFitSpline: true,
+                label,
+                delta,
+                dragEnd,
+                out status);
+        }
+
+        if (spline.ControlPoints.Count >= 2)
+        {
+            return TryApplySplineEditablePointDrag(
+                entities,
+                entityIndex,
+                spline,
+                spline.ControlPoints,
+                isFitSpline: false,
+                label,
+                delta,
+                dragEnd,
+                out status);
+        }
+
+        status = "Spline has no editable points.";
+        return false;
+    }
+
+    private static bool TryApplySplineEditablePointDrag(
+        DrawingEntity[] entities,
+        int entityIndex,
+        SplineEntity spline,
+        IReadOnlyList<Point2> sourcePoints,
+        bool isFitSpline,
+        string label,
+        Point2 delta,
+        Point2 dragEnd,
+        out string status)
+    {
+        var points = sourcePoints.ToArray();
+        var pointPrefix = isFitSpline ? "fit-" : "control-";
+        if (TryParseIndexedLabel(label, pointPrefix, out var pointIndex)
+            || TryGetSplineEndpointIndex(label, points.Length, out pointIndex))
+        {
+            if (pointIndex < 0 || pointIndex >= points.Length)
+            {
+                status = "Selected spline point no longer exists.";
+                return false;
+            }
+
+            points[pointIndex] = Add(points[pointIndex], delta);
+            entities[entityIndex] = WithSplineEditablePoints(spline, points, isFitSpline);
+            status = isFitSpline ? "Moved spline fit point." : "Moved spline control point.";
+            return true;
+        }
+
+        if (label == "tangent-start" || label == "tangent-end")
+        {
+            var endpointIndex = label == "tangent-start" ? 0 : points.Length - 1;
+            var adjacentIndex = label == "tangent-start" ? 1 : points.Length - 2;
+            var endpoint = points[endpointIndex];
+            var vector = new Point2(dragEnd.X - endpoint.X, dragEnd.Y - endpoint.Y);
+            if (SketchGeometryEditor.Distance(endpoint, dragEnd) <= SketchGeometryEditor.Tolerance)
+            {
+                status = "Spline tangent handle must stay distinct from the endpoint.";
+                return false;
+            }
+
+            points[adjacentIndex] = new Point2(
+                endpoint.X + (vector.X / SplineTangentHandleScale),
+                endpoint.Y + (vector.Y / SplineTangentHandleScale));
+            entities[entityIndex] = WithSplineEditablePoints(spline, points, isFitSpline);
+            status = "Changed spline endpoint tangent.";
+            return true;
+        }
+
+        status = "Drag a spline fit point, control point, or endpoint tangent handle.";
+        return false;
+    }
+
+    private static bool TryGetSplineEndpointIndex(string label, int pointCount, out int pointIndex)
+    {
+        pointIndex = label switch
+        {
+            "start" => 0,
+            "end" => pointCount - 1,
+            _ => -1
+        };
+        return pointIndex >= 0;
+    }
+
+    private static SplineEntity WithSplineEditablePoints(
+        SplineEntity spline,
+        IReadOnlyList<Point2> points,
+        bool isFitSpline) =>
+        isFitSpline
+            ? SplineEntity.FromFitPoints(spline.Id, points, spline.IsConstruction)
+            : new SplineEntity(
+                spline.Id,
+                spline.Degree,
+                points,
+                spline.Knots,
+                spline.Weights,
+                spline.IsConstruction,
+                spline.FitPoints);
+
+    private static bool TryGetDraggedEllipseMajorAxis(
+        EllipseEntity ellipse,
+        string label,
+        Point2 targetPoint,
+        Point2 dragEnd,
+        out Point2 majorAxis)
+    {
+        if (label == "quadrant-0"
+            || ((label == "start" || label == "end")
+                && SketchGeometryEditor.AreClose(targetPoint, Add(ellipse.Center, ellipse.MajorAxisEndPoint))))
+        {
+            majorAxis = new Point2(dragEnd.X - ellipse.Center.X, dragEnd.Y - ellipse.Center.Y);
+            return true;
+        }
+
+        if (label == "quadrant-180"
+            || ((label == "start" || label == "end")
+                && SketchGeometryEditor.AreClose(
+                    targetPoint,
+                    new Point2(ellipse.Center.X - ellipse.MajorAxisEndPoint.X, ellipse.Center.Y - ellipse.MajorAxisEndPoint.Y))))
+        {
+            majorAxis = new Point2(ellipse.Center.X - dragEnd.X, ellipse.Center.Y - dragEnd.Y);
+            return true;
+        }
+
+        majorAxis = default;
+        return false;
+    }
+
     private static bool TryApplyEntityDrag(
         DrawingEntity[] entities,
         SketchFixedReferences fixedReferences,
@@ -419,6 +677,10 @@ public static class SketchGeometryDragService
                 return TryApplyCirclePointDrag(entities, fixedReferences, entityIndex, circle, "perimeter", dragEnd, delta, constrainToCurrentVector: false, out status);
             case ArcEntity arc:
                 return TryApplyArcPointDrag(entities, fixedReferences, entityIndex, arc, "perimeter", dragEnd, delta, constrainToCurrentVector: false, out status);
+            case EllipseEntity ellipse:
+                return TryTranslateEllipse(entities, fixedReferences, entityIndex, ellipse, delta, out status);
+            case SplineEntity spline:
+                return TryTranslateSpline(entities, fixedReferences, entityIndex, spline, delta, out status);
             case PointEntity pointEntity:
                 return TrySetPointEntityLocation(entities, fixedReferences, entityIndex, pointEntity, Add(pointEntity.Location, delta), out status);
             default:
@@ -469,6 +731,53 @@ public static class SketchGeometryDragService
         var vertices = polyline.Vertices.Select(vertex => Add(vertex, delta)).ToArray();
         entities[entityIndex] = new PolylineEntity(polyline.Id, vertices, polyline.IsConstruction);
         status = "Moved polyline.";
+        return true;
+    }
+
+    private static bool TryTranslateEllipse(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        int entityIndex,
+        EllipseEntity ellipse,
+        Point2 delta,
+        out string status)
+    {
+        var reference = new SketchReference(ellipse.Id.Value, SketchReferenceTarget.Entity);
+        if (!fixedReferences.CanMoveCircleLikeCenter(reference))
+        {
+            status = "Ellipse is constrained.";
+            return false;
+        }
+
+        entities[entityIndex] = ellipse with { Center = Add(ellipse.Center, delta) };
+        status = "Moved ellipse.";
+        return true;
+    }
+
+    private static bool TryTranslateSpline(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        int entityIndex,
+        SplineEntity spline,
+        Point2 delta,
+        out string status)
+    {
+        var reference = new SketchReference(spline.Id.Value, SketchReferenceTarget.Entity);
+        if (fixedReferences.IsWholeEntityFixed(reference))
+        {
+            status = "Spline is constrained.";
+            return false;
+        }
+
+        entities[entityIndex] = new SplineEntity(
+            spline.Id,
+            spline.Degree,
+            spline.ControlPoints.Select(point => Add(point, delta)),
+            spline.Knots,
+            spline.Weights,
+            spline.IsConstruction,
+            spline.FitPoints.Select(point => Add(point, delta)));
+        status = "Moved spline.";
         return true;
     }
 
@@ -822,7 +1131,7 @@ public static class SketchGeometryDragService
             {
                 LineEntity => normalizedLabel == "mid",
                 PolylineEntity => normalizedLabel.StartsWith("mid-", StringComparison.Ordinal),
-                CircleEntity or ArcEntity => normalizedLabel == "center",
+                CircleEntity or ArcEntity or EllipseEntity => normalizedLabel == "center",
                 PointEntity => normalizedLabel == "point",
                 _ => false
             };
@@ -831,7 +1140,7 @@ public static class SketchGeometryDragService
         }
 
         var wholeEntity = document.Entities.FirstOrDefault(entity => StringComparer.Ordinal.Equals(entity.Id.Value, selectionKey));
-        var isWholeEntityTranslation = wholeEntity is LineEntity or PolylineEntity or PointEntity;
+        var isWholeEntityTranslation = wholeEntity is LineEntity or PolylineEntity or EllipseEntity or SplineEntity or PointEntity;
         entityId = isWholeEntityTranslation ? selectionKey : string.Empty;
         return isWholeEntityTranslation;
     }
@@ -952,9 +1261,132 @@ public static class SketchGeometryDragService
                 && SketchGeometryEditor.AreClose(a.Radius, b.Radius)
                 && SketchGeometryEditor.AreClose(a.StartAngleDegrees, b.StartAngleDegrees)
                 && SketchGeometryEditor.AreClose(a.EndAngleDegrees, b.EndAngleDegrees),
+            (EllipseEntity a, EllipseEntity b) => Close(a.Center, b.Center)
+                && Close(a.MajorAxisEndPoint, b.MajorAxisEndPoint)
+                && SketchGeometryEditor.AreClose(a.MinorRadiusRatio, b.MinorRadiusRatio)
+                && SketchGeometryEditor.AreClose(a.StartParameterDegrees, b.StartParameterDegrees)
+                && SketchGeometryEditor.AreClose(a.EndParameterDegrees, b.EndParameterDegrees),
+            (SplineEntity a, SplineEntity b) => a.ControlPoints.Count == b.ControlPoints.Count
+                && a.ControlPoints.Zip(b.ControlPoints).All(pair => Close(pair.First, pair.Second))
+                && a.FitPoints.Count == b.FitPoints.Count
+                && a.FitPoints.Zip(b.FitPoints).All(pair => Close(pair.First, pair.Second)),
             (PointEntity a, PointEntity b) => Close(a.Location, b.Location),
             _ => first.Equals(second)
         };
+    }
+
+    private static bool DrivingDimensionsRemainSatisfied(
+        IReadOnlyList<DrawingEntity> entities,
+        IReadOnlyList<SketchDimension> dimensions)
+    {
+        foreach (var dimension in dimensions)
+        {
+            if (!dimension.IsDriving
+                || !TryMeasureDimension(entities, dimension, out var measured)
+                || SketchGeometryEditor.AreClose(Math.Abs(measured), Math.Abs(dimension.Value)))
+            {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryMeasureDimension(
+        IReadOnlyList<DrawingEntity> entities,
+        SketchDimension dimension,
+        out double measured)
+    {
+        switch (dimension.Kind)
+        {
+            case SketchDimensionKind.LinearDistance:
+                return TryMeasurePointDistance(entities, dimension, out measured);
+            case SketchDimensionKind.HorizontalDistance:
+                return TryMeasureAxisDistance(entities, dimension, isHorizontal: true, out measured);
+            case SketchDimensionKind.VerticalDistance:
+                return TryMeasureAxisDistance(entities, dimension, isHorizontal: false, out measured);
+            case SketchDimensionKind.Radius:
+                return TryMeasureCircleLikeRadius(entities, dimension, diameter: false, out measured);
+            case SketchDimensionKind.Diameter:
+                return TryMeasureCircleLikeRadius(entities, dimension, diameter: true, out measured);
+            default:
+                measured = default;
+                return false;
+        }
+    }
+
+    private static bool TryMeasurePointDistance(
+        IReadOnlyList<DrawingEntity> entities,
+        SketchDimension dimension,
+        out double measured)
+    {
+        if (TryGetTwoDimensionPointReferences(dimension, out var firstReference, out var secondReference)
+            && SketchGeometryEditor.TryGetPoint(entities, firstReference, out var firstPoint)
+            && SketchGeometryEditor.TryGetPoint(entities, secondReference, out var secondPoint))
+        {
+            measured = SketchGeometryEditor.Distance(firstPoint, secondPoint);
+            return true;
+        }
+
+        measured = default;
+        return false;
+    }
+
+    private static bool TryMeasureAxisDistance(
+        IReadOnlyList<DrawingEntity> entities,
+        SketchDimension dimension,
+        bool isHorizontal,
+        out double measured)
+    {
+        if (TryGetTwoDimensionPointReferences(dimension, out var firstReference, out var secondReference)
+            && SketchGeometryEditor.TryGetPoint(entities, firstReference, out var firstPoint)
+            && SketchGeometryEditor.TryGetPoint(entities, secondReference, out var secondPoint))
+        {
+            measured = isHorizontal
+                ? Math.Abs(secondPoint.X - firstPoint.X)
+                : Math.Abs(secondPoint.Y - firstPoint.Y);
+            return true;
+        }
+
+        measured = default;
+        return false;
+    }
+
+    private static bool TryMeasureCircleLikeRadius(
+        IReadOnlyList<DrawingEntity> entities,
+        SketchDimension dimension,
+        bool diameter,
+        out double measured)
+    {
+        if (dimension.ReferenceKeys.Count > 0
+            && SketchReference.TryParse(dimension.ReferenceKeys[0], out var reference)
+            && SketchGeometryEditor.TryGetCircleLike(entities, reference, out _, out _, out var radius))
+        {
+            measured = diameter ? radius * 2.0 : radius;
+            return true;
+        }
+
+        measured = default;
+        return false;
+    }
+
+    private static bool TryGetTwoDimensionPointReferences(
+        SketchDimension dimension,
+        out SketchReference firstReference,
+        out SketchReference secondReference)
+    {
+        if (dimension.ReferenceKeys.Count >= 2
+            && SketchReference.TryParse(dimension.ReferenceKeys[0], out firstReference)
+            && SketchReference.TryParse(dimension.ReferenceKeys[1], out secondReference))
+        {
+            return true;
+        }
+
+        firstReference = default;
+        secondReference = default;
+        return false;
     }
 
     private static bool Close(Point2 first, Point2 second) =>

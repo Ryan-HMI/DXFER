@@ -1,97 +1,10 @@
 @namespace DXFER.Blazor.Components
 
 <div class="@WorkbenchCssClass" style="@WorkbenchGridStyle">
-    @if (_isToolPanelCollapsed)
-    {
-        <button type="button"
-                class="dxfer-dock-tab dxfer-dock-tab-left"
-                title="Show tool palette"
-                aria-label="Show tool palette"
-                @onclick="ToggleToolPanel">
-            <CadIcon Name="@CadIconName.CollapseRight" />
-        </button>
-    }
-    else
-    {
-    <aside class="dxfer-tool-panel" aria-label="DXFER prep tools">
-        <div class="dxfer-dock-header">
-            <div>
-                <div class="dxfer-section-title">Tools</div>
-                <div class="dxfer-dock-subtitle">Grouped CAD palette</div>
-            </div>
-            <CadIconButton Icon="@CadIconName.CollapseLeft"
-                           Label="Collapse tool palette"
-                           OnClick="ToggleToolPanel" />
-        </div>
-
-        <WorkbenchToolPalette Groups="@ToolGroups" OnCommandInvoked="InvokeWorkbenchCommand" />
-
-        <details class="dxfer-tool-section dxfer-tool-section-collapsible dxfer-cleanup-section" open>
-            <summary class="dxfer-tool-section-summary">
-                <span class="dxfer-tool-section-heading">
-                    <span class="dxfer-section-title">Cleanup</span>
-                    <span class="dxfer-tool-section-label">Prep</span>
-                </span>
-                <span class="dxfer-tool-section-count">@CleanupCommands.Count</span>
-            </summary>
-            <div class="dxfer-command-strip" role="toolbar" aria-label="Cleanup tools">
-                @foreach (var command in CleanupCommands)
-                {
-                    <CadIconButton Icon="@command.Icon"
-                                   Label="@command.Label"
-                                   Tooltip="@command.TooltipText"
-                                   Hotkey="@command.Hotkey"
-                                   Disabled="@command.Disabled"
-                                   Pressed="@command.Pressed"
-                                   Class="@BuildCommandClass(command)"
-                                   OnClick="@(() => InvokeWorkbenchCommand(command.Id))" />
-                }
-            </div>
-            <fieldset class="dxfer-grain-fieldset">
-                <legend>Grain</legend>
-                <div class="dxfer-segmented-control" role="radiogroup" aria-label="Grain direction">
-                    <label class="dxfer-segmented-option">
-                        <input type="radio" name="grain-direction" checked="@(_grainDirection == GrainDirection.None)" @onchange="() => SetGrainDirection(GrainDirection.None)" />
-                        <span>None</span>
-                    </label>
-                    <label class="dxfer-segmented-option">
-                        <input type="radio" name="grain-direction" checked="@(_grainDirection == GrainDirection.GlobalX)" @onchange="() => SetGrainDirection(GrainDirection.GlobalX)" />
-                        <span>X</span>
-                    </label>
-                    <label class="dxfer-segmented-option">
-                        <input type="radio" name="grain-direction" checked="@(_grainDirection == GrainDirection.GlobalY)" @onchange="() => SetGrainDirection(GrainDirection.GlobalY)" />
-                        <span>Y</span>
-                    </label>
-                </div>
-            </fieldset>
-        </details>
-
-        @if (IsParametricCommandActive)
-        {
-            <section class="dxfer-command-panel" aria-label="Command parameters">
-                <div class="dxfer-command-panel-title">@ActiveToolLabel</div>
-                <label>
-                    <span>Distance</span>
-                    <input type="number" placeholder="0.000" disabled />
-                </label>
-                <label>
-                    <span>Angle</span>
-                    <input type="number" placeholder="0.000" disabled />
-                </label>
-            </section>
-        }
-    </aside>
-    }
-
-    @if (!_isToolPanelCollapsed)
-    {
-        <button type="button"
-                class="dxfer-panel-resizer dxfer-panel-resizer-left"
-                title="Resize tool palette"
-                aria-label="Resize tool palette"
-                @onpointerdown="BeginToolPanelResize"
-                @onpointerdown:preventDefault="true" />
-    }
+    <div class="dxfer-tool-palette-host" aria-label="Dockable tool groups">
+        <WorkbenchToolPalette Groups="@ToolGroups"
+                              OnCommandInvoked="InvokeWorkbenchCommand" />
+    </div>
 
     <main class="dxfer-canvas-panel">
         <DrawingCanvas @ref="_canvas"

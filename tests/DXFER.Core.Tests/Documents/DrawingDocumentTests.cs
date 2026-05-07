@@ -18,6 +18,7 @@ public sealed class DrawingDocumentTests
         document.Entities.Should().HaveCount(1);
         document.Dimensions.Should().BeEmpty();
         document.Constraints.Should().BeEmpty();
+        document.Metadata.Should().Be(DrawingDocumentMetadata.Empty);
     }
 
     [Fact]
@@ -56,5 +57,44 @@ public sealed class DrawingDocumentTests
             .Which.Id.Should().Be("dim-1");
         document.Constraints.Should().ContainSingle()
             .Which.Id.Should().Be("constraint-1");
+    }
+
+    [Fact]
+    public void ConstructorStoresDocumentMetadata()
+    {
+        var metadata = DrawingDocumentMetadata.Empty with
+        {
+            SourceFileName = "trusted-flat.dxf",
+            SourceSha256 = "abc123",
+            Units = DrawingUnits.Millimeters,
+            Mode = DrawingDocumentMode.ReferenceOnly,
+            TrustedSource = true,
+            Warnings = new[]
+            {
+                new DrawingDocumentWarning(
+                    "unsupported-entity",
+                    DrawingDocumentWarningSeverity.Warning,
+                    "Skipped 2 unsupported entities.")
+            },
+            UnsupportedEntityCounts = new Dictionary<string, int>
+            {
+                ["3DSOLID"] = 2
+            }
+        };
+
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(1, 0))
+            },
+            Array.Empty<SketchDimension>(),
+            Array.Empty<SketchConstraint>(),
+            metadata);
+
+        document.Metadata.Should().BeEquivalentTo(metadata);
+        document.Metadata.Warnings.Should().ContainSingle()
+            .Which.Code.Should().Be("unsupported-entity");
+        document.Metadata.UnsupportedEntityCounts.Should().ContainKey("3DSOLID")
+            .WhoseValue.Should().Be(2);
     }
 }

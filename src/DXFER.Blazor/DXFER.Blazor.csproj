@@ -16,6 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\DXFER.CadIO\DXFER.CadIO.csproj" />
     <ProjectReference Include="..\DXFER.Core\DXFER.Core.csproj" />
   </ItemGroup>
 

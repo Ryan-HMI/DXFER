@@ -17,4 +17,7 @@ public static class DxfDownloadFileName
 
         return Path.ChangeExtension(fileName, ".dxf");
     }
+
+    public static string SidecarFromSourceName(string? sourceName) =>
+        Path.ChangeExtension(FromSourceName(sourceName), ".dxfer.json");
 }

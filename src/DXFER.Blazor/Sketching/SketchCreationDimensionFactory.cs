@@ -271,7 +271,7 @@ public static class SketchCreationDimensionFactory
             SketchDimensionKind.Radius,
             new[] { polygon.Id.Value },
             value,
-            polygon.GetRadiusPoint(),
+            GetPolygonRadialDimensionAnchor(polygon),
             isDriving: true);
 
     private static SketchDimension CreateCountDimension(string id, PolygonEntity polygon) =>
@@ -282,6 +282,23 @@ public static class SketchCreationDimensionFactory
             polygon.NormalizedSideCount,
             new Point2(polygon.Center.X, polygon.Center.Y - Math.Max(polygon.Radius * 0.55, 0.5)),
             isDriving: true);
+
+    private static Point2 GetPolygonRadialDimensionAnchor(PolygonEntity polygon)
+    {
+        var radiusPoint = polygon.GetRadiusPoint();
+        var dx = radiusPoint.X - polygon.Center.X;
+        var dy = radiusPoint.Y - polygon.Center.Y;
+        var length = Math.Sqrt((dx * dx) + (dy * dy));
+        if (length <= GeometryTolerance)
+        {
+            return new Point2(polygon.Center.X + Math.Max(polygon.Radius, 0.5), polygon.Center.Y);
+        }
+
+        var offset = Math.Max(length * 0.18, 0.5);
+        return new Point2(
+            polygon.Center.X + dx / length * (length + offset),
+            polygon.Center.Y + dy / length * (length + offset));
+    }
 
     private static LineEntity? FindAxisLine(IEnumerable<LineEntity> lines, bool preferHorizontal)
     {

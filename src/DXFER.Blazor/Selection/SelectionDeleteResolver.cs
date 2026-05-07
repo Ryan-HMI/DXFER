@@ -113,7 +113,7 @@ public static class SelectionDeleteResolver
         return deletedEntities == 0 && deletedSegments == 0 && deletedDimensions == 0 && deletedConstraints == 0
             ? new SelectionDeleteResult(document, 0, 0, 0, 0)
             : new SelectionDeleteResult(
-                new DrawingDocument(nextEntities, nextDimensions, nextConstraints),
+                new DrawingDocument(nextEntities, nextDimensions, nextConstraints, document.Metadata),
                 deletedEntities,
                 deletedSegments,
                 deletedDimensions,

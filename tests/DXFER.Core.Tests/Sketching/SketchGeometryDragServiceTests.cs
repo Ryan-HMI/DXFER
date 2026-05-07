@@ -123,6 +123,35 @@ public sealed class SketchGeometryDragServiceTests
     }
 
     [Fact]
+    public void DraggingPerpendicularLineEndpointKeepsRelationSatisfied()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("base"), new Point2(0, 0), new Point2(10, 0)),
+                new LineEntity(EntityId.Create("upright"), new Point2(10, 0), new Point2(10, 5))
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint("join", SketchConstraintKind.Coincident, new[] { "base:end", "upright:start" }),
+                new SketchConstraint("square", SketchConstraintKind.Perpendicular, new[] { "base", "upright" })
+            });
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "base|point|end|10|0",
+            new Point2(10, 0),
+            new Point2(10, 2),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
     public void DraggingLineMidpointTranslatesLine()
     {
         var document = new DrawingDocument(new DrawingEntity[]
@@ -172,6 +201,88 @@ public sealed class SketchGeometryDragServiceTests
             out _).Should().BeTrue();
 
         next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(7, 5));
+    }
+
+    [Fact]
+    public void DraggingSplineFitPointUpdatesFitPointSpline()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            SplineEntity.FromFitPoints(
+                EntityId.Create("spline-a"),
+                new[] { new Point2(0, 0), new Point2(4, 0), new Point2(8, 2) })
+        });
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "spline-a|point|fit-1|4|0",
+            new Point2(4, 0),
+            new Point2(4, 2),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        next.Entities.Should().ContainSingle().Which.Should().BeOfType<SplineEntity>()
+            .Which.FitPoints.Should().Equal(new Point2(0, 0), new Point2(4, 2), new Point2(8, 2));
+    }
+
+    [Fact]
+    public void DraggingSplineEndpointTangentHandleUpdatesAdjacentFitPoint()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            SplineEntity.FromFitPoints(
+                EntityId.Create("spline-a"),
+                new[] { new Point2(0, 0), new Point2(4, 0), new Point2(8, 2) })
+        });
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "spline-a|point|tangent-start|1|0",
+            new Point2(1, 0),
+            new Point2(1, 1),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        next.Entities.Should().ContainSingle().Which.Should().BeOfType<SplineEntity>()
+            .Which.FitPoints.Should().Equal(new Point2(0, 0), new Point2(4, 4), new Point2(8, 2));
+    }
+
+    [Fact]
+    public void DrivingLinearDimensionPreventsEndpointDragFromChangingMeasuredLength()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(10, 0))
+            },
+            new[]
+            {
+                new SketchDimension(
+                    "width",
+                    SketchDimensionKind.LinearDistance,
+                    new[] { "edge:start", "edge:end" },
+                    10,
+                    new Point2(5, 2),
+                    isDriving: true)
+            },
+            Array.Empty<SketchConstraint>());
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "edge|point|end|10|0",
+            new Point2(10, 0),
+            new Point2(14, 0),
+            false,
+            out var next,
+            out var status);
+
+        changed.Should().BeFalse();
+        next.Should().BeSameAs(document);
+        status.Should().Contain("constrained");
     }
 
     [Fact]
@@ -235,6 +346,104 @@ public sealed class SketchGeometryDragServiceTests
 
         next.Entities.Should().ContainSingle().Which.Should().BeOfType<CircleEntity>()
             .Which.Radius.Should().Be(5);
+    }
+
+    [Fact]
+    public void DraggingEllipseCenterMovesEllipseAndDimensions()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new EllipseEntity(EntityId.Create("ellipse"), new Point2(2, 3), new Point2(4, 0), 0.5)
+            },
+            new[]
+            {
+                new SketchDimension(
+                    "ellipse-major",
+                    SketchDimensionKind.LinearDistance,
+                    new[] { "ellipse" },
+                    8,
+                    new Point2(2, 6))
+            },
+            Array.Empty<SketchConstraint>());
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "ellipse|point|center|2|3",
+            new Point2(2, 3),
+            new Point2(5, 7),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        var ellipse = next.Entities.Should().ContainSingle().Which.Should().BeOfType<EllipseEntity>().Subject;
+        ellipse.Center.Should().Be(new Point2(5, 7));
+        ellipse.MajorAxisEndPoint.Should().Be(new Point2(4, 0));
+        next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(5, 10));
+    }
+
+    [Fact]
+    public void DraggingEllipseMajorQuadrantChangesMajorAxis()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new EllipseEntity(EntityId.Create("ellipse"), new Point2(0, 0), new Point2(4, 0), 0.5)
+        });
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "ellipse|point|quadrant-0|4|0",
+            new Point2(4, 0),
+            new Point2(6, 0),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        var ellipse = next.Entities.Should().ContainSingle().Which.Should().BeOfType<EllipseEntity>().Subject;
+        ellipse.MajorAxisEndPoint.Should().Be(new Point2(6, 0));
+        ellipse.MinorRadiusRatio.Should().Be(0.5);
+    }
+
+    [Fact]
+    public void DraggingFullEllipseStartPointChangesMajorAxis()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new EllipseEntity(EntityId.Create("ellipse"), new Point2(0, 0), new Point2(4, 0), 0.5)
+        });
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "ellipse|point|start|4|0",
+            new Point2(4, 0),
+            new Point2(6, 0),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        next.Entities.Should().ContainSingle().Which.Should().BeOfType<EllipseEntity>()
+            .Which.MajorAxisEndPoint.Should().Be(new Point2(6, 0));
+    }
+
+    [Fact]
+    public void DraggingEllipseMinorQuadrantChangesMinorRatio()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new EllipseEntity(EntityId.Create("ellipse"), new Point2(0, 0), new Point2(4, 0), 0.5)
+        });
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "ellipse|point|quadrant-90|0|2",
+            new Point2(0, 2),
+            new Point2(0, 3),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        next.Entities.Should().ContainSingle().Which.Should().BeOfType<EllipseEntity>()
+            .Which.MinorRadiusRatio.Should().BeApproximately(0.75, 0.000001);
     }
 
     [Fact]

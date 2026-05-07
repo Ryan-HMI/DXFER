@@ -61,13 +61,56 @@ public sealed class CanvasDocumentDtoTests
                 && dimension.ReferenceKeys.SequenceEqual(new[] { "edge:start", "edge:end" })
                 && dimension.Value == 5
                 && dimension.Anchor == new CanvasPointDto(1.5, 2)
-                && dimension.IsDriving);
+                && dimension.IsDriving
+                && dimension.State == "Satisfied"
+                && dimension.AffectedReferenceKeys.Count == 0);
         dto.Constraints.Should().ContainSingle()
             .Which.Should().Match<CanvasSketchConstraintDto>(constraint =>
                 constraint.Id == "horizontal-1"
                 && constraint.Kind == "Horizontal"
                 && constraint.ReferenceKeys.SequenceEqual(new[] { "edge" })
-                && constraint.State == "Satisfied");
+                && constraint.State == "Satisfied"
+                && constraint.AffectedReferenceKeys.Count == 0);
+    }
+
+    [Fact]
+    public void ExposesUnsatisfiedSketchItemsWithAffectedReferences()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(4, 1))
+            },
+            new[]
+            {
+                new SketchDimension(
+                    "distance",
+                    SketchDimensionKind.LinearDistance,
+                    new[] { "edge:start", "edge:end" },
+                    10,
+                    isDriving: true)
+            },
+            new[]
+            {
+                new SketchConstraint(
+                    "horizontal",
+                    SketchConstraintKind.Horizontal,
+                    new[] { "edge" },
+                    SketchConstraintState.Unsatisfied)
+            });
+
+        var dto = CanvasDocumentDto.FromDocument(document);
+
+        dto.Dimensions.Should().ContainSingle()
+            .Which.Should().Match<CanvasSketchDimensionDto>(dimension =>
+                dimension.Id == "distance"
+                && dimension.State == "Unsatisfied"
+                && dimension.AffectedReferenceKeys.SequenceEqual(new[] { "edge:start", "edge:end" }));
+        dto.Constraints.Should().ContainSingle()
+            .Which.Should().Match<CanvasSketchConstraintDto>(constraint =>
+                constraint.Id == "horizontal"
+                && constraint.State == "Unsatisfied"
+                && constraint.AffectedReferenceKeys.SequenceEqual(new[] { "edge" }));
     }
 
     [Fact]
@@ -108,5 +151,28 @@ public sealed class CanvasDocumentDtoTests
         polygon.SideCount.Should().Be(8);
         polygon.Circumscribed.Should().BeTrue();
         polygon.Points.Should().HaveCount(8);
+    }
+
+    [Fact]
+    public void ExposesSplineFitPointsForPersistentHandles()
+    {
+        var fitPoints = new[]
+        {
+            new Point2(0, 0),
+            new Point2(1, 2),
+            new Point2(3, 1),
+            new Point2(5, 4)
+        };
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            SplineEntity.FromFitPoints(EntityId.Create("spline-a"), fitPoints)
+        });
+
+        var dto = CanvasDocumentDto.FromDocument(document);
+
+        var spline = dto.Entities.Should().ContainSingle().Subject;
+        spline.Kind.Should().Be("spline");
+        spline.FitPoints.Should().Equal(fitPoints.Select(point => new CanvasPointDto(point.X, point.Y)));
+        spline.Points.Should().HaveCountGreaterThan(fitPoints.Length);
     }
 }

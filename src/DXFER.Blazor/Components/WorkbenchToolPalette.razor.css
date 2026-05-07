@@ -1,44 +1,224 @@
-.dxfer-tool-section {
-    display: grid;
-    gap: 0.48rem;
-    padding: 0.68rem 0.72rem;
-    border-bottom: 1px solid #2d343b;
+.dxfer-workbench-tool-palette {
+    position: absolute;
+    inset: 0;
+    --dxfer-side-dock-width: 14.65rem;
+    --dxfer-horizontal-dock-preview-height: 4.35rem;
+    pointer-events: none;
 }
 
-.dxfer-tool-section-collapsible {
+.dxfer-workbench-tool-palette-dragging {
+    cursor: grabbing;
+    pointer-events: auto;
+}
+
+.dxfer-tool-dock-zone,
+.dxfer-tool-floating-layer {
+    position: absolute;
+    pointer-events: none;
+}
+
+.dxfer-workbench-tool-palette-dragging .dxfer-tool-dock-zone::before {
+    position: absolute;
+    z-index: 0;
     display: block;
+    color: #a7b8c4;
+    background: rgba(20, 27, 32, 0.72);
+    border: 1px dashed #4b6473;
+    content: "";
+    pointer-events: none;
+}
+
+.dxfer-workbench-tool-palette-dragging .dxfer-tool-dock-zone-preview::before {
+    background: rgba(30, 75, 95, 0.34);
+    border-color: #38bdf8;
+    box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.32);
+}
+
+.dxfer-tool-dock-zone-left,
+.dxfer-tool-dock-zone-right {
+    top: 0;
+    bottom: 0;
+    width: var(--dxfer-side-dock-width);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    overflow: auto;
+    padding: 0.35rem;
+}
+
+.dxfer-tool-dock-zone-left {
+    left: 0;
+    align-items: flex-start;
+}
+
+.dxfer-workbench-tool-palette-dragging .dxfer-tool-dock-zone-left::before {
+    inset: 1px auto 1px 1px;
+    width: 4rem;
+}
+
+.dxfer-tool-dock-zone-right {
+    right: 0;
+    align-items: flex-end;
+}
+
+.dxfer-workbench-tool-palette-dragging .dxfer-tool-dock-zone-right::before {
+    inset: 1px 1px 1px auto;
+    width: 4rem;
+}
+
+.dxfer-tool-dock-zone-top,
+.dxfer-tool-dock-zone-bottom {
+    left: var(--dxfer-side-dock-width);
+    right: var(--dxfer-side-dock-width);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    min-height: var(--dxfer-horizontal-dock-preview-height);
+    overflow: visible;
+    padding: 0.35rem;
+}
+
+.dxfer-tool-dock-zone-top {
+    top: 0;
+    align-items: flex-start;
+    align-content: flex-start;
+}
+
+.dxfer-workbench-tool-palette-dragging .dxfer-tool-dock-zone-top::before {
+    inset: 1px 1px auto;
+    height: calc(100% - 2px);
+}
+
+.dxfer-tool-dock-zone-bottom {
+    bottom: 0;
+    align-items: flex-end;
+    align-content: flex-end;
+}
+
+.dxfer-workbench-tool-palette-dragging .dxfer-tool-dock-zone-bottom::before {
+    inset: auto 1px 1px;
+    height: calc(100% - 2px);
+}
+
+.dxfer-tool-floating-layer {
+    inset: 0;
+}
+
+.dxfer-tool-group {
+    position: relative;
+    display: block;
+    width: max-content;
+    max-width: min(360px, calc(100vw - 1rem));
+    padding: 0;
+    color: #dce3e8;
+    background: #181c20;
+    border: 1px solid #2d343b;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+    pointer-events: auto;
+    user-select: none;
+}
+
+.dxfer-tool-group-floating {
+    position: absolute;
+    z-index: 5;
+}
+
+.dxfer-tool-group-dragging {
+    cursor: grabbing;
+    z-index: 10;
+    opacity: 0.92;
+}
+
+.dxfer-tool-group-expanded {
+    min-width: 13.75rem;
+}
+
+.dxfer-tool-group-left.dxfer-tool-group-expanded,
+.dxfer-tool-group-right.dxfer-tool-group-expanded {
+    width: 13.75rem;
+}
+
+.dxfer-tool-group-compact {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.22rem;
+    padding: 0.26rem;
+}
+
+.dxfer-tool-group-single {
+    width: 3.55rem;
+}
+
+.dxfer-tool-group-double {
+    width: 6.1rem;
+}
+
+.dxfer-tool-group-top,
+.dxfer-tool-group-bottom {
+    flex: 0 0 auto;
+    width: auto;
+}
+
+.dxfer-tool-group-horizontal {
+    align-items: center;
+    max-width: none;
+    width: max-content;
+}
+
+.dxfer-tool-group-horizontal .dxfer-command-strip {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    gap: 0.36rem;
+    overflow: visible;
+    padding: 0;
 }
 
 .dxfer-tool-section-summary {
     align-items: center;
-    cursor: pointer;
+    cursor: grab;
     display: flex;
     gap: 0.4rem;
     justify-content: space-between;
     list-style: none;
     min-height: 1.25rem;
+    padding: 0.55rem 0.62rem 0.35rem;
 }
 
-.dxfer-tool-section-summary::-webkit-details-marker {
-    display: none;
-}
-
-.dxfer-tool-section-summary::before {
+.dxfer-tool-group-grip {
+    align-items: center;
     color: #91a4b0;
-    content: ">";
-    font-size: 0.74rem;
-    line-height: 1;
-    transform: rotate(0deg);
-    transition: transform 120ms ease;
+    cursor: grab;
+    display: inline-flex;
+    flex: 0 0 auto;
+    justify-content: center;
+    min-height: 1.35rem;
+    width: 0.7rem;
 }
 
-.dxfer-tool-section-collapsible[open] > .dxfer-tool-section-summary::before {
-    transform: rotate(90deg);
+.dxfer-tool-group-dragging .dxfer-tool-group-grip,
+.dxfer-workbench-tool-palette-dragging .dxfer-tool-group-grip {
+    cursor: grabbing;
 }
 
-.dxfer-tool-section-summary:hover .dxfer-section-title,
-.dxfer-tool-section-summary:focus-visible .dxfer-section-title {
-    color: #ffffff;
+.dxfer-tool-group-grip::before {
+    background: repeating-linear-gradient(
+        to bottom,
+        currentColor 0 1px,
+        transparent 1px 3px
+    );
+    content: "";
+    display: block;
+    height: 0.7rem;
+    opacity: 0.8;
+    width: 0.42rem;
+}
+
+.dxfer-tool-section-heading {
+    align-items: baseline;
+    display: flex;
+    gap: 0.38rem;
+    min-width: 0;
 }
 
 .dxfer-section-title {
@@ -49,26 +229,23 @@
     text-transform: uppercase;
 }
 
-.dxfer-tool-section-heading {
-    align-items: baseline;
-    display: flex;
-    gap: 0.38rem;
-    min-width: 0;
-}
-
-.dxfer-tool-section-label {
-    color: #8295a2;
-    font-size: 0.68rem;
-    line-height: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .dxfer-tool-section-count {
     color: #7f929f;
     font-size: 0.68rem;
     line-height: 1;
+}
+
+.dxfer-tool-group-compact-grip {
+    align-self: stretch;
+    background: #151a1f;
+    border-right: 1px solid #2d343b;
+    min-height: 2.15rem;
+    width: 0.76rem;
+}
+
+.dxfer-tool-group-horizontal .dxfer-tool-group-compact-grip {
+    border-right: 1px solid #2d343b;
+    min-height: 2.15rem;
 }
 
 .dxfer-command-strip {
@@ -76,5 +253,26 @@
     grid-template-columns: repeat(auto-fill, 2.15rem);
     gap: 0.36rem;
     align-items: center;
-    margin-top: 0.48rem;
+    padding: 0.4rem;
+}
+
+.dxfer-tool-group-compact .dxfer-command-strip {
+    grid-template-columns: repeat(var(--dxfer-group-columns, 2), 2.15rem);
+    padding: 0;
+}
+
+.dxfer-tool-group .dxfer-icon-button {
+    overflow: hidden;
+}
+
+@media (max-width: 980px) {
+    .dxfer-workbench-tool-palette {
+        --dxfer-side-dock-width: min(14.65rem, 40vw);
+    }
+
+    .dxfer-tool-group-expanded,
+    .dxfer-tool-group-left.dxfer-tool-group-expanded,
+    .dxfer-tool-group-right.dxfer-tool-group-expanded {
+        width: min(13.75rem, calc(100vw - 1rem));
+    }
 }

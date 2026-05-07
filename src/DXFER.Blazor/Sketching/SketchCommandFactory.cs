@@ -101,14 +101,31 @@ public static class SketchCommandFactory
 
             if (lineSelections.Length == 2)
             {
+                var firstLine = lineSelections[0].Line!;
+                var secondLine = lineSelections[1].Line!;
+                if (AreLinesParallel(firstLine, secondLine))
+                {
+                    var secondMidpoint = Midpoint(secondLine.Start, secondLine.End);
+                    var projection = ProjectPointToLine(secondMidpoint, firstLine);
+                    dimension = new SketchDimension(
+                        id,
+                        SketchDimensionKind.PointToLineDistance,
+                        new[] { lineSelections[0].Key, lineSelections[1].Key },
+                        Distance(secondMidpoint, projection),
+                        anchorOverride ?? Midpoint(secondMidpoint, projection),
+                        isDriving: true);
+                    status = "Added parallel line distance dimension.";
+                    return true;
+                }
+
                 dimension = new SketchDimension(
                     id,
                     SketchDimensionKind.Angle,
                     new[] { lineSelections[0].Key, lineSelections[1].Key },
-                    AngleBetweenLines(lineSelections[0].Line!, lineSelections[1].Line!),
+                    AngleBetweenLines(firstLine, secondLine),
                     anchorOverride ?? Midpoint(
-                        Midpoint(lineSelections[0].Line!.Start, lineSelections[0].Line!.End),
-                        Midpoint(lineSelections[1].Line!.Start, lineSelections[1].Line!.End)),
+                        Midpoint(firstLine.Start, firstLine.End),
+                        Midpoint(secondLine.Start, secondLine.End)),
                     isDriving: true);
                 status = "Added line angle dimension.";
                 return true;
@@ -373,6 +390,23 @@ public static class SketchCommandFactory
         var secondAngle = Math.Atan2(second.End.Y - second.Start.Y, second.End.X - second.Start.X);
         var delta = Math.Abs((secondAngle - firstAngle) * 180.0 / Math.PI) % 180.0;
         return delta > 90.0 ? 180.0 - delta : delta;
+    }
+
+    private static bool AreLinesParallel(LineEntity first, LineEntity second)
+    {
+        var firstDeltaX = first.End.X - first.Start.X;
+        var firstDeltaY = first.End.Y - first.Start.Y;
+        var secondDeltaX = second.End.X - second.Start.X;
+        var secondDeltaY = second.End.Y - second.Start.Y;
+        var firstLength = Math.Sqrt(firstDeltaX * firstDeltaX + firstDeltaY * firstDeltaY);
+        var secondLength = Math.Sqrt(secondDeltaX * secondDeltaX + secondDeltaY * secondDeltaY);
+        if (firstLength <= GeometryTolerance || secondLength <= GeometryTolerance)
+        {
+            return false;
+        }
+
+        var cross = firstDeltaX * secondDeltaY - firstDeltaY * secondDeltaX;
+        return Math.Abs(cross) <= GeometryTolerance * firstLength * secondLength;
     }
 
     private sealed record SketchSelection(

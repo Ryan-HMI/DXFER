@@ -5,6 +5,8 @@ namespace DXFER.Core.Sketching;
 
 public static class SketchDimensionSolverService
 {
+    private const double DimensionValueTolerance = 0.001;
+
     public static DrawingDocument ApplyDimensions(
         DrawingDocument document,
         IEnumerable<SketchDimension> dimensions)
@@ -40,11 +42,53 @@ public static class SketchDimensionSolverService
         }
 
         var dimensions = UpsertDimension(document.Dimensions, effectiveDimension);
-        var solvedDocument = new DrawingDocument(entities, dimensions, document.Constraints);
+        var solvedDocument = new DrawingDocument(entities, dimensions, document.Constraints, document.Metadata);
         return new DrawingDocument(
             entities,
             dimensions,
-            SketchConstraintPropagationService.ValidateConstraints(solvedDocument, document.Constraints));
+            SketchConstraintPropagationService.ValidateConstraints(solvedDocument, document.Constraints),
+            document.Metadata);
+    }
+
+    public static SketchConstraintState GetDimensionState(
+        DrawingDocument document,
+        SketchDimension dimension)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(dimension);
+
+        return IsDimensionSatisfied(document, dimension)
+            ? SketchConstraintState.Satisfied
+            : SketchConstraintState.Unsatisfied;
+    }
+
+    public static bool IsDimensionSatisfied(
+        DrawingDocument document,
+        SketchDimension dimension)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(dimension);
+
+        if (!TryGetDimensionMeasurement(document, dimension, out var actualValue))
+        {
+            return false;
+        }
+
+        var expectedValue = dimension.Kind == SketchDimensionKind.Count
+            ? PolygonEntity.NormalizeSideCount(dimension.Value)
+            : Math.Abs(dimension.Value);
+        return Math.Abs(actualValue - expectedValue) <= DimensionValueTolerance;
+    }
+
+    public static bool TryGetDimensionMeasurement(
+        DrawingDocument document,
+        SketchDimension dimension,
+        out double value)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(dimension);
+
+        return TryGetDimensionMeasurement(document.Entities, dimension, out value);
     }
 
     private static void ApplyDimensionGeometry(
@@ -81,6 +125,142 @@ public static class SketchDimensionSolverService
                 ApplyCount(entities, fixedReferences, dimension);
                 break;
         }
+    }
+
+    private static bool TryGetDimensionMeasurement(
+        IReadOnlyList<DrawingEntity> entities,
+        SketchDimension dimension,
+        out double value)
+    {
+        value = default;
+        switch (dimension.Kind)
+        {
+            case SketchDimensionKind.LinearDistance:
+                return TryGetTwoPointReferences(dimension, out var linearFirst, out var linearSecond)
+                    && SketchGeometryEditor.TryGetPoint(entities, linearFirst, out var linearFirstPoint)
+                    && SketchGeometryEditor.TryGetPoint(entities, linearSecond, out var linearSecondPoint)
+                    && TryAssign(Distance(linearFirstPoint, linearSecondPoint), out value);
+            case SketchDimensionKind.HorizontalDistance:
+                return TryGetTwoPointReferences(dimension, out var horizontalFirst, out var horizontalSecond)
+                    && SketchGeometryEditor.TryGetPoint(entities, horizontalFirst, out var horizontalFirstPoint)
+                    && SketchGeometryEditor.TryGetPoint(entities, horizontalSecond, out var horizontalSecondPoint)
+                    && TryAssign(Math.Abs(horizontalSecondPoint.X - horizontalFirstPoint.X), out value);
+            case SketchDimensionKind.VerticalDistance:
+                return TryGetTwoPointReferences(dimension, out var verticalFirst, out var verticalSecond)
+                    && SketchGeometryEditor.TryGetPoint(entities, verticalFirst, out var verticalFirstPoint)
+                    && SketchGeometryEditor.TryGetPoint(entities, verticalSecond, out var verticalSecondPoint)
+                    && TryAssign(Math.Abs(verticalSecondPoint.Y - verticalFirstPoint.Y), out value);
+            case SketchDimensionKind.PointToLineDistance:
+                return TryGetPointToLineDimensionMeasurement(entities, dimension, out value);
+            case SketchDimensionKind.Radius:
+                return TryGetCircleLikeDimensionMeasurement(entities, dimension, diameter: false, out value);
+            case SketchDimensionKind.Diameter:
+                return TryGetCircleLikeDimensionMeasurement(entities, dimension, diameter: true, out value);
+            case SketchDimensionKind.Angle:
+                return TryGetAngleDimensionMeasurement(entities, dimension, out value);
+            case SketchDimensionKind.Count:
+                return TryGetCountDimensionMeasurement(entities, dimension, out value);
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryGetPointToLineDimensionMeasurement(
+        IReadOnlyList<DrawingEntity> entities,
+        SketchDimension dimension,
+        out double value)
+    {
+        value = default;
+        if (dimension.ReferenceKeys.Count < 2
+            || !SketchReference.TryParse(dimension.ReferenceKeys[0], out var firstReference)
+            || !SketchReference.TryParse(dimension.ReferenceKeys[1], out var secondReference))
+        {
+            return false;
+        }
+
+        var firstIsLine = SketchGeometryEditor.TryGetLine(entities, firstReference, out _, out var firstLine);
+        var secondIsLine = SketchGeometryEditor.TryGetLine(entities, secondReference, out _, out var secondLine);
+        var firstIsPoint = SketchGeometryEditor.TryGetPoint(entities, firstReference, out var firstPoint);
+        var secondIsPoint = SketchGeometryEditor.TryGetPoint(entities, secondReference, out var secondPoint);
+
+        if (firstIsLine && secondIsLine)
+        {
+            return AreLinesParallel(firstLine, secondLine)
+                && TryAssign(DistancePointToLine(SketchGeometryEditor.Midpoint(secondLine), firstLine), out value);
+        }
+
+        if (firstIsLine && secondIsPoint)
+        {
+            return TryAssign(DistancePointToLine(secondPoint, firstLine), out value);
+        }
+
+        if (firstIsPoint && secondIsLine)
+        {
+            return TryAssign(DistancePointToLine(firstPoint, secondLine), out value);
+        }
+
+        return false;
+    }
+
+    private static bool TryGetCircleLikeDimensionMeasurement(
+        IReadOnlyList<DrawingEntity> entities,
+        SketchDimension dimension,
+        bool diameter,
+        out double value)
+    {
+        value = default;
+        if (dimension.ReferenceKeys.Count == 0
+            || !SketchReference.TryParse(dimension.ReferenceKeys[0], out var reference)
+            || !SketchGeometryEditor.TryGetCircleLike(entities, reference, out _, out _, out var radius))
+        {
+            return false;
+        }
+
+        return TryAssign(diameter ? radius * 2.0 : radius, out value);
+    }
+
+    private static bool TryGetAngleDimensionMeasurement(
+        IReadOnlyList<DrawingEntity> entities,
+        SketchDimension dimension,
+        out double value)
+    {
+        value = default;
+        if (dimension.ReferenceKeys.Count == 1
+            && SketchReference.TryParse(dimension.ReferenceKeys[0], out var arcReference)
+            && SketchGeometryEditor.TryGetEntity(entities, arcReference, out _, out var entity)
+            && entity is ArcEntity arc)
+        {
+            return TryAssign(GetPositiveSweepDegrees(arc.StartAngleDegrees, arc.EndAngleDegrees), out value);
+        }
+
+        if (dimension.ReferenceKeys.Count < 2
+            || !SketchReference.TryParse(dimension.ReferenceKeys[0], out var firstReference)
+            || !SketchReference.TryParse(dimension.ReferenceKeys[1], out var secondReference)
+            || !SketchGeometryEditor.TryGetLine(entities, firstReference, out _, out var firstLine)
+            || !SketchGeometryEditor.TryGetLine(entities, secondReference, out _, out var secondLine))
+        {
+            return false;
+        }
+
+        var delta = Math.Abs(SketchGeometryEditor.NormalizeSignedDegrees(GetLineAngleDegrees(secondLine) - GetLineAngleDegrees(firstLine)));
+        return TryAssign(delta > 90.0 ? 180.0 - delta : delta, out value);
+    }
+
+    private static bool TryGetCountDimensionMeasurement(
+        IReadOnlyList<DrawingEntity> entities,
+        SketchDimension dimension,
+        out double value)
+    {
+        value = default;
+        if (dimension.ReferenceKeys.Count == 0
+            || !SketchReference.TryParse(dimension.ReferenceKeys[0], out var reference)
+            || !SketchGeometryEditor.TryGetEntity(entities, reference, out _, out var entity)
+            || entity is not PolygonEntity polygon)
+        {
+            return false;
+        }
+
+        return TryAssign(polygon.NormalizedSideCount, out value);
     }
 
     private static void ApplyPointDistance(
@@ -163,6 +343,20 @@ public static class SketchDimensionSolverService
         var secondIsLine = SketchGeometryEditor.TryGetLine(entities, secondReference, out _, out var secondLine);
         var firstIsPoint = SketchGeometryEditor.TryGetPoint(entities, firstReference, out var firstPoint);
         var secondIsPoint = SketchGeometryEditor.TryGetPoint(entities, secondReference, out var secondPoint);
+
+        if (firstIsLine && secondIsLine)
+        {
+            if (fixedReferences.CanMoveWholeLine(secondReference))
+            {
+                TryMoveParallelLineToLineDistance(entities, secondReference, secondLine, firstLine, value);
+            }
+            else if (fixedReferences.CanMoveWholeLine(firstReference))
+            {
+                TryMoveParallelLineToLineDistance(entities, firstReference, firstLine, secondLine, value);
+            }
+
+            return;
+        }
 
         if (firstIsLine && secondIsPoint)
         {
@@ -434,6 +628,32 @@ public static class SketchDimensionSolverService
         return SketchGeometryEditor.TrySetLine(entities, lineReference, moved);
     }
 
+    private static bool TryMoveParallelLineToLineDistance(
+        DrawingEntity[] entities,
+        SketchReference movingReference,
+        LineEntity movingLine,
+        LineEntity anchorLine,
+        double distance)
+    {
+        if (!AreLinesParallel(movingLine, anchorLine)
+            || !TryGetLineNormal(anchorLine, out var normalX, out var normalY))
+        {
+            return false;
+        }
+
+        var signedDistance = SignedPointLineDistance(SketchGeometryEditor.Midpoint(movingLine), anchorLine, normalX, normalY);
+        var sign = signedDistance < 0 ? -1.0 : 1.0;
+        var targetSignedDistance = sign * distance;
+        var offset = targetSignedDistance - signedDistance;
+        var moved = movingLine with
+        {
+            Start = new Point2(movingLine.Start.X + normalX * offset, movingLine.Start.Y + normalY * offset),
+            End = new Point2(movingLine.End.X + normalX * offset, movingLine.End.Y + normalY * offset)
+        };
+
+        return SketchGeometryEditor.TrySetLine(entities, movingReference, moved);
+    }
+
     private static bool TryGetLineNormal(LineEntity line, out double normalX, out double normalY)
     {
         if (!SketchGeometryEditor.TryGetLineDirection(line, out var unitX, out var unitY, out _))
@@ -454,6 +674,17 @@ public static class SketchDimensionSolverService
         double normalX,
         double normalY) =>
         (point.X - line.Start.X) * normalX + (point.Y - line.Start.Y) * normalY;
+
+    private static bool AreLinesParallel(LineEntity first, LineEntity second)
+    {
+        if (!SketchGeometryEditor.TryGetLineDirection(first, out var firstX, out var firstY, out _)
+            || !SketchGeometryEditor.TryGetLineDirection(second, out var secondX, out var secondY, out _))
+        {
+            return false;
+        }
+
+        return Math.Abs(firstX * secondY - firstY * secondX) <= SketchGeometryEditor.Tolerance;
+    }
 
     private static Point2 PointAtDistance(Point2 anchor, Point2 moving, double distance)
     {
@@ -501,6 +732,43 @@ public static class SketchDimensionSolverService
         firstReference = default;
         secondReference = default;
         return false;
+    }
+
+    private static double Distance(Point2 first, Point2 second)
+    {
+        var deltaX = second.X - first.X;
+        var deltaY = second.Y - first.Y;
+        return Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
+    }
+
+    private static double DistancePointToLine(Point2 point, LineEntity line)
+    {
+        var deltaX = line.End.X - line.Start.X;
+        var deltaY = line.End.Y - line.Start.Y;
+        var denominator = Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
+        if (denominator <= SketchGeometryEditor.Tolerance)
+        {
+            return Distance(point, line.Start);
+        }
+
+        return Math.Abs((deltaY * point.X) - (deltaX * point.Y) + (line.End.X * line.Start.Y) - (line.End.Y * line.Start.X)) / denominator;
+    }
+
+    private static double GetPositiveSweepDegrees(double startAngleDegrees, double endAngleDegrees)
+    {
+        var sweep = (endAngleDegrees - startAngleDegrees) % 360.0;
+        if (sweep < 0)
+        {
+            sweep += 360.0;
+        }
+
+        return sweep;
+    }
+
+    private static bool TryAssign(double source, out double value)
+    {
+        value = source;
+        return double.IsFinite(source);
     }
 
     private static double GetLineAngleDegrees(LineEntity line) =>

@@ -29,7 +29,8 @@ public static class DrawingPrepService
         return new DrawingDocument(
             document.Entities.Select(entity => entity.Transform(transform)),
             document.Dimensions,
-            document.Constraints);
+            document.Constraints,
+            document.Metadata);
     }
 
     public static DrawingDocument TransformSelected(
@@ -50,7 +51,8 @@ public static class DrawingPrepService
             document.Entities.Select(entity =>
                 selected.Contains(entity.Id.Value) ? entity.Transform(transform) : entity),
             document.Dimensions,
-            document.Constraints);
+            document.Constraints,
+            document.Metadata);
     }
 
     public static DrawingDocument RotateAboutBoundsCenter(DrawingDocument document, double degrees)
@@ -131,6 +133,18 @@ public static class DrawingPrepService
         ArgumentNullException.ThrowIfNull(selectedEntityIds);
 
         var selected = selectedEntityIds.ToHashSet(StringComparer.Ordinal);
+        if (selected.Count > 1)
+        {
+            var selectedEntities = document.Entities
+                .Where(entity => selected.Contains(entity.Id.Value))
+                .ToArray();
+            if (selectedEntities.Length > 1)
+            {
+                measurement = MeasurementService.MeasureBounds(selectedEntities);
+                return true;
+            }
+        }
+
         foreach (var entity in document.Entities)
         {
             if (selected.Count > 0 && !selected.Contains(entity.Id.Value))

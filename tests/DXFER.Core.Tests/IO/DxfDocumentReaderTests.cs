@@ -1,6 +1,6 @@
+using DXFER.CadIO;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
-using DXFER.Core.IO;
 using FluentAssertions;
 
 namespace DXFER.Core.Tests.IO;
@@ -176,6 +176,66 @@ EOF
         ellipse.MajorAxisEndPoint.Should().Be(new Point2(4, 0));
         ellipse.MinorRadiusRatio.Should().Be(0.5);
         ellipse.EndParameterDegrees.Should().BeApproximately(90, 0.000001);
+    }
+
+    [Fact]
+    public void RecordsUnsupportedEntityCountsAndImportWarnings()
+    {
+        const string dxf = """
+0
+SECTION
+2
+ENTITIES
+0
+LINE
+10
+0
+20
+0
+11
+1
+21
+0
+0
+3DSOLID
+10
+0
+20
+0
+0
+HATCH
+10
+0
+20
+0
+0
+3DSOLID
+10
+2
+20
+2
+0
+ENDSEC
+0
+EOF
+""";
+
+        var document = DxfDocumentReader.Read(dxf);
+
+        document.Entities.Should().ContainSingle()
+            .Which.Should().BeOfType<LineEntity>();
+        document.Metadata.UnsupportedEntityCounts.Should().ContainKey("3DSOLID")
+            .WhoseValue.Should().Be(2);
+        document.Metadata.UnsupportedEntityCounts.Should().ContainKey("HATCH")
+            .WhoseValue.Should().Be(1);
+        document.Metadata.Warnings.Should().Contain(warning =>
+            warning.Code == "unsupported-entity"
+            && warning.Severity == DrawingDocumentWarningSeverity.Warning
+            && warning.Message.Contains("3DSOLID (2)", StringComparison.Ordinal)
+            && warning.Message.Contains("HATCH (1)", StringComparison.Ordinal));
+        document.Metadata.Warnings.Should().Contain(warning =>
+            warning.Code == "missing-units"
+            && warning.Severity == DrawingDocumentWarningSeverity.Warning);
     }
 
     [Fact]
