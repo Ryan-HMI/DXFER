@@ -113,10 +113,12 @@ public sealed record CanvasDocumentDto(
                 null,
                 null,
                 spline.IsConstruction,
-                ControlPoints: spline.ControlPoints.Select(FromPoint).ToArray(),
+                ControlPoints: GetSplineControlPointsForCanvas(spline),
                 FitPoints: spline.FitPoints.Count >= 2
                     ? spline.FitPoints.Select(FromPoint).ToArray()
-                    : null),
+                    : null,
+                StartTangentHandle: spline.StartTangentHandle is { } startTangentHandle ? FromPoint(startTangentHandle) : null,
+                EndTangentHandle: spline.EndTangentHandle is { } endTangentHandle ? FromPoint(endTangentHandle) : null),
             _ => new CanvasEntityDto(
                 id,
                 kind,
@@ -127,6 +129,18 @@ public sealed record CanvasDocumentDto(
                 null,
                 entity.IsConstruction)
         };
+    }
+
+    private static IReadOnlyList<CanvasPointDto>? GetSplineControlPointsForCanvas(SplineEntity spline)
+    {
+        if (spline.FitPoints.Count < 2
+            && spline.Degree == 1
+            && spline.ControlPoints.Count > 2)
+        {
+            return null;
+        }
+
+        return spline.ControlPoints.Select(FromPoint).ToArray();
     }
 
     private static CanvasPointDto FromPoint(Point2 point) => new(point.X, point.Y);
@@ -176,7 +190,9 @@ public sealed record CanvasEntityDto(
     [property: JsonPropertyName("sideCount")] int? SideCount = null,
     [property: JsonPropertyName("circumscribed")] bool? Circumscribed = null,
     [property: JsonPropertyName("controlPoints")] IReadOnlyList<CanvasPointDto>? ControlPoints = null,
-    [property: JsonPropertyName("fitPoints")] IReadOnlyList<CanvasPointDto>? FitPoints = null);
+    [property: JsonPropertyName("fitPoints")] IReadOnlyList<CanvasPointDto>? FitPoints = null,
+    [property: JsonPropertyName("startTangentHandle")] CanvasPointDto? StartTangentHandle = null,
+    [property: JsonPropertyName("endTangentHandle")] CanvasPointDto? EndTangentHandle = null);
 
 public sealed record CanvasPointDto(
     [property: JsonPropertyName("x")] double X,

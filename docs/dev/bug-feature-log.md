@@ -4,6 +4,13 @@ Use this log for bugs and feature requests that arrive while another task is act
 
 ## Open
 
+- [ ] UT-TRIM-001 follow-up: user-tested polygon trim now explodes, but trimming one polygon side can delete both spans bounded by two cutter lines instead of only the picked exploded segment, and unrelated overlapping geometry can add extra split segments/constraints. Picked-side core fix is coded and automated-tested; running-app/user retest still needed.
+- [ ] UT-TRIM-002 follow-up: user-tested extend preview appears even outside the intended extend hover tolerance and draws a short straight line from the entity to the cursor. Curve/conic cursor-connector removal is coded; running-app/user retest still needed.
+- [ ] UT-TRIM-005: User-tested conic extend leaves persistent sample/control points on the conic that do not disappear after the operation. Generated sampled spline control-point suppression is coded and automated-tested; running-app/user retest still needed.
+- [ ] UT-TRIM-006: User-tested stale conic targets survive deletion and can still be used by later ellipse trims as old conic vertices. Likely generated-point source is suppressed; keep open for focused app/user repro because deeper trim hit-test cache work may still be needed.
+- [ ] UT-TRIM-007: User-tested exploded polygon trim output needs coincident constraints at shared exploded vertices. Coded and automated-tested; running-app/user retest still needed.
+- [ ] UT-SPLINE-002: User-tested spline tangent handle movement changes adjacent fit point placement; tangent handles should not move the fit point, adjacent fit point drags should not rewrite the endpoint handle vector/magnitude, and splines should render smoother. Independent endpoint tangent handles plus smoother fit-spline sampling are coded and automated-tested; running-app/user retest still needed.
+- [ ] UT-ELLIPSE-001 follow-up: User-tested keyed ellipse creation still draws red failed-state geometry immediately after creation. Custom ellipse axis dimension measurement is coded and automated-tested; running-app/user retest still needed.
 - [ ] UT-SOLVER-001: User-tested regression: dragging entities with dimensions is not robust, can break the solver, and deleting the dimension can leave the solve broken.
 - [ ] UT-SOLVER-002: User-tested regression: coincident constraints are not welding vertices together as expected; dragging a dimension can rerender the shape unbroken afterward.
 - [ ] UT-ELLIPSE-001: User-tested regression: keyed-in ellipses create broken solves.

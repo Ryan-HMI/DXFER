@@ -27,6 +27,7 @@ public enum WorkbenchTool
     Slot,
     PowerTrim,
     SplitAtPoint,
+    AddSplinePoint,
     Offset,
     Fillet,
     Chamfer,

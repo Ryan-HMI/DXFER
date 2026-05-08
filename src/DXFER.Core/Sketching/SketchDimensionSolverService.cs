@@ -136,19 +136,13 @@ public static class SketchDimensionSolverService
         switch (dimension.Kind)
         {
             case SketchDimensionKind.LinearDistance:
-                return TryGetTwoPointReferences(dimension, out var linearFirst, out var linearSecond)
-                    && SketchGeometryEditor.TryGetPoint(entities, linearFirst, out var linearFirstPoint)
-                    && SketchGeometryEditor.TryGetPoint(entities, linearSecond, out var linearSecondPoint)
+                return TryGetTwoPointDimensionPoints(entities, dimension, out var linearFirstPoint, out var linearSecondPoint)
                     && TryAssign(Distance(linearFirstPoint, linearSecondPoint), out value);
             case SketchDimensionKind.HorizontalDistance:
-                return TryGetTwoPointReferences(dimension, out var horizontalFirst, out var horizontalSecond)
-                    && SketchGeometryEditor.TryGetPoint(entities, horizontalFirst, out var horizontalFirstPoint)
-                    && SketchGeometryEditor.TryGetPoint(entities, horizontalSecond, out var horizontalSecondPoint)
+                return TryGetTwoPointDimensionPoints(entities, dimension, out var horizontalFirstPoint, out var horizontalSecondPoint)
                     && TryAssign(Math.Abs(horizontalSecondPoint.X - horizontalFirstPoint.X), out value);
             case SketchDimensionKind.VerticalDistance:
-                return TryGetTwoPointReferences(dimension, out var verticalFirst, out var verticalSecond)
-                    && SketchGeometryEditor.TryGetPoint(entities, verticalFirst, out var verticalFirstPoint)
-                    && SketchGeometryEditor.TryGetPoint(entities, verticalSecond, out var verticalSecondPoint)
+                return TryGetTwoPointDimensionPoints(entities, dimension, out var verticalFirstPoint, out var verticalSecondPoint)
                     && TryAssign(Math.Abs(verticalSecondPoint.Y - verticalFirstPoint.Y), out value);
             case SketchDimensionKind.PointToLineDistance:
                 return TryGetPointToLineDimensionMeasurement(entities, dimension, out value);
@@ -163,6 +157,97 @@ public static class SketchDimensionSolverService
             default:
                 return false;
         }
+    }
+
+    private static bool TryGetTwoPointDimensionPoints(
+        IReadOnlyList<DrawingEntity> entities,
+        SketchDimension dimension,
+        out Point2 firstPoint,
+        out Point2 secondPoint)
+    {
+        if (dimension.ReferenceKeys.Count < 2
+            || !TryResolveDimensionPoint(entities, dimension.ReferenceKeys[0], out firstPoint)
+            || !TryResolveDimensionPoint(entities, dimension.ReferenceKeys[1], out secondPoint))
+        {
+            firstPoint = default;
+            secondPoint = default;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryResolveDimensionPoint(
+        IReadOnlyList<DrawingEntity> entities,
+        string referenceKey,
+        out Point2 point)
+    {
+        if (SketchReference.TryParse(referenceKey, out var reference)
+            && SketchGeometryEditor.TryGetPoint(entities, reference, out point))
+        {
+            return true;
+        }
+
+        if (!SketchReference.TryParseCanvasPointCoordinates(referenceKey, out var entityId, out var label, out var storedPoint)
+            || !SketchGeometryEditor.TryFindEntity(entities, entityId, out _, out var entity))
+        {
+            point = default;
+            return false;
+        }
+
+        if (entity is EllipseEntity ellipse
+            && TryGetEllipseCanvasPoint(ellipse, label, out point))
+        {
+            return true;
+        }
+
+        point = storedPoint;
+        return true;
+    }
+
+    private static bool TryGetEllipseCanvasPoint(EllipseEntity ellipse, string label, out Point2 point)
+    {
+        if (StringComparer.OrdinalIgnoreCase.Equals(label, "major-start"))
+        {
+            point = new Point2(
+                ellipse.Center.X - ellipse.MajorAxisEndPoint.X,
+                ellipse.Center.Y - ellipse.MajorAxisEndPoint.Y);
+            return true;
+        }
+
+        if (StringComparer.OrdinalIgnoreCase.Equals(label, "major-end"))
+        {
+            point = new Point2(
+                ellipse.Center.X + ellipse.MajorAxisEndPoint.X,
+                ellipse.Center.Y + ellipse.MajorAxisEndPoint.Y);
+            return true;
+        }
+
+        if (StringComparer.OrdinalIgnoreCase.Equals(label, "minor-start")
+            || StringComparer.OrdinalIgnoreCase.Equals(label, "minor-end"))
+        {
+            var majorLength = Distance(ellipse.Center, new Point2(
+                ellipse.Center.X + ellipse.MajorAxisEndPoint.X,
+                ellipse.Center.Y + ellipse.MajorAxisEndPoint.Y));
+            if (majorLength <= SketchGeometryEditor.Tolerance)
+            {
+                point = default;
+                return false;
+            }
+
+            var minorLength = majorLength * ellipse.MinorRadiusRatio;
+            var minorUnit = new Point2(
+                -ellipse.MajorAxisEndPoint.Y / majorLength,
+                ellipse.MajorAxisEndPoint.X / majorLength);
+            var direction = StringComparer.OrdinalIgnoreCase.Equals(label, "minor-start") ? -1.0 : 1.0;
+            point = new Point2(
+                ellipse.Center.X + (minorUnit.X * minorLength * direction),
+                ellipse.Center.Y + (minorUnit.Y * minorLength * direction));
+            return true;
+        }
+
+        point = default;
+        return false;
     }
 
     private static bool TryGetPointToLineDimensionMeasurement(

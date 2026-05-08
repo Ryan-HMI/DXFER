@@ -6,7 +6,10 @@ public sealed record SplineEntity : DrawingEntity
 {
     private const int MinimumSampleIntervals = 24;
     private const int SamplesPerKnotSpan = 16;
+    private const int FitSamplesPerSpan = 32;
     private const int MaximumSampleIntervals = 256;
+    private const int MaximumFitSampleIntervals = 512;
+    private const double TangentHandleScale = 0.25;
 
     private readonly Lazy<IReadOnlyList<Point2>> _samplePoints;
 
@@ -17,7 +20,9 @@ public sealed record SplineEntity : DrawingEntity
         IEnumerable<double> knots,
         IEnumerable<double>? weights = null,
         bool isConstruction = false,
-        IEnumerable<Point2>? fitPoints = null)
+        IEnumerable<Point2>? fitPoints = null,
+        Point2? startTangentHandle = null,
+        Point2? endTangentHandle = null)
         : base(id, isConstruction)
     {
         ArgumentNullException.ThrowIfNull(controlPoints);
@@ -43,6 +48,8 @@ public sealed record SplineEntity : DrawingEntity
         Knots = Array.AsReadOnly(knotValues);
         Weights = Array.AsReadOnly(weightValues);
         FitPoints = Array.AsReadOnly(fits);
+        StartTangentHandle = startTangentHandle ?? GetDefaultStartTangentHandle(fits);
+        EndTangentHandle = endTangentHandle ?? GetDefaultEndTangentHandle(fits);
         _samplePoints = new Lazy<IReadOnlyList<Point2>>(BuildSamplePoints);
     }
 
@@ -58,10 +65,16 @@ public sealed record SplineEntity : DrawingEntity
 
     public IReadOnlyList<Point2> FitPoints { get; }
 
+    public Point2? StartTangentHandle { get; }
+
+    public Point2? EndTangentHandle { get; }
+
     public static SplineEntity FromFitPoints(
         EntityId id,
         IEnumerable<Point2> fitPoints,
-        bool isConstruction = false)
+        bool isConstruction = false,
+        Point2? startTangentHandle = null,
+        Point2? endTangentHandle = null)
     {
         ArgumentNullException.ThrowIfNull(fitPoints);
 
@@ -78,7 +91,9 @@ public sealed record SplineEntity : DrawingEntity
             points,
             Array.Empty<double>(),
             isConstruction: isConstruction,
-            fitPoints: points);
+            fitPoints: points,
+            startTangentHandle: startTangentHandle,
+            endTangentHandle: endTangentHandle);
     }
 
     public override Bounds2 GetBounds() => Bounds2.FromPoints(GetSamplePoints());
@@ -91,10 +106,12 @@ public sealed record SplineEntity : DrawingEntity
             Knots,
             Weights,
             IsConstruction,
-            FitPoints.Select(point => point.Transform(transform)));
+            FitPoints.Select(point => point.Transform(transform)),
+            StartTangentHandle is { } startTangentHandle ? startTangentHandle.Transform(transform) : null,
+            EndTangentHandle is { } endTangentHandle ? endTangentHandle.Transform(transform) : null);
 
     public override DrawingEntity WithConstruction(bool isConstruction) =>
-        new SplineEntity(Id, Degree, ControlPoints, Knots, Weights, isConstruction, FitPoints);
+        new SplineEntity(Id, Degree, ControlPoints, Knots, Weights, isConstruction, FitPoints, StartTangentHandle, EndTangentHandle);
 
     public IReadOnlyList<Point2> GetSamplePoints() => _samplePoints.Value;
 
@@ -102,7 +119,7 @@ public sealed record SplineEntity : DrawingEntity
     {
         if (FitPoints.Count >= 2)
         {
-            return GetFitSamplePoints(FitPoints);
+            return GetFitSamplePoints();
         }
 
         if (Degree == 1)
@@ -170,24 +187,34 @@ public sealed record SplineEntity : DrawingEntity
         return true;
     }
 
-    private static IReadOnlyList<Point2> GetFitSamplePoints(IReadOnlyList<Point2> fitPoints)
+    private IReadOnlyList<Point2> GetFitSamplePoints()
     {
+        var fitPoints = FitPoints;
         if (fitPoints.Count == 2)
         {
-            return fitPoints.ToArray();
+            var start = fitPoints[0];
+            var end = fitPoints[1];
+            var startTangent = GetStartTangent(fitPoints);
+            var endTangent = GetEndTangent(fitPoints);
+            if (AreCollinear(start, end, startTangent)
+                && AreCollinear(start, end, endTangent))
+            {
+                return fitPoints.ToArray();
+            }
         }
 
+        var tangents = GetFitPointTangents(fitPoints);
         var samples = new List<Point2>(Math.Min(
-            MaximumSampleIntervals + 1,
-            ((fitPoints.Count - 1) * SamplesPerKnotSpan) + 1));
+            MaximumFitSampleIntervals + 1,
+            ((fitPoints.Count - 1) * FitSamplesPerSpan) + 1));
         for (var index = 0; index < fitPoints.Count - 1; index++)
         {
-            var previous = index == 0 ? fitPoints[index] : fitPoints[index - 1];
             var start = fitPoints[index];
             var end = fitPoints[index + 1];
-            var next = index + 2 < fitPoints.Count ? fitPoints[index + 2] : end;
+            var startTangent = tangents[index];
+            var endTangent = tangents[index + 1];
 
-            for (var step = 0; step <= SamplesPerKnotSpan; step++)
+            for (var step = 0; step <= FitSamplesPerSpan; step++)
             {
                 if (index > 0 && step == 0)
                 {
@@ -198,13 +225,13 @@ public sealed record SplineEntity : DrawingEntity
                 {
                     samples.Add(start);
                 }
-                else if (step == SamplesPerKnotSpan)
+                else if (step == FitSamplesPerSpan)
                 {
                     samples.Add(end);
                 }
                 else
                 {
-                    samples.Add(EvaluateCatmullRom(previous, start, end, next, (double)step / SamplesPerKnotSpan));
+                    samples.Add(EvaluateCubicHermite(start, end, startTangent, endTangent, (double)step / FitSamplesPerSpan));
                 }
             }
         }
@@ -212,19 +239,137 @@ public sealed record SplineEntity : DrawingEntity
         return samples;
     }
 
-    private static Point2 EvaluateCatmullRom(Point2 previous, Point2 start, Point2 end, Point2 next, double t)
+    private Point2[] GetFitPointTangents(IReadOnlyList<Point2> fitPoints)
+    {
+        var tangents = new Point2[fitPoints.Count];
+        for (var index = 0; index < fitPoints.Count; index++)
+        {
+            if (index == 0)
+            {
+                tangents[index] = GetStartTangent(fitPoints);
+            }
+            else if (index == fitPoints.Count - 1)
+            {
+                tangents[index] = GetEndTangent(fitPoints);
+            }
+            else
+            {
+                tangents[index] = new Point2(
+                    (fitPoints[index + 1].X - fitPoints[index - 1].X) / 2.0,
+                    (fitPoints[index + 1].Y - fitPoints[index - 1].Y) / 2.0);
+            }
+        }
+
+        return tangents;
+    }
+
+    private Point2 GetStartTangent(IReadOnlyList<Point2> fitPoints)
+    {
+        if (StartTangentHandle is { } handle
+            && Distance(fitPoints[0], handle) > double.Epsilon)
+        {
+            return new Point2(
+                (handle.X - fitPoints[0].X) / TangentHandleScale,
+                (handle.Y - fitPoints[0].Y) / TangentHandleScale);
+        }
+
+        return new Point2(
+            fitPoints[1].X - fitPoints[0].X,
+            fitPoints[1].Y - fitPoints[0].Y);
+    }
+
+    private Point2 GetEndTangent(IReadOnlyList<Point2> fitPoints)
+    {
+        var lastIndex = fitPoints.Count - 1;
+        if (EndTangentHandle is { } handle
+            && Distance(fitPoints[lastIndex], handle) > double.Epsilon)
+        {
+            return new Point2(
+                (fitPoints[lastIndex].X - handle.X) / TangentHandleScale,
+                (fitPoints[lastIndex].Y - handle.Y) / TangentHandleScale);
+        }
+
+        return new Point2(
+            fitPoints[lastIndex].X - fitPoints[lastIndex - 1].X,
+            fitPoints[lastIndex].Y - fitPoints[lastIndex - 1].Y);
+    }
+
+    private static Point2 EvaluateCubicHermite(Point2 start, Point2 end, Point2 startTangent, Point2 endTangent, double t)
     {
         var t2 = t * t;
         var t3 = t2 * t;
+        var h00 = (2 * t3) - (3 * t2) + 1;
+        var h10 = t3 - (2 * t2) + t;
+        var h01 = (-2 * t3) + (3 * t2);
+        var h11 = t3 - t2;
         return new Point2(
-            0.5 * ((2 * start.X)
-                + (-previous.X + end.X) * t
-                + ((2 * previous.X) - (5 * start.X) + (4 * end.X) - next.X) * t2
-                + (-previous.X + (3 * start.X) - (3 * end.X) + next.X) * t3),
-            0.5 * ((2 * start.Y)
-                + (-previous.Y + end.Y) * t
-                + ((2 * previous.Y) - (5 * start.Y) + (4 * end.Y) - next.Y) * t2
-                + (-previous.Y + (3 * start.Y) - (3 * end.Y) + next.Y) * t3));
+            (h00 * start.X) + (h10 * startTangent.X) + (h01 * end.X) + (h11 * endTangent.X),
+            (h00 * start.Y) + (h10 * startTangent.Y) + (h01 * end.Y) + (h11 * endTangent.Y));
+    }
+
+    private static Point2? GetDefaultStartTangentHandle(IReadOnlyList<Point2> fitPoints)
+    {
+        if (fitPoints.Count < 2)
+        {
+            return null;
+        }
+
+        var start = fitPoints[0];
+        var neighbor = GetNearestDistinctFitPoint(fitPoints, 1, 1);
+        return neighbor is { } point
+            ? new Point2(
+                start.X + ((point.X - start.X) * TangentHandleScale),
+                start.Y + ((point.Y - start.Y) * TangentHandleScale))
+            : null;
+    }
+
+    private static Point2? GetDefaultEndTangentHandle(IReadOnlyList<Point2> fitPoints)
+    {
+        if (fitPoints.Count < 2)
+        {
+            return null;
+        }
+
+        var last = fitPoints[^1];
+        var neighbor = GetNearestDistinctFitPoint(fitPoints, fitPoints.Count - 2, -1);
+        return neighbor is { } point
+            ? new Point2(
+                last.X + ((point.X - last.X) * TangentHandleScale),
+                last.Y + ((point.Y - last.Y) * TangentHandleScale))
+            : null;
+    }
+
+    private static Point2? GetNearestDistinctFitPoint(IReadOnlyList<Point2> fitPoints, int startIndex, int step)
+    {
+        var endpointIndex = startIndex - step;
+        if (endpointIndex < 0 || endpointIndex >= fitPoints.Count)
+        {
+            return null;
+        }
+
+        for (var index = startIndex; index >= 0 && index < fitPoints.Count; index += step)
+        {
+            if (Distance(fitPoints[index], fitPoints[endpointIndex]) > double.Epsilon)
+            {
+                return fitPoints[index];
+            }
+        }
+
+        return null;
+    }
+
+    private static bool AreCollinear(Point2 start, Point2 end, Point2 tangent)
+    {
+        var chord = new Point2(end.X - start.X, end.Y - start.Y);
+        var cross = (chord.X * tangent.Y) - (chord.Y * tangent.X);
+        return Math.Abs(cross) <= double.Epsilon;
+    }
+
+    private static double Distance(Point2 first, Point2 second)
+    {
+        var deltaX = second.X - first.X;
+        var deltaY = second.Y - first.Y;
+        return Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
     }
 
     private Point2 Evaluate(double parameter)

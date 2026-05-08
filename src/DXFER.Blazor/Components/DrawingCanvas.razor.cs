@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260507-geometry-drag-rollback";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20260508-spline-control-add-point";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -73,6 +73,9 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public Action<string, IReadOnlyList<CanvasPointDto>>? ModifyToolCommitRequested { get; set; }
+
+    [Parameter]
+    public Action<string, CanvasPointDto>? AddSplinePointRequested { get; set; }
 
     [Parameter]
     public Action<string, CanvasPointDto>? PowerTrimRequested { get; set; }
@@ -321,6 +324,13 @@ public partial class DrawingCanvas : IAsyncDisposable
         }
 
         ModifyToolCommitRequested?.Invoke(toolName, points);
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnAddSplinePointRequested(string targetKey, double x, double y)
+    {
+        AddSplinePointRequested?.Invoke(targetKey, new CanvasPointDto(x, y));
         return Task.CompletedTask;
     }
 

@@ -14,6 +14,7 @@ public static class DrawingModifyService
     private const double SampledPathProjectionTolerance = 0.05;
 
     private readonly record struct SampledPathCut(double Distance, Point2 Point);
+    private readonly record struct LineEndpointReference(LineEntity Line, string Target, Point2 Point);
 
     public static DrawingDocument TranslateSelected(
         DrawingDocument document,
@@ -206,6 +207,70 @@ public static class DrawingModifyService
 
         createdCount = nextEntities.Count - document.Entities.Count;
         nextDocument = new DrawingDocument(nextEntities, document.Dimensions, document.Constraints, document.Metadata);
+        return true;
+    }
+
+    public static bool TryAddSplinePoint(
+        DrawingDocument document,
+        IEnumerable<string> selectedEntityIds,
+        Point2 pickedPoint,
+        out DrawingDocument nextDocument)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(selectedEntityIds);
+
+        var splines = GetSelectedEntities(document, selectedEntityIds)
+            .OfType<SplineEntity>()
+            .Where(spline => spline.FitPoints.Count >= 2)
+            .ToArray();
+        if (splines.Length != 1)
+        {
+            return FailUnchanged(document, out nextDocument);
+        }
+
+        var target = splines[0];
+        var samples = target.GetSamplePoints();
+        if (samples.Count < 2
+            || !TryBuildSampledPathDistances(samples, out var cumulativeDistances, out _)
+            || !TryProjectPointToSampledPath(
+                samples,
+                cumulativeDistances,
+                pickedPoint,
+                SampledPathProjectionTolerance,
+                out var pickedDistance))
+        {
+            return FailUnchanged(document, out nextDocument);
+        }
+
+        var insertedPoint = PointAtSampledPathDistance(samples, cumulativeDistances, pickedDistance);
+        if (target.FitPoints.Any(fitPoint => Distance(fitPoint, insertedPoint) <= GeometryTolerance)
+            || !TryGetSplineFitPointPathDistances(target, samples, cumulativeDistances, out var fitPointDistances))
+        {
+            return FailUnchanged(document, out nextDocument);
+        }
+
+        var insertionIndex = GetSplineFitPointInsertionIndex(fitPointDistances, pickedDistance);
+        if (insertionIndex <= 0 || insertionIndex >= target.FitPoints.Count)
+        {
+            return FailUnchanged(document, out nextDocument);
+        }
+
+        var nextFitPoints = target.FitPoints.ToList();
+        nextFitPoints.Insert(insertionIndex, insertedPoint);
+        var replacement = SplineEntity.FromFitPoints(
+            target.Id,
+            nextFitPoints,
+            target.IsConstruction,
+            target.StartTangentHandle,
+            target.EndTangentHandle);
+
+        nextDocument = ReplaceEntities(
+            document,
+            new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
+            {
+                [target.Id.Value] = replacement
+            },
+            Array.Empty<DrawingEntity>());
         return true;
     }
 
@@ -501,9 +566,22 @@ public static class DrawingModifyService
             }
         }
 
+        if (!TryGetPickedSampledPathSegmentBounds(
+                samples,
+                cumulativeDistances,
+                pickedPoint,
+                pickedDistance,
+                out var pickedSegmentStartDistance,
+                out var pickedSegmentEndDistance))
+        {
+            return FailUnchanged(document, out nextDocument);
+        }
+
         var distinctCuts = cutDistances
             .Where(distance => double.IsFinite(distance))
             .Where(distance => distance > GeometryTolerance && distance < totalLength - GeometryTolerance)
+            .Where(distance => distance > pickedSegmentStartDistance + GeometryTolerance
+                && distance < pickedSegmentEndDistance - GeometryTolerance)
             .DistinctBy(distance => Math.Round(distance, 6))
             .OrderBy(distance => distance)
             .ToArray();
@@ -659,49 +737,138 @@ public static class DrawingModifyService
             }
         }
 
+        if (!TryGetPickedSampledPathSegmentBounds(
+                samples,
+                cumulativeDistances,
+                pickedPoint,
+                pickedDistance,
+                out var pickedSegmentStartDistance,
+                out var pickedSegmentEndDistance))
+        {
+            return FailUnchanged(document, out nextDocument);
+        }
+
         var distinctCuts = cutDistances
             .Where(distance => double.IsFinite(distance))
             .Where(distance => distance > GeometryTolerance && distance < totalLength - GeometryTolerance)
+            .Where(distance => distance > pickedSegmentStartDistance + GeometryTolerance
+                && distance < pickedSegmentEndDistance - GeometryTolerance)
             .DistinctBy(distance => Math.Round(distance, 6))
             .OrderBy(distance => distance)
             .ToArray();
-        if (distinctCuts.Length < 2)
+        if (distinctCuts.Length < 1)
         {
             return FailUnchanged(document, out nextDocument);
         }
 
-        var left = distinctCuts.LastOrDefault(distance => distance < pickedDistance - GeometryTolerance, double.NaN);
-        if (!double.IsFinite(left))
-        {
-            left = distinctCuts[^1] - totalLength;
-        }
-
-        var right = distinctCuts.FirstOrDefault(distance => distance > pickedDistance + GeometryTolerance, double.NaN);
-        if (!double.IsFinite(right))
-        {
-            right = distinctCuts[0] + totalLength;
-        }
-
-        if (right - left <= GeometryTolerance)
+        var boundaryDistances = cumulativeDistances
+            .Concat(distinctCuts)
+            .Where(distance => double.IsFinite(distance))
+            .Select(distance => Math.Clamp(distance, 0.0, totalLength))
+            .DistinctBy(distance => Math.Round(distance, 6))
+            .OrderBy(distance => distance)
+            .ToArray();
+        if (boundaryDistances.Length < 2)
         {
             return FailUnchanged(document, out nextDocument);
         }
 
-        var points = GetClosedSampledPathSpan(samples, cumulativeDistances, totalLength, right, left + totalLength);
-        if (points.Count < 2)
-        {
-            return FailUnchanged(document, out nextDocument);
-        }
-
+        var omittedSegmentIndex = FindPickedBoundarySpan(
+            samples,
+            cumulativeDistances,
+            boundaryDistances,
+            pickedDistance,
+            pickedPoint);
         var keptLines = new List<DrawingEntity>();
-        AddLineSegmentsFromPoints(points, target.IsConstruction, "polygon-line", createEntityId, keptLines);
+        AddLineSegmentsFromPathBoundaries(
+            samples,
+            cumulativeDistances,
+            boundaryDistances,
+            omittedSegmentIndex,
+            target.IsConstruction,
+            "polygon-line",
+            createEntityId,
+            keptLines);
         if (keptLines.Count == 0)
         {
             return FailUnchanged(document, out nextDocument);
         }
 
-        nextDocument = ReplaceEntityWithAdditionsRemovingReferences(document, target.Id.Value, keptLines);
+        var coincidentConstraints = CreateCoincidentConstraintsForSharedLineEndpoints(keptLines);
+        nextDocument = ReplaceEntityWithAdditionsRemovingReferences(document, target.Id.Value, keptLines, coincidentConstraints);
         return true;
+    }
+
+    private static bool TryGetPickedSampledPathSegmentBounds(
+        IReadOnlyList<Point2> samples,
+        IReadOnlyList<double> cumulativeDistances,
+        Point2 pickedPoint,
+        double pickedDistance,
+        out double startDistance,
+        out double endDistance)
+    {
+        startDistance = default;
+        endDistance = default;
+        var closestSegmentIndex = -1;
+        var closestDistance = double.PositiveInfinity;
+        var normalizedPickedDistance = Math.Clamp(pickedDistance, 0.0, cumulativeDistances[^1]);
+
+        for (var index = 1; index < samples.Count; index++)
+        {
+            var segmentLength = cumulativeDistances[index] - cumulativeDistances[index - 1];
+            if (segmentLength <= GeometryTolerance)
+            {
+                continue;
+            }
+
+            var segment = new LineEntity(EntityId.Create("picked-polygon-segment"), samples[index - 1], samples[index]);
+            if (!TryProjectParameter(segment, pickedPoint, out var parameter))
+            {
+                continue;
+            }
+
+            var clampedParameter = Math.Clamp(parameter, 0.0, 1.0);
+            var projectedPoint = PointAtParameter(segment, clampedParameter);
+            var distance = Distance(projectedPoint, pickedPoint);
+            var projectedDistance = cumulativeDistances[index - 1] + (segmentLength * clampedParameter);
+            var containsPickedDistance = normalizedPickedDistance >= cumulativeDistances[index - 1] - GeometryTolerance
+                && normalizedPickedDistance <= cumulativeDistances[index] + GeometryTolerance;
+            var better = distance < closestDistance - GeometryTolerance
+                || (Math.Abs(distance - closestDistance) <= GeometryTolerance
+                    && containsPickedDistance
+                    && Math.Abs(projectedDistance - normalizedPickedDistance)
+                        < Math.Abs(GetPickedDistanceOnSegment(cumulativeDistances, closestSegmentIndex, normalizedPickedDistance) - normalizedPickedDistance));
+
+            if (!better)
+            {
+                continue;
+            }
+
+            closestDistance = distance;
+            closestSegmentIndex = index;
+        }
+
+        if (closestSegmentIndex < 1)
+        {
+            return false;
+        }
+
+        startDistance = cumulativeDistances[closestSegmentIndex - 1];
+        endDistance = cumulativeDistances[closestSegmentIndex];
+        return endDistance - startDistance > GeometryTolerance;
+    }
+
+    private static double GetPickedDistanceOnSegment(
+        IReadOnlyList<double> cumulativeDistances,
+        int segmentIndex,
+        double pickedDistance)
+    {
+        if (segmentIndex < 1 || segmentIndex >= cumulativeDistances.Count)
+        {
+            return double.PositiveInfinity;
+        }
+
+        return Math.Clamp(pickedDistance, cumulativeDistances[segmentIndex - 1], cumulativeDistances[segmentIndex]);
     }
 
     private static bool TryPowerTrimCircle(
@@ -1348,9 +1515,11 @@ public static class DrawingModifyService
     private static DrawingDocument ReplaceEntityWithAdditionsRemovingReferences(
         DrawingDocument document,
         string removedEntityId,
-        IEnumerable<DrawingEntity> additions)
+        IEnumerable<DrawingEntity> additions,
+        IEnumerable<SketchConstraint>? additionalConstraints = null)
     {
         var newEntities = additions.ToArray();
+        var newConstraints = additionalConstraints?.ToArray() ?? Array.Empty<SketchConstraint>();
         var nextEntities = new List<DrawingEntity>(document.Entities.Count + newEntities.Length);
         foreach (var entity in document.Entities)
         {
@@ -1366,8 +1535,48 @@ public static class DrawingModifyService
         return new DrawingDocument(
             nextEntities,
             document.Dimensions.Where(dimension => !ReferenceKeysContainEntity(dimension.ReferenceKeys, removedEntityId)),
-            document.Constraints.Where(constraint => !ReferenceKeysContainEntity(constraint.ReferenceKeys, removedEntityId)),
+            document.Constraints
+                .Where(constraint => !ReferenceKeysContainEntity(constraint.ReferenceKeys, removedEntityId))
+                .Concat(newConstraints),
             document.Metadata);
+    }
+
+    private static IReadOnlyList<SketchConstraint> CreateCoincidentConstraintsForSharedLineEndpoints(
+        IEnumerable<DrawingEntity> entities)
+    {
+        var endpoints = entities
+            .OfType<LineEntity>()
+            .SelectMany(line => new[]
+            {
+                new LineEndpointReference(line, "start", line.Start),
+                new LineEndpointReference(line, "end", line.End)
+            })
+            .ToArray();
+        var constraints = new List<SketchConstraint>();
+
+        for (var firstIndex = 0; firstIndex < endpoints.Length; firstIndex++)
+        {
+            var first = endpoints[firstIndex];
+            for (var secondIndex = firstIndex + 1; secondIndex < endpoints.Length; secondIndex++)
+            {
+                var second = endpoints[secondIndex];
+                if (first.Line.Id == second.Line.Id
+                    || Distance(first.Point, second.Point) > GeometryTolerance)
+                {
+                    continue;
+                }
+
+                var firstReference = $"{first.Line.Id.Value}:{first.Target}";
+                var secondReference = $"{second.Line.Id.Value}:{second.Target}";
+                constraints.Add(new SketchConstraint(
+                    $"coincident-{first.Line.Id.Value}-{first.Target}-{second.Line.Id.Value}-{second.Target}",
+                    SketchConstraintKind.Coincident,
+                    new[] { firstReference, secondReference },
+                    SketchConstraintState.Satisfied));
+            }
+        }
+
+        return constraints;
     }
 
     private static bool ReplaceTargetLine(
@@ -1575,7 +1784,9 @@ public static class DrawingModifyService
             spline.Knots,
             spline.Weights,
             spline.IsConstruction,
-            spline.FitPoints.Select(point => Add(point, offsetVector)));
+            spline.FitPoints.Select(point => Add(point, offsetVector)),
+            spline.StartTangentHandle is { } startTangentHandle ? Add(startTangentHandle, offsetVector) : null,
+            spline.EndTangentHandle is { } endTangentHandle ? Add(endTangentHandle, offsetVector) : null);
         return true;
     }
 
@@ -1615,7 +1826,9 @@ public static class DrawingModifyService
                 spline.Knots,
                 spline.Weights,
                 spline.IsConstruction,
-                spline.FitPoints.Select(point => ScalePoint(point, center, scale))),
+                spline.FitPoints.Select(point => ScalePoint(point, center, scale)),
+                spline.StartTangentHandle is { } startTangentHandle ? ScalePoint(startTangentHandle, center, scale) : null,
+                spline.EndTangentHandle is { } endTangentHandle ? ScalePoint(endTangentHandle, center, scale) : null),
             _ => entity
         };
 
@@ -1642,7 +1855,9 @@ public static class DrawingModifyService
                 spline.Knots,
                 spline.Weights,
                 spline.IsConstruction,
-                spline.FitPoints.Select(point => MirrorPoint(point, axisStart, axisEnd))),
+                spline.FitPoints.Select(point => MirrorPoint(point, axisStart, axisEnd)),
+                spline.StartTangentHandle is { } startTangentHandle ? MirrorPoint(startTangentHandle, axisStart, axisEnd) : null,
+                spline.EndTangentHandle is { } endTangentHandle ? MirrorPoint(endTangentHandle, axisStart, axisEnd) : null),
             _ => entity
         };
 
@@ -1669,7 +1884,7 @@ public static class DrawingModifyService
             ArcEntity arc => arc with { Id = id },
             PolygonEntity polygon => polygon with { Id = id, SideCount = polygon.NormalizedSideCount },
             PointEntity point => point with { Id = id },
-            SplineEntity spline => new SplineEntity(id, spline.Degree, spline.ControlPoints, spline.Knots, spline.Weights, spline.IsConstruction, spline.FitPoints),
+            SplineEntity spline => new SplineEntity(id, spline.Degree, spline.ControlPoints, spline.Knots, spline.Weights, spline.IsConstruction, spline.FitPoints, spline.StartTangentHandle, spline.EndTangentHandle),
             _ => entity
         };
 
@@ -3567,6 +3782,51 @@ public static class DrawingModifyService
         return double.IsFinite(closestDistance) && closestDistance <= maximumDistance;
     }
 
+    private static bool TryGetSplineFitPointPathDistances(
+        SplineEntity spline,
+        IReadOnlyList<Point2> samples,
+        IReadOnlyList<double> cumulativeDistances,
+        out double[] fitPointDistances)
+    {
+        fitPointDistances = new double[spline.FitPoints.Count];
+        if (spline.FitPoints.Count < 2 || samples.Count < 2)
+        {
+            return false;
+        }
+
+        fitPointDistances[0] = 0;
+        fitPointDistances[^1] = cumulativeDistances[^1];
+        for (var index = 1; index < spline.FitPoints.Count - 1; index++)
+        {
+            if (!TryProjectPointToSampledPath(
+                    samples,
+                    cumulativeDistances,
+                    spline.FitPoints[index],
+                    SampledPathProjectionTolerance,
+                    out var fitPointDistance))
+            {
+                return false;
+            }
+
+            fitPointDistances[index] = fitPointDistance;
+        }
+
+        return true;
+    }
+
+    private static int GetSplineFitPointInsertionIndex(IReadOnlyList<double> fitPointDistances, double pickedDistance)
+    {
+        for (var index = 1; index < fitPointDistances.Count; index++)
+        {
+            if (pickedDistance < fitPointDistances[index] - GeometryTolerance)
+            {
+                return index;
+            }
+        }
+
+        return fitPointDistances.Count - 1;
+    }
+
     private static bool TryGetSampledPathExtensionLine(
         IReadOnlyList<Point2> samples,
         EntityId targetId,
@@ -4751,6 +5011,77 @@ public static class DrawingModifyService
             entities.Add(new LineEntity(createEntityId($"{idPrefix}-{lineIndex}"), start, end, isConstruction));
             lineIndex++;
         }
+    }
+
+    private static void AddLineSegmentsFromPathBoundaries(
+        IReadOnlyList<Point2> samples,
+        IReadOnlyList<double> cumulativeDistances,
+        IReadOnlyList<double> boundaryDistances,
+        int omittedSegmentIndex,
+        bool isConstruction,
+        string idPrefix,
+        Func<string, EntityId> createEntityId,
+        ICollection<DrawingEntity> entities)
+    {
+        var lineIndex = 1;
+        for (var index = 1; index < boundaryDistances.Count; index++)
+        {
+            if (index - 1 == omittedSegmentIndex)
+            {
+                continue;
+            }
+
+            var start = PointAtSampledPathDistance(samples, cumulativeDistances, boundaryDistances[index - 1]);
+            var end = PointAtSampledPathDistance(samples, cumulativeDistances, boundaryDistances[index]);
+            if (Distance(start, end) <= GeometryTolerance)
+            {
+                continue;
+            }
+
+            entities.Add(new LineEntity(createEntityId($"{idPrefix}-{lineIndex}"), start, end, isConstruction));
+            lineIndex++;
+        }
+    }
+
+    private static int FindPickedBoundarySpan(
+        IReadOnlyList<Point2> samples,
+        IReadOnlyList<double> cumulativeDistances,
+        IReadOnlyList<double> boundaryDistances,
+        double pickedDistance,
+        Point2 pickedPoint)
+    {
+        var normalizedPickedDistance = Math.Clamp(pickedDistance, 0.0, cumulativeDistances[^1]);
+        for (var index = 1; index < boundaryDistances.Count; index++)
+        {
+            if (normalizedPickedDistance > boundaryDistances[index - 1] + GeometryTolerance
+                && normalizedPickedDistance < boundaryDistances[index] - GeometryTolerance)
+            {
+                return index - 1;
+            }
+        }
+
+        var closestIndex = 0;
+        var closestDistance = double.PositiveInfinity;
+        for (var index = 1; index < boundaryDistances.Count; index++)
+        {
+            var start = PointAtSampledPathDistance(samples, cumulativeDistances, boundaryDistances[index - 1]);
+            var end = PointAtSampledPathDistance(samples, cumulativeDistances, boundaryDistances[index]);
+            var segment = new LineEntity(EntityId.Create("boundary-segment"), start, end);
+            if (!TryProjectParameter(segment, pickedPoint, out var parameter))
+            {
+                continue;
+            }
+
+            var projectedPoint = PointAtParameter(segment, Math.Clamp(parameter, 0.0, 1.0));
+            var distance = Distance(projectedPoint, pickedPoint);
+            if (distance < closestDistance)
+            {
+                closestDistance = distance;
+                closestIndex = index - 1;
+            }
+        }
+
+        return closestIndex;
     }
 
     private static IReadOnlyList<Point2> GetSampledPathSpan(

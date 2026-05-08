@@ -228,13 +228,15 @@ public sealed class SketchGeometryDragServiceTests
     }
 
     [Fact]
-    public void DraggingSplineEndpointTangentHandleUpdatesAdjacentFitPoint()
+    public void DraggingSplineEndpointTangentHandleUpdatesHandleWithoutMovingFitPoint()
     {
         var document = new DrawingDocument(new DrawingEntity[]
         {
             SplineEntity.FromFitPoints(
                 EntityId.Create("spline-a"),
-                new[] { new Point2(0, 0), new Point2(4, 0), new Point2(8, 2) })
+                new[] { new Point2(0, 0), new Point2(4, 0), new Point2(8, 2) },
+                startTangentHandle: new Point2(1, 0),
+                endTangentHandle: new Point2(7, 1.5))
         });
 
         var changed = SketchGeometryDragService.TryApplyDrag(
@@ -247,8 +249,38 @@ public sealed class SketchGeometryDragServiceTests
             out _);
 
         changed.Should().BeTrue();
-        next.Entities.Should().ContainSingle().Which.Should().BeOfType<SplineEntity>()
-            .Which.FitPoints.Should().Equal(new Point2(0, 0), new Point2(4, 4), new Point2(8, 2));
+        var spline = next.Entities.Should().ContainSingle().Which.Should().BeOfType<SplineEntity>().Subject;
+        spline.FitPoints.Should().Equal(new Point2(0, 0), new Point2(4, 0), new Point2(8, 2));
+        spline.StartTangentHandle.Should().Be(new Point2(1, 1));
+        spline.EndTangentHandle.Should().Be(new Point2(7, 1.5));
+    }
+
+    [Fact]
+    public void DraggingSplineFitPointPreservesEndpointTangentHandles()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            SplineEntity.FromFitPoints(
+                EntityId.Create("spline-a"),
+                new[] { new Point2(0, 0), new Point2(4, 0), new Point2(8, 2) },
+                startTangentHandle: new Point2(1, 0),
+                endTangentHandle: new Point2(7, 1.5))
+        });
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "spline-a|point|fit-1|4|0",
+            new Point2(4, 0),
+            new Point2(4, 2),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        var spline = next.Entities.Should().ContainSingle().Which.Should().BeOfType<SplineEntity>().Subject;
+        spline.FitPoints.Should().Equal(new Point2(0, 0), new Point2(4, 2), new Point2(8, 2));
+        spline.StartTangentHandle.Should().Be(new Point2(1, 0));
+        spline.EndTangentHandle.Should().Be(new Point2(7, 1.5));
     }
 
     [Fact]

@@ -45,4 +45,22 @@ public sealed class SplineEntityTests
 
         spline.GetSamplePoints().Should().Equal(points);
     }
+
+    [Fact]
+    public void FitPointSplineStoresIndependentEndpointTangentHandles()
+    {
+        var spline = SplineEntity.FromFitPoints(
+            EntityId.Create("curve"),
+            new[] { new Point2(0, 0), new Point2(4, 0), new Point2(8, 0) },
+            startTangentHandle: new Point2(0, 2),
+            endTangentHandle: new Point2(8, -2));
+
+        var samples = spline.GetSamplePoints();
+
+        spline.StartTangentHandle.Should().Be(new Point2(0, 2));
+        spline.EndTangentHandle.Should().Be(new Point2(8, -2));
+        samples[0].Should().Be(new Point2(0, 0));
+        samples[^1].Should().Be(new Point2(8, 0));
+        samples.Should().Contain(point => point.Y > 0.1);
+    }
 }

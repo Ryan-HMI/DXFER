@@ -420,6 +420,23 @@ public sealed class SketchDimensionSolverServiceTests
         edge.Start.Should().Be(new Point2(-6, 0));
     }
 
+    [Fact]
+    public void TreatsKeyedEllipseAxisDimensionsAsSatisfied()
+    {
+        var sequence = 0;
+        var ellipse = new EllipseEntity(EntityId.Create("ellipse-a"), new Point2(0, 0), new Point2(10, 0), 0.5);
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            "ellipse",
+            new DrawingEntity[] { ellipse },
+            new Dictionary<string, double> { ["major"] = 20, ["minor"] = 10 },
+            () => $"dim-{++sequence}");
+        var document = new DrawingDocument(new DrawingEntity[] { ellipse }, dimensions, Array.Empty<SketchConstraint>());
+
+        dimensions.Should().HaveCount(2);
+        dimensions.Should().OnlyContain(dimension =>
+            SketchDimensionSolverService.GetDimensionState(document, dimension) == SketchConstraintState.Satisfied);
+    }
+
     private static SketchDimension DrivingDimension(
         string id,
         SketchDimensionKind kind,

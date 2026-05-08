@@ -110,6 +110,8 @@ const DEFAULT_FIT_MARGIN = 32;
 const DEFAULT_BLANK_VIEW_SCALE = 24;
 const HIT_TEST_TOLERANCE = 9;
 const SNAP_POINT_TOLERANCE = 8;
+const PRIORITY_POINT_HIT_TOLERANCE = 4;
+const STRONG_POINT_HIT_TOLERANCE = 1;
 const CLICK_MOVE_TOLERANCE = 5;
 const MIN_VIEW_SCALE = 0.000001;
 const MAX_VIEW_SCALE = 1000000;
@@ -135,6 +137,7 @@ const CONSTRAINT_DEFAULT_OFFSET_DISTANCE = 26;
 const POWER_TRIM_PATH_MIN_SCREEN_DISTANCE = 2;
 const POWER_TRIM_EXTEND_HIT_TEST_TOLERANCE = 18;
 const SPLINE_TANGENT_HANDLE_SCALE = 0.25;
+const SPLINE_FIT_SEGMENTS_PER_SPAN = 32;
 
 export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) {
   const context = canvas.getContext("2d");
@@ -1117,20 +1120,26 @@ function drawPowerTrimExtendIndicator(state, target, screenPoint) {
   }
 
   const { context } = state;
+  const entityKind = getEntityKind(target.entity);
+  const drawCursorConnector = entityKind === "line" || entityKind === "polyline" || entityKind === "polygon";
   const endpoint = worldToScreen(state, target.snapPoint);
   context.save();
   context.strokeStyle = "#22d3ee";
   context.fillStyle = "rgba(34, 211, 238, 0.16)";
   context.lineWidth = 2;
   context.lineCap = "round";
-  context.setLineDash([5, 4]);
-  context.beginPath();
-  context.moveTo(endpoint.x, endpoint.y);
-  context.lineTo(screenPoint.x, screenPoint.y);
-  context.stroke();
+  if (drawCursorConnector) {
+    context.setLineDash([5, 4]);
+    context.beginPath();
+    context.moveTo(endpoint.x, endpoint.y);
+    context.lineTo(screenPoint.x, screenPoint.y);
+    context.stroke();
+  }
+
   context.setLineDash([]);
+  const markerPoint = drawCursorConnector ? screenPoint : endpoint;
   context.beginPath();
-  context.arc(screenPoint.x, screenPoint.y, 5, 0, Math.Tau);
+  context.arc(markerPoint.x, markerPoint.y, 5, 0, Math.Tau);
   context.fill();
   context.stroke();
   context.restore();
@@ -1139,6 +1148,10 @@ function drawPowerTrimExtendIndicator(state, target, screenPoint) {
 function drawToolPreview(state) {
   const tool = getSketchCreationTool(state);
   const modifyTool = getModifyTool(state);
+  if (tool && isAddSplinePointSketchTool(tool)) {
+    return drawModifyToolPreview(state, "addsplinepoint");
+  }
+
   if (!tool && modifyTool) {
     return drawModifyToolPreview(state, modifyTool);
   }
@@ -4399,17 +4412,30 @@ function handlePointerMove(state, event) {
     return;
   }
 
-  if (getSketchCreationTool(state) || getModifyTool(state)) {
-    const nearestTarget = findNearestTarget(state, screenPoint);
+  const sketchTool = getSketchCreationTool(state);
+  const modifyTool = getModifyTool(state);
+  if (sketchTool || modifyTool) {
+    const addSplinePointSketchTool = isAddSplinePointSketchTool(sketchTool);
+    const nearestTarget = modifyTool === "addsplinepoint"
+      ? findNearestSelectedSplineTarget(state, screenPoint)
+      : addSplinePointSketchTool
+        ? findNearestSplineTarget(state, screenPoint)
+        : findNearestTarget(state, screenPoint);
     setHoveredTarget(state, nearestTarget);
 
-    if (getSketchCreationTool(state) && tryToggleSketchChainToolAtPoint(state, screenPoint, nearestTarget)) {
+    if (sketchTool && !addSplinePointSketchTool && tryToggleSketchChainToolAtPoint(state, screenPoint, nearestTarget)) {
       updateDebugAttributes(state);
       draw(state);
       return;
     }
 
-    if (getModifyTool(state) === "offset") {
+    if (modifyTool === "addsplinepoint" || addSplinePointSketchTool) {
+      state.toolDraft = state.toolDraft || createEmptyToolDraft();
+      state.toolDraft.points = [];
+      state.toolDraft.previewPoint = getAddSplinePointPickPoint(nearestTarget);
+      updateDebugAttributes(state);
+      draw(state);
+    } else if (modifyTool === "offset") {
       state.toolDraft = state.toolDraft || createEmptyToolDraft();
       state.toolDraft.previewPoint = getSketchWorldPoint(state, screenPoint, nearestTarget, event);
       applyLockedDraftDimensions(state);
@@ -4417,7 +4443,7 @@ function handlePointerMove(state, event) {
       draw(state);
     } else if (state.toolDraft && state.toolDraft.points.length > 0) {
       state.toolDraft.previewPoint = getSketchWorldPoint(state, screenPoint, nearestTarget, event);
-      if (getSketchCreationTool(state)) {
+      if (sketchTool) {
         applyLockedDraftDimensions(state);
       }
       updateDebugAttributes(state);
@@ -4872,11 +4898,12 @@ export function finishGeometryDrag(state, screenPoint, event = {}) {
 
   updateGeometryDrag(state, screenPoint, event);
   const endWorldPoint = drag.currentWorldPoint || screenToWorld(state, screenPoint);
-  state.document = drag.originalDocument;
+  const optimisticDocument = state.document;
+  const originalDocument = drag.originalDocument;
 
   state.geometryDrag = null;
   if (drag.moved) {
-    invokeDotNet(
+    const invocation = invokeDotNet(
       state,
       "OnGeometryDragRequested",
       drag.targetKey,
@@ -4885,6 +4912,18 @@ export function finishGeometryDrag(state, screenPoint, event = {}) {
       endWorldPoint.x,
       endWorldPoint.y,
       Boolean(drag.constrainToCurrentVector));
+    if (invocation && typeof invocation.catch === "function") {
+      invocation.catch(() => {
+        if (state.document === optimisticDocument) {
+          state.document = originalDocument;
+          pruneInteractionState(state, true);
+          updateDebugAttributes(state);
+          draw(state);
+        }
+      });
+    }
+  } else {
+    state.document = originalDocument;
   }
 
   return true;
@@ -4903,6 +4942,11 @@ function cancelGeometryDrag(state) {
 function handleSketchToolClick(state, screenPoint, event) {
   const tool = getSketchCreationTool(state);
   if (!tool) {
+    return;
+  }
+
+  if (isAddSplinePointSketchTool(tool)) {
+    commitAddSplinePointOnClickedSpline(state, screenPoint);
     return;
   }
 
@@ -4972,12 +5016,20 @@ function handleModifyToolClick(state, screenPoint, event) {
     return false;
   }
 
-  const clickTarget = findNearestTarget(state, screenPoint);
+  const clickTarget = tool === "addsplinepoint"
+    ? findNearestSelectedSplineTarget(state, screenPoint)
+    : findNearestTarget(state, screenPoint);
   if (clickTarget) {
     setHoveredTarget(state, clickTarget);
   }
 
-  const worldPoint = getSketchWorldPoint(state, screenPoint, clickTarget, event);
+  const worldPoint = tool === "addsplinepoint"
+    ? getAddSplinePointPickPoint(clickTarget)
+    : getSketchWorldPoint(state, screenPoint, clickTarget, event);
+  if (!worldPoint) {
+    return false;
+  }
+
   if (getModifyToolPointCount(tool) === 1) {
     const commitPoint = tool === "offset" && state.toolDraft && state.toolDraft.previewPoint
       ? state.toolDraft.previewPoint
@@ -5022,9 +5074,11 @@ function commitModifyToolPoints(state, tool, points) {
     return false;
   }
 
-  state.activeTool = "select";
-  if (state.canvas && state.canvas.dataset) {
-    state.canvas.dataset.activeTool = state.activeTool;
+  if (tool !== "addsplinepoint") {
+    state.activeTool = "select";
+    if (state.canvas && state.canvas.dataset) {
+      state.canvas.dataset.activeTool = state.activeTool;
+    }
   }
 
   state.toolDraft = createEmptyToolDraft();
@@ -5050,6 +5104,32 @@ function commitCurrentModifyTool(state) {
   }
 
   return commitModifyToolPoints(state, tool, points);
+}
+
+function getAddSplinePointPickPoint(target) {
+  if (!target || getEntityKind(target.entity) !== "spline") {
+    return null;
+  }
+
+  return target.snapPoint || target.point || null;
+}
+
+function commitAddSplinePointOnClickedSpline(state, screenPoint) {
+  const request = getAddSplinePointRequest(state, screenPoint);
+  if (!request) {
+    state.toolDraft = createEmptyToolDraft();
+    setHoveredTarget(state, null);
+    return false;
+  }
+
+  state.toolDraft = createEmptyToolDraft();
+  state.selectedKeys.clear();
+  state.selectedKeys.add(request.targetKey);
+  state.activeSelectionKey = request.targetKey;
+  setHoveredTarget(state, request.target);
+  notifySelectionChanged(state);
+  invokeDotNet(state, "OnAddSplinePointRequested", request.targetKey, request.point.x, request.point.y);
+  return true;
 }
 
 export function shouldPreserveDraftDimensionsForNextPoint(tool, nextPoints) {
@@ -5753,6 +5833,41 @@ function findNearestWholeEntityTarget(state, screenPoint) {
   return nearestDistance <= HIT_TEST_TOLERANCE ? nearestTarget : null;
 }
 
+function findNearestSelectedSplineTarget(state, screenPoint) {
+  return findNearestSplineTarget(state, screenPoint, true);
+}
+
+function findNearestSplineTarget(state, screenPoint, selectedOnly = false) {
+  let nearestHit = null;
+  for (const entity of getDocumentEntities(state.document)) {
+    const id = getEntityId(entity);
+    if (!id || getEntityKind(entity) !== "spline" || getEntityFitPoints(entity).length < 2) {
+      continue;
+    }
+
+    if (selectedOnly && !state.selectedKeys?.has(id)) {
+      continue;
+    }
+
+    const hit = getSampledCurveEdgeHit(state, entity, screenPoint);
+    if (hit && (!nearestHit || hit.distance < nearestHit.distance)) {
+      nearestHit = hit;
+    }
+  }
+
+  return nearestHit && nearestHit.distance <= HIT_TEST_TOLERANCE
+    ? nearestHit.target
+    : null;
+}
+
+export function getAddSplinePointRequest(state, screenPoint, selectedOnly = false) {
+  const target = findNearestSplineTarget(state, screenPoint, selectedOnly);
+  const point = getAddSplinePointPickPoint(target);
+  return target && point
+    ? { targetKey: target.key, target, point }
+    : null;
+}
+
 function getPersistentDimensionHit(state, screenPoint) {
   let nearestHit = null;
   for (const dimension of getPersistentDimensionDescriptors(state)) {
@@ -5879,6 +5994,10 @@ function getEntityPointHit(state, entity, screenPoint) {
     const nearestPriority = nearestHit ? Number(nearestHit.priority || 0) : 0;
     if (!nearestHit
       || distance < nearestHit.distance
+      || (priority > nearestPriority
+        && distance <= PRIORITY_POINT_HIT_TOLERANCE
+        && nearestHit.distance <= SNAP_POINT_TOLERANCE
+        && nearestHit.distance > STRONG_POINT_HIT_TOLERANCE)
       || (Math.abs(distance - nearestHit.distance) <= 0.000001 && priority > nearestPriority)) {
       nearestHit = {
         target: createPointTarget(entity, snapPoint.label, snapPoint.point),
@@ -6852,12 +6971,7 @@ function getSplineEditableSnapPoints(entity) {
 }
 
 function getSplineTangentHandleSnapPoints(entity) {
-  const handlePoints = getEditableSplineHandleSourcePoints(entity);
-  if (handlePoints.length < 2) {
-    return [];
-  }
-
-  const handles = getSplineTangentHandles(handlePoints, SPLINE_TANGENT_HANDLE_SCALE);
+  const handles = getPersistentSplineTangentHandlesForEntity(entity);
   const snapPoints = [];
   if (handles[0]?.forward) {
     snapPoints.push({
@@ -7660,6 +7774,42 @@ function resolveCurrentPointTargetPoint(entity, label, fallbackPoint) {
     }
   }
 
+  if (kind === "spline") {
+    const fitPoints = getEntityFitPoints(entity);
+    if (fitPoints.length >= 2) {
+      const fitIndex = parseIndexedPointLabel(normalizedLabel, "fit-");
+      if (fitIndex !== null && fitIndex >= 0 && fitIndex < fitPoints.length) {
+        return fitPoints[fitIndex];
+      }
+
+      if (normalizedLabel === "start") {
+        return fitPoints[0];
+      }
+
+      if (normalizedLabel === "end") {
+        return fitPoints[fitPoints.length - 1];
+      }
+
+      if (normalizedLabel === "tangent-start") {
+        return getEntityStartTangentHandle(entity)
+          || getPersistentSplineTangentHandlesForEntity(entity)[0]?.forward
+          || fallbackPoint;
+      }
+
+      if (normalizedLabel === "tangent-end") {
+        return getEntityEndTangentHandle(entity)
+          || getPersistentSplineTangentHandlesForEntity(entity)[1]?.backward
+          || fallbackPoint;
+      }
+    }
+
+    const controlPoints = getEntityControlPoints(entity);
+    const controlIndex = parseIndexedPointLabel(normalizedLabel, "control-");
+    if (controlIndex !== null && controlIndex >= 0 && controlIndex < controlPoints.length) {
+      return controlPoints[controlIndex];
+    }
+  }
+
   if (kind === "point" && normalizedLabel === "point") {
     return getPointEntityLocation(entity) || fallbackPoint;
   }
@@ -7911,6 +8061,10 @@ function setPreviewEllipseMajorAxis(entity, majorAxisEndPoint, minorRadiusRatio)
 function applyPreviewSplinePointDrag(entity, normalizedLabel, delta, dragEnd) {
   const fitPoints = getEntityFitPoints(entity);
   if (fitPoints.length >= 2) {
+    if (normalizedLabel === "tangent-start" || normalizedLabel === "tangent-end") {
+      return setPreviewSplineTangentHandle(entity, normalizedLabel, dragEnd, fitPoints);
+    }
+
     return applyPreviewSplineEditablePointDrag(entity, fitPoints, "fit", normalizedLabel, delta, dragEnd);
   }
 
@@ -7936,36 +8090,50 @@ function applyPreviewSplineEditablePointDrag(entity, sourcePoints, sourceKind, n
     }
 
     points[pointIndex] = addWorldPoints(points[pointIndex], delta);
-    setPreviewSplineEditablePoints(entity, sourceKind, points);
-    return true;
-  }
-
-  if (normalizedLabel === "tangent-start" || normalizedLabel === "tangent-end") {
-    const endpointIndex = normalizedLabel === "tangent-start" ? 0 : points.length - 1;
-    const adjacentIndex = normalizedLabel === "tangent-start" ? 1 : points.length - 2;
-    const endpoint = points[endpointIndex];
-    const vector = subtractPoints(dragEnd, endpoint);
-    if (Math.hypot(vector.x, vector.y) <= WORLD_GEOMETRY_TOLERANCE) {
-      return false;
-    }
-
-    points[adjacentIndex] = {
-      x: endpoint.x + vector.x / SPLINE_TANGENT_HANDLE_SCALE,
-      y: endpoint.y + vector.y / SPLINE_TANGENT_HANDLE_SCALE
-    };
-    setPreviewSplineEditablePoints(entity, sourceKind, points);
+    setPreviewSplineEditablePoints(entity, sourceKind, points, pointIndex, delta);
     return true;
   }
 
   return false;
 }
 
-function setPreviewSplineEditablePoints(entity, sourceKind, points) {
+function setPreviewSplineTangentHandle(entity, normalizedLabel, dragEnd, fitPoints) {
+  if (!dragEnd || !Number.isFinite(Number(dragEnd.x)) || !Number.isFinite(Number(dragEnd.y))) {
+    return false;
+  }
+
+  if (normalizedLabel === "tangent-start") {
+    entity.startTangentHandle = copyPoint(dragEnd);
+  } else {
+    entity.endTangentHandle = copyPoint(dragEnd);
+  }
+
+  entity.points = getSplineFitWorldPoints(
+    fitPoints,
+    SPLINE_FIT_SEGMENTS_PER_SPAN,
+    getEntityStartTangentHandle(entity),
+    getEntityEndTangentHandle(entity));
+  return true;
+}
+
+function setPreviewSplineEditablePoints(entity, sourceKind, points, movedPointIndex = null, delta = null) {
   const copiedPoints = points.map(point => ({ ...point }));
   if (sourceKind === "fit") {
+    if (movedPointIndex === 0 && getEntityStartTangentHandle(entity) && delta) {
+      entity.startTangentHandle = addWorldPoints(getEntityStartTangentHandle(entity), delta);
+    }
+
+    if (movedPointIndex === copiedPoints.length - 1 && getEntityEndTangentHandle(entity) && delta) {
+      entity.endTangentHandle = addWorldPoints(getEntityEndTangentHandle(entity), delta);
+    }
+
     entity.fitPoints = copiedPoints.map(point => ({ ...point }));
     entity.controlPoints = copiedPoints.map(point => ({ ...point }));
-    entity.points = getSplineFitWorldPoints(copiedPoints);
+    entity.points = getSplineFitWorldPoints(
+      copiedPoints,
+      SPLINE_FIT_SEGMENTS_PER_SPAN,
+      getEntityStartTangentHandle(entity),
+      getEntityEndTangentHandle(entity));
     return;
   }
 
@@ -8025,6 +8193,16 @@ function applyPreviewEntityDrag(document, entity, delta, dragEnd) {
     const controlPoints = getEntityControlPoints(entity);
     if (controlPoints.length > 0) {
       entity.controlPoints = controlPoints.map(point => addWorldPoints(point, delta));
+    }
+
+    const startTangentHandle = getEntityStartTangentHandle(entity);
+    if (startTangentHandle) {
+      entity.startTangentHandle = addWorldPoints(startTangentHandle, delta);
+    }
+
+    const endTangentHandle = getEntityEndTangentHandle(entity);
+    if (endTangentHandle) {
+      entity.endTangentHandle = addWorldPoints(endTangentHandle, delta);
     }
 
     return true;
@@ -8516,8 +8694,15 @@ export function getSketchToolDimensionLocks(toolDraft) {
   const dimensionValues = toolDraft && toolDraft.dimensionValues
     ? toolDraft.dimensionValues
     : {};
+  const polygonSideCount = toolDraft
+    ? Number(toolDraft.polygonSideCount)
+    : Number.NaN;
+  const exportValues = { ...dimensionValues };
+  if (!("sides" in exportValues) && Number.isInteger(polygonSideCount) && polygonSideCount >= 3) {
+    exportValues.sides = polygonSideCount;
+  }
 
-  for (const [key, value] of Object.entries(dimensionValues)) {
+  for (const [key, value] of Object.entries(exportValues)) {
     const normalizedKey = String(key || "").trim().toLowerCase();
     const numericValue = Number(value);
     if (!normalizedKey
@@ -8537,6 +8722,10 @@ function isVariablePointSketchTool(tool) {
   return tool === "spline" || tool === "splinecontrolpoint";
 }
 
+function isAddSplinePointSketchTool(tool) {
+  return tool === "splinecontrolpoint";
+}
+
 function getPolygonSideCount(state) {
   const sideCount = state && state.toolDraft
     ? Number(state.toolDraft.polygonSideCount)
@@ -8546,7 +8735,7 @@ function getPolygonSideCount(state) {
     : 6;
 }
 
-function adjustPolygonSideCount(state, wheelDelta) {
+export function adjustPolygonSideCount(state, wheelDelta) {
   const tool = getSketchCreationTool(state);
   if ((tool !== "inscribedpolygon" && tool !== "circumscribedpolygon")
     || !state.toolDraft
@@ -8557,10 +8746,6 @@ function adjustPolygonSideCount(state, wheelDelta) {
 
   const direction = wheelDelta < 0 ? 1 : -1;
   state.toolDraft.polygonSideCount = clamp(getPolygonSideCount(state) + direction, 3, 64);
-  state.toolDraft.dimensionValues = {
-    ...(state.toolDraft.dimensionValues || {}),
-    sides: state.toolDraft.polygonSideCount
-  };
   return true;
 }
 
@@ -8989,7 +9174,7 @@ function notifySelectionChanged(state) {
   invokeDotNet(state, "OnSelectionChangedFromCanvas", Array.from(state.selectedKeys), state.activeSelectionKey || null);
 }
 
-function setHoveredTarget(state, target) {
+export function setHoveredTarget(state, target) {
   const previousTarget = state.hoveredTarget;
   const previousKey = state.hoveredTarget ? state.hoveredTarget.key : null;
   const previousNotifyKey = state.hoveredTarget && !state.hoveredTarget.dynamic
@@ -9000,7 +9185,7 @@ function setHoveredTarget(state, target) {
     ? nextKey
     : null;
 
-  if (previousKey === nextKey && sameOptionalWorldPoint(previousTarget && previousTarget.snapPoint, target && target.snapPoint)) {
+  if (areEquivalentHoveredTargets(previousTarget, target)) {
     return false;
   }
 
@@ -9012,6 +9197,30 @@ function setHoveredTarget(state, target) {
 
   updateDebugAttributes(state);
   return true;
+}
+
+function areEquivalentHoveredTargets(previousTarget, target) {
+  if (previousTarget === target) {
+    return true;
+  }
+
+  if (!previousTarget || !target) {
+    return false;
+  }
+
+  return previousTarget.kind === target.kind
+    && previousTarget.key === target.key
+    && previousTarget.label === target.label
+    && previousTarget.segmentIndex === target.segmentIndex
+    && sameOptionalWorldPoint(previousTarget.point, target.point)
+    && sameOptionalWorldPoint(previousTarget.snapPoint, target.snapPoint)
+    && sameOptionalReference(previousTarget.entity, target.entity)
+    && sameOptionalReference(previousTarget.dimension, target.dimension)
+    && sameOptionalReference(previousTarget.constraint, target.constraint);
+}
+
+function sameOptionalReference(first, second) {
+  return first === second || (!first && !second);
 }
 
 function sameOptionalWorldPoint(first, second) {
@@ -9343,6 +9552,8 @@ function getSketchCreationTool(state) {
 
 function getModifyTool(state) {
   switch (normalizeToolName(state && state.activeTool)) {
+    case "addsplinepoint":
+      return "addsplinepoint";
     case "offset":
       return "offset";
     case "translate":
@@ -9406,6 +9617,7 @@ export function getSketchToolPointCount(tool) {
 
 export function getModifyToolPointCount(tool) {
   switch (tool) {
+    case "addsplinepoint":
     case "offset":
       return 1;
     case "rotate":
@@ -9826,7 +10038,7 @@ function focusElement(element) {
 function invokeDotNet(state, methodName, ...args) {
   if (!state.dotnetRef || typeof state.dotnetRef.invokeMethodAsync !== "function") {
     state.canvas.dataset.lastDotnetCallback = `${methodName}:missing`;
-    return;
+    return null;
   }
 
   state.canvas.dataset.lastDotnetCallback = `${methodName}:pending`;
@@ -9839,6 +10051,8 @@ function invokeDotNet(state, methodName, ...args) {
       console.error(`DXFER canvas callback ${methodName} failed.`, error);
     });
   }
+
+  return invocation;
 }
 
 function getDocumentEntities(document) {
@@ -10755,22 +10969,32 @@ function getCubicBezierWorldPoints(points, segmentCount = 40) {
   });
 }
 
-export function getSplineFitWorldPoints(points, segmentCountPerSpan = 16) {
+export function getSplineFitWorldPoints(
+  points,
+  segmentCountPerSpan = SPLINE_FIT_SEGMENTS_PER_SPAN,
+  startTangentHandle = null,
+  endTangentHandle = null) {
   if (!Array.isArray(points) || points.length < 2) {
     return [];
   }
 
   if (points.length === 2) {
-    return points.slice();
+    const startTangent = getSplineStartTangent(points, startTangentHandle);
+    const endTangent = getSplineEndTangent(points, endTangentHandle);
+    if (isTangentCollinearWithChord(points[0], points[1], startTangent)
+      && isTangentCollinearWithChord(points[0], points[1], endTangent)) {
+      return points.slice();
+    }
   }
 
   const segmentCount = Math.max(2, Math.floor(segmentCountPerSpan));
+  const tangents = getSplineFitTangents(points, startTangentHandle, endTangentHandle);
   const samples = [];
   for (let index = 0; index < points.length - 1; index += 1) {
-    const previous = index === 0 ? points[index] : points[index - 1];
     const start = points[index];
     const end = points[index + 1];
-    const next = index + 2 < points.length ? points[index + 2] : end;
+    const startTangent = tangents[index];
+    const endTangent = tangents[index + 1];
 
     for (let step = 0; step <= segmentCount; step += 1) {
       if (index > 0 && step === 0) {
@@ -10782,7 +11006,7 @@ export function getSplineFitWorldPoints(points, segmentCountPerSpan = 16) {
       } else if (step === segmentCount) {
         samples.push(copyPoint(end));
       } else {
-        samples.push(getCatmullRomWorldPoint(previous, start, end, next, step / segmentCount));
+        samples.push(getCubicHermiteWorldPoint(start, end, startTangent, endTangent, step / segmentCount));
       }
     }
   }
@@ -10790,19 +11014,70 @@ export function getSplineFitWorldPoints(points, segmentCountPerSpan = 16) {
   return samples;
 }
 
-function getCatmullRomWorldPoint(previous, start, end, next, t) {
+function getSplineFitTangents(points, startTangentHandle, endTangentHandle) {
+  return points.map((point, index) => {
+    if (index === 0) {
+      return getSplineStartTangent(points, startTangentHandle);
+    }
+
+    if (index === points.length - 1) {
+      return getSplineEndTangent(points, endTangentHandle);
+    }
+
+    return {
+      x: (points[index + 1].x - points[index - 1].x) / 2,
+      y: (points[index + 1].y - points[index - 1].y) / 2
+    };
+  });
+}
+
+function getSplineStartTangent(points, startTangentHandle) {
+  const handle = readPoint(startTangentHandle);
+  if (handle && distanceBetweenWorldPoints(points[0], handle) > WORLD_GEOMETRY_TOLERANCE) {
+    return {
+      x: (handle.x - points[0].x) / SPLINE_TANGENT_HANDLE_SCALE,
+      y: (handle.y - points[0].y) / SPLINE_TANGENT_HANDLE_SCALE
+    };
+  }
+
+  return {
+    x: points[1].x - points[0].x,
+    y: points[1].y - points[0].y
+  };
+}
+
+function getSplineEndTangent(points, endTangentHandle) {
+  const lastIndex = points.length - 1;
+  const handle = readPoint(endTangentHandle);
+  if (handle && distanceBetweenWorldPoints(points[lastIndex], handle) > WORLD_GEOMETRY_TOLERANCE) {
+    return {
+      x: (points[lastIndex].x - handle.x) / SPLINE_TANGENT_HANDLE_SCALE,
+      y: (points[lastIndex].y - handle.y) / SPLINE_TANGENT_HANDLE_SCALE
+    };
+  }
+
+  return {
+    x: points[lastIndex].x - points[lastIndex - 1].x,
+    y: points[lastIndex].y - points[lastIndex - 1].y
+  };
+}
+
+function getCubicHermiteWorldPoint(start, end, startTangent, endTangent, t) {
   const t2 = t * t;
   const t3 = t2 * t;
+  const h00 = (2 * t3) - (3 * t2) + 1;
+  const h10 = t3 - (2 * t2) + t;
+  const h01 = (-2 * t3) + (3 * t2);
+  const h11 = t3 - t2;
   return {
-    x: 0.5 * ((2 * start.x)
-      + (-previous.x + end.x) * t
-      + ((2 * previous.x) - (5 * start.x) + (4 * end.x) - next.x) * t2
-      + (-previous.x + (3 * start.x) - (3 * end.x) + next.x) * t3),
-    y: 0.5 * ((2 * start.y)
-      + (-previous.y + end.y) * t
-      + ((2 * previous.y) - (5 * start.y) + (4 * end.y) - next.y) * t2
-      + (-previous.y + (3 * start.y) - (3 * end.y) + next.y) * t3)
+    x: h00 * start.x + h10 * startTangent.x + h01 * end.x + h11 * endTangent.x,
+    y: h00 * start.y + h10 * startTangent.y + h01 * end.y + h11 * endTangent.y
   };
+}
+
+function isTangentCollinearWithChord(start, end, tangent) {
+  const chord = subtractPoints(end, start);
+  return Math.abs((chord.x * tangent.y) - (chord.y * tangent.x)) <= WORLD_GEOMETRY_TOLERANCE;
 }
 
 export function getSplineTangentHandles(points, handleScale = 0.25) {
@@ -10833,7 +11108,24 @@ export function getPersistentSplineTangentHandlesForEntity(entity) {
     : controlPoints.length >= 2
       ? controlPoints
       : getEntityPoints(entity);
-  return getSplineTangentHandles(handlePoints, SPLINE_TANGENT_HANDLE_SCALE);
+  const handles = getSplineTangentHandles(handlePoints, SPLINE_TANGENT_HANDLE_SCALE);
+  const startTangentHandle = getEntityStartTangentHandle(entity);
+  if (handles[0] && startTangentHandle) {
+    handles[0] = {
+      ...handles[0],
+      forward: startTangentHandle
+    };
+  }
+
+  const endTangentHandle = getEntityEndTangentHandle(entity);
+  if (handles[1] && endTangentHandle) {
+    handles[1] = {
+      ...handles[1],
+      backward: endTangentHandle
+    };
+  }
+
+  return handles;
 }
 
 function getEntityFitPoints(entity) {
@@ -10858,6 +11150,14 @@ function getEntityControlPoints(entity) {
   return rawPoints
     .map(readPoint)
     .filter(point => point !== null);
+}
+
+function getEntityStartTangentHandle(entity) {
+  return readPoint(readProperty(entity, "startTangentHandle", "StartTangentHandle"));
+}
+
+function getEntityEndTangentHandle(entity) {
+  return readPoint(readProperty(entity, "endTangentHandle", "EndTangentHandle"));
 }
 
 function getNearestDistinctSplinePoint(points, startIndex, step) {

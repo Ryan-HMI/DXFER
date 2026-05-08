@@ -165,7 +165,11 @@ public sealed class CanvasDocumentDtoTests
         };
         var document = new DrawingDocument(new DrawingEntity[]
         {
-            SplineEntity.FromFitPoints(EntityId.Create("spline-a"), fitPoints)
+            SplineEntity.FromFitPoints(
+                EntityId.Create("spline-a"),
+                fitPoints,
+                startTangentHandle: new Point2(1, 0),
+                endTangentHandle: new Point2(4, 3))
         });
 
         var dto = CanvasDocumentDto.FromDocument(document);
@@ -173,6 +177,29 @@ public sealed class CanvasDocumentDtoTests
         var spline = dto.Entities.Should().ContainSingle().Subject;
         spline.Kind.Should().Be("spline");
         spline.FitPoints.Should().Equal(fitPoints.Select(point => new CanvasPointDto(point.X, point.Y)));
+        spline.StartTangentHandle.Should().Be(new CanvasPointDto(1, 0));
+        spline.EndTangentHandle.Should().Be(new CanvasPointDto(4, 3));
         spline.Points.Should().HaveCountGreaterThan(fitPoints.Length);
+    }
+
+    [Fact]
+    public void HidesGeneratedSampledSplineControlPointsForPersistentHandles()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new SplineEntity(
+                EntityId.Create("spline-a"),
+                1,
+                new[] { new Point2(0, 0), new Point2(1, 1), new Point2(2, 1), new Point2(3, 0) },
+                Array.Empty<double>())
+        });
+
+        var dto = CanvasDocumentDto.FromDocument(document);
+
+        var spline = dto.Entities.Should().ContainSingle().Subject;
+        spline.Kind.Should().Be("spline");
+        spline.Points.Should().HaveCount(4);
+        spline.ControlPoints.Should().BeNull();
+        spline.FitPoints.Should().BeNull();
     }
 }

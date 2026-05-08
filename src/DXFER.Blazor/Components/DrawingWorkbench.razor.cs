@@ -163,6 +163,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private bool CanModifySelectedGeometry =>
         GetWholeEntityIdsForOperations().Any();
 
+    private bool CanAddSplinePoint =>
+        GetSelectedWholeEntities()
+            .OfType<SplineEntity>()
+            .Where(spline => spline.FitPoints.Count >= 2)
+            .Take(2)
+            .Count() == 1;
+
     private bool CanFilletOrChamferSelectedLines =>
         GetSelectedWholeEntities().OfType<LineEntity>().Take(3).Count() == 2;
 
@@ -220,7 +227,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.InscribedPolygon, WorkbenchTool.InscribedPolygon, CadIconName.InscribedPolygon, "Inscribed polygon"),
             Command(WorkbenchCommandId.CircumscribedPolygon, WorkbenchTool.CircumscribedPolygon, CadIconName.CircumscribedPolygon, "Circumscribed polygon"),
             Command(WorkbenchCommandId.Spline, WorkbenchTool.Spline, CadIconName.Spline, "Spline"),
-            Command(WorkbenchCommandId.SplineControlPoint, WorkbenchTool.SplineControlPoint, CadIconName.SplineControlPoint, "Spline control point"),
+            Command(WorkbenchCommandId.SplineControlPoint, WorkbenchTool.SplineControlPoint, CadIconName.SplineControlPoint, "Add spline point"),
             Command(WorkbenchCommandId.Point, WorkbenchTool.Point, CadIconName.Point, "Point"),
             Command(WorkbenchCommandId.Text, WorkbenchTool.Text, CadIconName.Text, "Text", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Slot, WorkbenchTool.Slot, CadIconName.Slot, "Slot")
@@ -238,6 +245,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.DeleteSelection, null, CadIconName.Delete, "Delete selected geometry", !CanDeleteSelection),
             Command(WorkbenchCommandId.PowerTrim, WorkbenchTool.PowerTrim, CadIconName.PowerTrim, "Power trim/extend"),
             Command(WorkbenchCommandId.SplitAtPoint, WorkbenchTool.SplitAtPoint, CadIconName.Split, "Split at point"),
+            Command(WorkbenchCommandId.AddSplinePoint, WorkbenchTool.AddSplinePoint, CadIconName.SplineControlPoint, "Add spline point", !CanAddSplinePoint),
             Command(WorkbenchCommandId.Offset, WorkbenchTool.Offset, CadIconName.Offset, "Offset", !CanModifySelectedGeometry),
             Command(WorkbenchCommandId.Fillet, null, CadIconName.Fillet, "Fillet", !CanFilletOrChamferSelectedLines),
             Command(WorkbenchCommandId.Chamfer, null, CadIconName.Chamfer, "Chamfer", !CanFilletOrChamferSelectedLines),
@@ -331,12 +339,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.CircumscribedPolygon => "Circumscribed polygon",
         WorkbenchTool.Spline => "Spline",
         WorkbenchTool.Bezier => "Bezier",
-        WorkbenchTool.SplineControlPoint => "Spline control point",
+        WorkbenchTool.SplineControlPoint => "Add spline point",
         WorkbenchTool.Point => "Point",
         WorkbenchTool.Construction => "Construction",
         WorkbenchTool.PowerTrim => "Power trim/extend",
         WorkbenchTool.ThreePointArc => "Three-point arc",
         WorkbenchTool.SplitAtPoint => "Split at point",
+        WorkbenchTool.AddSplinePoint => "Add spline point",
         WorkbenchTool.Offset => "Offset",
         WorkbenchTool.Translate => "Translate",
         WorkbenchTool.Rotate => "Rotate",
@@ -372,12 +381,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.CircumscribedPolygon => "Circumscribed polygon: click center, scroll for sides, then side apothem. Esc: cancel.",
         WorkbenchTool.Spline => "Spline: click fit points, double-click to finish. Esc: cancel.",
         WorkbenchTool.Bezier => "Bezier: click four control points. Esc: cancel.",
-        WorkbenchTool.SplineControlPoint => "Spline control point: click four control points. Esc: cancel.",
+        WorkbenchTool.SplineControlPoint => "Add spline point: click a fit-point spline where the new fit point belongs. Esc: cancel.",
         WorkbenchTool.Point => "Point: click to place a persistent sketch point. Esc: cancel.",
         WorkbenchTool.Slot => "Slot: click first center, second center, then radius point. Esc: cancel.",
         WorkbenchTool.Construction => "Construction: click geometry to toggle construction state. Esc: cancel.",
         WorkbenchTool.PowerTrim => "Power trim/extend: click a line, polyline, polygon, circle, arc, ellipse, spline, or point section to trim, or click past a line endpoint to extend. Esc: cancel.",
         WorkbenchTool.SplitAtPoint => "Split at point: click a line or arc, or pick two points on a circle. Esc: cancel.",
+        WorkbenchTool.AddSplinePoint => "Add spline point: select one fit-point spline, then click the spline where the new fit point belongs. Esc: cancel.",
         WorkbenchTool.Offset => "Offset: select whole geometry, then click the through side or radius point. Esc: cancel.",
         WorkbenchTool.Translate => "Translate: select whole geometry, click from point, then to point. Esc: cancel.",
         WorkbenchTool.Rotate => "Rotate: select whole geometry, click center, reference point, then target point. Esc: cancel.",
@@ -581,6 +591,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                     WorkbenchTool.PowerTrim,
                     "Power trim/extend active. Click a line, polyline, polygon, circle, arc, ellipse, spline, or point section to trim, or click past a line endpoint to extend.");
                 break;
+            case WorkbenchCommandId.AddSplinePoint:
             case WorkbenchCommandId.Offset:
             case WorkbenchCommandId.Translate:
             case WorkbenchCommandId.Rotate:
@@ -589,7 +600,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchCommandId.LinearPattern:
             case WorkbenchCommandId.CircularPattern:
                 await SyncSelectionFromCanvasAsync();
-                if (!CanModifySelectedGeometry)
+                if (commandId == WorkbenchCommandId.AddSplinePoint && !CanAddSplinePoint)
+                {
+                    _status = "Add spline point needs exactly one selected fit-point spline.";
+                    break;
+                }
+
+                if (commandId != WorkbenchCommandId.AddSplinePoint && !CanModifySelectedGeometry)
                 {
                     _status = $"{FormatCommandName(commandId)} needs one or more whole selected entities.";
                     break;
@@ -788,8 +805,47 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        _activeTool = null;
-        ResetSelection();
+        if (StringComparer.Ordinal.Equals(NormalizeToolName(toolName), "addsplinepoint"))
+        {
+            _activeTool = WorkbenchTool.AddSplinePoint;
+            _status = "Added spline fit point. Click another location on the selected spline, or Esc to cancel.";
+        }
+        else
+        {
+            _activeTool = null;
+            ResetSelection();
+        }
+
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnAddSplinePointRequested(string targetKey, CanvasPointDto point)
+    {
+        if (!TryGetEntityIdForOperationTarget(targetKey, out var entityId)
+            || FindEntity(entityId) is not SplineEntity spline
+            || spline.FitPoints.Count < 2)
+        {
+            _status = "Add spline point needs a fit-point spline target.";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (!DrawingModifyService.TryAddSplinePoint(
+                _document,
+                new[] { entityId },
+                ToPoint(point),
+                out var nextDocument))
+        {
+            _status = "Pick point must be on the clicked spline.";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        ApplyDocumentChange(nextDocument, "Added spline fit point. Click another location on a spline, or Esc to cancel.");
+        _activeTool = WorkbenchTool.SplineControlPoint;
+        _selectedEntityIds.Clear();
+        _selectedEntityIds.Add(entityId);
+        _activeSelectionKey = entityId;
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -1028,6 +1084,19 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case "mirror" when points.Count >= 2:
                 nextDocument = DrawingModifyService.MirrorSelected(_document, selectedEntityIds, points[0], points[1]);
                 status = $"Mirrored {selectedEntityIds.Count} selected entities.";
+                break;
+            case "addsplinepoint" when points.Count >= 1:
+                if (!DrawingModifyService.TryAddSplinePoint(
+                        _document,
+                        selectedEntityIds,
+                        points[0],
+                        out nextDocument))
+                {
+                    _status = "Add spline point needs exactly one selected fit-point spline and a pick on that spline.";
+                    return false;
+                }
+
+                status = "Added spline fit point.";
                 break;
             case "offset" when points.Count >= 1:
                 if (!DrawingModifyService.TryOffsetSelected(
@@ -2355,6 +2424,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         switch (commandId)
         {
+            case WorkbenchCommandId.AddSplinePoint:
+                tool = WorkbenchTool.AddSplinePoint;
+                return true;
             case WorkbenchCommandId.Offset:
                 tool = WorkbenchTool.Offset;
                 return true;
@@ -2524,11 +2596,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.CircumscribedPolygon => "Pick center, scroll for sides, then side apothem.",
         WorkbenchTool.Spline => "Pick fit points; double-click to finish.",
         WorkbenchTool.Bezier => "Pick four Bezier control points.",
-        WorkbenchTool.SplineControlPoint => "Pick four spline control points.",
+        WorkbenchTool.SplineControlPoint => "Click a fit-point spline where the new fit point belongs.",
         WorkbenchTool.Point => "Pick a point on the canvas.",
         WorkbenchTool.Construction => "Click geometry to toggle construction state.",
         WorkbenchTool.Slot => "Pick first center, second center, then radius point.",
         WorkbenchTool.PowerTrim => "Click a line, polyline, polygon, circle, arc, ellipse, spline, or point section to trim, or click past a line endpoint to extend.",
+        WorkbenchTool.AddSplinePoint => "Click the selected fit-point spline where the new fit point belongs.",
         WorkbenchTool.Offset => "Click the through side or radius point.",
         WorkbenchTool.Translate => "Pick from point, then to point.",
         WorkbenchTool.Rotate => "Pick center, reference point, then target point.",
@@ -2596,10 +2669,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchCommandId.EllipticalArc => "Elliptical arc",
         WorkbenchCommandId.InscribedPolygon => "Inscribed polygon",
         WorkbenchCommandId.CircumscribedPolygon => "Circumscribed polygon",
-        WorkbenchCommandId.SplineControlPoint => "Spline control point",
+        WorkbenchCommandId.SplineControlPoint => "Add spline point",
         WorkbenchCommandId.PowerTrim => "Power trim/extend",
         WorkbenchCommandId.DeleteSelection => "Delete selected geometry",
         WorkbenchCommandId.SplitAtPoint => "Split at point",
+        WorkbenchCommandId.AddSplinePoint => "Add spline point",
         WorkbenchCommandId.SaveDxf => "Save DXF",
         WorkbenchCommandId.LinearPattern => "Linear pattern",
         WorkbenchCommandId.CircularPattern => "Circular pattern",
@@ -2628,11 +2702,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         "circumscribedpolygon" => "Circumscribed polygon",
         "spline" => "Spline",
         "bezier" => "Bezier",
-        "splinecontrolpoint" => "Spline control point",
+        "splinecontrolpoint" => "Add spline point",
         "point" => "Point",
         "slot" => "Slot",
         "powertrim" => "Power trim/extend",
         "splitatpoint" => "Split at point",
+        "addsplinepoint" => "Add spline point",
         "offset" => "Offset",
         "translate" => "Translate",
         "rotate" => "Rotate",

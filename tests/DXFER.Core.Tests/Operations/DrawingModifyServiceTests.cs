@@ -76,6 +76,73 @@ public sealed class DrawingModifyServiceTests
     }
 
     [Fact]
+    public void AddSplinePointInsertsProjectedFitPointOnSelectedSpline()
+    {
+        var spline = SplineEntity.FromFitPoints(
+            EntityId.Create("curve"),
+            new[] { new Point2(0, 0), new Point2(10, 0) });
+        var document = new DrawingDocument(new DrawingEntity[] { spline });
+
+        var added = DrawingModifyService.TryAddSplinePoint(
+            document,
+            new[] { "curve" },
+            new Point2(5, 0.03),
+            out var next);
+
+        added.Should().BeTrue();
+        var nextSpline = next.Entities.Should().ContainSingle().Subject.Should().BeOfType<SplineEntity>().Subject;
+        nextSpline.FitPoints.Should().HaveCount(3);
+        nextSpline.FitPoints[1].X.Should().BeApproximately(5, 0.000001);
+        nextSpline.FitPoints[1].Y.Should().BeApproximately(0, 0.000001);
+    }
+
+    [Fact]
+    public void AddSplinePointPreservesEndpointTangentHandles()
+    {
+        var spline = SplineEntity.FromFitPoints(
+            EntityId.Create("curve"),
+            new[] { new Point2(0, 0), new Point2(10, 0) },
+            startTangentHandle: new Point2(1, 2),
+            endTangentHandle: new Point2(9, -2));
+        var pickedPoint = spline.GetSamplePoints()[16];
+        var document = new DrawingDocument(new DrawingEntity[] { spline });
+
+        var added = DrawingModifyService.TryAddSplinePoint(
+            document,
+            new[] { "curve" },
+            pickedPoint,
+            out var next);
+
+        added.Should().BeTrue();
+        var nextSpline = next.Entities.Should().ContainSingle().Subject.Should().BeOfType<SplineEntity>().Subject;
+        nextSpline.StartTangentHandle.Should().Be(new Point2(1, 2));
+        nextSpline.EndTangentHandle.Should().Be(new Point2(9, -2));
+        nextSpline.FitPoints.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public void AddSplinePointRequiresSingleFitPointSpline()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new SplineEntity(
+                EntityId.Create("control-curve"),
+                1,
+                new[] { new Point2(0, 0), new Point2(10, 0) },
+                Array.Empty<double>())
+        });
+
+        var added = DrawingModifyService.TryAddSplinePoint(
+            document,
+            new[] { "control-curve" },
+            new Point2(5, 0),
+            out var next);
+
+        added.Should().BeFalse();
+        next.Should().BeSameAs(document);
+    }
+
+    [Fact]
     public void LinearPatternAddsTranslatedCopies()
     {
         var document = new DrawingDocument(new DrawingEntity[]
@@ -1104,6 +1171,34 @@ public sealed class DrawingModifyServiceTests
         var document = new DrawingDocument(new DrawingEntity[]
         {
             new PolygonEntity(EntityId.Create("target"), new Point2(0, 0), 5, 0, 4),
+            new LineEntity(EntityId.Create("first"), new Point2(4, -10), new Point2(4, 10)),
+            new LineEntity(EntityId.Create("second"), new Point2(2, -10), new Point2(2, 10))
+        });
+
+        var trimmed = DrawingModifyService.TryPowerTrimOrExtendLine(
+            document,
+            "target",
+            new Point2(3, 2),
+            prefix => EntityId.Create($"{prefix}-split"),
+            out var next);
+
+        trimmed.Should().BeTrue();
+        next.Entities.Should().HaveCount(7);
+        AssertLine(next.Entities[0], "polygon-line-1-split", new Point2(5, 0), new Point2(4, 1));
+        AssertLine(next.Entities[1], "polygon-line-2-split", new Point2(2, 3), new Point2(0, 5));
+        AssertLine(next.Entities[2], "polygon-line-3-split", new Point2(0, 5), new Point2(-5, 0));
+        AssertLine(next.Entities[3], "polygon-line-4-split", new Point2(-5, 0), new Point2(0, -5));
+        AssertLine(next.Entities[4], "polygon-line-5-split", new Point2(0, -5), new Point2(5, 0));
+        next.Entities[5].Should().Be(new LineEntity(EntityId.Create("first"), new Point2(4, -10), new Point2(4, 10)));
+        next.Entities[6].Should().Be(new LineEntity(EntityId.Create("second"), new Point2(2, -10), new Point2(2, 10)));
+    }
+
+    [Fact]
+    public void PowerTrimPolygonRemovesOnlyPickedExplodedSegment()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new PolygonEntity(EntityId.Create("target"), new Point2(0, 0), 5, 0, 4),
             new LineEntity(EntityId.Create("left"), new Point2(-2, -10), new Point2(-2, 10)),
             new LineEntity(EntityId.Create("right"), new Point2(2, -10), new Point2(2, 10))
         });
@@ -1111,16 +1206,16 @@ public sealed class DrawingModifyServiceTests
         var trimmed = DrawingModifyService.TryPowerTrimOrExtendLine(
             document,
             "target",
-            new Point2(0, 5),
+            new Point2(3, 2),
             prefix => EntityId.Create($"{prefix}-split"),
             out var next);
 
         trimmed.Should().BeTrue();
         next.Entities.Should().HaveCount(6);
-        AssertLine(next.Entities[0], "polygon-line-1-split", new Point2(-2, 3), new Point2(-5, 0));
-        AssertLine(next.Entities[1], "polygon-line-2-split", new Point2(-5, 0), new Point2(0, -5));
-        AssertLine(next.Entities[2], "polygon-line-3-split", new Point2(0, -5), new Point2(5, 0));
-        AssertLine(next.Entities[3], "polygon-line-4-split", new Point2(5, 0), new Point2(2, 3));
+        AssertLine(next.Entities[0], "polygon-line-1-split", new Point2(2, 3), new Point2(0, 5));
+        AssertLine(next.Entities[1], "polygon-line-2-split", new Point2(0, 5), new Point2(-5, 0));
+        AssertLine(next.Entities[2], "polygon-line-3-split", new Point2(-5, 0), new Point2(0, -5));
+        AssertLine(next.Entities[3], "polygon-line-4-split", new Point2(0, -5), new Point2(5, 0));
         next.Entities[4].Should().Be(new LineEntity(EntityId.Create("left"), new Point2(-2, -10), new Point2(-2, 10)));
         next.Entities[5].Should().Be(new LineEntity(EntityId.Create("right"), new Point2(2, -10), new Point2(2, 10)));
     }
@@ -1132,8 +1227,8 @@ public sealed class DrawingModifyServiceTests
             new DrawingEntity[]
             {
                 new PolygonEntity(EntityId.Create("target"), new Point2(0, 0), 5, 0, 4),
-                new LineEntity(EntityId.Create("left"), new Point2(-2, -10), new Point2(-2, 10)),
-                new LineEntity(EntityId.Create("right"), new Point2(2, -10), new Point2(2, 10))
+                new LineEntity(EntityId.Create("first"), new Point2(4, -10), new Point2(4, 10)),
+                new LineEntity(EntityId.Create("second"), new Point2(2, -10), new Point2(2, 10))
             },
             new[]
             {
@@ -1156,7 +1251,7 @@ public sealed class DrawingModifyServiceTests
         var trimmed = DrawingModifyService.TryPowerTrimOrExtendLine(
             document,
             "target",
-            new Point2(0, 5),
+            new Point2(3, 2),
             prefix => EntityId.Create($"{prefix}-split"),
             out var next);
 
@@ -1166,9 +1261,73 @@ public sealed class DrawingModifyServiceTests
         next.Entities.OfType<LineEntity>()
             .Where(line => line.Id.Value.StartsWith("polygon-line-", StringComparison.Ordinal))
             .Should()
-            .HaveCount(4);
+            .HaveCount(5);
         next.Dimensions.Should().BeEmpty();
-        next.Constraints.Should().BeEmpty();
+        next.Constraints.Should().HaveCount(4);
+        next.Constraints.Should().OnlyContain(constraint =>
+            constraint.Kind == SketchConstraintKind.Coincident
+            && constraint.State == SketchConstraintState.Satisfied
+            && constraint.ReferenceKeys.All(key => !key.Contains("target", StringComparison.Ordinal))
+            && constraint.ReferenceKeys.All(key => key.StartsWith("polygon-line-", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void PowerTrimPolygonIgnoresNonLocalSplineIntersections()
+    {
+        var unrelatedSpline = SplineEntity.FromFitPoints(
+            EntityId.Create("unrelated-spline"),
+            new[] { new Point2(-4, -2), new Point2(0, -3), new Point2(4, -2) });
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new PolygonEntity(EntityId.Create("target"), new Point2(0, 0), 5, 0, 4),
+            new LineEntity(EntityId.Create("first"), new Point2(4, -10), new Point2(4, 10)),
+            new LineEntity(EntityId.Create("second"), new Point2(2, -10), new Point2(2, 10)),
+            unrelatedSpline
+        });
+
+        var trimmed = DrawingModifyService.TryPowerTrimOrExtendLine(
+            document,
+            "target",
+            new Point2(3, 2),
+            prefix => EntityId.Create($"{prefix}-split"),
+            out var next);
+
+        trimmed.Should().BeTrue();
+        next.Entities.Should().ContainSingle(entity => entity.Id == EntityId.Create("unrelated-spline"));
+        next.Entities.OfType<LineEntity>()
+            .Where(line => line.Id.Value.StartsWith("polygon-line-", StringComparison.Ordinal))
+            .Should()
+            .HaveCount(5);
+        next.Constraints.Should().HaveCount(4);
+    }
+
+    [Fact]
+    public void PowerTrimPolygonIgnoresCutterIntersectionsOnOtherPolygonSides()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new PolygonEntity(EntityId.Create("target"), new Point2(0, 0), 5, 0, 4),
+            new LineEntity(EntityId.Create("crossing"), new Point2(2, -10), new Point2(2, 10))
+        });
+
+        var trimmed = DrawingModifyService.TryPowerTrimOrExtendLine(
+            document,
+            "target",
+            new Point2(3, 2),
+            prefix => EntityId.Create($"{prefix}-split"),
+            out var next);
+
+        trimmed.Should().BeTrue();
+        next.Entities.OfType<LineEntity>()
+            .Where(line => line.Id.Value.StartsWith("polygon-line-", StringComparison.Ordinal))
+            .Should()
+            .HaveCount(4);
+        AssertLine(next.Entities[0], "polygon-line-1-split", new Point2(2, 3), new Point2(0, 5));
+        AssertLine(next.Entities[1], "polygon-line-2-split", new Point2(0, 5), new Point2(-5, 0));
+        AssertLine(next.Entities[2], "polygon-line-3-split", new Point2(-5, 0), new Point2(0, -5));
+        AssertLine(next.Entities[3], "polygon-line-4-split", new Point2(0, -5), new Point2(5, 0));
+        next.Entities[4].Should().Be(new LineEntity(EntityId.Create("crossing"), new Point2(2, -10), new Point2(2, 10)));
+        next.Constraints.Should().HaveCount(3);
     }
 
     [Theory]
@@ -1203,25 +1362,26 @@ public sealed class DrawingModifyServiceTests
         var document = new DrawingDocument(new DrawingEntity[]
         {
             new PolygonEntity(EntityId.Create("target"), new Point2(0, 0), 5, 0, 4),
-            new PointEntity(EntityId.Create("left-point"), new Point2(-2, 3)),
-            new PointEntity(EntityId.Create("right-point"), new Point2(2, 3))
+            new PointEntity(EntityId.Create("first-point"), new Point2(4, 1)),
+            new PointEntity(EntityId.Create("second-point"), new Point2(2, 3))
         });
 
         var trimmed = DrawingModifyService.TryPowerTrimOrExtendLine(
             document,
             "target",
-            new Point2(0, 5),
+            new Point2(3, 2),
             prefix => EntityId.Create($"{prefix}-split"),
             out var next);
 
         trimmed.Should().BeTrue();
-        next.Entities.Should().HaveCount(6);
-        AssertLine(next.Entities[0], "polygon-line-1-split", new Point2(-2, 3), new Point2(-5, 0));
-        AssertLine(next.Entities[1], "polygon-line-2-split", new Point2(-5, 0), new Point2(0, -5));
-        AssertLine(next.Entities[2], "polygon-line-3-split", new Point2(0, -5), new Point2(5, 0));
-        AssertLine(next.Entities[3], "polygon-line-4-split", new Point2(5, 0), new Point2(2, 3));
-        next.Entities[4].Should().Be(new PointEntity(EntityId.Create("left-point"), new Point2(-2, 3)));
-        next.Entities[5].Should().Be(new PointEntity(EntityId.Create("right-point"), new Point2(2, 3)));
+        next.Entities.Should().HaveCount(7);
+        AssertLine(next.Entities[0], "polygon-line-1-split", new Point2(5, 0), new Point2(4, 1));
+        AssertLine(next.Entities[1], "polygon-line-2-split", new Point2(2, 3), new Point2(0, 5));
+        AssertLine(next.Entities[2], "polygon-line-3-split", new Point2(0, 5), new Point2(-5, 0));
+        AssertLine(next.Entities[3], "polygon-line-4-split", new Point2(-5, 0), new Point2(0, -5));
+        AssertLine(next.Entities[4], "polygon-line-5-split", new Point2(0, -5), new Point2(5, 0));
+        next.Entities[5].Should().Be(new PointEntity(EntityId.Create("first-point"), new Point2(4, 1)));
+        next.Entities[6].Should().Be(new PointEntity(EntityId.Create("second-point"), new Point2(2, 3)));
     }
 
     [Fact]

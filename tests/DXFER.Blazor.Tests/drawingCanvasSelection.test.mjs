@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyDraftDimensionValue,
+  adjustPolygonSideCount,
   applyConstraintVisibilityState,
   applyGeometryDragPreview,
   applyLockedDraftDimensions,
@@ -22,6 +23,7 @@ import {
   getVisibleDimensionDescriptors,
   getConstructionToggleRequest,
   getDynamicSketchSnapHit,
+  getAddSplinePointRequest,
   getCenterPointArc,
   getChainedSketchToolDraft,
   getConstraintGlyphGroupHit,
@@ -83,6 +85,7 @@ import {
   shouldDrawSelectionTargetOverlay,
   shouldPreserveDraftDimensionsForNextPoint,
   shouldRefreshDimensionInputValue,
+  setHoveredTarget,
   syncActiveSelectionWithSelectedKeys,
   tryToggleSketchChainToolAtPoint
 } from "../../src/DXFER.Blazor/wwwroot/drawingCanvas.js";
@@ -319,6 +322,45 @@ test("spline fit points are selectable point targets", () => {
   assert.equal(target?.key, "spline-a|point|fit-1|2|2");
 });
 
+test("add spline point request targets clicked fit spline projection", () => {
+  const spline = {
+    id: "spline-a",
+    kind: "spline",
+    points: [{ x: 0, y: 0 }, { x: 10, y: 0 }],
+    fitPoints: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+  };
+  const state = createHitTestState([spline]);
+
+  const request = getAddSplinePointRequest(state, { x: 45, y: 98 });
+
+  assert.equal(request.targetKey, "spline-a");
+  assertApproxEqual(request.point.x, 4.5);
+  assertApproxEqual(request.point.y, 0);
+});
+
+test("selected add spline point request ignores unselected overlapping splines", () => {
+  const unselected = {
+    id: "unselected",
+    kind: "spline",
+    points: [{ x: 0, y: 0 }, { x: 10, y: 0 }],
+    fitPoints: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+  };
+  const selected = {
+    id: "selected",
+    kind: "spline",
+    points: [{ x: 0, y: 4 }, { x: 10, y: 4 }],
+    fitPoints: [{ x: 0, y: 4 }, { x: 10, y: 4 }]
+  };
+  const state = createHitTestState([unselected, selected]);
+  state.selectedKeys = new Set(["selected"]);
+
+  const request = getAddSplinePointRequest(state, { x: 45, y: 58 }, true);
+
+  assert.equal(request.targetKey, "selected");
+  assertApproxEqual(request.point.x, 4.5);
+  assertApproxEqual(request.point.y, 4);
+});
+
 test("spline endpoint tangent handles are selectable point targets", () => {
   const spline = {
     id: "spline-a",
@@ -339,6 +381,29 @@ test("spline endpoint tangent handles are selectable point targets", () => {
 
   assert.equal(target?.kind, "point");
   assert.equal(target?.key, "spline-a|point|tangent-start|1|0");
+});
+
+test("spline tangent handle target wins over nearby fit point when grabbing handle", () => {
+  const spline = {
+    id: "spline-a",
+    kind: "spline",
+    points: [
+      { x: 0, y: 0 },
+      { x: 4, y: 0 },
+      { x: 8, y: 2 }
+    ],
+    fitPoints: [
+      { x: 0, y: 0 },
+      { x: 4, y: 0 },
+      { x: 8, y: 2 }
+    ],
+    startTangentHandle: { x: 0.4, y: 0 }
+  };
+
+  const target = findNearestTarget(createHitTestState([spline]), { x: 1.5, y: 100 });
+
+  assert.equal(target?.kind, "point");
+  assert.equal(target?.key, "spline-a|point|tangent-start|0.4|0");
 });
 
 test("spline fit point drag preview moves the fit point", () => {
@@ -369,7 +434,7 @@ test("spline fit point drag preview moves the fit point", () => {
   assert.deepEqual(document.entities[0].fitPoints[1], { x: 4, y: 0 });
 });
 
-test("spline tangent handle drag preview moves the adjacent fit point", () => {
+test("spline tangent handle drag preview edits the handle without moving fit points", () => {
   const document = {
     entities: [{
       id: "spline-a",
@@ -383,7 +448,9 @@ test("spline tangent handle drag preview moves the adjacent fit point", () => {
         { x: 0, y: 0 },
         { x: 4, y: 0 },
         { x: 8, y: 2 }
-      ]
+      ],
+      startTangentHandle: { x: 1, y: 0 },
+      endTangentHandle: { x: 7, y: 1.5 }
     }]
   };
 
@@ -393,8 +460,90 @@ test("spline tangent handle drag preview moves the adjacent fit point", () => {
     { x: 1, y: 0 },
     { x: 1, y: 1 });
 
-  assert.deepEqual(preview.entities[0].fitPoints[1], { x: 4, y: 4 });
+  assert.deepEqual(preview.entities[0].startTangentHandle, { x: 1, y: 1 });
   assert.deepEqual(document.entities[0].fitPoints[1], { x: 4, y: 0 });
+  assert.deepEqual(preview.entities[0].fitPoints, document.entities[0].fitPoints);
+  assert.notDeepEqual(preview.entities[0].points, document.entities[0].points);
+});
+
+test("same-key hover refreshes when drag preview swaps spline geometry", () => {
+  const originalSpline = {
+    id: "spline-a",
+    kind: "spline",
+    points: [
+      { x: 0, y: 0 },
+      { x: 4, y: 0 },
+      { x: 8, y: 2 }
+    ],
+    fitPoints: [
+      { x: 0, y: 0 },
+      { x: 4, y: 0 },
+      { x: 8, y: 2 }
+    ],
+    startTangentHandle: { x: 1, y: 0 }
+  };
+  const previewSpline = {
+    ...originalSpline,
+    points: [
+      { x: 0, y: 0 },
+      { x: 3, y: 1 },
+      { x: 8, y: 2 }
+    ],
+    startTangentHandle: { x: 1, y: 1 }
+  };
+  const state = createCanvasInteractionState([originalSpline]);
+  const selectionKey = "spline-a|point|tangent-start|1|0";
+  const originalTarget = {
+    kind: "point",
+    key: selectionKey,
+    entityId: "spline-a",
+    entity: originalSpline,
+    label: "tangent-start",
+    point: { x: 1, y: 0 }
+  };
+  const previewTarget = {
+    ...originalTarget,
+    entity: previewSpline,
+    point: { x: 1, y: 1 }
+  };
+
+  assert.equal(setHoveredTarget(state, originalTarget), true);
+  state.document = { entities: [previewSpline] };
+
+  assert.equal(setHoveredTarget(state, previewTarget), true);
+  assert.equal(state.hoveredTarget.entity, previewSpline);
+  assert.deepEqual(state.hoveredTarget.point, { x: 1, y: 1 });
+});
+
+test("spline fit point drag preview preserves independent endpoint tangent handles", () => {
+  const document = {
+    entities: [{
+      id: "spline-a",
+      kind: "spline",
+      points: [
+        { x: 0, y: 0 },
+        { x: 4, y: 0 },
+        { x: 8, y: 2 }
+      ],
+      fitPoints: [
+        { x: 0, y: 0 },
+        { x: 4, y: 0 },
+        { x: 8, y: 2 }
+      ],
+      startTangentHandle: { x: 1, y: 0 },
+      endTangentHandle: { x: 7, y: 1.5 }
+    }]
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "spline-a|point|fit-1|4|0",
+    { x: 4, y: 0 },
+    { x: 4, y: 2 });
+
+  assert.deepEqual(preview.entities[0].fitPoints[1], { x: 4, y: 2 });
+  assert.deepEqual(preview.entities[0].startTangentHandle, { x: 1, y: 0 });
+  assert.deepEqual(preview.entities[0].endTangentHandle, { x: 7, y: 1.5 });
 });
 
 test("polygon helper distinguishes inscribed and circumscribed radii", () => {
@@ -432,6 +581,24 @@ test("draft polygon side dimension is permanent editable state", () => {
   assert.equal(state.toolDraft.polygonSideCount, 8);
   assert.deepEqual(state.toolDraft.dimensionValues, { sides: 8 });
   assert.deepEqual(state.toolDraft.previewPoint, { x: 10, y: 0 });
+});
+
+test("polygon wheel changes side count without locking dimension input", () => {
+  const state = {
+    activeTool: "inscribedpolygon",
+    toolDraft: {
+      points: [{ x: 0, y: 0 }],
+      previewPoint: { x: 10, y: 0 },
+      dimensionValues: { radius: 10 },
+      polygonSideCount: 6
+    }
+  };
+
+  const changed = adjustPolygonSideCount(state, -120);
+
+  assert.equal(changed, true);
+  assert.equal(state.toolDraft.polygonSideCount, 7);
+  assert.deepEqual(state.toolDraft.dimensionValues, { radius: 10 });
 });
 
 test("polygon placement supports shifted vertical polar snap", () => {
@@ -1027,6 +1194,18 @@ test("sketch tool dimension locks only include finite positive values", () => {
 
   assert.deepEqual(locks.keys, ["length", "width"]);
   assert.deepEqual(locks.values, [12.5, 7]);
+});
+
+test("polygon side count draft exports as side lock without mutating dimension input", () => {
+  const locks = getSketchToolDimensionLocks({
+    polygonSideCount: 8,
+    dimensionValues: {
+      radius: 10
+    }
+  });
+
+  assert.deepEqual(locks.keys, ["radius", "sides"]);
+  assert.deepEqual(locks.values, [10, 8]);
 });
 
 test("shift is polar snap instead of pan while sketch tools are active", () => {
@@ -2280,13 +2459,12 @@ test("geometry drag preview moves one line endpoint", () => {
   assert.deepEqual(document.entities[0].points, [{ x: 0, y: 0 }, { x: 10, y: 0 }]);
 });
 
-test("finishing geometry drag restores the original document before server confirmation", () => {
+test("finishing geometry drag keeps the final preview until server confirmation", () => {
   const originalDocument = {
     entities: [{
       id: "edge",
       kind: "line",
-      start: { x: 0, y: 0 },
-      end: { x: 10, y: 0 }
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
     }],
     dimensions: [],
     constraints: []
@@ -2299,7 +2477,9 @@ test("finishing geometry drag restores the original document before server confi
   const calls = [];
   const state = {
     activeTool: "select",
+    acquiredSnapPoints: [],
     document: previewDocument,
+    hoveredTarget: null,
     selectedKeys: new Set(),
     activeSelectionKey: null,
     geometryDrag: {
@@ -2319,7 +2499,8 @@ test("finishing geometry drag restores the original document before server confi
       offsetY: 0
     },
     canvas: {
-      dataset: {}
+      dataset: {},
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 })
     },
     dotnetRef: {
       invokeMethodAsync: (...args) => {
@@ -2330,10 +2511,10 @@ test("finishing geometry drag restores the original document before server confi
   };
 
   assert.equal(finishGeometryDrag(state, { x: 20, y: 0 }, { pointerId: 1 }), true);
-  assert.equal(state.document, originalDocument);
+  assert.notEqual(state.document, originalDocument);
+  assert.deepEqual(state.document.entities[0].points, [{ x: 0, y: 0 }, { x: 20, y: 0 }]);
   assert.equal(state.geometryDrag, null);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0][0], "OnGeometryDragRequested");
+  assert.equal(calls.some(call => call[0] === "OnGeometryDragRequested"), true);
 });
 
 test("geometry drag preview translates a line midpoint", () => {
@@ -2467,6 +2648,7 @@ test("point sketch tool needs one click", () => {
 });
 
 test("modify tools expose expected point counts", () => {
+  assert.equal(getModifyToolPointCount("addsplinepoint"), 1);
   assert.equal(getModifyToolPointCount("offset"), 1);
   assert.equal(getModifyToolPointCount("translate"), 2);
   assert.equal(getModifyToolPointCount("mirror"), 2);
@@ -2931,6 +3113,29 @@ function createHitTestState(entities) {
     activeTool: "select",
     document: { entities },
     acquiredSnapPoints: [],
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 100
+    }
+  };
+}
+
+function createCanvasInteractionState(entities) {
+  return {
+    activeTool: "select",
+    activeSelectionKey: null,
+    acquiredSnapPoints: [],
+    canvas: {
+      dataset: {},
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 })
+    },
+    document: { entities },
+    hoveredTarget: null,
+    selectedKeys: new Set(),
+    selectionBox: null,
+    showAllConstraints: false,
+    showOriginAxes: false,
     view: {
       scale: 10,
       offsetX: 0,

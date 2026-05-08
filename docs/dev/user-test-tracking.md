@@ -16,10 +16,14 @@ Use this file to separate what the user has actually tested from what is only au
 
 | ID | Behavior | User Status | Automated Status | App Status | Current Stage |
 |---|---|---|---|---|---|
-| UT-TRIM-001 | Polygon/poly trim explodes trimmed polygon into line entities and does not leave stale solver references. | USER-FAILED | AUTO-PASSED | APP-VERIFIED | Coded and app-verified; awaiting user retest |
-| UT-TRIM-002 | Power Trim hover has enough off-end tolerance and shows when the click will extend instead of trim. | USER-REQUESTED | AUTO-PASSED | APP-VERIFIED | Coded and app-verified; awaiting user retest |
+| UT-TRIM-001 | Polygon/poly trim explodes trimmed polygon into line entities, removes only the picked exploded segment, and does not leave stale solver references. | USER-FAILED | AUTO-PASSED | CODED | Follow-up picked-side fix coded and auto-passed; cutter hits on non-picked polygon sides should no longer add extra splits |
+| UT-TRIM-002 | Power Trim hover has enough off-end tolerance and shows when the click will extend instead of trim without drawing stale/off-tolerance preview lines. | USER-FAILED | CODED | CODED | Curve/conic extend indicator no longer draws the cursor connector; needs app/user hover retest |
 | UT-TRIM-003 | Spline trim responsiveness is acceptable. | USER-FAILED | AUTO-PASSED | APP-VERIFIED | Coded and app-verified; awaiting user retest |
 | UT-TRIM-004 | Arc extend reaches ellipse/elliptical-arc boundaries across larger angular spans. | USER-FAILED | AUTO-PASSED | APP-VERIFIED | Coded and app-verified; awaiting user retest |
+| UT-TRIM-005 | Extending conics does not leave persistent sample/control points or stale conic trim vertices behind. | USER-FAILED | AUTO-PASSED | CODED | Generated sampled splines hide leaked control points; needs app/user retest |
+| UT-TRIM-006 | Deleted conic targets/cutters are removed from trim hit-testing so later ellipse trims cannot snap to old conic vertices. | USER-FAILED | CODED | CODED | Likely stale generated-point source suppressed; needs focused app/user retest and deeper cache work if still reproducible |
+| UT-TRIM-007 | Exploded polygon trim output preserves coincident constraints at shared exploded vertices. | USER-FAILED | AUTO-PASSED | CODED | Coded and auto-passed; local-boundary fix avoids extra constraints from unrelated overlaps |
+| UT-SPLINE-002 | Moving spline tangent handles changes handle geometry only, not the adjacent fit point placement, and moving adjacent fit points does not rewrite endpoint handle vectors. | USER-FAILED | AUTO-PASSED | CODED | Independent endpoint tangent handles and smoother fit-spline sampling coded and auto-passed; needs app/user retest |
 
 ## Needs User Testing Handoff - 2026-05-07
 
@@ -27,10 +31,15 @@ These rows are coded, automated-tested, and verified in the running canvas by Co
 
 | ID | User Retest Focus |
 |---|---|
-| UT-TRIM-001 | Trim polygons/polys against cutters and confirm the result is exploded line geometry without solver breakage. |
+| UT-TRIM-001 | Trim polygons/polys against cutters and confirm only the clicked exploded segment disappears, with no extra splits from unrelated overlapping geometry. |
 | UT-TRIM-002 | Hover just past open entity endpoints in Power Trim and confirm the cyan extend indicator appears before extending instead of trimming. |
 | UT-TRIM-003 | Trim splines with common cutters and confirm interaction latency is acceptable and kept spans land on the cutter. |
 | UT-TRIM-004 | Extend arcs to ellipse/elliptical-arc boundaries, especially larger angular spans. |
+| UT-TRIM-005 | Extend conics/splines and confirm sampled/control-point dots do not remain stuck on the extended curve. |
+| UT-TRIM-006 | Delete a conic after extension/trim, then trim an ellipse nearby and confirm no old conic vertex is targetable. |
+| UT-TRIM-007 | Trim a polygon into exploded line segments and confirm shared vertices carry coincident constraints. |
+| UT-SPLINE-002 | Drag spline endpoint tangent handles and confirm adjacent fit points do not move; drag adjacent fit points and confirm endpoint handle vector/magnitude stays put. |
+| UT-ELLIPSE-001 | Create keyed ellipses and confirm persistent dimensions/geometry do not immediately draw red. |
 | UT-SPLINE-001 | Select and drag spline fit points plus endpoint tangent handles after creation. |
 | UT-LINEARC-001 | Continue a line into tangent-arc mode by hovering the last vertex, verify no mirrored preview line, and confirm tangent-arc key-in creates a radius dimension. |
 
@@ -40,7 +49,6 @@ These rows are still open and should not be treated as fixed yet.
 |---|---|
 | UT-SOLVER-001 | Dimensioned geometry drag/deletion robustness. |
 | UT-SOLVER-002 | Coincident constraint vertex welding. |
-| UT-ELLIPSE-001 | Keyed ellipse creation solve state. |
 | UT-SOLVER-003 | Deleted vertical constraint reasserting through dimension dragging. |
 | UT-UI-001 | Dock width and collapsible left/right docked panels. |
 | UT-ICON-001 | Larger icons and removed hotkey labels. |
@@ -54,7 +62,7 @@ These rows are still open and should not be treated as fixed yet.
 | UT-LINEARC-001 | Line/tangent-arc preview mode switching, vertex drawing, and keyed tangent-arc dimension creation are coherent. | USER-FAILED | AUTO-PASSED | APP-VERIFIED | Coded and app-verified; awaiting user retest |
 | UT-SOLVER-001 | Dragging dimensioned geometry respects dimensions and deleting dimensions clears stale broken solve state. | USER-FAILED | OPEN | OPEN | Queued |
 | UT-SOLVER-002 | Coincident constraints weld vertices for drag/solve behavior. | USER-FAILED | OPEN | OPEN | Queued |
-| UT-ELLIPSE-001 | Keyed-in ellipse creation does not create broken solves. | USER-FAILED | OPEN | OPEN | Queued |
+| UT-ELLIPSE-001 | Keyed-in ellipse creation does not create broken solves or red failed-state geometry on creation. | USER-FAILED | AUTO-PASSED | CODED | Custom keyed ellipse axis dimensions resolve as satisfied; needs app/user retest |
 | UT-SOLVER-003 | Deleted vertical constraints do not reassert through associated dimension dragging. | USER-FAILED | OPEN | OPEN | Queued |
 | UT-UI-001 | Left/right docked toolbars have no stray horizontal scrollbar and can collapse. | USER-REQUESTED | OPEN | OPEN | Queued |
 | UT-ICON-001 | Toolbar icons are larger and hotkey labels no longer block icon art. | USER-REQUESTED | OPEN | OPEN | Queued |

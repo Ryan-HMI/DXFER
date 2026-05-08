@@ -8,7 +8,6 @@ public static class SketchGeometryDragService
 {
     private const string PointKeySeparator = "|point|";
     private const string SegmentKeySeparator = "|segment|";
-    private const double SplineTangentHandleScale = 0.25;
 
     public static bool TryApplyDrag(
         DrawingDocument document,
@@ -564,6 +563,15 @@ public static class SketchGeometryDragService
     {
         var points = sourcePoints.ToArray();
         var pointPrefix = isFitSpline ? "fit-" : "control-";
+        if (isFitSpline && (label == "tangent-start" || label == "tangent-end"))
+        {
+            entities[entityIndex] = WithSplineTangentHandle(spline, label, dragEnd);
+            status = label == "tangent-start"
+                ? "Changed spline start tangent."
+                : "Changed spline end tangent.";
+            return true;
+        }
+
         if (TryParseIndexedLabel(label, pointPrefix, out var pointIndex)
             || TryGetSplineEndpointIndex(label, points.Length, out pointIndex))
         {
@@ -574,32 +582,12 @@ public static class SketchGeometryDragService
             }
 
             points[pointIndex] = Add(points[pointIndex], delta);
-            entities[entityIndex] = WithSplineEditablePoints(spline, points, isFitSpline);
+            entities[entityIndex] = WithSplineEditablePoints(spline, points, isFitSpline, pointIndex, delta);
             status = isFitSpline ? "Moved spline fit point." : "Moved spline control point.";
             return true;
         }
 
-        if (label == "tangent-start" || label == "tangent-end")
-        {
-            var endpointIndex = label == "tangent-start" ? 0 : points.Length - 1;
-            var adjacentIndex = label == "tangent-start" ? 1 : points.Length - 2;
-            var endpoint = points[endpointIndex];
-            var vector = new Point2(dragEnd.X - endpoint.X, dragEnd.Y - endpoint.Y);
-            if (SketchGeometryEditor.Distance(endpoint, dragEnd) <= SketchGeometryEditor.Tolerance)
-            {
-                status = "Spline tangent handle must stay distinct from the endpoint.";
-                return false;
-            }
-
-            points[adjacentIndex] = new Point2(
-                endpoint.X + (vector.X / SplineTangentHandleScale),
-                endpoint.Y + (vector.Y / SplineTangentHandleScale));
-            entities[entityIndex] = WithSplineEditablePoints(spline, points, isFitSpline);
-            status = "Changed spline endpoint tangent.";
-            return true;
-        }
-
-        status = "Drag a spline fit point, control point, or endpoint tangent handle.";
+        status = "Drag a spline fit point, control point, endpoint, or tangent handle.";
         return false;
     }
 
@@ -617,17 +605,52 @@ public static class SketchGeometryDragService
     private static SplineEntity WithSplineEditablePoints(
         SplineEntity spline,
         IReadOnlyList<Point2> points,
-        bool isFitSpline) =>
-        isFitSpline
-            ? SplineEntity.FromFitPoints(spline.Id, points, spline.IsConstruction)
-            : new SplineEntity(
+        bool isFitSpline,
+        int movedPointIndex,
+        Point2 delta)
+    {
+        if (!isFitSpline)
+        {
+            return new SplineEntity(
                 spline.Id,
                 spline.Degree,
                 points,
                 spline.Knots,
                 spline.Weights,
                 spline.IsConstruction,
-                spline.FitPoints);
+                spline.FitPoints,
+                spline.StartTangentHandle,
+                spline.EndTangentHandle);
+        }
+
+        var startTangentHandle = movedPointIndex == 0 && spline.StartTangentHandle is { } start
+            ? Add(start, delta)
+            : spline.StartTangentHandle;
+        var endTangentHandle = movedPointIndex == points.Count - 1 && spline.EndTangentHandle is { } end
+            ? Add(end, delta)
+            : spline.EndTangentHandle;
+        return SplineEntity.FromFitPoints(
+            spline.Id,
+            points,
+            spline.IsConstruction,
+            startTangentHandle,
+            endTangentHandle);
+    }
+
+    private static SplineEntity WithSplineTangentHandle(
+        SplineEntity spline,
+        string label,
+        Point2 handle)
+    {
+        var startTangentHandle = label == "tangent-start" ? handle : spline.StartTangentHandle;
+        var endTangentHandle = label == "tangent-end" ? handle : spline.EndTangentHandle;
+        return SplineEntity.FromFitPoints(
+            spline.Id,
+            spline.FitPoints,
+            spline.IsConstruction,
+            startTangentHandle,
+            endTangentHandle);
+    }
 
     private static bool TryGetDraggedEllipseMajorAxis(
         EllipseEntity ellipse,
@@ -776,7 +799,9 @@ public static class SketchGeometryDragService
             spline.Knots,
             spline.Weights,
             spline.IsConstruction,
-            spline.FitPoints.Select(point => Add(point, delta)));
+            spline.FitPoints.Select(point => Add(point, delta)),
+            spline.StartTangentHandle is { } startTangentHandle ? Add(startTangentHandle, delta) : null,
+            spline.EndTangentHandle is { } endTangentHandle ? Add(endTangentHandle, delta) : null);
         status = "Moved spline.";
         return true;
     }
@@ -1269,10 +1294,24 @@ public static class SketchGeometryDragService
             (SplineEntity a, SplineEntity b) => a.ControlPoints.Count == b.ControlPoints.Count
                 && a.ControlPoints.Zip(b.ControlPoints).All(pair => Close(pair.First, pair.Second))
                 && a.FitPoints.Count == b.FitPoints.Count
-                && a.FitPoints.Zip(b.FitPoints).All(pair => Close(pair.First, pair.Second)),
+                && a.FitPoints.Zip(b.FitPoints).All(pair => Close(pair.First, pair.Second))
+                && OptionalClose(a.StartTangentHandle, b.StartTangentHandle)
+                && OptionalClose(a.EndTangentHandle, b.EndTangentHandle),
             (PointEntity a, PointEntity b) => Close(a.Location, b.Location),
             _ => first.Equals(second)
         };
+    }
+
+    private static bool OptionalClose(Point2? first, Point2? second)
+    {
+        if (first is null && second is null)
+        {
+            return true;
+        }
+
+        return first is { } firstPoint
+            && second is { } secondPoint
+            && Close(firstPoint, secondPoint);
     }
 
     private static bool DrivingDimensionsRemainSatisfied(

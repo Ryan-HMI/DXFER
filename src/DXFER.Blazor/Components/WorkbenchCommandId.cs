@@ -34,6 +34,7 @@ public enum WorkbenchCommandId
     Slot,
     PowerTrim,
     SplitAtPoint,
+    AddSplinePoint,
     Offset,
     Fillet,
     Chamfer,
