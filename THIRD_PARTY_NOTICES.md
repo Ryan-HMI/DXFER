@@ -9,6 +9,14 @@ interfaces when they affect downstream applications such as HMI-Sync.
 - Bootstrap CSS assets under `src/DXFER.Web/wwwroot/bootstrap` are distributed
   under the MIT license by the Bootstrap authors.
 
+## Optional Reference Corpora
+
+- The Onshape FeatureScript Standard Library is MIT licensed by PTC Inc. DXFER
+  does not vendor this corpus. `scripts/Sync-FeatureScriptStd.ps1` can clone the
+  public mirror into ignored local artifacts for solver/tool design reference.
+  Any copied substantial portion must retain the FeatureScript std MIT
+  copyright and license notice.
+
 ## Planned Optional Solver Adapter
 
 - PlaneGCS / FreeCAD solver code is the planned first 2D geometric constraint
