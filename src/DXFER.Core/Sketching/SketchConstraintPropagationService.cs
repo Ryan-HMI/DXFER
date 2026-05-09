@@ -44,10 +44,10 @@ internal static class SketchConstraintPropagationService
                         PropagateAxis(entities, fixedReferences, constraint, changedReference, changedPoint, isHorizontal: false, queue, queued);
                         break;
                     case SketchConstraintKind.Parallel:
-                        PropagateLineRelation(entities, fixedReferences, constraint, changedReference, perpendicular: false, queue, queued);
+                        PropagateLineRelation(entities, fixedReferences, constraints, constraint, changedReference, perpendicular: false, queue, queued);
                         break;
                     case SketchConstraintKind.Perpendicular:
-                        PropagateLineRelation(entities, fixedReferences, constraint, changedReference, perpendicular: true, queue, queued);
+                        PropagateLineRelation(entities, fixedReferences, constraints, constraint, changedReference, perpendicular: true, queue, queued);
                         break;
                 }
             }
@@ -140,6 +140,7 @@ internal static class SketchConstraintPropagationService
     private static void PropagateLineRelation(
         DrawingEntity[] entities,
         SketchFixedReferences fixedReferences,
+        IReadOnlyList<SketchConstraint> constraints,
         SketchConstraint constraint,
         SketchReference changedReference,
         bool perpendicular,
@@ -148,6 +149,11 @@ internal static class SketchConstraintPropagationService
     {
         if (!TryGetTwoLineReferences(constraint, out var firstReference, out var secondReference)
             || !TryGetLineReferenceForPoint(changedReference, out var changedLineReference))
+        {
+            return;
+        }
+
+        if (AreLineAxesAlreadyConstrained(constraints, firstReference, secondReference, perpendicular))
         {
             return;
         }
@@ -210,6 +216,47 @@ internal static class SketchConstraintPropagationService
             changedPoint.Y + unit.Y * scalar);
 
         TrySetAndQueuePoint(entities, otherReference, nextOtherPoint, queue, queued);
+    }
+
+    private static bool AreLineAxesAlreadyConstrained(
+        IReadOnlyList<SketchConstraint> constraints,
+        SketchReference firstReference,
+        SketchReference secondReference,
+        bool perpendicular)
+    {
+        if (!TryGetAxisConstraint(constraints, firstReference, out var firstAxis)
+            || !TryGetAxisConstraint(constraints, secondReference, out var secondAxis))
+        {
+            return false;
+        }
+
+        return perpendicular
+            ? firstAxis != secondAxis
+            : firstAxis == secondAxis;
+    }
+
+    private static bool TryGetAxisConstraint(
+        IReadOnlyList<SketchConstraint> constraints,
+        SketchReference lineReference,
+        out SketchConstraintKind kind)
+    {
+        foreach (var constraint in constraints)
+        {
+            if (constraint.State == SketchConstraintState.Suppressed
+                || constraint.Kind is not (SketchConstraintKind.Horizontal or SketchConstraintKind.Vertical)
+                || constraint.ReferenceKeys.Count != 1
+                || !SketchReference.TryParse(constraint.ReferenceKeys[0], out var constrainedReference)
+                || !ReferencesEqual(constrainedReference, lineReference))
+            {
+                continue;
+            }
+
+            kind = constraint.Kind;
+            return true;
+        }
+
+        kind = default;
+        return false;
     }
 
     private static void TrySetAndQueuePoint(

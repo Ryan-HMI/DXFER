@@ -37,6 +37,26 @@ public static class SketchGeometryDragService
         var originalEntities = document.Entities.ToArray();
         var entities = document.Entities.ToArray();
         var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
+        if (TryApplyDimensionedRectangleTranslation(document, selectionKey, delta, out nextDocument, out status))
+        {
+            return true;
+        }
+
+        if (TryApplyPartiallyDimensionedRectangleDrag(document, selectionKey, delta, out nextDocument, out status))
+        {
+            return true;
+        }
+
+        if (TryApplyUndimensionedRectangleEdgeResize(document, selectionKey, delta, out var rectangleResizeHandled, out nextDocument, out status))
+        {
+            return true;
+        }
+
+        if (rectangleResizeHandled)
+        {
+            return false;
+        }
+
         if (!TryApplyGeometryDrag(entities, fixedReferences, selectionKey, delta, dragEnd, constrainToCurrentVector, out status))
         {
             return false;
@@ -45,6 +65,11 @@ public static class SketchGeometryDragService
         SketchConstraintPropagationService.PropagateFromChanges(originalEntities, entities, document.Constraints, fixedReferences);
         if (!DrivingDimensionsRemainSatisfied(entities, document.Dimensions))
         {
+            if (TryApplyDimensionPreservingSelectionTranslation(document, selectionKey, delta, out nextDocument, out status))
+            {
+                return true;
+            }
+
             status = "Selected geometry is constrained by a driving dimension.";
             return false;
         }
@@ -67,6 +92,807 @@ public static class SketchGeometryDragService
         draggedDocument = AddCoincidentConstraintForSnappedPointDrag(draggedDocument, selectionKey, ref status);
         nextDocument = draggedDocument;
         return true;
+    }
+
+    private static bool TryApplyDimensionPreservingSelectionTranslation(
+        DrawingDocument document,
+        string selectionKey,
+        Point2 delta,
+        out DrawingDocument nextDocument,
+        out string status)
+    {
+        nextDocument = document;
+        status = string.Empty;
+        if (!TryGetSelectedEntityId(document, selectionKey, out var entityId))
+        {
+            return false;
+        }
+
+        var entities = document.Entities.ToArray();
+        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
+        if (!TryTranslateEntityById(entities, fixedReferences, entityId, delta, out status))
+        {
+            return false;
+        }
+
+        var dimensions = TranslateDimensionAnchors(document.Dimensions, entityId, delta);
+        var candidate = BuildValidatedDragDocument(document, entities, dimensions);
+        if (!DrivingDimensionsRemainSatisfied(candidate.Entities, candidate.Dimensions)
+            || candidate.Constraints.Any(constraint => constraint.State == SketchConstraintState.Unsatisfied)
+            || GeometryMatches(document.Entities, candidate.Entities))
+        {
+            status = "Selected geometry is constrained by a driving dimension.";
+            return false;
+        }
+
+        nextDocument = candidate;
+        status = "Moved dimensioned geometry.";
+        return true;
+    }
+
+    private static bool TryApplyDimensionedRectangleTranslation(
+        DrawingDocument document,
+        string selectionKey,
+        Point2 delta,
+        out DrawingDocument nextDocument,
+        out string status)
+    {
+        nextDocument = document;
+        status = string.Empty;
+        if (!TryGetSelectedLineEntityId(document, selectionKey, out var selectedEntityId)
+            || !TryGetDimensionedRectangleGroup(document, selectedEntityId, out var rectangleEntityIds))
+        {
+            return false;
+        }
+
+        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
+        if (rectangleEntityIds.Any(entityId => !fixedReferences.CanMoveWholeLine(new SketchReference(entityId, SketchReferenceTarget.Entity))))
+        {
+            status = "Rectangle is constrained.";
+            return false;
+        }
+
+        var entities = document.Entities.ToArray();
+        for (var index = 0; index < entities.Length; index++)
+        {
+            if (entities[index] is LineEntity line
+                && rectangleEntityIds.Contains(line.Id.Value))
+            {
+                entities[index] = line with
+                {
+                    Start = Add(line.Start, delta),
+                    End = Add(line.End, delta)
+                };
+            }
+        }
+
+        var dimensions = TranslateDimensionAnchors(document.Dimensions, rectangleEntityIds, delta);
+        var translatedDocument = new DrawingDocument(entities, dimensions, document.Constraints, document.Metadata);
+        translatedDocument = new DrawingDocument(
+            translatedDocument.Entities,
+            translatedDocument.Dimensions,
+            SketchConstraintPropagationService.ValidateConstraints(translatedDocument, document.Constraints),
+            document.Metadata);
+        if (!DrivingDimensionsRemainSatisfied(translatedDocument.Entities, translatedDocument.Dimensions)
+            || GeometryMatches(document.Entities, translatedDocument.Entities))
+        {
+            status = "Selected geometry is constrained by a driving dimension.";
+            return false;
+        }
+
+        nextDocument = translatedDocument;
+        status = "Moved dimensioned rectangle.";
+        return true;
+    }
+
+    private static bool TryApplyPartiallyDimensionedRectangleDrag(
+        DrawingDocument document,
+        string selectionKey,
+        Point2 delta,
+        out DrawingDocument nextDocument,
+        out string status)
+    {
+        nextDocument = document;
+        status = string.Empty;
+        if (!TryGetSelectedLineEntityId(document, selectionKey, out var selectedEntityId)
+            || !TryGetRectangleGroup(document, selectedEntityId, out var rectangleEntityIds))
+        {
+            return false;
+        }
+
+        var drivingDimensionCount = CountDrivingDimensionsForEntityGroup(document.Dimensions, rectangleEntityIds);
+        if (drivingDimensionCount <= 0 || drivingDimensionCount >= 2)
+        {
+            return false;
+        }
+
+        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
+        if (rectangleEntityIds.Any(entityId => !fixedReferences.CanMoveWholeLine(new SketchReference(entityId, SketchReferenceTarget.Entity))))
+        {
+            status = "Rectangle is constrained.";
+            return false;
+        }
+
+        if (!TryGetSelectedRectangleEdgeEntityId(document, selectionKey, out _))
+        {
+            if (TryGetSelectedRectangleCorner(document, selectionKey, out var cornerPoint))
+            {
+                return TryApplyPartiallyDimensionedRectangleCornerDrag(
+                    document,
+                    rectangleEntityIds,
+                    cornerPoint,
+                    delta,
+                    out nextDocument,
+                    out status);
+            }
+
+            return TryTranslateRectangleGroup(document, rectangleEntityIds, delta, "Moved partially dimensioned rectangle.", out nextDocument, out status);
+        }
+
+        var selectedLine = document.Entities
+            .OfType<LineEntity>()
+            .FirstOrDefault(line => StringComparer.Ordinal.Equals(line.Id.Value, selectedEntityId));
+        if (selectedLine is null)
+        {
+            status = "Selected rectangle edge no longer exists.";
+            return false;
+        }
+
+        var parallelDelta = ProjectDeltaOntoLine(delta, selectedLine.Start, selectedLine.End);
+        var perpendicularDelta = new Point2(delta.X - parallelDelta.X, delta.Y - parallelDelta.Y);
+
+        var movedEntities = document.Entities.ToArray();
+        TranslateRectangleEntities(movedEntities, rectangleEntityIds, parallelDelta);
+        var movedDimensions = TranslateDimensionAnchors(document.Dimensions, rectangleEntityIds, parallelDelta);
+
+        if (SketchGeometryEditor.Distance(new Point2(0, 0), perpendicularDelta) > SketchGeometryEditor.Tolerance)
+        {
+            var translatedSelectedLine = selectedLine with
+            {
+                Start = Add(selectedLine.Start, parallelDelta),
+                End = Add(selectedLine.End, parallelDelta)
+            };
+            var resizedEntities = movedEntities.ToArray();
+            ResizeRectangleEdgeEntities(resizedEntities, rectangleEntityIds, translatedSelectedLine, perpendicularDelta);
+            var resizedDimensions = TranslateDimensionAnchors(movedDimensions, selectedEntityId, perpendicularDelta);
+            var resizedDocument = BuildValidatedDragDocument(document, resizedEntities, resizedDimensions);
+            if (DrivingDimensionsRemainSatisfied(resizedDocument.Entities, resizedDocument.Dimensions)
+                && resizedDocument.Constraints.All(constraint => constraint.State != SketchConstraintState.Unsatisfied))
+            {
+                nextDocument = resizedDocument;
+                status = "Resized partially dimensioned rectangle.";
+                return true;
+            }
+
+            TranslateRectangleEntities(movedEntities, rectangleEntityIds, perpendicularDelta);
+            movedDimensions = TranslateDimensionAnchors(movedDimensions, rectangleEntityIds, perpendicularDelta);
+        }
+
+        var translatedDocument = BuildValidatedDragDocument(document, movedEntities, movedDimensions);
+        if (!DrivingDimensionsRemainSatisfied(translatedDocument.Entities, translatedDocument.Dimensions)
+            || translatedDocument.Constraints.Any(constraint => constraint.State == SketchConstraintState.Unsatisfied)
+            || GeometryMatches(document.Entities, translatedDocument.Entities))
+        {
+            status = "Selected geometry is constrained by a driving dimension.";
+            return false;
+        }
+
+        nextDocument = translatedDocument;
+        status = "Moved partially dimensioned rectangle.";
+        return true;
+    }
+
+    private static bool TryApplyPartiallyDimensionedRectangleCornerDrag(
+        DrawingDocument document,
+        IReadOnlySet<string> rectangleEntityIds,
+        Point2 cornerPoint,
+        Point2 delta,
+        out DrawingDocument nextDocument,
+        out string status)
+    {
+        nextDocument = document;
+        status = string.Empty;
+        if (!TryGetRectangleCornerAxes(document.Entities, rectangleEntityIds, cornerPoint, out var firstAxis, out var secondAxis))
+        {
+            return false;
+        }
+
+        var components = new[]
+        {
+            ProjectDeltaOntoAxis(delta, firstAxis),
+            ProjectDeltaOntoAxis(delta, secondAxis)
+        };
+        var workingEntities = document.Entities.ToArray();
+        var workingDimensions = document.Dimensions;
+        var currentCorner = cornerPoint;
+        foreach (var component in components)
+        {
+            if (SketchGeometryEditor.Distance(new Point2(0, 0), component) <= SketchGeometryEditor.Tolerance)
+            {
+                continue;
+            }
+
+            var resizedEntities = workingEntities.ToArray();
+            if (TryResizeRectangleCornerEntities(
+                resizedEntities,
+                rectangleEntityIds,
+                currentCorner,
+                component,
+                out var resizedWholeEntityIds))
+            {
+                var resizedDimensions = resizedWholeEntityIds.Count > 0
+                    ? TranslateDimensionAnchors(workingDimensions, resizedWholeEntityIds, component)
+                    : workingDimensions;
+                var resizedDocument = BuildValidatedDragDocument(document, resizedEntities, resizedDimensions);
+                if (DrivingDimensionsRemainSatisfied(resizedDocument.Entities, resizedDocument.Dimensions)
+                    && resizedDocument.Constraints.All(constraint => constraint.State != SketchConstraintState.Unsatisfied))
+                {
+                    workingEntities = resizedDocument.Entities.ToArray();
+                    workingDimensions = resizedDocument.Dimensions;
+                    currentCorner = Add(currentCorner, component);
+                    continue;
+                }
+            }
+
+            TranslateRectangleEntities(workingEntities, rectangleEntityIds, component);
+            workingDimensions = TranslateDimensionAnchors(workingDimensions, rectangleEntityIds, component);
+            currentCorner = Add(currentCorner, component);
+        }
+
+        var next = BuildValidatedDragDocument(document, workingEntities, workingDimensions);
+        if (!DrivingDimensionsRemainSatisfied(next.Entities, next.Dimensions)
+            || next.Constraints.Any(constraint => constraint.State == SketchConstraintState.Unsatisfied)
+            || GeometryMatches(document.Entities, next.Entities))
+        {
+            status = "Selected geometry is constrained by a driving dimension.";
+            return false;
+        }
+
+        nextDocument = next;
+        status = "Resized partially dimensioned rectangle.";
+        return true;
+    }
+
+    private static bool TryApplyUndimensionedRectangleEdgeResize(
+        DrawingDocument document,
+        string selectionKey,
+        Point2 delta,
+        out bool handled,
+        out DrawingDocument nextDocument,
+        out string status)
+    {
+        handled = false;
+        nextDocument = document;
+        status = string.Empty;
+        if (!TryGetSelectedRectangleEdgeEntityId(document, selectionKey, out var selectedEntityId)
+            || !TryGetRectangleGroup(document, selectedEntityId, out var rectangleEntityIds)
+            || CountDrivingDimensionsForEntityGroup(document.Dimensions, rectangleEntityIds) > 0)
+        {
+            return false;
+        }
+
+        handled = true;
+        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
+        if (!fixedReferences.CanMoveWholeLine(new SketchReference(selectedEntityId, SketchReferenceTarget.Entity)))
+        {
+            status = "Rectangle edge is constrained.";
+            return false;
+        }
+
+        var selectedLine = document.Entities
+            .OfType<LineEntity>()
+            .FirstOrDefault(line => StringComparer.Ordinal.Equals(line.Id.Value, selectedEntityId));
+        if (selectedLine is null)
+        {
+            status = "Selected rectangle edge no longer exists.";
+            return false;
+        }
+
+        var resizeDelta = ProjectDeltaPerpendicularToLine(delta, selectedLine.Start, selectedLine.End);
+        if (SketchGeometryEditor.Distance(new Point2(0, 0), resizeDelta) <= SketchGeometryEditor.Tolerance)
+        {
+            status = "Rectangle edge drag was parallel to the edge.";
+            return false;
+        }
+
+        var entities = document.Entities.ToArray();
+        ResizeRectangleEdgeEntities(entities, rectangleEntityIds, selectedLine, resizeDelta);
+
+        var resizedDocument = BuildValidatedDragDocument(document, entities, document.Dimensions);
+        if (resizedDocument.Constraints.Any(constraint => constraint.State == SketchConstraintState.Unsatisfied))
+        {
+            status = "Rectangle edge drag would break constraints.";
+            return false;
+        }
+
+        nextDocument = resizedDocument;
+        status = "Resized rectangle edge.";
+        return true;
+    }
+
+    private static bool TryGetSelectedRectangleEdgeEntityId(
+        DrawingDocument document,
+        string selectionKey,
+        out string entityId)
+    {
+        entityId = string.Empty;
+        if (TryParseSegmentSelectionKey(selectionKey, out _, out _))
+        {
+            return false;
+        }
+
+        if (SketchReference.TryParseCanvasPointCoordinates(selectionKey, out var pointEntityId, out var label, out _))
+        {
+            if (!StringComparer.Ordinal.Equals(NormalizePointLabel(label), "mid"))
+            {
+                return false;
+            }
+
+            entityId = pointEntityId;
+        }
+        else
+        {
+            entityId = selectionKey;
+        }
+
+        var selectedId = entityId;
+        return document.Entities.Any(entity =>
+            entity is LineEntity
+            && StringComparer.Ordinal.Equals(entity.Id.Value, selectedId));
+    }
+
+    private static bool TryGetSelectedRectangleCorner(
+        DrawingDocument document,
+        string selectionKey,
+        out Point2 cornerPoint)
+    {
+        cornerPoint = default;
+        if (!SketchReference.TryParseCanvasPointCoordinates(selectionKey, out var entityId, out var label, out _))
+        {
+            return false;
+        }
+
+        var normalizedLabel = NormalizePointLabel(label);
+        if (!StringComparer.Ordinal.Equals(normalizedLabel, "start")
+            && !StringComparer.Ordinal.Equals(normalizedLabel, "end"))
+        {
+            return false;
+        }
+
+        var line = document.Entities
+            .OfType<LineEntity>()
+            .FirstOrDefault(entity => StringComparer.Ordinal.Equals(entity.Id.Value, entityId));
+        if (line is null)
+        {
+            return false;
+        }
+
+        cornerPoint = StringComparer.Ordinal.Equals(normalizedLabel, "start")
+            ? line.Start
+            : line.End;
+        return true;
+    }
+
+    private static bool TryTranslateRectangleGroup(
+        DrawingDocument document,
+        IReadOnlySet<string> rectangleEntityIds,
+        Point2 delta,
+        string successStatus,
+        out DrawingDocument nextDocument,
+        out string status)
+    {
+        var entities = document.Entities.ToArray();
+        TranslateRectangleEntities(entities, rectangleEntityIds, delta);
+        var dimensions = TranslateDimensionAnchors(document.Dimensions, rectangleEntityIds, delta);
+        var translatedDocument = BuildValidatedDragDocument(document, entities, dimensions);
+        if (!DrivingDimensionsRemainSatisfied(translatedDocument.Entities, translatedDocument.Dimensions)
+            || translatedDocument.Constraints.Any(constraint => constraint.State == SketchConstraintState.Unsatisfied)
+            || GeometryMatches(document.Entities, translatedDocument.Entities))
+        {
+            nextDocument = document;
+            status = "Selected geometry is constrained by a driving dimension.";
+            return false;
+        }
+
+        nextDocument = translatedDocument;
+        status = successStatus;
+        return true;
+    }
+
+    private static void TranslateRectangleEntities(
+        DrawingEntity[] entities,
+        IReadOnlySet<string> rectangleEntityIds,
+        Point2 delta)
+    {
+        if (SketchGeometryEditor.Distance(new Point2(0, 0), delta) <= SketchGeometryEditor.Tolerance)
+        {
+            return;
+        }
+
+        for (var index = 0; index < entities.Length; index++)
+        {
+            if (entities[index] is LineEntity line
+                && rectangleEntityIds.Contains(line.Id.Value))
+            {
+                entities[index] = line with
+                {
+                    Start = Add(line.Start, delta),
+                    End = Add(line.End, delta)
+                };
+            }
+        }
+    }
+
+    private static void ResizeRectangleEdgeEntities(
+        DrawingEntity[] entities,
+        IReadOnlySet<string> rectangleEntityIds,
+        LineEntity selectedLine,
+        Point2 resizeDelta)
+    {
+        for (var index = 0; index < entities.Length; index++)
+        {
+            if (entities[index] is not LineEntity line
+                || !rectangleEntityIds.Contains(line.Id.Value))
+            {
+                continue;
+            }
+
+            var start = ShouldMoveRectangleEndpoint(line.Start, selectedLine)
+                ? Add(line.Start, resizeDelta)
+                : line.Start;
+            var end = ShouldMoveRectangleEndpoint(line.End, selectedLine)
+                ? Add(line.End, resizeDelta)
+                : line.End;
+            entities[index] = line with { Start = start, End = end };
+        }
+    }
+
+    private static bool TryResizeRectangleCornerEntities(
+        DrawingEntity[] entities,
+        IReadOnlySet<string> rectangleEntityIds,
+        Point2 cornerPoint,
+        Point2 delta,
+        out HashSet<string> resizedWholeEntityIds)
+    {
+        resizedWholeEntityIds = new HashSet<string>(StringComparer.Ordinal);
+        if (!TryGetRectangleCornerGeometry(
+            entities,
+            rectangleEntityIds,
+            cornerPoint,
+            out var firstAdjacent,
+            out var secondAdjacent,
+            out var opposite,
+            out var firstAxis,
+            out var secondAxis))
+        {
+            return false;
+        }
+
+        var movedCorner = Add(cornerPoint, delta);
+        var movedOffset = new Point2(movedCorner.X - opposite.X, movedCorner.Y - opposite.Y);
+        var firstLength = Dot(movedOffset, firstAxis);
+        var secondLength = Dot(movedOffset, secondAxis);
+        var nextFirstAdjacent = new Point2(
+            opposite.X + (firstAxis.X * firstLength),
+            opposite.Y + (firstAxis.Y * firstLength));
+        var nextSecondAdjacent = new Point2(
+            opposite.X + (secondAxis.X * secondLength),
+            opposite.Y + (secondAxis.Y * secondLength));
+        var nextCorner = new Point2(
+            nextFirstAdjacent.X + nextSecondAdjacent.X - opposite.X,
+            nextFirstAdjacent.Y + nextSecondAdjacent.Y - opposite.Y);
+
+        for (var index = 0; index < entities.Length; index++)
+        {
+            if (entities[index] is not LineEntity line
+                || !rectangleEntityIds.Contains(line.Id.Value))
+            {
+                continue;
+            }
+
+            var start = GetNextRectangleCornerPoint(line.Start, cornerPoint, firstAdjacent, secondAdjacent, nextCorner, nextFirstAdjacent, nextSecondAdjacent);
+            var end = GetNextRectangleCornerPoint(line.End, cornerPoint, firstAdjacent, secondAdjacent, nextCorner, nextFirstAdjacent, nextSecondAdjacent);
+            if (SketchGeometryEditor.Distance(new Point2(start.X - line.Start.X, start.Y - line.Start.Y), delta) <= SketchGeometryEditor.Tolerance
+                && SketchGeometryEditor.Distance(new Point2(end.X - line.End.X, end.Y - line.End.Y), delta) <= SketchGeometryEditor.Tolerance)
+            {
+                resizedWholeEntityIds.Add(line.Id.Value);
+            }
+
+            entities[index] = line with { Start = start, End = end };
+        }
+
+        return true;
+    }
+
+    private static Point2 GetNextRectangleCornerPoint(
+        Point2 point,
+        Point2 cornerPoint,
+        Point2 firstAdjacent,
+        Point2 secondAdjacent,
+        Point2 nextCorner,
+        Point2 nextFirstAdjacent,
+        Point2 nextSecondAdjacent)
+    {
+        if (SketchGeometryEditor.AreClose(point, cornerPoint))
+        {
+            return nextCorner;
+        }
+
+        if (SketchGeometryEditor.AreClose(point, firstAdjacent))
+        {
+            return nextFirstAdjacent;
+        }
+
+        return SketchGeometryEditor.AreClose(point, secondAdjacent)
+            ? nextSecondAdjacent
+            : point;
+    }
+
+    private static bool TryGetRectangleCornerAxes(
+        IReadOnlyList<DrawingEntity> entities,
+        IReadOnlySet<string> rectangleEntityIds,
+        Point2 cornerPoint,
+        out Point2 firstAxis,
+        out Point2 secondAxis)
+    {
+        firstAxis = default;
+        secondAxis = default;
+        return TryGetRectangleCornerGeometry(
+            entities,
+            rectangleEntityIds,
+            cornerPoint,
+            out _,
+            out _,
+            out _,
+            out firstAxis,
+            out secondAxis);
+    }
+
+    private static bool TryGetRectangleCornerGeometry(
+        IReadOnlyList<DrawingEntity> entities,
+        IReadOnlySet<string> rectangleEntityIds,
+        Point2 cornerPoint,
+        out Point2 firstAdjacent,
+        out Point2 secondAdjacent,
+        out Point2 opposite,
+        out Point2 firstAxis,
+        out Point2 secondAxis)
+    {
+        firstAdjacent = default;
+        secondAdjacent = default;
+        opposite = default;
+        firstAxis = default;
+        secondAxis = default;
+        var adjacentPoints = GetRectangleAdjacentCornerPoints(entities, rectangleEntityIds, cornerPoint);
+        if (adjacentPoints.Count != 2)
+        {
+            return false;
+        }
+
+        firstAdjacent = adjacentPoints[0];
+        secondAdjacent = adjacentPoints[1];
+        opposite = new Point2(
+            firstAdjacent.X + secondAdjacent.X - cornerPoint.X,
+            firstAdjacent.Y + secondAdjacent.Y - cornerPoint.Y);
+        return TryNormalize(new Point2(firstAdjacent.X - opposite.X, firstAdjacent.Y - opposite.Y), out firstAxis)
+            && TryNormalize(new Point2(secondAdjacent.X - opposite.X, secondAdjacent.Y - opposite.Y), out secondAxis);
+    }
+
+    private static List<Point2> GetRectangleAdjacentCornerPoints(
+        IReadOnlyList<DrawingEntity> entities,
+        IReadOnlySet<string> rectangleEntityIds,
+        Point2 cornerPoint)
+    {
+        var points = new List<Point2>(capacity: 2);
+        foreach (var line in entities.OfType<LineEntity>())
+        {
+            if (!rectangleEntityIds.Contains(line.Id.Value))
+            {
+                continue;
+            }
+
+            if (SketchGeometryEditor.AreClose(line.Start, cornerPoint))
+            {
+                AddUniquePoint(points, line.End);
+            }
+            else if (SketchGeometryEditor.AreClose(line.End, cornerPoint))
+            {
+                AddUniquePoint(points, line.Start);
+            }
+        }
+
+        return points;
+    }
+
+    private static void AddUniquePoint(List<Point2> points, Point2 point)
+    {
+        if (!points.Any(existing => SketchGeometryEditor.AreClose(existing, point)))
+        {
+            points.Add(point);
+        }
+    }
+
+    private static DrawingDocument BuildValidatedDragDocument(
+        DrawingDocument document,
+        IReadOnlyList<DrawingEntity> entities,
+        IReadOnlyList<SketchDimension> dimensions)
+    {
+        var draggedDocument = new DrawingDocument(entities, dimensions, document.Constraints, document.Metadata);
+        return new DrawingDocument(
+            draggedDocument.Entities,
+            draggedDocument.Dimensions,
+            SketchConstraintPropagationService.ValidateConstraints(draggedDocument, document.Constraints),
+            document.Metadata);
+    }
+
+    private static bool TryGetSelectedLineEntityId(
+        DrawingDocument document,
+        string selectionKey,
+        out string entityId)
+    {
+        entityId = string.Empty;
+        if (TryParseSegmentSelectionKey(selectionKey, out _, out _))
+        {
+            return false;
+        }
+
+        if (SketchReference.TryParseCanvasPointCoordinates(selectionKey, out var pointEntityId, out _, out _))
+        {
+            entityId = pointEntityId;
+        }
+        else
+        {
+            entityId = selectionKey;
+        }
+
+        var selectedId = entityId;
+        return document.Entities.Any(entity =>
+            entity is LineEntity
+            && StringComparer.Ordinal.Equals(entity.Id.Value, selectedId));
+    }
+
+    private static bool TryGetDimensionedRectangleGroup(
+        DrawingDocument document,
+        string selectedEntityId,
+        out HashSet<string> rectangleEntityIds)
+    {
+        return TryGetRectangleGroup(document, selectedEntityId, out rectangleEntityIds)
+            && CountDrivingDimensionsForEntityGroup(document.Dimensions, rectangleEntityIds) >= 2;
+    }
+
+    private static bool TryGetRectangleGroup(
+        DrawingDocument document,
+        string selectedEntityId,
+        out HashSet<string> rectangleEntityIds)
+    {
+        rectangleEntityIds = new HashSet<string>(StringComparer.Ordinal);
+        var lineIds = document.Entities
+            .OfType<LineEntity>()
+            .Select(line => line.Id.Value)
+            .ToHashSet(StringComparer.Ordinal);
+        if (!lineIds.Contains(selectedEntityId))
+        {
+            return false;
+        }
+
+        var adjacency = lineIds.ToDictionary(
+            entityId => entityId,
+            _ => new HashSet<string>(StringComparer.Ordinal),
+            StringComparer.Ordinal);
+        foreach (var constraint in document.Constraints)
+        {
+            if (constraint.Kind != SketchConstraintKind.Coincident
+                || constraint.State == SketchConstraintState.Suppressed
+                || !TryGetTwoReferenceEntityIds(constraint, out var firstEntityId, out var secondEntityId)
+                || !lineIds.Contains(firstEntityId)
+                || !lineIds.Contains(secondEntityId)
+                || StringComparer.Ordinal.Equals(firstEntityId, secondEntityId))
+            {
+                continue;
+            }
+
+            adjacency[firstEntityId].Add(secondEntityId);
+            adjacency[secondEntityId].Add(firstEntityId);
+        }
+
+        var queue = new Queue<string>();
+        queue.Enqueue(selectedEntityId);
+        rectangleEntityIds.Add(selectedEntityId);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            foreach (var next in adjacency[current])
+            {
+                if (rectangleEntityIds.Add(next))
+                {
+                    queue.Enqueue(next);
+                }
+            }
+        }
+
+        return rectangleEntityIds.Count == 4
+            && HasRectangleLineRelations(document.Constraints, rectangleEntityIds);
+    }
+
+    private static bool HasRectangleLineRelations(
+        IReadOnlyList<SketchConstraint> constraints,
+        IReadOnlySet<string> entityIds)
+    {
+        var coincidentCount = 0;
+        var parallelPairs = new HashSet<string>(StringComparer.Ordinal);
+        var perpendicularCount = 0;
+        foreach (var constraint in constraints)
+        {
+            if (constraint.State == SketchConstraintState.Suppressed)
+            {
+                continue;
+            }
+
+            if (constraint.Kind == SketchConstraintKind.Coincident
+                && TryGetTwoReferenceEntityIds(constraint, out var firstCoincidentEntityId, out var secondCoincidentEntityId)
+                && entityIds.Contains(firstCoincidentEntityId)
+                && entityIds.Contains(secondCoincidentEntityId)
+                && !StringComparer.Ordinal.Equals(firstCoincidentEntityId, secondCoincidentEntityId))
+            {
+                coincidentCount++;
+            }
+
+            if ((constraint.Kind == SketchConstraintKind.Parallel || constraint.Kind == SketchConstraintKind.Perpendicular)
+                && TryGetTwoReferenceEntityIds(constraint, out var firstLineEntityId, out var secondLineEntityId)
+                && entityIds.Contains(firstLineEntityId)
+                && entityIds.Contains(secondLineEntityId)
+                && !StringComparer.Ordinal.Equals(firstLineEntityId, secondLineEntityId))
+            {
+                if (constraint.Kind == SketchConstraintKind.Parallel)
+                {
+                    var pair = string.CompareOrdinal(firstLineEntityId, secondLineEntityId) <= 0
+                        ? $"{firstLineEntityId}|{secondLineEntityId}"
+                        : $"{secondLineEntityId}|{firstLineEntityId}";
+                    parallelPairs.Add(pair);
+                }
+                else
+                {
+                    perpendicularCount++;
+                }
+            }
+        }
+
+        return coincidentCount >= 4
+            && parallelPairs.Count >= 2
+            && perpendicularCount >= 1;
+    }
+
+    private static int CountDrivingDimensionsForEntityGroup(
+        IReadOnlyList<SketchDimension> dimensions,
+        IReadOnlySet<string> entityIds) =>
+        dimensions.Count(dimension =>
+            dimension.IsDriving
+            && dimension.ReferenceKeys.Count > 0
+            && dimension.ReferenceKeys
+                .Select(GetReferenceEntityId)
+                .All(entityId => entityIds.Contains(entityId)));
+
+    private static bool TryGetTwoReferenceEntityIds(
+        SketchConstraint constraint,
+        out string firstEntityId,
+        out string secondEntityId)
+    {
+        firstEntityId = string.Empty;
+        secondEntityId = string.Empty;
+        if (constraint.ReferenceKeys.Count < 2
+            || !TryGetReferenceEntityId(constraint.ReferenceKeys[0], out firstEntityId)
+            || !TryGetReferenceEntityId(constraint.ReferenceKeys[1], out secondEntityId))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryGetReferenceEntityId(string referenceKey, out string entityId)
+    {
+        entityId = GetReferenceEntityId(referenceKey);
+        return !string.IsNullOrEmpty(entityId);
     }
 
     private static bool TryApplyGeometryDrag(
@@ -184,6 +1010,15 @@ public static class SketchGeometryDragService
                     label,
                     delta,
                     dragEnd,
+                    out status);
+            case PolygonEntity polygon:
+                return TryApplyPolygonPointDrag(
+                    entities,
+                    fixedReferences,
+                    entityIndex,
+                    polygon,
+                    label,
+                    delta,
                     out status);
             case PointEntity pointEntity:
                 return TrySetPointEntityLocation(entities, fixedReferences, entityIndex, pointEntity, Add(pointEntity.Location, delta), out status);
@@ -704,6 +1539,8 @@ public static class SketchGeometryDragService
                 return TryTranslateEllipse(entities, fixedReferences, entityIndex, ellipse, delta, out status);
             case SplineEntity spline:
                 return TryTranslateSpline(entities, fixedReferences, entityIndex, spline, delta, out status);
+            case PolygonEntity polygon:
+                return TryTranslatePolygon(entities, fixedReferences, entityIndex, polygon, delta, out status);
             case PointEntity pointEntity:
                 return TrySetPointEntityLocation(entities, fixedReferences, entityIndex, pointEntity, Add(pointEntity.Location, delta), out status);
             default:
@@ -733,6 +1570,83 @@ public static class SketchGeometryDragService
             End = Add(line.End, delta)
         };
         status = "Moved line.";
+        return true;
+    }
+
+    private static bool TryTranslateEntityById(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        string entityId,
+        Point2 delta,
+        out string status)
+    {
+        if (!SketchGeometryEditor.TryFindEntity(entities, entityId, out var entityIndex, out var entity))
+        {
+            status = "Selected geometry no longer exists.";
+            return false;
+        }
+
+        switch (entity)
+        {
+            case LineEntity line:
+                return TryTranslateLine(entities, fixedReferences, entityIndex, line, delta, out status);
+            case PolylineEntity polyline:
+                return TryTranslatePolyline(entities, fixedReferences, entityIndex, polyline, delta, out status);
+            case CircleEntity circle:
+                return TryTranslateCircle(entities, fixedReferences, entityIndex, circle, delta, out status);
+            case ArcEntity arc:
+                return TryTranslateArc(entities, fixedReferences, entityIndex, arc, delta, out status);
+            case EllipseEntity ellipse:
+                return TryTranslateEllipse(entities, fixedReferences, entityIndex, ellipse, delta, out status);
+            case SplineEntity spline:
+                return TryTranslateSpline(entities, fixedReferences, entityIndex, spline, delta, out status);
+            case PolygonEntity polygon:
+                return TryTranslatePolygon(entities, fixedReferences, entityIndex, polygon, delta, out status);
+            case PointEntity pointEntity:
+                return TrySetPointEntityLocation(entities, fixedReferences, entityIndex, pointEntity, Add(pointEntity.Location, delta), out status);
+            default:
+                status = "Selected geometry cannot be dragged yet.";
+                return false;
+        }
+    }
+
+    private static bool TryTranslateCircle(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        int entityIndex,
+        CircleEntity circle,
+        Point2 delta,
+        out string status)
+    {
+        var reference = new SketchReference(circle.Id.Value, SketchReferenceTarget.Entity);
+        if (!fixedReferences.CanMoveCircleLikeCenter(reference))
+        {
+            status = "Circle is constrained.";
+            return false;
+        }
+
+        entities[entityIndex] = circle with { Center = Add(circle.Center, delta) };
+        status = "Moved circle.";
+        return true;
+    }
+
+    private static bool TryTranslateArc(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        int entityIndex,
+        ArcEntity arc,
+        Point2 delta,
+        out string status)
+    {
+        var reference = new SketchReference(arc.Id.Value, SketchReferenceTarget.Entity);
+        if (!fixedReferences.CanMoveCircleLikeCenter(reference))
+        {
+            status = "Arc is constrained.";
+            return false;
+        }
+
+        entities[entityIndex] = arc with { Center = Add(arc.Center, delta) };
+        status = "Moved arc.";
         return true;
     }
 
@@ -803,6 +1717,44 @@ public static class SketchGeometryDragService
             spline.StartTangentHandle is { } startTangentHandle ? Add(startTangentHandle, delta) : null,
             spline.EndTangentHandle is { } endTangentHandle ? Add(endTangentHandle, delta) : null);
         status = "Moved spline.";
+        return true;
+    }
+
+    private static bool TryApplyPolygonPointDrag(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        int entityIndex,
+        PolygonEntity polygon,
+        string label,
+        Point2 delta,
+        out string status)
+    {
+        if (label == "center" || label.StartsWith("mid-", StringComparison.Ordinal))
+        {
+            return TryTranslatePolygon(entities, fixedReferences, entityIndex, polygon, delta, out status);
+        }
+
+        status = "Drag the polygon center to move it.";
+        return false;
+    }
+
+    private static bool TryTranslatePolygon(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        int entityIndex,
+        PolygonEntity polygon,
+        Point2 delta,
+        out string status)
+    {
+        var reference = new SketchReference(polygon.Id.Value, SketchReferenceTarget.Entity);
+        if (!fixedReferences.CanMoveCircleLikeCenter(reference))
+        {
+            status = "Polygon is constrained.";
+            return false;
+        }
+
+        entities[entityIndex] = polygon with { Center = Add(polygon.Center, delta) };
+        status = "Moved polygon.";
         return true;
     }
 
@@ -1157,6 +2109,7 @@ public static class SketchGeometryDragService
                 LineEntity => normalizedLabel == "mid",
                 PolylineEntity => normalizedLabel.StartsWith("mid-", StringComparison.Ordinal),
                 CircleEntity or ArcEntity or EllipseEntity => normalizedLabel == "center",
+                PolygonEntity => normalizedLabel == "center" || normalizedLabel.StartsWith("mid-", StringComparison.Ordinal),
                 PointEntity => normalizedLabel == "point",
                 _ => false
             };
@@ -1165,18 +2118,48 @@ public static class SketchGeometryDragService
         }
 
         var wholeEntity = document.Entities.FirstOrDefault(entity => StringComparer.Ordinal.Equals(entity.Id.Value, selectionKey));
-        var isWholeEntityTranslation = wholeEntity is LineEntity or PolylineEntity or EllipseEntity or SplineEntity or PointEntity;
+        var isWholeEntityTranslation = wholeEntity is LineEntity or PolylineEntity or EllipseEntity or SplineEntity or PolygonEntity or PointEntity;
         entityId = isWholeEntityTranslation ? selectionKey : string.Empty;
         return isWholeEntityTranslation;
+    }
+
+    private static bool TryGetSelectedEntityId(
+        DrawingDocument document,
+        string selectionKey,
+        out string entityId)
+    {
+        if (TryParseSegmentSelectionKey(selectionKey, out entityId, out _))
+        {
+            var selectedId = entityId;
+            return document.Entities.Any(entity => StringComparer.Ordinal.Equals(entity.Id.Value, selectedId));
+        }
+
+        if (SketchReference.TryParseCanvasPointCoordinates(selectionKey, out entityId, out _, out _))
+        {
+            var selectedId = entityId;
+            return document.Entities.Any(entity => StringComparer.Ordinal.Equals(entity.Id.Value, selectedId));
+        }
+
+        entityId = selectionKey;
+        return document.Entities.Any(entity => StringComparer.Ordinal.Equals(entity.Id.Value, selectionKey));
     }
 
     private static IReadOnlyList<SketchDimension> TranslateDimensionAnchors(
         IReadOnlyList<SketchDimension> dimensions,
         string entityId,
+        Point2 delta) =>
+        TranslateDimensionAnchors(
+            dimensions,
+            new HashSet<string>(StringComparer.Ordinal) { entityId },
+            delta);
+
+    private static IReadOnlyList<SketchDimension> TranslateDimensionAnchors(
+        IReadOnlyList<SketchDimension> dimensions,
+        IReadOnlySet<string> entityIds,
         Point2 delta)
     {
         return dimensions
-            .Select(dimension => ShouldTranslateDimensionAnchor(dimension, entityId)
+            .Select(dimension => ShouldTranslateDimensionAnchor(dimension, entityIds)
                 ? new SketchDimension(
                     dimension.Id,
                     dimension.Kind,
@@ -1188,13 +2171,13 @@ public static class SketchGeometryDragService
             .ToArray();
     }
 
-    private static bool ShouldTranslateDimensionAnchor(SketchDimension dimension, string entityId)
+    private static bool ShouldTranslateDimensionAnchor(SketchDimension dimension, IReadOnlySet<string> entityIds)
     {
         return dimension.Anchor.HasValue
             && dimension.ReferenceKeys.Count > 0
             && dimension.ReferenceKeys
                 .Select(GetReferenceEntityId)
-                .All(referenceEntityId => StringComparer.Ordinal.Equals(referenceEntityId, entityId));
+                .All(entityIds.Contains);
     }
 
     private static string GetReferenceEntityId(string referenceKey)
@@ -1230,6 +2213,62 @@ public static class SketchGeometryDragService
 
     private static Point2 Add(Point2 point, Point2 delta) =>
         new(point.X + delta.X, point.Y + delta.Y);
+
+    private static double Dot(Point2 first, Point2 second) =>
+        (first.X * second.X) + (first.Y * second.Y);
+
+    private static Point2 ProjectDeltaOntoAxis(Point2 delta, Point2 axis)
+    {
+        var scalar = Dot(delta, axis);
+        return new Point2(axis.X * scalar, axis.Y * scalar);
+    }
+
+    private static bool TryNormalize(Point2 vector, out Point2 unit)
+    {
+        var length = SketchGeometryEditor.Distance(new Point2(0, 0), vector);
+        if (length <= SketchGeometryEditor.Tolerance)
+        {
+            unit = default;
+            return false;
+        }
+
+        unit = new Point2(vector.X / length, vector.Y / length);
+        return true;
+    }
+
+    private static bool ShouldMoveRectangleEndpoint(Point2 endpoint, LineEntity selectedLine) =>
+        SketchGeometryEditor.AreClose(endpoint, selectedLine.Start)
+        || SketchGeometryEditor.AreClose(endpoint, selectedLine.End);
+
+    private static Point2 ProjectDeltaPerpendicularToLine(Point2 delta, Point2 start, Point2 end)
+    {
+        var axisX = end.X - start.X;
+        var axisY = end.Y - start.Y;
+        var lengthSquared = (axisX * axisX) + (axisY * axisY);
+        if (lengthSquared <= SketchGeometryEditor.Tolerance * SketchGeometryEditor.Tolerance)
+        {
+            return delta;
+        }
+
+        var alongScale = ((delta.X * axisX) + (delta.Y * axisY)) / lengthSquared;
+        return new Point2(
+            delta.X - (axisX * alongScale),
+            delta.Y - (axisY * alongScale));
+    }
+
+    private static Point2 ProjectDeltaOntoLine(Point2 delta, Point2 start, Point2 end)
+    {
+        var axisX = end.X - start.X;
+        var axisY = end.Y - start.Y;
+        var lengthSquared = (axisX * axisX) + (axisY * axisY);
+        if (lengthSquared <= SketchGeometryEditor.Tolerance * SketchGeometryEditor.Tolerance)
+        {
+            return new Point2(0, 0);
+        }
+
+        var alongScale = ((delta.X * axisX) + (delta.Y * axisY)) / lengthSquared;
+        return new Point2(axisX * alongScale, axisY * alongScale);
+    }
 
     private static Point2 ProjectPointToLine(Point2 point, Point2 start, Point2 end)
     {
@@ -1291,6 +2330,11 @@ public static class SketchGeometryDragService
                 && SketchGeometryEditor.AreClose(a.MinorRadiusRatio, b.MinorRadiusRatio)
                 && SketchGeometryEditor.AreClose(a.StartParameterDegrees, b.StartParameterDegrees)
                 && SketchGeometryEditor.AreClose(a.EndParameterDegrees, b.EndParameterDegrees),
+            (PolygonEntity a, PolygonEntity b) => Close(a.Center, b.Center)
+                && SketchGeometryEditor.AreClose(a.Radius, b.Radius)
+                && SketchGeometryEditor.AreClose(a.RotationAngleDegrees, b.RotationAngleDegrees)
+                && a.NormalizedSideCount == b.NormalizedSideCount
+                && a.Circumscribed == b.Circumscribed,
             (SplineEntity a, SplineEntity b) => a.ControlPoints.Count == b.ControlPoints.Count
                 && a.ControlPoints.Zip(b.ControlPoints).All(pair => Close(pair.First, pair.Second))
                 && a.FitPoints.Count == b.FitPoints.Count

@@ -107,26 +107,35 @@
             <div class="dxfer-tool-section-summary dxfer-tool-group-drag-header"
                  role="button"
                  tabindex="0"
-                 title="@($"Drag {group.Name} tools. Double-click to compact.")"
+                 title="@($"Drag {group.Name} tools.")"
                  aria-label="@($"Drag {group.Name} tools")"
-                 @onpointerdown="@((PointerEventArgs args) => BeginGroupDrag(group, args))"
-                 @ondblclick="@(() => CycleGroupCompaction(group))">
+                 @onpointerdown="@((PointerEventArgs args) => BeginGroupDrag(group, args))">
                 <span class="dxfer-tool-group-grip" aria-hidden="true"></span>
                 <span class="dxfer-tool-section-heading">
                     <span class="dxfer-section-title">@group.Name</span>
                 </span>
-                <span class="dxfer-tool-section-count">@group.Commands.Count</span>
+                @if (CanToggleSideCompaction(GetDockState(group)))
+                {
+                    <button type="button"
+                            class="dxfer-tool-group-collapse-toggle"
+                            title="@BuildCompactionTitle(group)"
+                            aria-label="@BuildCompactionTitle(group)"
+                            @onpointerdown:stopPropagation="true"
+                            @onclick:stopPropagation="true"
+                            @onclick="@(() => ToggleSideCompaction(group))">
+                        <CadIcon Name="@BuildCompactionIcon(GetDockState(group))" />
+                    </button>
+                }
             </div>
         }
         else
         {
-            <div class="dxfer-tool-group-grip dxfer-tool-group-compact-grip"
-                 role="button"
-                 tabindex="0"
-                 title="@($"Drag {group.Name} tools. Double-click to expand.")"
-                 aria-label="@($"Drag {group.Name} tools")"
-                 @onpointerdown="@((PointerEventArgs args) => BeginGroupDrag(group, args))"
-                 @ondblclick="@(() => CycleGroupCompaction(group))"></div>
+            <span class="dxfer-tool-group-grip dxfer-tool-group-compact-grip"
+                  role="button"
+                  tabindex="0"
+                  title="@($"Drag {group.Name} tools")"
+                  aria-label="@($"Drag {group.Name} tools")"
+                  @onpointerdown="@((PointerEventArgs args) => BeginGroupDrag(group, args))"></span>
         }
         <div class="dxfer-command-strip" role="toolbar" aria-label="@($"{group.Name} tools")">
             @foreach (var command in group.Commands)
@@ -172,7 +181,11 @@
             $"dxfer-tool-group-{state.Side.ToString().ToLowerInvariant()}"
         };
 
-        if (IsCompactDock(state))
+        if (IsSideCollapsed(state))
+        {
+            classes.Add("dxfer-tool-group-side-collapsed");
+        }
+        else if (IsCompactDock(state))
         {
             classes.Add("dxfer-tool-group-compact");
             classes.Add(state.Compaction is ToolGroupCompaction.SingleColumn
@@ -207,12 +220,17 @@
     }
 
     private static bool ShouldShowGroupHeader(ToolGroupDockState state) =>
-        state.Side is ToolGroupDockSide.Floating
-            || state.Compaction is ToolGroupCompaction.Expanded && state.Side is ToolGroupDockSide.Left or ToolGroupDockSide.Right;
+        state.Side is ToolGroupDockSide.Floating or ToolGroupDockSide.Left or ToolGroupDockSide.Right;
 
     private static bool IsCompactDock(ToolGroupDockState state) =>
-        state.Side is ToolGroupDockSide.Top or ToolGroupDockSide.Bottom
-            || state.Side is ToolGroupDockSide.Left or ToolGroupDockSide.Right && state.Compaction is not ToolGroupCompaction.Expanded;
+        state.Side is ToolGroupDockSide.Top or ToolGroupDockSide.Bottom;
+
+    private static bool IsSideCollapsed(ToolGroupDockState state) =>
+        state.Side is ToolGroupDockSide.Left or ToolGroupDockSide.Right
+            && state.Compaction is not ToolGroupCompaction.Expanded;
+
+    private static bool CanToggleSideCompaction(ToolGroupDockState state) =>
+        state.Side is ToolGroupDockSide.Left or ToolGroupDockSide.Right;
 
     private void BeginGroupDrag(WorkbenchToolGroup group, PointerEventArgs args)
     {
@@ -224,22 +242,31 @@
         _previewDropSide = GetDropSide(args);
     }
 
-    private void CycleGroupCompaction(WorkbenchToolGroup group)
+    private void ToggleSideCompaction(WorkbenchToolGroup group)
     {
         var state = GetDockState(group);
-        if (state.Side is ToolGroupDockSide.Top or ToolGroupDockSide.Bottom)
+        if (!CanToggleSideCompaction(state))
         {
-            state.Compaction = ToolGroupCompaction.DoubleColumn;
             return;
         }
 
-        state.Compaction = state.Compaction switch
-        {
-            ToolGroupCompaction.Expanded => ToolGroupCompaction.DoubleColumn,
-            ToolGroupCompaction.DoubleColumn => ToolGroupCompaction.SingleColumn,
-            _ => ToolGroupCompaction.Expanded
-        };
+        state.Compaction = state.Compaction is ToolGroupCompaction.Expanded
+            ? ToolGroupCompaction.DoubleColumn
+            : ToolGroupCompaction.Expanded;
     }
+
+    private string BuildCompactionTitle(WorkbenchToolGroup group)
+    {
+        var state = GetDockState(group);
+        return state.Compaction is ToolGroupCompaction.Expanded
+            ? $"Compact {group.Name} tools"
+            : $"Expand {group.Name} tools";
+    }
+
+    private static CadIconName BuildCompactionIcon(ToolGroupDockState state) =>
+        state.Compaction is ToolGroupCompaction.Expanded
+            ? CadIconName.ChevronUp
+            : CadIconName.ChevronDown;
 
     private void OnPalettePointerMove(PointerEventArgs args)
     {

@@ -1,7 +1,7 @@
 .dxfer-workbench-tool-palette {
     position: absolute;
     inset: 0;
-    --dxfer-side-dock-width: 14.65rem;
+    --dxfer-side-dock-width: 17.65rem;
     --dxfer-horizontal-dock-preview-height: 4.35rem;
     pointer-events: none;
 }
@@ -42,7 +42,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding: 0.35rem;
 }
 
@@ -130,12 +131,12 @@
 }
 
 .dxfer-tool-group-expanded {
-    min-width: 13.75rem;
+    min-width: 15.8rem;
 }
 
 .dxfer-tool-group-left.dxfer-tool-group-expanded,
 .dxfer-tool-group-right.dxfer-tool-group-expanded {
-    width: 13.75rem;
+    width: 15.8rem;
 }
 
 .dxfer-tool-group-compact {
@@ -145,12 +146,21 @@
     padding: 0.26rem;
 }
 
+.dxfer-tool-group-side-collapsed {
+    min-width: 15.8rem;
+    width: 15.8rem;
+}
+
+.dxfer-tool-group-side-collapsed .dxfer-command-strip {
+    display: none;
+}
+
 .dxfer-tool-group-single {
-    width: 3.55rem;
+    width: 4.05rem;
 }
 
 .dxfer-tool-group-double {
-    width: 6.1rem;
+    width: 6.6rem;
 }
 
 .dxfer-tool-group-top,
@@ -182,7 +192,7 @@
     justify-content: space-between;
     list-style: none;
     min-height: 1.25rem;
-    padding: 0.55rem 0.62rem 0.35rem;
+    padding: 0.4rem;
 }
 
 .dxfer-tool-group-grip {
@@ -229,23 +239,44 @@
     text-transform: uppercase;
 }
 
-.dxfer-tool-section-count {
-    color: #7f929f;
-    font-size: 0.68rem;
-    line-height: 1;
+.dxfer-tool-group-collapse-toggle {
+    align-items: center;
+    background: #20272d;
+    border: 1px solid #3a4650;
+    border-radius: 4px;
+    color: #dce7ee;
+    cursor: pointer;
+    display: inline-flex;
+    flex: 0 0 auto;
+    height: 1.45rem;
+    justify-content: center;
+    padding: 0;
+    width: 1.45rem;
+}
+
+.dxfer-tool-group-collapse-toggle:hover,
+.dxfer-tool-group-collapse-toggle:focus-visible {
+    background: #2b353d;
+    border-color: #7f96a8;
+    outline: none;
+}
+
+.dxfer-tool-group-collapse-toggle .dxfer-icon {
+    height: 1.05rem;
+    width: 1.05rem;
 }
 
 .dxfer-tool-group-compact-grip {
     align-self: stretch;
     background: #151a1f;
     border-right: 1px solid #2d343b;
-    min-height: 2.15rem;
+    min-height: 1.45rem;
     width: 0.76rem;
 }
 
 .dxfer-tool-group-horizontal .dxfer-tool-group-compact-grip {
     border-right: 1px solid #2d343b;
-    min-height: 2.15rem;
+    min-height: 1.45rem;
 }
 
 .dxfer-command-strip {
@@ -253,7 +284,7 @@
     grid-template-columns: repeat(auto-fill, 2.15rem);
     gap: 0.36rem;
     align-items: center;
-    padding: 0.4rem;
+    padding: 0.36rem;
 }
 
 .dxfer-tool-group-compact .dxfer-command-strip {
@@ -267,12 +298,12 @@
 
 @media (max-width: 980px) {
     .dxfer-workbench-tool-palette {
-        --dxfer-side-dock-width: min(14.65rem, 40vw);
+        --dxfer-side-dock-width: min(17.65rem, 50vw);
     }
 
     .dxfer-tool-group-expanded,
     .dxfer-tool-group-left.dxfer-tool-group-expanded,
     .dxfer-tool-group-right.dxfer-tool-group-expanded {
-        width: min(13.75rem, calc(100vw - 1rem));
+        width: min(15.8rem, calc(100vw - 1rem));
     }
 }

@@ -33,6 +33,8 @@ import {
   getDimensionPlacementRequest,
   getDimensionRenderStyle,
   getDimensionSelectionKey,
+  isDimensionReferenceSetComplete,
+  markDimensionInputsToSkipNextBlurCommit,
   getCenteredAxisDiameterPoints,
   getEllipseAxisDiameterPoints,
   getFitViewForDocument,
@@ -1444,6 +1446,22 @@ test("focused dimension input keeps typed locks but refreshes live preview when 
   assert.equal(shouldCommitDimensionInputOnChange(true, true), false);
 });
 
+test("dimension drag marks persistent inputs to skip synthetic blur commits", () => {
+  const draftInput = { dataset: {} };
+  const persistentInput = { dataset: {} };
+  const state = {
+    dimensionInputs: new Map([["draft", draftInput]]),
+    persistentDimensionInputs: new Map([["persistent", persistentInput]])
+  };
+
+  markDimensionInputsToSkipNextBlurCommit(state);
+
+  assert.equal(draftInput.dataset.skipNextBlurCommit, "true");
+  assert.equal(draftInput.dataset.skipNextChangeCommit, "true");
+  assert.equal(persistentInput.dataset.skipNextBlurCommit, "true");
+  assert.equal(persistentInput.dataset.skipNextChangeCommit, "true");
+});
+
 test("inference guides stop rendering after a maximum screen distance", () => {
   const state = {
     view: {
@@ -1698,6 +1716,7 @@ test("dimension selection promotes line midpoint snap targets to line references
   assert.equal(lineMidpointTarget.kind, "point");
   assert.equal(lineMidpointTarget.label, "mid");
   assert.equal(getDimensionSelectionKey(lineMidpointTarget), "base");
+  assert.equal(isDimensionReferenceSetComplete(lineState, ["base"], lineMidpointTarget), true);
 
   const polylineState = createHitTestState([
     {
@@ -1711,6 +1730,7 @@ test("dimension selection promotes line midpoint snap targets to line references
   assert.equal(segmentMidpointTarget.kind, "point");
   assert.equal(segmentMidpointTarget.label, "mid-0");
   assert.equal(getDimensionSelectionKey(segmentMidpointTarget), "path|segment|0");
+  assert.equal(isDimensionReferenceSetComplete(polylineState, ["path|segment|0"], segmentMidpointTarget), true);
 });
 
 test("dimension tool can extend a selected line to a point-line dimension", () => {
@@ -2459,6 +2479,41 @@ test("geometry drag preview moves one line endpoint", () => {
   assert.deepEqual(document.entities[0].points, [{ x: 0, y: 0 }, { x: 10, y: 0 }]);
 });
 
+test("geometry drag preview keeps coincident endpoints welded", () => {
+  const document = {
+    entities: [
+      {
+        id: "base",
+        kind: "line",
+        points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+      },
+      {
+        id: "upright",
+        kind: "line",
+        points: [{ x: 10, y: 0 }, { x: 10, y: 5 }]
+      }
+    ],
+    dimensions: [],
+    constraints: [
+      {
+        id: "join",
+        kind: "coincident",
+        referenceKeys: ["base:end", "upright:start"],
+        state: "satisfied"
+      }
+    ]
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "base|point|end|10|0",
+    { x: 10, y: 0 },
+    { x: 12, y: 3 });
+
+  assert.deepEqual(preview.entities[0].points, [{ x: 0, y: 0 }, { x: 12, y: 3 }]);
+  assert.deepEqual(preview.entities[1].points, [{ x: 12, y: 3 }, { x: 10, y: 5 }]);
+});
+
 test("finishing geometry drag keeps the final preview until server confirmation", () => {
   const originalDocument = {
     entities: [{
@@ -2570,6 +2625,175 @@ test("geometry drag preview translates dimension anchors for moved geometry", ()
   assert.deepEqual(document.dimensions[0].anchor, { x: 5, y: 2 });
 });
 
+test("geometry drag preview translates a dimensioned line when endpoint edit would break length", () => {
+  const document = {
+    entities: [
+      {
+        id: "edge",
+        kind: "line",
+        points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+      }
+    ],
+    dimensions: [
+      {
+        id: "dim-edge",
+        kind: "lineardistance",
+        referenceKeys: ["edge:start", "edge:end"],
+        value: 10,
+        anchor: { x: 5, y: 2 },
+        isDriving: true
+      }
+    ],
+    constraints: []
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "edge|point|end|10|0",
+    { x: 10, y: 0 },
+    { x: 14, y: 0 });
+
+  assert.deepEqual(preview.entities[0].points, [{ x: 4, y: 0 }, { x: 14, y: 0 }]);
+  assert.deepEqual(preview.dimensions[0].anchor, { x: 9, y: 2 });
+  assert.deepEqual(document.entities[0].points, [{ x: 0, y: 0 }, { x: 10, y: 0 }]);
+});
+
+test("geometry drag preview resizes an undimensioned rectangle edge using only perpendicular motion", () => {
+  const document = createUndimensionedRectanglePreviewDocument();
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "rect-4|point|mid|0|2.5",
+    { x: 0, y: 2.5 },
+    { x: 2, y: 1.5 });
+
+  assert.deepEqual(preview.entities.map(entity => entity.points), [
+    [{ x: 2, y: 0 }, { x: 10, y: 0 }],
+    [{ x: 10, y: 0 }, { x: 10, y: 5 }],
+    [{ x: 10, y: 5 }, { x: 2, y: 5 }],
+    [{ x: 2, y: 5 }, { x: 2, y: 0 }]
+  ]);
+});
+
+test("geometry drag preview resizes an undimensioned rectangle corner as a rectangle", () => {
+  const document = createUndimensionedRectanglePreviewDocument();
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "rect-1|point|start|0|0",
+    { x: 0, y: 0 },
+    { x: 2, y: -1 });
+
+  assert.deepEqual(preview.entities.map(entity => entity.points), [
+    [{ x: 2, y: -1 }, { x: 10, y: -1 }],
+    [{ x: 10, y: -1 }, { x: 10, y: 5 }],
+    [{ x: 10, y: 5 }, { x: 2, y: 5 }],
+    [{ x: 2, y: 5 }, { x: 2, y: -1 }]
+  ]);
+});
+
+test("geometry drag preview translates dimensioned rectangle edge as a rigid rectangle", () => {
+  const document = createDimensionedRectanglePreviewDocument();
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "rect-3",
+    { x: 5, y: 5 },
+    { x: 7, y: 8 });
+
+  assert.deepEqual(preview.entities.map(entity => entity.points), [
+    [{ x: 2, y: 3 }, { x: 12, y: 3 }],
+    [{ x: 12, y: 3 }, { x: 12, y: 8 }],
+    [{ x: 12, y: 8 }, { x: 2, y: 8 }],
+    [{ x: 2, y: 8 }, { x: 2, y: 3 }]
+  ]);
+  assert.deepEqual(preview.dimensions.map(dimension => dimension.anchor), [
+    { x: 7, y: 4.2 },
+    { x: 11.4, y: 5.5 }
+  ]);
+});
+
+test("geometry drag preview translates dimensioned rectangle vertex as a rigid rectangle", () => {
+  const document = createDimensionedRectanglePreviewDocument();
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "rect-2|point|end|10|5",
+    { x: 10, y: 5 },
+    { x: 12, y: 8 });
+
+  assert.deepEqual(preview.entities.map(entity => entity.points), [
+    [{ x: 2, y: 3 }, { x: 12, y: 3 }],
+    [{ x: 12, y: 3 }, { x: 12, y: 8 }],
+    [{ x: 12, y: 8 }, { x: 2, y: 8 }],
+    [{ x: 2, y: 8 }, { x: 2, y: 3 }]
+  ]);
+  assert.deepEqual(preview.dimensions.map(dimension => dimension.anchor), [
+    { x: 7, y: 4.2 },
+    { x: 11.4, y: 5.5 }
+  ]);
+});
+
+test("geometry drag preview keeps partially dimensioned rectangle coherent in free direction", () => {
+  const document = createPartiallyDimensionedRectanglePreviewDocument();
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "rect-3",
+    { x: 5, y: 5 },
+    { x: 2, y: 8 });
+
+  assert.deepEqual(preview.entities.map(entity => entity.points), [
+    [{ x: -3, y: 0 }, { x: 7, y: 0 }],
+    [{ x: 7, y: 0 }, { x: 7, y: 8 }],
+    [{ x: 7, y: 8 }, { x: -3, y: 8 }],
+    [{ x: -3, y: 8 }, { x: -3, y: 0 }]
+  ]);
+  assert.deepEqual(preview.dimensions.map(dimension => dimension.anchor), [
+    { x: 2, y: 1.2 }
+  ]);
+});
+
+test("geometry drag preview translates partially dimensioned rectangle in constrained direction", () => {
+  const document = createPartiallyDimensionedRectanglePreviewDocument();
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "rect-4|point|mid|0|2.5",
+    { x: 0, y: 2.5 },
+    { x: -3, y: 2.5 });
+
+  assert.deepEqual(preview.entities.map(entity => entity.points), [
+    [{ x: -3, y: 0 }, { x: 7, y: 0 }],
+    [{ x: 7, y: 0 }, { x: 7, y: 5 }],
+    [{ x: 7, y: 5 }, { x: -3, y: 5 }],
+    [{ x: -3, y: 5 }, { x: -3, y: 0 }]
+  ]);
+  assert.deepEqual(preview.dimensions.map(dimension => dimension.anchor), [
+    { x: 2, y: 1.2 }
+  ]);
+});
+
+test("geometry drag preview decomposes partially dimensioned rectangle vertex drag", () => {
+  const document = createPartiallyDimensionedRectanglePreviewDocument();
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "rect-3|point|end|0|5",
+    { x: 0, y: 5 },
+    { x: -3, y: 8 });
+
+  assert.deepEqual(preview.entities.map(entity => entity.points), [
+    [{ x: -3, y: 0 }, { x: 7, y: 0 }],
+    [{ x: 7, y: 0 }, { x: 7, y: 8 }],
+    [{ x: 7, y: 8 }, { x: -3, y: 8 }],
+    [{ x: -3, y: 8 }, { x: -3, y: 0 }]
+  ]);
+  assert.deepEqual(preview.dimensions.map(dimension => dimension.anchor), [
+    { x: 2, y: 1.2 }
+  ]);
+});
+
 test("geometry drag preview updates ellipse major and minor handles", () => {
   const document = {
     entities: [
@@ -2639,6 +2863,118 @@ test("geometry drag preview translates whole ellipse and dimension anchors", () 
   assert.deepEqual(preview.entities[0].center, { x: 4, y: 6 });
   assert.deepEqual(preview.entities[0].majorAxisEndPoint, { x: 4, y: 0 });
   assert.deepEqual(preview.dimensions[0].anchor, { x: 4, y: 8 });
+});
+
+test("geometry drag preview translates polygon center and dimension anchors", () => {
+  const document = {
+    entities: [
+      {
+        id: "polygon",
+        kind: "polygon",
+        center: { x: 0, y: 0 },
+        radius: 5,
+        rotationAngleDegrees: 30,
+        sideCount: 6,
+        points: [{ x: 5, y: 0 }, { x: 2.5, y: 4.33 }, { x: -2.5, y: 4.33 }]
+      }
+    ],
+    dimensions: [
+      {
+        id: "polygon-radius",
+        kind: "radius",
+        referenceKeys: ["polygon"],
+        value: 5,
+        anchor: { x: 5, y: 0 }
+      }
+    ],
+    constraints: []
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "polygon|point|center|0|0",
+    { x: 0, y: 0 },
+    { x: 3, y: 4 });
+
+  assert.deepEqual(preview.entities[0].center, { x: 3, y: 4 });
+  assert.equal(preview.entities[0].radius, 5);
+  assert.equal(preview.entities[0].rotationAngleDegrees, 30);
+  assert.deepEqual(preview.dimensions[0].anchor, { x: 8, y: 4 });
+});
+
+test("geometry drag preview translates polygon midpoint and dimension anchors", () => {
+  const document = {
+    entities: [
+      {
+        id: "polygon",
+        kind: "polygon",
+        center: { x: 0, y: 0 },
+        radius: 5,
+        rotationAngleDegrees: 30,
+        sideCount: 6,
+        points: [{ x: 5, y: 0 }, { x: 2.5, y: 4.33 }, { x: -2.5, y: 4.33 }]
+      }
+    ],
+    dimensions: [
+      {
+        id: "polygon-radius",
+        kind: "radius",
+        referenceKeys: ["polygon"],
+        value: 5,
+        anchor: { x: 5, y: 0 }
+      }
+    ],
+    constraints: []
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "polygon|point|mid-0|3.75|2.165064",
+    { x: 3.75, y: 2.165064 },
+    { x: 6.75, y: 6.165064 });
+
+  assert.deepEqual(preview.entities[0].center, { x: 3, y: 4 });
+  assert.deepEqual(preview.entities[0].points[0], { x: 8, y: 4 });
+  assert.equal(preview.entities[0].radius, 5);
+  assert.equal(preview.entities[0].rotationAngleDegrees, 30);
+  assert.deepEqual(preview.dimensions[0].anchor, { x: 8, y: 4 });
+});
+
+test("geometry drag preview translates whole polygon from edge selection", () => {
+  const document = {
+    entities: [
+      {
+        id: "polygon",
+        kind: "polygon",
+        center: { x: 0, y: 0 },
+        radius: 5,
+        rotationAngleDegrees: 30,
+        sideCount: 6,
+        points: [{ x: 5, y: 0 }, { x: 2.5, y: 4.33 }, { x: -2.5, y: 4.33 }]
+      }
+    ],
+    dimensions: [
+      {
+        id: "polygon-count",
+        kind: "count",
+        referenceKeys: ["polygon"],
+        value: 6,
+        anchor: { x: 0, y: -3 }
+      }
+    ],
+    constraints: []
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "polygon",
+    { x: 5, y: 0 },
+    { x: 8, y: 4 });
+
+  assert.deepEqual(preview.entities[0].center, { x: 3, y: 4 });
+  assert.equal(preview.entities[0].radius, 5);
+  assert.equal(preview.entities[0].rotationAngleDegrees, 30);
+  assert.deepEqual(preview.dimensions[0].anchor, { x: 3, y: 1 });
 });
 
 test("point sketch tool needs one click", () => {
@@ -3075,6 +3411,78 @@ function createConstraintGlyphState(showAllConstraints) {
       offsetX: 40,
       offsetY: 90
     }
+  };
+}
+
+function createDimensionedRectanglePreviewDocument() {
+  return {
+    entities: [
+      {
+        id: "rect-1",
+        kind: "line",
+        points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+      },
+      {
+        id: "rect-2",
+        kind: "line",
+        points: [{ x: 10, y: 0 }, { x: 10, y: 5 }]
+      },
+      {
+        id: "rect-3",
+        kind: "line",
+        points: [{ x: 10, y: 5 }, { x: 0, y: 5 }]
+      },
+      {
+        id: "rect-4",
+        kind: "line",
+        points: [{ x: 0, y: 5 }, { x: 0, y: 0 }]
+      }
+    ],
+    dimensions: [
+      {
+        id: "width",
+        kind: "lineardistance",
+        referenceKeys: ["rect-1:start", "rect-1:end"],
+        value: 10,
+        anchor: { x: 5, y: 1.2 },
+        isDriving: true
+      },
+      {
+        id: "height",
+        kind: "lineardistance",
+        referenceKeys: ["rect-2:start", "rect-2:end"],
+        value: 5,
+        anchor: { x: 9.4, y: 2.5 },
+        isDriving: true
+      }
+    ],
+    constraints: [
+      { id: "coincident-1", kind: "coincident", referenceKeys: ["rect-1:end", "rect-2:start"], state: "satisfied" },
+      { id: "coincident-2", kind: "coincident", referenceKeys: ["rect-2:end", "rect-3:start"], state: "satisfied" },
+      { id: "coincident-3", kind: "coincident", referenceKeys: ["rect-3:end", "rect-4:start"], state: "satisfied" },
+      { id: "coincident-4", kind: "coincident", referenceKeys: ["rect-4:end", "rect-1:start"], state: "satisfied" },
+      { id: "parallel-1", kind: "parallel", referenceKeys: ["rect-1", "rect-3"], state: "satisfied" },
+      { id: "parallel-2", kind: "parallel", referenceKeys: ["rect-2", "rect-4"], state: "satisfied" },
+      { id: "perpendicular", kind: "perpendicular", referenceKeys: ["rect-1", "rect-2"], state: "satisfied" },
+      { id: "horizontal", kind: "horizontal", referenceKeys: ["rect-1"], state: "satisfied" },
+      { id: "vertical", kind: "vertical", referenceKeys: ["rect-2"], state: "satisfied" }
+    ]
+  };
+}
+
+function createUndimensionedRectanglePreviewDocument() {
+  const document = createDimensionedRectanglePreviewDocument();
+  return {
+    ...document,
+    dimensions: []
+  };
+}
+
+function createPartiallyDimensionedRectanglePreviewDocument() {
+  const document = createDimensionedRectanglePreviewDocument();
+  return {
+    ...document,
+    dimensions: document.dimensions.slice(0, 1)
   };
 }
 

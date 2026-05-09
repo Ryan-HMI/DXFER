@@ -42,7 +42,7 @@ public sealed class SketchGeometryDragServiceTests
     }
 
     [Fact]
-    public void DraggingConstrainedRectangleEdgeHorizontallyKeepsVerticalSidesAxisAligned()
+    public void DraggingConstrainedRectangleEdgeAlongItsLengthDoesNotMoveTheRectangle()
     {
         var sequence = 0;
         var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
@@ -65,12 +65,321 @@ public sealed class SketchGeometryDragServiceTests
             out var next,
             out _);
 
+        changed.Should().BeFalse();
+        next.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("rect-1"), new Point2(0, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("rect-2"), new Point2(10, 0), new Point2(10, 5)),
+            new LineEntity(EntityId.Create("rect-3"), new Point2(10, 5), new Point2(0, 5)),
+            new LineEntity(EntityId.Create("rect-4"), new Point2(0, 5), new Point2(0, 0)));
+        next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingUndimensionedRectangleVertexResizesOnlyAdjacentEdges()
+    {
+        var sequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false);
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var document = new DrawingDocument(entities, Array.Empty<SketchDimension>(), constraints);
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "rect-2|point|end|10|5",
+            new Point2(10, 5),
+            new Point2(12, 8),
+            false,
+            out var next,
+            out _);
+
         changed.Should().BeTrue();
         next.Entities.Should().Equal(
-            new LineEntity(EntityId.Create("rect-1"), new Point2(3, 0), new Point2(13, 0)),
-            new LineEntity(EntityId.Create("rect-2"), new Point2(13, 0), new Point2(13, 5)),
-            new LineEntity(EntityId.Create("rect-3"), new Point2(13, 5), new Point2(3, 5)),
-            new LineEntity(EntityId.Create("rect-4"), new Point2(3, 5), new Point2(3, 0)));
+            new LineEntity(EntityId.Create("rect-1"), new Point2(0, 0), new Point2(12, 0)),
+            new LineEntity(EntityId.Create("rect-2"), new Point2(12, 0), new Point2(12, 8)),
+            new LineEntity(EntityId.Create("rect-3"), new Point2(12, 8), new Point2(0, 8)),
+            new LineEntity(EntityId.Create("rect-4"), new Point2(0, 8), new Point2(0, 0)));
+        next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingUndimensionedRectangleEdgeMidpointResizesOnlyThatSide()
+    {
+        var sequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false);
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var document = new DrawingDocument(entities, Array.Empty<SketchDimension>(), constraints);
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "rect-4|point|mid|0|2.5",
+            new Point2(0, 2.5),
+            new Point2(2, 2.5),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        next.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("rect-1"), new Point2(2, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("rect-2"), new Point2(10, 0), new Point2(10, 5)),
+            new LineEntity(EntityId.Create("rect-3"), new Point2(10, 5), new Point2(2, 5)),
+            new LineEntity(EntityId.Create("rect-4"), new Point2(2, 5), new Point2(2, 0)));
+        next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingUndimensionedRectangleEdgeMidpointIgnoresAlongEdgeMotion()
+    {
+        var sequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false);
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var document = new DrawingDocument(entities, Array.Empty<SketchDimension>(), constraints);
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "rect-4|point|mid|0|2.5",
+            new Point2(0, 2.5),
+            new Point2(2, 1.5),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        next.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("rect-1"), new Point2(2, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("rect-2"), new Point2(10, 0), new Point2(10, 5)),
+            new LineEntity(EntityId.Create("rect-3"), new Point2(10, 5), new Point2(2, 5)),
+            new LineEntity(EntityId.Create("rect-4"), new Point2(2, 5), new Point2(2, 0)));
+        next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingDimensionedRectangleEdgeTranslatesRectangleAndDimensionAnchors()
+    {
+        var sequence = 0;
+        var dimensionSequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false,
+            dimensionValues: new Dictionary<string, double> { ["width"] = 10, ["height"] = 5 });
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            "twopointrectangle",
+            entities,
+            new Dictionary<string, double> { ["width"] = 10, ["height"] = 5 },
+            () => $"dim-{++dimensionSequence}");
+        var document = new DrawingDocument(entities, dimensions, constraints);
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "rect-3",
+            new Point2(5, 5),
+            new Point2(7, 8),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        next.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("rect-1"), new Point2(2, 3), new Point2(12, 3)),
+            new LineEntity(EntityId.Create("rect-2"), new Point2(12, 3), new Point2(12, 8)),
+            new LineEntity(EntityId.Create("rect-3"), new Point2(12, 8), new Point2(2, 8)),
+            new LineEntity(EntityId.Create("rect-4"), new Point2(2, 8), new Point2(2, 3)));
+        next.Dimensions.Select(dimension => dimension.Anchor).Should().Equal(new Point2(7, 4.2), new Point2(11.4, 5.5));
+        next.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(next, dimension));
+        next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingDimensionedRectangleVertexTranslatesRectangleAndDimensionAnchors()
+    {
+        var sequence = 0;
+        var dimensionSequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false,
+            dimensionValues: new Dictionary<string, double> { ["width"] = 10, ["height"] = 5 });
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            "twopointrectangle",
+            entities,
+            new Dictionary<string, double> { ["width"] = 10, ["height"] = 5 },
+            () => $"dim-{++dimensionSequence}");
+        var document = new DrawingDocument(entities, dimensions, constraints);
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "rect-2|point|end|10|5",
+            new Point2(10, 5),
+            new Point2(12, 8),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        next.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("rect-1"), new Point2(2, 3), new Point2(12, 3)),
+            new LineEntity(EntityId.Create("rect-2"), new Point2(12, 3), new Point2(12, 8)),
+            new LineEntity(EntityId.Create("rect-3"), new Point2(12, 8), new Point2(2, 8)),
+            new LineEntity(EntityId.Create("rect-4"), new Point2(2, 8), new Point2(2, 3)));
+        next.Dimensions.Select(dimension => dimension.Anchor).Should().Equal(new Point2(7, 4.2), new Point2(11.4, 5.5));
+        next.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(next, dimension));
+        next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingPartiallyDimensionedRectangleEdgeInFreeDirectionResizesWithoutDetaching()
+    {
+        var sequence = 0;
+        var dimensionSequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false,
+            dimensionValues: new Dictionary<string, double> { ["width"] = 10 });
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            "twopointrectangle",
+            entities,
+            new Dictionary<string, double> { ["width"] = 10 },
+            () => $"dim-{++dimensionSequence}");
+        var document = new DrawingDocument(entities, dimensions, constraints);
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "rect-3",
+            new Point2(5, 5),
+            new Point2(2, 8),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        next.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("rect-1"), new Point2(-3, 0), new Point2(7, 0)),
+            new LineEntity(EntityId.Create("rect-2"), new Point2(7, 0), new Point2(7, 8)),
+            new LineEntity(EntityId.Create("rect-3"), new Point2(7, 8), new Point2(-3, 8)),
+            new LineEntity(EntityId.Create("rect-4"), new Point2(-3, 8), new Point2(-3, 0)));
+        next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(2, 1.2));
+        next.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(next, dimension));
+        next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingPartiallyDimensionedRectangleEdgeInConstrainedDirectionTranslatesWithDimensionAnchor()
+    {
+        var sequence = 0;
+        var dimensionSequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false,
+            dimensionValues: new Dictionary<string, double> { ["width"] = 10 });
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            "twopointrectangle",
+            entities,
+            new Dictionary<string, double> { ["width"] = 10 },
+            () => $"dim-{++dimensionSequence}");
+        var document = new DrawingDocument(entities, dimensions, constraints);
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "rect-4|point|mid|0|2.5",
+            new Point2(0, 2.5),
+            new Point2(-3, 2.5),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        next.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("rect-1"), new Point2(-3, 0), new Point2(7, 0)),
+            new LineEntity(EntityId.Create("rect-2"), new Point2(7, 0), new Point2(7, 5)),
+            new LineEntity(EntityId.Create("rect-3"), new Point2(7, 5), new Point2(-3, 5)),
+            new LineEntity(EntityId.Create("rect-4"), new Point2(-3, 5), new Point2(-3, 0)));
+        next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(2, 1.2));
+        next.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(next, dimension));
+        next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingPartiallyDimensionedRectangleVertexTranslatesConstrainedAxisAndResizesFreeAxis()
+    {
+        var sequence = 0;
+        var dimensionSequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false,
+            dimensionValues: new Dictionary<string, double> { ["width"] = 10 });
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            "twopointrectangle",
+            entities,
+            new Dictionary<string, double> { ["width"] = 10 },
+            () => $"dim-{++dimensionSequence}");
+        var document = new DrawingDocument(entities, dimensions, constraints);
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "rect-3|point|end|0|5",
+            new Point2(0, 5),
+            new Point2(-3, 8),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        next.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("rect-1"), new Point2(-3, 0), new Point2(7, 0)),
+            new LineEntity(EntityId.Create("rect-2"), new Point2(7, 0), new Point2(7, 8)),
+            new LineEntity(EntityId.Create("rect-3"), new Point2(7, 8), new Point2(-3, 8)),
+            new LineEntity(EntityId.Create("rect-4"), new Point2(-3, 8), new Point2(-3, 0)));
+        next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(2, 1.2));
+        next.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(next, dimension));
         next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
     }
 
@@ -148,6 +457,47 @@ public sealed class SketchGeometryDragServiceTests
             out _);
 
         changed.Should().BeTrue();
+        next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingChainedOrthogonalCoincidentEndpointDoesNotCollapseTheDraggedLine()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("base"), new Point2(-1.333333, -0.823893), new Point2(7, -0.823893)),
+                new LineEntity(EntityId.Create("upright"), new Point2(7, -0.823893), new Point2(7, 3.342774))
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint("base-horizontal", SketchConstraintKind.Horizontal, new[] { "base" }),
+                new SketchConstraint("upright-vertical", SketchConstraintKind.Vertical, new[] { "upright" }),
+                new SketchConstraint("join", SketchConstraintKind.Coincident, new[] { "base:end", "upright:start" }),
+                new SketchConstraint("square", SketchConstraintKind.Perpendicular, new[] { "base", "upright" })
+            });
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "base|point|end|7|-0.823893",
+            new Point2(7, -0.823893),
+            new Point2(9.083333, 0.842774),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        next.Entities.Should().BeEquivalentTo(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("base"), new Point2(-1.333333, 0.842774), new Point2(9.083333, 0.842774)),
+                new LineEntity(EntityId.Create("upright"), new Point2(9.083333, 0.842774), new Point2(9.083333, 3.342774))
+            },
+            options => options
+                .WithStrictOrdering()
+                .Using<double>(context => context.Subject.Should().BeApproximately(context.Expectation, 0.000001))
+                .WhenTypeIs<double>());
         next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
     }
 
@@ -284,7 +634,7 @@ public sealed class SketchGeometryDragServiceTests
     }
 
     [Fact]
-    public void DrivingLinearDimensionPreventsEndpointDragFromChangingMeasuredLength()
+    public void DraggingDimensionedLineEndpointTranslatesLineWhenLengthWouldChange()
     {
         var document = new DrawingDocument(
             new DrawingEntity[]
@@ -312,9 +662,12 @@ public sealed class SketchGeometryDragServiceTests
             out var next,
             out var status);
 
-        changed.Should().BeFalse();
-        next.Should().BeSameAs(document);
-        status.Should().Contain("constrained");
+        changed.Should().BeTrue(status);
+        var line = next.Entities.Should().ContainSingle().Which.Should().BeOfType<LineEntity>().Subject;
+        line.Start.Should().Be(new Point2(4, 0));
+        line.End.Should().Be(new Point2(14, 0));
+        next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(9, 2));
+        next.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(next, dimension));
     }
 
     [Fact]
@@ -564,6 +917,118 @@ public sealed class SketchGeometryDragServiceTests
 
         next.Entities.Should().ContainSingle().Which.Should().BeOfType<PolylineEntity>()
             .Which.Vertices.Should().Equal(new Point2(0, 0), new Point2(10, 4), new Point2(20, 0));
+    }
+
+    [Fact]
+    public void DraggingWholePolygonTranslatesCenterAndDimensionAnchors()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new PolygonEntity(EntityId.Create("polygon"), new Point2(0, 0), 5, 30, 6)
+            },
+            new[]
+            {
+                new SketchDimension(
+                    "polygon-radius",
+                    SketchDimensionKind.Radius,
+                    new[] { "polygon" },
+                    5,
+                    new Point2(5, 0)),
+                new SketchDimension(
+                    "polygon-count",
+                    SketchDimensionKind.Count,
+                    new[] { "polygon" },
+                    6,
+                    new Point2(0, -3))
+            },
+            Array.Empty<SketchConstraint>());
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "polygon",
+            new Point2(5, 0),
+            new Point2(8, 4),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        var polygon = next.Entities.Should().ContainSingle().Which.Should().BeOfType<PolygonEntity>().Subject;
+        polygon.Center.Should().Be(new Point2(3, 4));
+        polygon.Radius.Should().Be(5);
+        polygon.RotationAngleDegrees.Should().Be(30);
+        polygon.NormalizedSideCount.Should().Be(6);
+        next.Dimensions.Select(dimension => dimension.Anchor).Should().Equal(new Point2(8, 4), new Point2(3, 1));
+    }
+
+    [Fact]
+    public void DraggingPolygonCenterTranslatesCenterAndDimensionAnchors()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new PolygonEntity(EntityId.Create("polygon"), new Point2(0, 0), 5, 30, 6)
+            },
+            new[]
+            {
+                new SketchDimension(
+                    "polygon-radius",
+                    SketchDimensionKind.Radius,
+                    new[] { "polygon" },
+                    5,
+                    new Point2(5, 0))
+            },
+            Array.Empty<SketchConstraint>());
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "polygon|point|center|0|0",
+            new Point2(0, 0),
+            new Point2(3, 4),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        var polygon = next.Entities.Should().ContainSingle().Which.Should().BeOfType<PolygonEntity>().Subject;
+        polygon.Center.Should().Be(new Point2(3, 4));
+        polygon.Radius.Should().Be(5);
+        polygon.RotationAngleDegrees.Should().Be(30);
+        next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(8, 4));
+    }
+
+    [Fact]
+    public void DraggingPolygonMidpointTranslatesCenterAndDimensionAnchors()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new PolygonEntity(EntityId.Create("polygon"), new Point2(0, 0), 5, 30, 6)
+            },
+            new[]
+            {
+                new SketchDimension(
+                    "polygon-radius",
+                    SketchDimensionKind.Radius,
+                    new[] { "polygon" },
+                    5,
+                    new Point2(5, 0))
+            },
+            Array.Empty<SketchConstraint>());
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "polygon|point|mid-0|3.75|2.165064",
+            new Point2(3.75, 2.165064),
+            new Point2(6.75, 6.165064),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        var polygon = next.Entities.Should().ContainSingle().Which.Should().BeOfType<PolygonEntity>().Subject;
+        polygon.Center.Should().Be(new Point2(3, 4));
+        polygon.Radius.Should().Be(5);
+        polygon.RotationAngleDegrees.Should().Be(30);
+        next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(8, 4));
     }
 
     [Fact]

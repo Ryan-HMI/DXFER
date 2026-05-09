@@ -69,6 +69,11 @@ public static class SketchDimensionSolverService
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(dimension);
 
+        if (IsOverConstrainedDimension(document, dimension))
+        {
+            return false;
+        }
+
         if (!TryGetDimensionMeasurement(document, dimension, out var actualValue))
         {
             return false;
@@ -78,6 +83,254 @@ public static class SketchDimensionSolverService
             ? PolygonEntity.NormalizeSideCount(dimension.Value)
             : Math.Abs(dimension.Value);
         return Math.Abs(actualValue - expectedValue) <= DimensionValueTolerance;
+    }
+
+    private static bool IsOverConstrainedDimension(
+        DrawingDocument document,
+        SketchDimension dimension)
+    {
+        if (!dimension.IsDriving)
+        {
+            return false;
+        }
+
+        return dimension.Kind switch
+        {
+            SketchDimensionKind.Angle => IsOverConstrainedAngleDimension(document, dimension),
+            SketchDimensionKind.LinearDistance => IsOverConstrainedLinearDistanceDimension(document, dimension),
+            _ => false
+        };
+    }
+
+    private static bool IsOverConstrainedAngleDimension(
+        DrawingDocument document,
+        SketchDimension dimension)
+    {
+        return dimension.ReferenceKeys.Count >= 2
+            && SketchReference.TryParse(dimension.ReferenceKeys[0], out var firstReference)
+            && SketchReference.TryParse(dimension.ReferenceKeys[1], out var secondReference)
+            && SketchGeometryEditor.TryGetLine(document.Entities, firstReference, out _, out _)
+            && SketchGeometryEditor.TryGetLine(document.Entities, secondReference, out _, out _)
+            && AreLineOrientationsAlreadyConstrained(
+                document.Constraints,
+                firstReference.EntityId,
+                secondReference.EntityId);
+    }
+
+    private static bool IsOverConstrainedLinearDistanceDimension(
+        DrawingDocument document,
+        SketchDimension dimension)
+    {
+        if (!TryGetTwoPointDimensionPoints(document.Entities, dimension, out var firstPoint, out var secondPoint))
+        {
+            return false;
+        }
+
+        var xComponent = Math.Abs(secondPoint.X - firstPoint.X);
+        var yComponent = Math.Abs(secondPoint.Y - firstPoint.Y);
+        if (xComponent <= SketchGeometryEditor.Tolerance || yComponent <= SketchGeometryEditor.Tolerance)
+        {
+            return false;
+        }
+
+        var componentEntityIds = GetConstrainedLineComponentEntityIds(document, dimension.ReferenceKeys);
+        if (componentEntityIds.Count == 0)
+        {
+            return false;
+        }
+
+        var hasHorizontalComponent = false;
+        var hasVerticalComponent = false;
+        foreach (var existingDimension in document.Dimensions)
+        {
+            if (!existingDimension.IsDriving
+                || StringComparer.Ordinal.Equals(existingDimension.Id, dimension.Id)
+                || !DimensionReferencesOnlyEntities(existingDimension, componentEntityIds)
+                || !TryGetTwoPointDimensionPoints(document.Entities, existingDimension, out var existingFirstPoint, out var existingSecondPoint))
+            {
+                continue;
+            }
+
+            var existingX = Math.Abs(existingSecondPoint.X - existingFirstPoint.X);
+            var existingY = Math.Abs(existingSecondPoint.Y - existingFirstPoint.Y);
+            if (existingX > SketchGeometryEditor.Tolerance
+                && existingY <= SketchGeometryEditor.Tolerance
+                && Math.Abs(existingX - xComponent) <= DimensionValueTolerance)
+            {
+                hasHorizontalComponent = true;
+            }
+
+            if (existingY > SketchGeometryEditor.Tolerance
+                && existingX <= SketchGeometryEditor.Tolerance
+                && Math.Abs(existingY - yComponent) <= DimensionValueTolerance)
+            {
+                hasVerticalComponent = true;
+            }
+
+            if (hasHorizontalComponent && hasVerticalComponent)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool AreLineOrientationsAlreadyConstrained(
+        IReadOnlyList<SketchConstraint> constraints,
+        string firstEntityId,
+        string secondEntityId)
+    {
+        if (StringComparer.Ordinal.Equals(firstEntityId, secondEntityId))
+        {
+            return false;
+        }
+
+        if (TryGetAxisConstraint(constraints, firstEntityId, out _)
+            && TryGetAxisConstraint(constraints, secondEntityId, out _))
+        {
+            return true;
+        }
+
+        var adjacency = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var constraint in constraints)
+        {
+            if (constraint.State == SketchConstraintState.Suppressed
+                || constraint.Kind is not (SketchConstraintKind.Parallel or SketchConstraintKind.Perpendicular)
+                || !TryGetTwoReferenceEntityIds(constraint, out var first, out var second))
+            {
+                continue;
+            }
+
+            if (!adjacency.TryGetValue(first, out var firstEdges))
+            {
+                firstEdges = new HashSet<string>(StringComparer.Ordinal);
+                adjacency[first] = firstEdges;
+            }
+
+            if (!adjacency.TryGetValue(second, out var secondEdges))
+            {
+                secondEdges = new HashSet<string>(StringComparer.Ordinal);
+                adjacency[second] = secondEdges;
+            }
+
+            firstEdges.Add(second);
+            secondEdges.Add(first);
+        }
+
+        if (!adjacency.ContainsKey(firstEntityId) || !adjacency.ContainsKey(secondEntityId))
+        {
+            return false;
+        }
+
+        var visited = new HashSet<string>(StringComparer.Ordinal) { firstEntityId };
+        var queue = new Queue<string>();
+        queue.Enqueue(firstEntityId);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            foreach (var next in adjacency[current])
+            {
+                if (StringComparer.Ordinal.Equals(next, secondEntityId))
+                {
+                    return true;
+                }
+
+                if (visited.Add(next))
+                {
+                    queue.Enqueue(next);
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static HashSet<string> GetConstrainedLineComponentEntityIds(
+        DrawingDocument document,
+        IReadOnlyList<string> referenceKeys)
+    {
+        var seedEntityIds = referenceKeys
+            .Select(GetReferenceEntityId)
+            .Where(entityId => document.Entities.OfType<LineEntity>().Any(line => StringComparer.Ordinal.Equals(line.Id.Value, entityId)))
+            .ToHashSet(StringComparer.Ordinal);
+        if (seedEntityIds.Count == 0)
+        {
+            return seedEntityIds;
+        }
+
+        var adjacency = document.Entities
+            .OfType<LineEntity>()
+            .ToDictionary(line => line.Id.Value, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
+        foreach (var constraint in document.Constraints)
+        {
+            if (constraint.State == SketchConstraintState.Suppressed
+                || constraint.Kind != SketchConstraintKind.Coincident
+                || !TryGetTwoReferenceEntityIds(constraint, out var first, out var second)
+                || !adjacency.ContainsKey(first)
+                || !adjacency.ContainsKey(second)
+                || StringComparer.Ordinal.Equals(first, second))
+            {
+                continue;
+            }
+
+            adjacency[first].Add(second);
+            adjacency[second].Add(first);
+        }
+
+        var visited = new HashSet<string>(seedEntityIds, StringComparer.Ordinal);
+        var queue = new Queue<string>(seedEntityIds);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (!adjacency.TryGetValue(current, out var connected))
+            {
+                continue;
+            }
+
+            foreach (var next in connected)
+            {
+                if (visited.Add(next))
+                {
+                    queue.Enqueue(next);
+                }
+            }
+        }
+
+        return visited;
+    }
+
+    private static bool DimensionReferencesOnlyEntities(
+        SketchDimension dimension,
+        IReadOnlySet<string> entityIds)
+    {
+        return dimension.ReferenceKeys.Count > 0
+            && dimension.ReferenceKeys
+                .Select(GetReferenceEntityId)
+                .All(entityIds.Contains);
+    }
+
+    private static bool TryGetAxisConstraint(
+        IReadOnlyList<SketchConstraint> constraints,
+        string entityId,
+        out SketchConstraintKind kind)
+    {
+        foreach (var constraint in constraints)
+        {
+            if (constraint.State == SketchConstraintState.Suppressed
+                || constraint.Kind is not (SketchConstraintKind.Horizontal or SketchConstraintKind.Vertical)
+                || constraint.ReferenceKeys.Count != 1
+                || !StringComparer.Ordinal.Equals(GetReferenceEntityId(constraint.ReferenceKeys[0]), entityId))
+            {
+                continue;
+            }
+
+            kind = constraint.Kind;
+            return true;
+        }
+
+        kind = default;
+        return false;
     }
 
     public static bool TryGetDimensionMeasurement(
@@ -93,7 +346,7 @@ public static class SketchDimensionSolverService
 
     private static void ApplyDimensionGeometry(
         DrawingEntity[] entities,
-        IEnumerable<SketchConstraint> constraints,
+        IReadOnlyList<SketchConstraint> constraints,
         SketchDimension dimension)
     {
         var fixedReferences = SketchFixedReferences.FromConstraints(constraints);
@@ -101,13 +354,40 @@ public static class SketchDimensionSolverService
         switch (dimension.Kind)
         {
             case SketchDimensionKind.LinearDistance:
-                ApplyPointDistance(entities, fixedReferences, dimension);
+                if (!TryApplyRectangleSideDistance(
+                        entities,
+                        constraints,
+                        fixedReferences,
+                        dimension,
+                        RectangleSideDistanceMode.Linear))
+                {
+                    ApplyPointDistance(entities, fixedReferences, dimension);
+                }
+
                 break;
             case SketchDimensionKind.HorizontalDistance:
-                ApplyAxisDistance(entities, fixedReferences, dimension, isHorizontal: true);
+                if (!TryApplyRectangleSideDistance(
+                        entities,
+                        constraints,
+                        fixedReferences,
+                        dimension,
+                        RectangleSideDistanceMode.Horizontal))
+                {
+                    ApplyAxisDistance(entities, fixedReferences, dimension, isHorizontal: true);
+                }
+
                 break;
             case SketchDimensionKind.VerticalDistance:
-                ApplyAxisDistance(entities, fixedReferences, dimension, isHorizontal: false);
+                if (!TryApplyRectangleSideDistance(
+                        entities,
+                        constraints,
+                        fixedReferences,
+                        dimension,
+                        RectangleSideDistanceMode.Vertical))
+                {
+                    ApplyAxisDistance(entities, fixedReferences, dimension, isHorizontal: false);
+                }
+
                 break;
             case SketchDimensionKind.PointToLineDistance:
                 ApplyPointToLineDistance(entities, fixedReferences, dimension);
@@ -125,6 +405,320 @@ public static class SketchDimensionSolverService
                 ApplyCount(entities, fixedReferences, dimension);
                 break;
         }
+    }
+
+    private static bool TryApplyRectangleSideDistance(
+        DrawingEntity[] entities,
+        IReadOnlyList<SketchConstraint> constraints,
+        SketchFixedReferences fixedReferences,
+        SketchDimension dimension,
+        RectangleSideDistanceMode mode)
+    {
+        if (!TryGetLineEndpointDimensionReferences(dimension, out var firstReference, out var secondReference)
+            || !SketchGeometryEditor.TryGetPoint(entities, firstReference, out var firstPoint)
+            || !SketchGeometryEditor.TryGetPoint(entities, secondReference, out var secondPoint)
+            || !SketchGeometryEditor.TryGetLine(
+                entities,
+                new SketchReference(firstReference.EntityId, SketchReferenceTarget.Entity, firstReference.SegmentIndex),
+                out _,
+                out var selectedLine)
+            || !TryGetRectangleGroup(entities, constraints, firstReference.EntityId, out var rectangleEntityIds))
+        {
+            return false;
+        }
+
+        var distance = Math.Abs(dimension.Value);
+        if (TryMoveRectangleSideForDimension(
+                entities,
+                rectangleEntityIds,
+                fixedReferences,
+                selectedLine,
+                firstPoint,
+                secondPoint,
+                secondReference,
+                distance,
+                mode))
+        {
+            return true;
+        }
+
+        return TryMoveRectangleSideForDimension(
+            entities,
+            rectangleEntityIds,
+            fixedReferences,
+            selectedLine,
+            secondPoint,
+            firstPoint,
+            firstReference,
+            distance,
+            mode);
+    }
+
+    private static bool TryMoveRectangleSideForDimension(
+        DrawingEntity[] entities,
+        IReadOnlySet<string> rectangleEntityIds,
+        SketchFixedReferences fixedReferences,
+        LineEntity selectedLine,
+        Point2 anchorPoint,
+        Point2 movingPoint,
+        SketchReference movingReference,
+        double distance,
+        RectangleSideDistanceMode mode)
+    {
+        if (!TryGetRectangleSidePointReferences(
+                entities,
+                rectangleEntityIds,
+                selectedLine,
+                movingPoint,
+                out var sideReferences)
+            || sideReferences.Count == 0
+            || !sideReferences.Any(reference => ReferencesEqual(reference, movingReference))
+            || sideReferences.Any(reference => !fixedReferences.CanMovePoint(reference)))
+        {
+            return false;
+        }
+
+        var targetPoint = mode switch
+        {
+            RectangleSideDistanceMode.Horizontal => PointAtAxisDistance(anchorPoint, movingPoint, distance, isHorizontal: true),
+            RectangleSideDistanceMode.Vertical => PointAtAxisDistance(anchorPoint, movingPoint, distance, isHorizontal: false),
+            _ => PointAtDistance(anchorPoint, movingPoint, distance)
+        };
+        var delta = new Point2(targetPoint.X - movingPoint.X, targetPoint.Y - movingPoint.Y);
+        if (Distance(new Point2(0, 0), delta) <= SketchGeometryEditor.Tolerance)
+        {
+            return false;
+        }
+
+        foreach (var reference in sideReferences)
+        {
+            if (!SketchGeometryEditor.TryGetPoint(entities, reference, out var point)
+                || !SketchGeometryEditor.TrySetPoint(
+                    entities,
+                    reference,
+                    new Point2(point.X + delta.X, point.Y + delta.Y)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryGetRectangleSidePointReferences(
+        IReadOnlyList<DrawingEntity> entities,
+        IReadOnlySet<string> rectangleEntityIds,
+        LineEntity selectedLine,
+        Point2 movingPoint,
+        out IReadOnlyList<SketchReference> sideReferences)
+    {
+        sideReferences = Array.Empty<SketchReference>();
+        if (!SketchGeometryEditor.TryGetLineDirection(selectedLine, out var unitX, out var unitY, out _))
+        {
+            return false;
+        }
+
+        var movingProjection = Dot(movingPoint, unitX, unitY);
+        var references = new List<SketchReference>();
+        foreach (var entity in entities)
+        {
+            if (entity is not LineEntity line || !rectangleEntityIds.Contains(line.Id.Value))
+            {
+                continue;
+            }
+
+            AddRectangleSideReferenceIfProjected(
+                references,
+                new SketchReference(line.Id.Value, SketchReferenceTarget.Start),
+                line.Start,
+                movingProjection,
+                unitX,
+                unitY);
+            AddRectangleSideReferenceIfProjected(
+                references,
+                new SketchReference(line.Id.Value, SketchReferenceTarget.End),
+                line.End,
+                movingProjection,
+                unitX,
+                unitY);
+        }
+
+        sideReferences = references
+            .DistinctBy(reference => reference.ToString())
+            .ToArray();
+        return sideReferences.Count > 0;
+    }
+
+    private static void AddRectangleSideReferenceIfProjected(
+        ICollection<SketchReference> references,
+        SketchReference reference,
+        Point2 point,
+        double movingProjection,
+        double unitX,
+        double unitY)
+    {
+        if (Math.Abs(Dot(point, unitX, unitY) - movingProjection) <= SketchGeometryEditor.Tolerance)
+        {
+            references.Add(reference);
+        }
+    }
+
+    private static bool TryGetLineEndpointDimensionReferences(
+        SketchDimension dimension,
+        out SketchReference firstReference,
+        out SketchReference secondReference)
+    {
+        if (TryGetTwoPointReferences(dimension, out firstReference, out secondReference)
+            && StringComparer.Ordinal.Equals(firstReference.EntityId, secondReference.EntityId)
+            && firstReference.SegmentIndex == secondReference.SegmentIndex
+            && firstReference.Target is SketchReferenceTarget.Start or SketchReferenceTarget.End
+            && secondReference.Target is SketchReferenceTarget.Start or SketchReferenceTarget.End
+            && firstReference.Target != secondReference.Target)
+        {
+            return true;
+        }
+
+        firstReference = default;
+        secondReference = default;
+        return false;
+    }
+
+    private static bool TryGetRectangleGroup(
+        IReadOnlyList<DrawingEntity> entities,
+        IReadOnlyList<SketchConstraint> constraints,
+        string selectedEntityId,
+        out HashSet<string> rectangleEntityIds)
+    {
+        rectangleEntityIds = new HashSet<string>(StringComparer.Ordinal);
+        var lineIds = entities
+            .OfType<LineEntity>()
+            .Select(line => line.Id.Value)
+            .ToHashSet(StringComparer.Ordinal);
+        if (!lineIds.Contains(selectedEntityId))
+        {
+            return false;
+        }
+
+        var adjacency = lineIds.ToDictionary(
+            entityId => entityId,
+            _ => new HashSet<string>(StringComparer.Ordinal),
+            StringComparer.Ordinal);
+        foreach (var constraint in constraints)
+        {
+            if (constraint.Kind != SketchConstraintKind.Coincident
+                || constraint.State == SketchConstraintState.Suppressed
+                || !TryGetTwoReferenceEntityIds(constraint, out var firstEntityId, out var secondEntityId)
+                || !lineIds.Contains(firstEntityId)
+                || !lineIds.Contains(secondEntityId)
+                || StringComparer.Ordinal.Equals(firstEntityId, secondEntityId))
+            {
+                continue;
+            }
+
+            adjacency[firstEntityId].Add(secondEntityId);
+            adjacency[secondEntityId].Add(firstEntityId);
+        }
+
+        var queue = new Queue<string>();
+        queue.Enqueue(selectedEntityId);
+        rectangleEntityIds.Add(selectedEntityId);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            foreach (var next in adjacency[current])
+            {
+                if (rectangleEntityIds.Add(next))
+                {
+                    queue.Enqueue(next);
+                }
+            }
+        }
+
+        return rectangleEntityIds.Count == 4
+            && HasRectangleLineRelations(constraints, rectangleEntityIds);
+    }
+
+    private static bool HasRectangleLineRelations(
+        IReadOnlyList<SketchConstraint> constraints,
+        IReadOnlySet<string> entityIds)
+    {
+        var coincidentCount = 0;
+        var parallelPairs = new HashSet<string>(StringComparer.Ordinal);
+        var perpendicularCount = 0;
+        foreach (var constraint in constraints)
+        {
+            if (constraint.State == SketchConstraintState.Suppressed)
+            {
+                continue;
+            }
+
+            if (constraint.Kind == SketchConstraintKind.Coincident
+                && TryGetTwoReferenceEntityIds(constraint, out var firstCoincidentEntityId, out var secondCoincidentEntityId)
+                && entityIds.Contains(firstCoincidentEntityId)
+                && entityIds.Contains(secondCoincidentEntityId)
+                && !StringComparer.Ordinal.Equals(firstCoincidentEntityId, secondCoincidentEntityId))
+            {
+                coincidentCount++;
+            }
+
+            if ((constraint.Kind == SketchConstraintKind.Parallel || constraint.Kind == SketchConstraintKind.Perpendicular)
+                && TryGetTwoReferenceEntityIds(constraint, out var firstLineEntityId, out var secondLineEntityId)
+                && entityIds.Contains(firstLineEntityId)
+                && entityIds.Contains(secondLineEntityId)
+                && !StringComparer.Ordinal.Equals(firstLineEntityId, secondLineEntityId))
+            {
+                if (constraint.Kind == SketchConstraintKind.Parallel)
+                {
+                    var pair = string.CompareOrdinal(firstLineEntityId, secondLineEntityId) <= 0
+                        ? $"{firstLineEntityId}|{secondLineEntityId}"
+                        : $"{secondLineEntityId}|{firstLineEntityId}";
+                    parallelPairs.Add(pair);
+                }
+                else
+                {
+                    perpendicularCount++;
+                }
+            }
+        }
+
+        return coincidentCount >= 4
+            && parallelPairs.Count >= 2
+            && perpendicularCount >= 1;
+    }
+
+    private static bool TryGetTwoReferenceEntityIds(
+        SketchConstraint constraint,
+        out string firstEntityId,
+        out string secondEntityId)
+    {
+        firstEntityId = string.Empty;
+        secondEntityId = string.Empty;
+        if (constraint.ReferenceKeys.Count < 2
+            || !TryGetReferenceEntityId(constraint.ReferenceKeys[0], out firstEntityId)
+            || !TryGetReferenceEntityId(constraint.ReferenceKeys[1], out secondEntityId))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryGetReferenceEntityId(string referenceKey, out string entityId)
+    {
+        entityId = GetReferenceEntityId(referenceKey);
+        return !string.IsNullOrEmpty(entityId);
+    }
+
+    private static string GetReferenceEntityId(string referenceKey)
+    {
+        if (SketchReference.TryParseCanvasPointCoordinates(referenceKey, out var canvasEntityId, out _, out _))
+        {
+            return canvasEntityId;
+        }
+
+        return SketchReference.TryParse(referenceKey, out var reference)
+            ? reference.EntityId
+            : string.Empty;
     }
 
     private static bool TryGetDimensionMeasurement(
@@ -826,6 +1420,14 @@ public static class SketchDimensionSolverService
         return Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
     }
 
+    private static double Dot(Point2 point, double unitX, double unitY) =>
+        (point.X * unitX) + (point.Y * unitY);
+
+    private static bool ReferencesEqual(SketchReference first, SketchReference second) =>
+        StringComparer.Ordinal.Equals(first.EntityId, second.EntityId)
+        && first.Target == second.Target
+        && first.SegmentIndex == second.SegmentIndex;
+
     private static double DistancePointToLine(Point2 point, LineEntity line)
     {
         var deltaX = line.End.X - line.Start.X;
@@ -893,5 +1495,12 @@ public static class SketchDimensionSolverService
             PolygonEntity.NormalizeSideCount(dimension.Value),
             dimension.Anchor,
             dimension.IsDriving);
+    }
+
+    private enum RectangleSideDistanceMode
+    {
+        Linear,
+        Horizontal,
+        Vertical
     }
 }

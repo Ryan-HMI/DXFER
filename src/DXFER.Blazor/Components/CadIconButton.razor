@@ -8,10 +8,6 @@
         disabled="@Disabled"
         @onclick="OnClick">
     <CadIcon Name="@Icon" />
-    @if (!string.IsNullOrWhiteSpace(Hotkey))
-    {
-        <kbd class="dxfer-icon-button-hotkey">@Hotkey</kbd>
-    }
     @if (ShowLabel)
     {
         <span class="dxfer-icon-button-label">@Label</span>
@@ -46,7 +42,16 @@
     [Parameter]
     public EventCallback<MouseEventArgs> OnClick { get; set; }
 
-    private string TitleText => string.IsNullOrWhiteSpace(Tooltip) ? Label : Tooltip;
+    private string TitleText
+    {
+        get
+        {
+            var title = string.IsNullOrWhiteSpace(Tooltip) ? Label : Tooltip;
+            return string.IsNullOrWhiteSpace(Hotkey)
+                ? title
+                : $"{title} ({Hotkey})";
+        }
+    }
 
     private string? PressedValue => Pressed.HasValue
         ? (Pressed.Value ? "true" : "false")

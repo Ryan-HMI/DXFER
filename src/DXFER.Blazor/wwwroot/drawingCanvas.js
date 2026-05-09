@@ -2811,12 +2811,23 @@ function getOrCreatePersistentDimensionInput(state, dimension) {
     selectInputText(input);
   });
   input.addEventListener("blur", () => {
+    const wasEditing = input.dataset.dimensionEditing === "true";
+    const skipNextBlurCommit = input.dataset.skipNextBlurCommit === "true";
+    input.dataset.skipNextBlurCommit = "false";
     input.dataset.dimensionEditing = "false";
     input.classList.remove("drawing-dimension-input-active");
-    commitPersistentDimensionInputValue(state, input);
+    if (shouldCommitDimensionInputOnBlur(state.suppressDimensionInputCommit, skipNextBlurCommit, wasEditing)) {
+      commitPersistentDimensionInputValue(state, input);
+    }
   });
   input.addEventListener("keydown", event => handlePersistentDimensionInputKeyDown(state, input, event));
-  input.addEventListener("change", () => commitPersistentDimensionInputValue(state, input));
+  input.addEventListener("change", () => {
+    const skipNextChangeCommit = input.dataset.skipNextChangeCommit === "true";
+    input.dataset.skipNextChangeCommit = "false";
+    if (shouldCommitDimensionInputOnChange(skipNextChangeCommit, input.dataset.dimensionEditing === "true")) {
+      commitPersistentDimensionInputValue(state, input);
+    }
+  });
 
   state.dimensionOverlay.appendChild(input);
   state.persistentDimensionInputs.set(dimension.id, input);
@@ -4078,12 +4089,17 @@ function focusCanvasWithoutDimensionCommit(state) {
   }
 }
 
-function markDimensionInputsToSkipNextBlurCommit(state) {
-  if (!state.dimensionInputs) {
+export function markDimensionInputsToSkipNextBlurCommit(state) {
+  markDimensionInputCollectionToSkipNextCommit(state.dimensionInputs);
+  markDimensionInputCollectionToSkipNextCommit(state.persistentDimensionInputs);
+}
+
+function markDimensionInputCollectionToSkipNextCommit(inputs) {
+  if (!inputs) {
     return;
   }
 
-  for (const input of state.dimensionInputs.values()) {
+  for (const input of inputs.values()) {
     input.dataset.skipNextBlurCommit = "true";
     input.dataset.skipNextChangeCommit = "true";
   }
@@ -5317,13 +5333,17 @@ function getDimensionLineLikeReferenceFromPointTarget(target) {
   return null;
 }
 
-function isDimensionReferenceSetComplete(state, selectionKeys, lastTarget) {
+export function isDimensionReferenceSetComplete(state, selectionKeys, lastTarget) {
   if (!Array.isArray(selectionKeys) || selectionKeys.length === 0) {
     return false;
   }
 
   if (selectionKeys.length >= 2) {
     return getDimensionModelFromReferences(state, selectionKeys) !== null;
+  }
+
+  if (getDimensionModelFromReferences(state, selectionKeys) !== null) {
+    return true;
   }
 
   if (!lastTarget || (lastTarget.kind !== "entity" && lastTarget.kind !== "segment")) {
@@ -7871,13 +7891,1019 @@ export function applyGeometryDragPreview(document, selectionKey, dragStart, drag
   }
 
   const previewDocument = cloneCanvasDocument(document);
-  if (!applyGeometryDragPreviewMutation(previewDocument, selectionKey, delta, dragEnd, constrainToCurrentVector)) {
+  const translatedRectangleEntityIds = applyDimensionedRectanglePreviewTranslation(previewDocument, selectionKey, delta);
+  const partiallyDimensionedRectangleHandled = !translatedRectangleEntityIds
+    ? applyPartiallyDimensionedRectanglePreviewDrag(previewDocument, selectionKey, delta)
+    : false;
+  const resizedRectangleCorner = !translatedRectangleEntityIds
+    && !partiallyDimensionedRectangleHandled
+    ? applyUndimensionedRectanglePreviewCornerResize(previewDocument, selectionKey, delta)
+    : false;
+  const resizedRectangleEdge = !translatedRectangleEntityIds
+    && !partiallyDimensionedRectangleHandled
+    && !resizedRectangleCorner
+    ? applyUndimensionedRectanglePreviewEdgeResize(previewDocument, selectionKey, delta)
+    : false;
+  const genericDragHandled = !translatedRectangleEntityIds
+    && !partiallyDimensionedRectangleHandled
+    && !resizedRectangleCorner
+    && !resizedRectangleEdge
+    ? applyDimensionAwareGeometryDragPreviewMutation(
+      previewDocument,
+      document,
+      selectionKey,
+      delta,
+      dragEnd,
+      constrainToCurrentVector)
+    : false;
+  if (!translatedRectangleEntityIds
+    && !partiallyDimensionedRectangleHandled
+    && !resizedRectangleCorner
+    && !resizedRectangleEdge
+    && !genericDragHandled) {
     return null;
   }
 
-  translatePreviewDimensionAnchorsForDrag(previewDocument, selectionKey, delta);
+  if (translatedRectangleEntityIds) {
+    translatePreviewDimensionAnchorsForEntityIds(previewDocument, translatedRectangleEntityIds, delta);
+  } else if (!partiallyDimensionedRectangleHandled && !resizedRectangleCorner && !resizedRectangleEdge) {
+    translatePreviewDimensionAnchorsForDrag(previewDocument, selectionKey, delta);
+  }
+
+  propagatePreviewCoincidentConstraints(document, previewDocument);
   previewDocument.bounds = computeEntityBounds(getDocumentEntities(previewDocument));
   return previewDocument;
+}
+
+function applyDimensionAwareGeometryDragPreviewMutation(
+  previewDocument,
+  originalDocument,
+  selectionKey,
+  delta,
+  dragEnd,
+  constrainToCurrentVector = false) {
+  const editCandidate = cloneCanvasDocument(originalDocument);
+  if (!applyGeometryDragPreviewMutation(editCandidate, selectionKey, delta, dragEnd, constrainToCurrentVector)) {
+    return false;
+  }
+
+  const affectedEntityIds = new Set([getReferenceEntityId(selectionKey)].filter(id => id));
+  if (previewDrivingDimensionsRemainSatisfiedForEntity(editCandidate, affectedEntityIds)) {
+    copyPreviewDocumentGeometry(previewDocument, editCandidate);
+    return true;
+  }
+
+  const translatedEntityId = getSelectedPreviewEntityId(originalDocument, selectionKey);
+  if (!translatedEntityId) {
+    return false;
+  }
+
+  const translationCandidate = cloneCanvasDocument(originalDocument);
+  if (!translatePreviewEntityById(translationCandidate, translatedEntityId, delta)) {
+    return false;
+  }
+
+  translatePreviewDimensionAnchorsForEntityIds(
+    translationCandidate,
+    new Set([translatedEntityId]),
+    delta);
+  if (!previewDrivingDimensionsRemainSatisfiedForEntity(translationCandidate, new Set([translatedEntityId]))) {
+    return false;
+  }
+
+  copyPreviewDocumentGeometry(previewDocument, translationCandidate);
+  return true;
+}
+
+function applyDimensionedRectanglePreviewTranslation(document, selectionKey, delta) {
+  const selectedEntityId = getSelectedPreviewLineEntityId(document, selectionKey);
+  if (!selectedEntityId) {
+    return null;
+  }
+
+  const rectangleEntityIds = getDimensionedRectanglePreviewEntityIds(document, selectedEntityId);
+  if (!rectangleEntityIds) {
+    return null;
+  }
+
+  for (const entity of getDocumentEntities(document)) {
+    if (getEntityKind(entity) === "line" && rectangleEntityIds.has(getEntityId(entity))) {
+      entity.points = getEntityPoints(entity).map(point => addWorldPoints(point, delta));
+    }
+  }
+
+  return rectangleEntityIds;
+}
+
+function applyPartiallyDimensionedRectanglePreviewDrag(document, selectionKey, delta) {
+  const selectedEntityId = getSelectedPreviewLineEntityId(document, selectionKey);
+  if (!selectedEntityId) {
+    return false;
+  }
+
+  const rectangleEntityIds = getRectanglePreviewEntityIds(document, selectedEntityId);
+  if (!rectangleEntityIds) {
+    return false;
+  }
+
+  const drivingDimensionCount = countDrivingPreviewDimensionsForEntityGroup(
+    getDocumentDimensions(document),
+    rectangleEntityIds);
+  if (drivingDimensionCount <= 0 || drivingDimensionCount >= 2) {
+    return false;
+  }
+
+  const selectedEntity = findCanvasDocumentEntity(document, selectedEntityId);
+  const selectedPoints = getEntityPoints(selectedEntity);
+  if (selectedPoints.length < 2) {
+    return false;
+  }
+
+  if (!getSelectedPreviewRectangleEdgeEntityId(document, selectionKey)) {
+    const corner = getSelectedPreviewRectangleCorner(document, selectionKey);
+    if (corner) {
+      return applyPartiallyDimensionedRectanglePreviewCornerDrag(
+        document,
+        rectangleEntityIds,
+        corner.point,
+        delta);
+    }
+
+    translatePreviewRectangleEntities(document, rectangleEntityIds, delta);
+    translatePreviewDimensionAnchorsForEntityIds(document, rectangleEntityIds, delta);
+    return true;
+  }
+
+  const parallelDelta = projectWorldDeltaOntoLine(delta, selectedPoints[0], selectedPoints[1]);
+  const perpendicularDelta = subtractPoints(delta, parallelDelta);
+  const parallelCandidate = cloneCanvasDocument(document);
+  translatePreviewRectangleEntities(parallelCandidate, rectangleEntityIds, parallelDelta);
+  translatePreviewDimensionAnchorsForEntityIds(parallelCandidate, rectangleEntityIds, parallelDelta);
+
+  if (Math.hypot(perpendicularDelta.x, perpendicularDelta.y) > WORLD_GEOMETRY_TOLERANCE) {
+    const resizeCandidate = cloneCanvasDocument(parallelCandidate);
+    const translatedSelectedPoints = selectedPoints.map(point => addWorldPoints(point, parallelDelta));
+    resizePreviewRectangleEdgeEntities(
+      resizeCandidate,
+      rectangleEntityIds,
+      translatedSelectedPoints,
+      perpendicularDelta);
+    translatePreviewDimensionAnchorsForEntityIds(
+      resizeCandidate,
+      new Set([selectedEntityId]),
+      perpendicularDelta);
+    if (previewDrivingDimensionsRemainSatisfied(resizeCandidate)) {
+      copyPreviewDocumentGeometry(document, resizeCandidate);
+      return true;
+    }
+
+    translatePreviewRectangleEntities(parallelCandidate, rectangleEntityIds, perpendicularDelta);
+    translatePreviewDimensionAnchorsForEntityIds(parallelCandidate, rectangleEntityIds, perpendicularDelta);
+  }
+
+  copyPreviewDocumentGeometry(document, parallelCandidate);
+  return true;
+}
+
+function applyPartiallyDimensionedRectanglePreviewCornerDrag(document, rectangleEntityIds, cornerPoint, delta) {
+  const axes = getPreviewRectangleCornerAxes(document, rectangleEntityIds, cornerPoint);
+  if (!axes) {
+    return false;
+  }
+
+  const components = [
+    projectWorldDeltaOntoAxis(delta, axes.firstAxis),
+    projectWorldDeltaOntoAxis(delta, axes.secondAxis)
+  ];
+  let workingDocument = cloneCanvasDocument(document);
+  let currentCorner = { ...cornerPoint };
+  for (const component of components) {
+    if (Math.hypot(component.x, component.y) <= WORLD_GEOMETRY_TOLERANCE) {
+      continue;
+    }
+
+    const resizeCandidate = cloneCanvasDocument(workingDocument);
+    const resizedWholeEntityIds = resizePreviewRectangleCornerEntities(
+      resizeCandidate,
+      rectangleEntityIds,
+      currentCorner,
+      component);
+    if (resizedWholeEntityIds) {
+      translatePreviewDimensionAnchorsForEntityIds(resizeCandidate, resizedWholeEntityIds, component);
+      if (previewDrivingDimensionsRemainSatisfied(resizeCandidate)) {
+        workingDocument = resizeCandidate;
+        currentCorner = addWorldPoints(currentCorner, component);
+        continue;
+      }
+    }
+
+    translatePreviewRectangleEntities(workingDocument, rectangleEntityIds, component);
+    translatePreviewDimensionAnchorsForEntityIds(workingDocument, rectangleEntityIds, component);
+    currentCorner = addWorldPoints(currentCorner, component);
+  }
+
+  copyPreviewDocumentGeometry(document, workingDocument);
+  return true;
+}
+
+function applyUndimensionedRectanglePreviewCornerResize(document, selectionKey, delta) {
+  const corner = getSelectedPreviewRectangleCorner(document, selectionKey);
+  if (!corner) {
+    return false;
+  }
+
+  const rectangleEntityIds = getRectanglePreviewEntityIds(document, corner.entityId);
+  if (!rectangleEntityIds
+    || countDrivingPreviewDimensionsForEntityGroup(getDocumentDimensions(document), rectangleEntityIds) > 0) {
+    return false;
+  }
+
+  const adjacentPoints = getPreviewRectangleAdjacentCornerPoints(document, rectangleEntityIds, corner.point);
+  if (adjacentPoints.length !== 2) {
+    return false;
+  }
+
+  const opposite = {
+    x: adjacentPoints[0].x + adjacentPoints[1].x - corner.point.x,
+    y: adjacentPoints[0].y + adjacentPoints[1].y - corner.point.y
+  };
+  const firstAxis = normalizeWorldVector(subtractPoints(adjacentPoints[0], opposite));
+  const secondAxis = normalizeWorldVector(subtractPoints(adjacentPoints[1], opposite));
+  if (!firstAxis || !secondAxis) {
+    return false;
+  }
+
+  const movedCorner = addWorldPoints(corner.point, delta);
+  const movedOffset = subtractPoints(movedCorner, opposite);
+  const firstLength = dotPoints(movedOffset, firstAxis);
+  const secondLength = dotPoints(movedOffset, secondAxis);
+  const nextFirstAdjacent = {
+    x: opposite.x + firstAxis.x * firstLength,
+    y: opposite.y + firstAxis.y * firstLength
+  };
+  const nextSecondAdjacent = {
+    x: opposite.x + secondAxis.x * secondLength,
+    y: opposite.y + secondAxis.y * secondLength
+  };
+  const nextCorner = {
+    x: nextFirstAdjacent.x + nextSecondAdjacent.x - opposite.x,
+    y: nextFirstAdjacent.y + nextSecondAdjacent.y - opposite.y
+  };
+
+  for (const entity of getDocumentEntities(document)) {
+    if (getEntityKind(entity) !== "line" || !rectangleEntityIds.has(getEntityId(entity))) {
+      continue;
+    }
+
+    entity.points = getEntityPoints(entity).map(point => {
+      if (distanceBetweenWorldPoints(point, corner.point) <= WORLD_GEOMETRY_TOLERANCE) {
+        return { ...nextCorner };
+      }
+
+      if (distanceBetweenWorldPoints(point, adjacentPoints[0]) <= WORLD_GEOMETRY_TOLERANCE) {
+        return { ...nextFirstAdjacent };
+      }
+
+      if (distanceBetweenWorldPoints(point, adjacentPoints[1]) <= WORLD_GEOMETRY_TOLERANCE) {
+        return { ...nextSecondAdjacent };
+      }
+
+      return point;
+    });
+  }
+
+  return true;
+}
+
+function getSelectedPreviewRectangleCorner(document, selectionKey) {
+  const pointReference = parsePointSelectionKey(selectionKey);
+  if (!pointReference) {
+    return null;
+  }
+
+  const label = String(pointReference.label || "").split("|")[0].toLowerCase();
+  if (label !== "start" && label !== "end") {
+    return null;
+  }
+
+  const entity = findCanvasDocumentEntity(document, pointReference.entityId);
+  if (getEntityKind(entity) !== "line") {
+    return null;
+  }
+
+  const points = getEntityPoints(entity);
+  if (points.length < 2) {
+    return null;
+  }
+
+  return {
+    entityId: pointReference.entityId,
+    point: label === "start" ? points[0] : points[1]
+  };
+}
+
+function getPreviewRectangleAdjacentCornerPoints(document, rectangleEntityIds, cornerPoint) {
+  const adjacent = [];
+  for (const entity of getDocumentEntities(document)) {
+    if (getEntityKind(entity) !== "line" || !rectangleEntityIds.has(getEntityId(entity))) {
+      continue;
+    }
+
+    const points = getEntityPoints(entity);
+    if (points.length < 2) {
+      continue;
+    }
+
+    if (distanceBetweenWorldPoints(points[0], cornerPoint) <= WORLD_GEOMETRY_TOLERANCE) {
+      addUniquePreviewPoint(adjacent, points[1]);
+    } else if (distanceBetweenWorldPoints(points[1], cornerPoint) <= WORLD_GEOMETRY_TOLERANCE) {
+      addUniquePreviewPoint(adjacent, points[0]);
+    }
+  }
+
+  return adjacent;
+}
+
+function addUniquePreviewPoint(points, point) {
+  if (!points.some(existing => distanceBetweenWorldPoints(existing, point) <= WORLD_GEOMETRY_TOLERANCE)) {
+    points.push(point);
+  }
+}
+
+function applyUndimensionedRectanglePreviewEdgeResize(document, selectionKey, delta) {
+  const selectedEntityId = getSelectedPreviewRectangleEdgeEntityId(document, selectionKey);
+  if (!selectedEntityId) {
+    return false;
+  }
+
+  const rectangleEntityIds = getRectanglePreviewEntityIds(document, selectedEntityId);
+  if (!rectangleEntityIds
+    || countDrivingPreviewDimensionsForEntityGroup(getDocumentDimensions(document), rectangleEntityIds) > 0) {
+    return false;
+  }
+
+  const selectedEntity = findCanvasDocumentEntity(document, selectedEntityId);
+  const selectedPoints = getEntityPoints(selectedEntity);
+  if (selectedPoints.length < 2) {
+    return false;
+  }
+
+  const resizeDelta = projectWorldDeltaPerpendicularToLine(delta, selectedPoints[0], selectedPoints[1]);
+  if (Math.hypot(resizeDelta.x, resizeDelta.y) <= WORLD_GEOMETRY_TOLERANCE) {
+    return true;
+  }
+
+  for (const entity of getDocumentEntities(document)) {
+    if (getEntityKind(entity) !== "line" || !rectangleEntityIds.has(getEntityId(entity))) {
+      continue;
+    }
+
+    entity.points = getEntityPoints(entity).map(point =>
+      shouldMovePreviewRectangleEndpoint(point, selectedPoints)
+        ? addWorldPoints(point, resizeDelta)
+        : point);
+  }
+
+  return true;
+}
+
+function getPreviewRectangleCornerAxes(document, rectangleEntityIds, cornerPoint) {
+  const geometry = getPreviewRectangleCornerGeometry(document, rectangleEntityIds, cornerPoint);
+  return geometry
+    ? {
+      firstAxis: geometry.firstAxis,
+      secondAxis: geometry.secondAxis
+    }
+    : null;
+}
+
+function getPreviewRectangleCornerGeometry(document, rectangleEntityIds, cornerPoint) {
+  const adjacentPoints = getPreviewRectangleAdjacentCornerPoints(document, rectangleEntityIds, cornerPoint);
+  if (adjacentPoints.length !== 2) {
+    return null;
+  }
+
+  const opposite = {
+    x: adjacentPoints[0].x + adjacentPoints[1].x - cornerPoint.x,
+    y: adjacentPoints[0].y + adjacentPoints[1].y - cornerPoint.y
+  };
+  const firstAxis = normalizeWorldVector(subtractPoints(adjacentPoints[0], opposite));
+  const secondAxis = normalizeWorldVector(subtractPoints(adjacentPoints[1], opposite));
+  if (!firstAxis || !secondAxis) {
+    return null;
+  }
+
+  return {
+    firstAdjacent: adjacentPoints[0],
+    secondAdjacent: adjacentPoints[1],
+    opposite,
+    firstAxis,
+    secondAxis
+  };
+}
+
+function resizePreviewRectangleCornerEntities(document, rectangleEntityIds, cornerPoint, delta) {
+  const geometry = getPreviewRectangleCornerGeometry(document, rectangleEntityIds, cornerPoint);
+  if (!geometry) {
+    return null;
+  }
+
+  const movedCorner = addWorldPoints(cornerPoint, delta);
+  const movedOffset = subtractPoints(movedCorner, geometry.opposite);
+  const firstLength = dotPoints(movedOffset, geometry.firstAxis);
+  const secondLength = dotPoints(movedOffset, geometry.secondAxis);
+  const nextFirstAdjacent = {
+    x: geometry.opposite.x + geometry.firstAxis.x * firstLength,
+    y: geometry.opposite.y + geometry.firstAxis.y * firstLength
+  };
+  const nextSecondAdjacent = {
+    x: geometry.opposite.x + geometry.secondAxis.x * secondLength,
+    y: geometry.opposite.y + geometry.secondAxis.y * secondLength
+  };
+  const nextCorner = {
+    x: nextFirstAdjacent.x + nextSecondAdjacent.x - geometry.opposite.x,
+    y: nextFirstAdjacent.y + nextSecondAdjacent.y - geometry.opposite.y
+  };
+  const resizedWholeEntityIds = new Set();
+
+  for (const entity of getDocumentEntities(document)) {
+    if (getEntityKind(entity) !== "line" || !rectangleEntityIds.has(getEntityId(entity))) {
+      continue;
+    }
+
+    const points = getEntityPoints(entity);
+    if (points.length < 2) {
+      continue;
+    }
+
+    const nextPoints = points.map(point => getNextPreviewRectangleCornerPoint(
+      point,
+      cornerPoint,
+      geometry.firstAdjacent,
+      geometry.secondAdjacent,
+      nextCorner,
+      nextFirstAdjacent,
+      nextSecondAdjacent));
+    const startDelta = subtractPoints(nextPoints[0], points[0]);
+    const endDelta = subtractPoints(nextPoints[1], points[1]);
+    if (distanceBetweenWorldPoints(startDelta, delta) <= WORLD_GEOMETRY_TOLERANCE
+      && distanceBetweenWorldPoints(endDelta, delta) <= WORLD_GEOMETRY_TOLERANCE) {
+      resizedWholeEntityIds.add(getEntityId(entity));
+    }
+
+    entity.points = nextPoints;
+  }
+
+  return resizedWholeEntityIds;
+}
+
+function getNextPreviewRectangleCornerPoint(
+  point,
+  cornerPoint,
+  firstAdjacent,
+  secondAdjacent,
+  nextCorner,
+  nextFirstAdjacent,
+  nextSecondAdjacent) {
+  if (distanceBetweenWorldPoints(point, cornerPoint) <= WORLD_GEOMETRY_TOLERANCE) {
+    return { ...nextCorner };
+  }
+
+  if (distanceBetweenWorldPoints(point, firstAdjacent) <= WORLD_GEOMETRY_TOLERANCE) {
+    return { ...nextFirstAdjacent };
+  }
+
+  return distanceBetweenWorldPoints(point, secondAdjacent) <= WORLD_GEOMETRY_TOLERANCE
+    ? { ...nextSecondAdjacent }
+    : point;
+}
+
+function translatePreviewRectangleEntities(document, rectangleEntityIds, delta) {
+  if (Math.hypot(delta.x, delta.y) <= WORLD_GEOMETRY_TOLERANCE) {
+    return;
+  }
+
+  for (const entity of getDocumentEntities(document)) {
+    if (getEntityKind(entity) === "line" && rectangleEntityIds.has(getEntityId(entity))) {
+      entity.points = getEntityPoints(entity).map(point => addWorldPoints(point, delta));
+    }
+  }
+}
+
+function resizePreviewRectangleEdgeEntities(document, rectangleEntityIds, selectedPoints, delta) {
+  for (const entity of getDocumentEntities(document)) {
+    if (getEntityKind(entity) !== "line" || !rectangleEntityIds.has(getEntityId(entity))) {
+      continue;
+    }
+
+    entity.points = getEntityPoints(entity).map(point =>
+      shouldMovePreviewRectangleEndpoint(point, selectedPoints)
+        ? addWorldPoints(point, delta)
+        : point);
+  }
+}
+
+function getSelectedPreviewRectangleEdgeEntityId(document, selectionKey) {
+  const key = String(selectionKey || "");
+  if (parseSegmentSelectionKey(key)) {
+    return null;
+  }
+
+  const pointReference = parsePointSelectionKey(key);
+  if (pointReference) {
+    const label = String(pointReference.label || "").split("|")[0].toLowerCase();
+    if (label !== "mid") {
+      return null;
+    }
+  }
+
+  const entityId = pointReference ? pointReference.entityId : key;
+  const entity = findCanvasDocumentEntity(document, entityId);
+  return getEntityKind(entity) === "line" ? entityId : null;
+}
+
+function getSelectedPreviewLineEntityId(document, selectionKey) {
+  const key = String(selectionKey || "");
+  if (parseSegmentSelectionKey(key)) {
+    return null;
+  }
+
+  const pointReference = parsePointSelectionKey(key);
+  const entityId = pointReference ? pointReference.entityId : key;
+  const entity = findCanvasDocumentEntity(document, entityId);
+  return getEntityKind(entity) === "line" ? entityId : null;
+}
+
+function getDimensionedRectanglePreviewEntityIds(document, selectedEntityId) {
+  const rectangleEntityIds = getRectanglePreviewEntityIds(document, selectedEntityId);
+  return rectangleEntityIds
+    && countDrivingPreviewDimensionsForEntityGroup(getDocumentDimensions(document), rectangleEntityIds) >= 2
+    ? rectangleEntityIds
+    : null;
+}
+
+function getRectanglePreviewEntityIds(document, selectedEntityId) {
+  const lineIds = new Set(getDocumentEntities(document)
+    .filter(entity => getEntityKind(entity) === "line")
+    .map(getEntityId)
+    .filter(id => id));
+  if (!lineIds.has(selectedEntityId)) {
+    return null;
+  }
+
+  const adjacency = new Map(Array.from(lineIds, entityId => [entityId, new Set()]));
+  for (const constraint of getDocumentConstraints(document)) {
+    if (getSketchConstraintKind(constraint) !== "coincident" || getSketchItemState(constraint) === "suppressed") {
+      continue;
+    }
+
+    const pair = getTwoSketchReferenceEntityIds(constraint);
+    if (!pair || !lineIds.has(pair[0]) || !lineIds.has(pair[1]) || StringComparer(pair[0], pair[1])) {
+      continue;
+    }
+
+    adjacency.get(pair[0]).add(pair[1]);
+    adjacency.get(pair[1]).add(pair[0]);
+  }
+
+  const rectangleEntityIds = new Set([selectedEntityId]);
+  const queue = [selectedEntityId];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    for (const next of adjacency.get(current) || []) {
+      if (!rectangleEntityIds.has(next)) {
+        rectangleEntityIds.add(next);
+        queue.push(next);
+      }
+    }
+  }
+
+  return rectangleEntityIds.size === 4
+    && hasRectanglePreviewLineRelations(getDocumentConstraints(document), rectangleEntityIds)
+    ? rectangleEntityIds
+    : null;
+}
+
+function hasRectanglePreviewLineRelations(constraints, entityIds) {
+  let coincidentCount = 0;
+  const parallelPairs = new Set();
+  let perpendicularCount = 0;
+  for (const constraint of constraints) {
+    if (getSketchItemState(constraint) === "suppressed") {
+      continue;
+    }
+
+    const kind = getSketchConstraintKind(constraint);
+    const pair = getTwoSketchReferenceEntityIds(constraint);
+    if (!pair || !entityIds.has(pair[0]) || !entityIds.has(pair[1]) || StringComparer(pair[0], pair[1])) {
+      continue;
+    }
+
+    if (kind === "coincident") {
+      coincidentCount += 1;
+    } else if (kind === "parallel") {
+      parallelPairs.add(pair[0] <= pair[1] ? `${pair[0]}|${pair[1]}` : `${pair[1]}|${pair[0]}`);
+    } else if (kind === "perpendicular") {
+      perpendicularCount += 1;
+    }
+  }
+
+  return coincidentCount >= 4
+    && parallelPairs.size >= 2
+    && perpendicularCount >= 1;
+}
+
+function countDrivingPreviewDimensionsForEntityGroup(dimensions, entityIds) {
+  return dimensions.filter(dimension => {
+    const isDriving = readProperty(dimension, "isDriving", "IsDriving");
+    const referenceKeys = getSketchReferenceKeys(dimension);
+    return isDriving !== false
+      && String(isDriving).toLowerCase() !== "false"
+      && referenceKeys.length > 0
+      && referenceKeys.every(key => entityIds.has(getReferenceEntityId(key)));
+  }).length;
+}
+
+function previewDrivingDimensionsRemainSatisfied(document) {
+  const state = { document };
+  return getDocumentDimensions(document).every(dimension => {
+    const isDriving = readProperty(dimension, "isDriving", "IsDriving");
+    if (isDriving === false || String(isDriving).toLowerCase() === "false") {
+      return true;
+    }
+
+    const expected = Number(readProperty(dimension, "value", "Value"));
+    if (!Number.isFinite(expected)) {
+      return true;
+    }
+
+    const model = getDimensionModelFromReferences(
+      state,
+      getSketchReferenceKeys(dimension),
+      Boolean(readProperty(dimension, "radialDiameter", "RadialDiameter")));
+    return model
+      ? Math.abs(Math.abs(model.value) - Math.abs(expected)) <= WORLD_GEOMETRY_TOLERANCE
+      : false;
+  });
+}
+
+function previewDrivingDimensionsRemainSatisfiedForEntity(document, entityIds) {
+  const state = { document };
+  return getDocumentDimensions(document).every(dimension => {
+    const isDriving = readProperty(dimension, "isDriving", "IsDriving");
+    if (isDriving === false || String(isDriving).toLowerCase() === "false") {
+      return true;
+    }
+
+    const referenceKeys = getSketchReferenceKeys(dimension);
+    if (referenceKeys.length === 0
+      || !referenceKeys.every(key => entityIds.has(getReferenceEntityId(key)))) {
+      return true;
+    }
+
+    const expected = Number(readProperty(dimension, "value", "Value"));
+    if (!Number.isFinite(expected)) {
+      return true;
+    }
+
+    const dimensionKind = String(readProperty(dimension, "kind", "Kind") || "").toLowerCase();
+    if (dimensionKind === "count") {
+      const entity = findCanvasDocumentEntity(document, getReferenceEntityId(referenceKeys[0]));
+      const sideCount = Number(readProperty(entity, "sideCount", "SideCount"));
+      return Number.isFinite(sideCount)
+        ? Math.round(sideCount) === Math.round(expected)
+        : true;
+    }
+
+    const model = getDimensionModelFromReferences(
+      state,
+      referenceKeys,
+      Boolean(readProperty(dimension, "radialDiameter", "RadialDiameter")));
+    return model
+      ? Math.abs(Math.abs(model.value) - Math.abs(expected)) <= WORLD_GEOMETRY_TOLERANCE
+      : true;
+  });
+}
+
+function copyPreviewDocumentGeometry(target, source) {
+  target.entities = source.entities;
+  target.Entities = source.entities;
+  target.dimensions = source.dimensions;
+  target.Dimensions = source.dimensions;
+}
+
+function getSketchConstraintKind(constraint) {
+  const kind = readProperty(constraint, "kind", "Kind");
+  return kind === null || kind === undefined ? "" : String(kind).toLowerCase();
+}
+
+function getTwoSketchReferenceEntityIds(item) {
+  const referenceKeys = getSketchReferenceKeys(item);
+  if (referenceKeys.length < 2) {
+    return null;
+  }
+
+  const firstEntityId = getReferenceEntityId(referenceKeys[0]);
+  const secondEntityId = getReferenceEntityId(referenceKeys[1]);
+  return firstEntityId && secondEntityId ? [firstEntityId, secondEntityId] : null;
+}
+
+function propagatePreviewCoincidentConstraints(originalDocument, previewDocument) {
+  const constraints = getDocumentConstraints(previewDocument)
+    .filter(constraint => getSketchConstraintKind(constraint) === "coincident"
+      && getSketchItemState(constraint) !== "suppressed");
+  if (constraints.length === 0) {
+    return;
+  }
+
+  const fixedReferences = getPreviewFixedReferenceKeys(previewDocument);
+  const queue = getChangedPreviewPointReferences(originalDocument, previewDocument);
+  const queued = new Set(queue.map(sketchReferenceToKey));
+  const guardLimit = Math.max(128, constraints.length * 32);
+  let guard = 0;
+  while (queue.length > 0 && guard++ < guardLimit) {
+    const changedReference = queue.shift();
+    queued.delete(sketchReferenceToKey(changedReference));
+    const changedPoint = getPreviewReferencePoint(previewDocument, changedReference);
+    if (!changedPoint) {
+      continue;
+    }
+
+    for (const constraint of constraints) {
+      const pair = getTwoPreviewPointReferences(constraint);
+      if (!pair) {
+        continue;
+      }
+
+      const changedKey = sketchReferenceToKey(changedReference);
+      const firstKey = sketchReferenceToKey(pair.first);
+      const secondKey = sketchReferenceToKey(pair.second);
+      const otherReference = StringComparer(firstKey, changedKey)
+        ? pair.second
+        : StringComparer(secondKey, changedKey)
+          ? pair.first
+          : null;
+      if (!otherReference || fixedReferences.has(sketchReferenceToKey(otherReference))) {
+        continue;
+      }
+
+      const before = getPreviewReferencePoint(previewDocument, otherReference);
+      if (!before
+        || distanceBetweenWorldPoints(before, changedPoint) <= WORLD_GEOMETRY_TOLERANCE
+        || !setPreviewReferencePoint(previewDocument, otherReference, changedPoint)) {
+        continue;
+      }
+
+      const otherKey = sketchReferenceToKey(otherReference);
+      if (!queued.has(otherKey)) {
+        queued.add(otherKey);
+        queue.push(otherReference);
+      }
+    }
+  }
+}
+
+function getPreviewFixedReferenceKeys(document) {
+  const fixedReferences = new Set();
+  for (const constraint of getDocumentConstraints(document)) {
+    if (getSketchConstraintKind(constraint) !== "fix" || getSketchItemState(constraint) === "suppressed") {
+      continue;
+    }
+
+    for (const referenceKey of getSketchReferenceKeys(constraint)) {
+      const reference = parseSketchReference(referenceKey);
+      if (reference) {
+        fixedReferences.add(sketchReferenceToKey(reference));
+      }
+    }
+  }
+
+  return fixedReferences;
+}
+
+function getChangedPreviewPointReferences(originalDocument, previewDocument) {
+  const changed = [];
+  for (const reference of enumeratePreviewPointReferences(originalDocument)) {
+    const before = getPreviewReferencePoint(originalDocument, reference);
+    const after = getPreviewReferencePoint(previewDocument, reference);
+    if (before && after && distanceBetweenWorldPoints(before, after) > WORLD_GEOMETRY_TOLERANCE) {
+      changed.push(reference);
+    }
+  }
+
+  return changed;
+}
+
+function enumeratePreviewPointReferences(document) {
+  const references = [];
+  for (const entity of getDocumentEntities(document)) {
+    const entityId = getEntityId(entity);
+    if (!entityId) {
+      continue;
+    }
+
+    switch (getEntityKind(entity)) {
+      case "line":
+        references.push({ entityId, target: "start" }, { entityId, target: "end" });
+        break;
+      case "polyline": {
+        const points = getEntityPoints(entity);
+        for (let index = 0; index < points.length - 1; index += 1) {
+          references.push(
+            { entityId, segmentIndex: index, target: "start" },
+            { entityId, segmentIndex: index, target: "end" });
+        }
+
+        break;
+      }
+      case "circle":
+      case "polygon":
+      case "ellipse":
+        references.push({ entityId, target: "center" });
+        break;
+      case "arc":
+        references.push(
+          { entityId, target: "start" },
+          { entityId, target: "end" },
+          { entityId, target: "center" });
+        break;
+      case "point":
+        references.push({ entityId, target: "entity" });
+        break;
+    }
+  }
+
+  return references;
+}
+
+function getTwoPreviewPointReferences(constraint) {
+  const referenceKeys = getSketchReferenceKeys(constraint);
+  if (referenceKeys.length < 2) {
+    return null;
+  }
+
+  const first = parseSketchReference(referenceKeys[0]);
+  const second = parseSketchReference(referenceKeys[1]);
+  return first && second ? { first, second } : null;
+}
+
+function getPreviewReferencePoint(document, reference) {
+  const entity = findCanvasDocumentEntity(document, reference.entityId);
+  if (!entity) {
+    return null;
+  }
+
+  const kind = getEntityKind(entity);
+  if (Number.isInteger(reference.segmentIndex)) {
+    const points = getEntityPoints(entity);
+    if (reference.segmentIndex < 0 || reference.segmentIndex >= points.length - 1) {
+      return null;
+    }
+
+    if (reference.target === "start") {
+      return points[reference.segmentIndex] || null;
+    }
+
+    if (reference.target === "end") {
+      return points[reference.segmentIndex + 1] || null;
+    }
+
+    return null;
+  }
+
+  if (kind === "line") {
+    const points = getEntityPoints(entity);
+    if (reference.target === "start") {
+      return points[0] || null;
+    }
+
+    if (reference.target === "end") {
+      return points[1] || null;
+    }
+
+    return null;
+  }
+
+  if (kind === "arc") {
+    const center = getEntityCenter(entity);
+    const radius = getEntityRadius(entity);
+    if (reference.target === "center") {
+      return center;
+    }
+
+    if (!center || !isFinitePositive(radius)) {
+      return null;
+    }
+
+    if (reference.target === "start") {
+      return pointOnCircle(center, radius, getEntityStartAngle(entity));
+    }
+
+    if (reference.target === "end") {
+      return pointOnCircle(center, radius, getEntityEndAngle(entity));
+    }
+  }
+
+  if ((kind === "circle" || kind === "polygon" || kind === "ellipse") && reference.target === "center") {
+    return getEntityCenter(entity);
+  }
+
+  return kind === "point" && (reference.target === "entity" || reference.target === "center")
+    ? getPointEntityLocation(entity)
+    : null;
+}
+
+function setPreviewReferencePoint(document, reference, point) {
+  const entity = findCanvasDocumentEntity(document, reference.entityId);
+  if (!entity || !point) {
+    return false;
+  }
+
+  if (Number.isInteger(reference.segmentIndex)) {
+    const points = getEntityPoints(entity);
+    if (reference.segmentIndex < 0 || reference.segmentIndex >= points.length - 1) {
+      return false;
+    }
+
+    if (reference.target === "start") {
+      points[reference.segmentIndex] = copyPoint(point);
+    } else if (reference.target === "end") {
+      points[reference.segmentIndex + 1] = copyPoint(point);
+    } else {
+      return false;
+    }
+
+    entity.points = points;
+    return true;
+  }
+
+  const kind = getEntityKind(entity);
+  if (kind === "line") {
+    const points = getEntityPoints(entity);
+    if (points.length < 2) {
+      return false;
+    }
+
+    if (reference.target === "start") {
+      entity.points = [copyPoint(point), points[1]];
+      return true;
+    }
+
+    if (reference.target === "end") {
+      entity.points = [points[0], copyPoint(point)];
+      return true;
+    }
+  }
+
+  if (kind === "arc") {
+    if (reference.target === "center") {
+      entity.center = copyPoint(point);
+      return true;
+    }
+
+    if (reference.target === "start" || reference.target === "end") {
+      const center = getEntityCenter(entity);
+      if (!center) {
+        return false;
+      }
+
+      const radius = distanceBetweenWorldPoints(center, point);
+      if (radius <= WORLD_GEOMETRY_TOLERANCE) {
+        return false;
+      }
+
+      entity.radius = radius;
+      const angle = radiansToDegrees(Math.atan2(point.y - center.y, point.x - center.x));
+      if (reference.target === "start") {
+        entity.startAngleDegrees = angle;
+      } else {
+        entity.endAngleDegrees = angle;
+      }
+
+      return true;
+    }
+  }
+
+  if ((kind === "circle" || kind === "polygon" || kind === "ellipse") && reference.target === "center") {
+    entity.center = copyPoint(point);
+    return true;
+  }
+
+  if (kind === "point" && (reference.target === "entity" || reference.target === "center")) {
+    entity.points = [copyPoint(point)];
+    return true;
+  }
+
+  return false;
+}
+
+function sketchReferenceToKey(reference) {
+  const baseKey = Number.isInteger(reference.segmentIndex)
+    ? `${reference.entityId}${SEGMENT_KEY_SEPARATOR}${reference.segmentIndex}`
+    : reference.entityId;
+  return reference.target === "entity"
+    ? baseKey
+    : `${baseKey}:${reference.target}`;
 }
 
 function applyGeometryDragPreviewMutation(document, selectionKey, delta, dragEnd, constrainToCurrentVector = false) {
@@ -8005,6 +9031,10 @@ function applyPreviewPointDrag(document, entity, label, delta, dragEnd, constrai
 
   if (kind === "spline") {
     return applyPreviewSplinePointDrag(entity, normalizedLabel, delta, dragEnd);
+  }
+
+  if (kind === "polygon" && (normalizedLabel === "center" || normalizedLabel.startsWith("mid-"))) {
+    return translatePreviewPolygon(entity, delta);
   }
 
   return false;
@@ -8148,6 +9178,10 @@ function applyPreviewEntityDrag(document, entity, delta, dragEnd) {
     return true;
   }
 
+  if (kind === "polygon") {
+    return translatePreviewPolygon(entity, delta);
+  }
+
   if (kind === "point") {
     const point = getPointEntityLocation(entity);
     if (!point) {
@@ -8211,6 +9245,112 @@ function applyPreviewEntityDrag(document, entity, delta, dragEnd) {
   return false;
 }
 
+function getSelectedPreviewEntityId(document, selectionKey) {
+  const key = String(selectionKey || "");
+  const segmentReference = parseSegmentSelectionKey(key);
+  if (segmentReference) {
+    return findCanvasDocumentEntity(document, segmentReference.entityId)
+      ? segmentReference.entityId
+      : null;
+  }
+
+  const pointReference = parsePointSelectionKey(key);
+  if (pointReference) {
+    return findCanvasDocumentEntity(document, pointReference.entityId)
+      ? pointReference.entityId
+      : null;
+  }
+
+  return findCanvasDocumentEntity(document, key) ? key : null;
+}
+
+function translatePreviewEntityById(document, entityId, delta) {
+  const entity = findCanvasDocumentEntity(document, entityId);
+  if (!entity || !delta || !Number.isFinite(delta.x) || !Number.isFinite(delta.y)) {
+    return false;
+  }
+
+  const kind = getEntityKind(entity);
+  if (kind === "line" || kind === "polyline") {
+    entity.points = getEntityPoints(entity).map(point => addWorldPoints(point, delta));
+    return true;
+  }
+
+  if (kind === "polygon") {
+    return translatePreviewPolygon(entity, delta);
+  }
+
+  if (kind === "point") {
+    const point = getPointEntityLocation(entity);
+    if (!point) {
+      return false;
+    }
+
+    entity.points = [addWorldPoints(point, delta)];
+    return true;
+  }
+
+  if (kind === "circle" || kind === "arc") {
+    const center = getEntityCenter(entity);
+    if (!center) {
+      return false;
+    }
+
+    entity.center = addWorldPoints(center, delta);
+    entity.points = getEntityPoints(entity).map(point => addWorldPoints(point, delta));
+    return true;
+  }
+
+  if (kind === "ellipse") {
+    const center = getEntityCenter(entity);
+    if (!center) {
+      return false;
+    }
+
+    entity.center = addWorldPoints(center, delta);
+    entity.points = getEntityPoints(entity).map(point => addWorldPoints(point, delta));
+    return true;
+  }
+
+  if (kind === "spline") {
+    entity.points = getEntityPoints(entity).map(point => addWorldPoints(point, delta));
+    const fitPoints = getEntityFitPoints(entity);
+    if (fitPoints.length > 0) {
+      entity.fitPoints = fitPoints.map(point => addWorldPoints(point, delta));
+    }
+
+    const controlPoints = getEntityControlPoints(entity);
+    if (controlPoints.length > 0) {
+      entity.controlPoints = controlPoints.map(point => addWorldPoints(point, delta));
+    }
+
+    const startTangentHandle = getEntityStartTangentHandle(entity);
+    if (startTangentHandle) {
+      entity.startTangentHandle = addWorldPoints(startTangentHandle, delta);
+    }
+
+    const endTangentHandle = getEntityEndTangentHandle(entity);
+    if (endTangentHandle) {
+      entity.endTangentHandle = addWorldPoints(endTangentHandle, delta);
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+function translatePreviewPolygon(entity, delta) {
+  const center = getEntityCenter(entity);
+  if (!center) {
+    return false;
+  }
+
+  entity.center = addWorldPoints(center, delta);
+  entity.points = getEntityPoints(entity).map(point => addWorldPoints(point, delta));
+  return true;
+}
+
 function translatePreviewPolylineSegment(document, entityId, segmentIndex, delta) {
   const entity = findCanvasDocumentEntity(document, entityId);
   const points = entity ? getEntityPoints(entity) : [];
@@ -8234,13 +9374,20 @@ function translatePreviewDimensionAnchorsForDrag(document, selectionKey, delta) 
     return false;
   }
 
+  return translatePreviewDimensionAnchorsForEntityIds(
+    document,
+    new Set([translatedEntityId]),
+    delta);
+}
+
+function translatePreviewDimensionAnchorsForEntityIds(document, entityIds, delta) {
   let changed = false;
   document.dimensions = getDocumentDimensions(document).map(dimension => {
     const referenceKeys = getSketchReferenceKeys(dimension);
     const anchor = readPoint(readProperty(dimension, "anchor", "Anchor"));
     if (!anchor
       || referenceKeys.length === 0
-      || !referenceKeys.every(key => StringComparer(getReferenceEntityId(key), translatedEntityId))) {
+      || !referenceKeys.every(key => entityIds.has(getReferenceEntityId(key)))) {
       return dimension;
     }
 
@@ -8270,6 +9417,7 @@ function getTranslatedDimensionEntityId(document, selectionKey) {
     if ((kind === "line" && label === "mid")
       || (kind === "polyline" && label.startsWith("mid-"))
       || ((kind === "circle" || kind === "arc" || kind === "ellipse") && label === "center")
+      || (kind === "polygon" && (label === "center" || label.startsWith("mid-")))
       || (kind === "point" && label === "point")) {
       return pointReference.entityId;
     }
@@ -8279,7 +9427,7 @@ function getTranslatedDimensionEntityId(document, selectionKey) {
 
   const entity = findCanvasDocumentEntity(document, key);
   const kind = getEntityKind(entity);
-  return kind === "line" || kind === "polyline" || kind === "ellipse" || kind === "point"
+  return kind === "line" || kind === "polyline" || kind === "ellipse" || kind === "polygon" || kind === "point"
     ? key
     : null;
 }
@@ -8388,6 +9536,49 @@ function addWorldPoints(point, delta) {
   return {
     x: point.x + delta.x,
     y: point.y + delta.y
+  };
+}
+
+function shouldMovePreviewRectangleEndpoint(point, selectedPoints) {
+  return selectedPoints.some(selectedPoint =>
+    distanceBetweenWorldPoints(point, selectedPoint) <= WORLD_GEOMETRY_TOLERANCE);
+}
+
+function projectWorldDeltaPerpendicularToLine(delta, start, end) {
+  const axisX = end.x - start.x;
+  const axisY = end.y - start.y;
+  const lengthSquared = axisX * axisX + axisY * axisY;
+  if (lengthSquared <= WORLD_GEOMETRY_TOLERANCE * WORLD_GEOMETRY_TOLERANCE) {
+    return delta;
+  }
+
+  const alongScale = ((delta.x * axisX) + (delta.y * axisY)) / lengthSquared;
+  return {
+    x: delta.x - axisX * alongScale,
+    y: delta.y - axisY * alongScale
+  };
+}
+
+function projectWorldDeltaOntoLine(delta, start, end) {
+  const axisX = end.x - start.x;
+  const axisY = end.y - start.y;
+  const lengthSquared = axisX * axisX + axisY * axisY;
+  if (lengthSquared <= WORLD_GEOMETRY_TOLERANCE * WORLD_GEOMETRY_TOLERANCE) {
+    return { x: 0, y: 0 };
+  }
+
+  const alongScale = ((delta.x * axisX) + (delta.y * axisY)) / lengthSquared;
+  return {
+    x: axisX * alongScale,
+    y: axisY * alongScale
+  };
+}
+
+function projectWorldDeltaOntoAxis(delta, axis) {
+  const scalar = dotPoints(delta, axis);
+  return {
+    x: axis.x * scalar,
+    y: axis.y * scalar
   };
 }
 
@@ -9326,6 +10517,10 @@ function updateDebugAttributes(state) {
   state.canvas.dataset.activeTool = normalizeToolName(state.activeTool);
   state.canvas.dataset.polarSnapIncrement = String(normalizePolarSnapIncrement(state.polarSnapIncrementDegrees));
   state.canvas.dataset.toolDraftPointCount = state.toolDraft ? String(state.toolDraft.points.length) : "0";
+  state.canvas.dataset.dimensionDraftKeys = state.dimensionDraft && Array.isArray(state.dimensionDraft.selectionKeys)
+    ? state.dimensionDraft.selectionKeys.join(",")
+    : "";
+  state.canvas.dataset.dimensionDraftComplete = state.dimensionDraft && state.dimensionDraft.complete ? "true" : "false";
   state.canvas.dataset.scale = String(state.view.scale);
   state.canvas.dataset.offsetX = String(state.view.offsetX);
   state.canvas.dataset.offsetY = String(state.view.offsetY);

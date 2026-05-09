@@ -345,6 +345,180 @@ public sealed class SketchDimensionSolverServiceTests
     }
 
     [Fact]
+    public void UpdatingRectangleDimensionsAfterDragPreservesExistingDrivingDimensions()
+    {
+        var sequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false);
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var document = new DrawingDocument(entities, Array.Empty<SketchDimension>(), constraints);
+
+        SketchGeometryDragService.TryApplyDrag(
+                document,
+                "rect-4|point|mid|0|2.5",
+                new Point2(0, 2.5),
+                new Point2(-3, 2.5),
+                false,
+                out var dragged,
+                out _)
+            .Should().BeTrue();
+
+        var widthDimension = DrivingDimension(
+            "width",
+            SketchDimensionKind.LinearDistance,
+            20,
+            "rect-3:start",
+            "rect-3:end");
+        var widthSolved = SketchDimensionSolverService.ApplyDimension(dragged, widthDimension);
+        var heightDimension = DrivingDimension(
+            "height",
+            SketchDimensionKind.LinearDistance,
+            10,
+            "rect-4:start",
+            "rect-4:end");
+
+        var solved = SketchDimensionSolverService.ApplyDimension(widthSolved, heightDimension);
+
+        solved.Dimensions.Should().HaveCount(2);
+        solved.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(solved, dimension));
+        solved.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+        solved.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("rect-1"), new Point2(-10, -5), new Point2(10, -5)),
+            new LineEntity(EntityId.Create("rect-2"), new Point2(10, -5), new Point2(10, 5)),
+            new LineEntity(EntityId.Create("rect-3"), new Point2(10, 5), new Point2(-10, 5)),
+            new LineEntity(EntityId.Create("rect-4"), new Point2(-10, 5), new Point2(-10, -5)));
+    }
+
+    [Fact]
+    public void EditingExistingRectangleLineDimensionPreservesRectangleConstraints()
+    {
+        var sequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(8.333333333333334, 4.166666666666667) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false);
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var existingDimension = DrivingDimension(
+            "width",
+            SketchDimensionKind.LinearDistance,
+            8.333333333333334,
+            "rect-1:start",
+            "rect-1:end");
+        var document = new DrawingDocument(entities, new[] { existingDimension }, constraints);
+
+        var solved = SketchDimensionSolverService.ApplyDimension(
+            document,
+            DrivingDimension(
+                "width",
+                SketchDimensionKind.LinearDistance,
+                20,
+                "rect-1:start",
+                "rect-1:end"));
+
+        solved.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("rect-1"), new Point2(0, 0), new Point2(20, 0)),
+            new LineEntity(EntityId.Create("rect-2"), new Point2(20, 0), new Point2(20, 4.166666666666667)),
+            new LineEntity(EntityId.Create("rect-3"), new Point2(20, 4.166666666666667), new Point2(0, 4.166666666666667)),
+            new LineEntity(EntityId.Create("rect-4"), new Point2(0, 4.166666666666667), new Point2(0, 0)));
+        solved.Dimensions.Should().ContainSingle().Which
+            .Should().Match<SketchDimension>(dimension =>
+                dimension.Value == 20
+                && SketchDimensionSolverService.IsDimensionSatisfied(solved, dimension));
+        solved.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void AngleDimensionBetweenAlreadyConstrainedRectangleSidesIsUnsatisfied()
+    {
+        var sequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false);
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var document = new DrawingDocument(entities, Array.Empty<SketchDimension>(), constraints);
+
+        var solved = SketchDimensionSolverService.ApplyDimension(
+            document,
+            DrivingDimension(
+                "angle",
+                SketchDimensionKind.Angle,
+                90,
+                "rect-4",
+                "rect-1"));
+
+        var angle = solved.Dimensions.Should().ContainSingle().Subject;
+        SketchDimensionSolverService.GetDimensionState(solved, angle)
+            .Should().Be(SketchConstraintState.Unsatisfied);
+        SketchDimensionSolverService.IsDimensionSatisfied(solved, angle).Should().BeFalse();
+    }
+
+    [Fact]
+    public void DiagonalDistanceDimensionAcrossWidthHeightConstrainedRectangleIsUnsatisfied()
+    {
+        var sequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(30, 10) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false);
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var document = new DrawingDocument(entities, Array.Empty<SketchDimension>(), constraints);
+
+        var withWidth = SketchDimensionSolverService.ApplyDimension(
+            document,
+            DrivingDimension(
+                "width",
+                SketchDimensionKind.LinearDistance,
+                30,
+                "rect-3:start",
+                "rect-3:end"));
+        var withHeight = SketchDimensionSolverService.ApplyDimension(
+            withWidth,
+            DrivingDimension(
+                "height",
+                SketchDimensionKind.LinearDistance,
+                10,
+                "rect-4:start",
+                "rect-4:end"));
+
+        var solved = SketchDimensionSolverService.ApplyDimension(
+            withHeight,
+            DrivingDimension(
+                "diagonal",
+                SketchDimensionKind.LinearDistance,
+                Math.Sqrt(30 * 30 + 10 * 10),
+                "rect-3:end",
+                "rect-2:start"));
+
+        var dimensions = solved.Dimensions.ToDictionary(dimension => dimension.Id);
+        SketchDimensionSolverService.GetDimensionState(solved, dimensions["width"])
+            .Should().Be(SketchConstraintState.Satisfied);
+        SketchDimensionSolverService.GetDimensionState(solved, dimensions["height"])
+            .Should().Be(SketchConstraintState.Satisfied);
+        SketchDimensionSolverService.GetDimensionState(solved, dimensions["diagonal"])
+            .Should().Be(SketchConstraintState.Unsatisfied);
+        SketchDimensionSolverService.IsDimensionSatisfied(solved, dimensions["diagonal"]).Should().BeFalse();
+    }
+
+    [Fact]
     public void AppliesLinearDistanceBetweenPointEntities()
     {
         var document = new DrawingDocument(new DrawingEntity[]

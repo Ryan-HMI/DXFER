@@ -9,6 +9,8 @@ public enum CadIconName
     Hotkeys,
     CollapseLeft,
     CollapseRight,
+    ChevronUp,
+    ChevronDown,
     Measure,
     Undo,
     Redo,
