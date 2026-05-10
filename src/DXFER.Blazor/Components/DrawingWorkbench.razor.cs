@@ -721,7 +721,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             _document.Metadata);
         if (newConstraints.Count > 0)
         {
-            nextDocument = SketchConstraintService.ApplyConstraints(nextDocument, newConstraints);
+            var solve = SketchSolveWorkflow.ApplyConstraints(nextDocument, newConstraints, SketchSolver);
+            if (!solve.Applied)
+            {
+                _status = $"{FormatCreatedToolName(toolName)} rejected. {solve.FailureMessage}";
+                _ = InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            nextDocument = solve.Document;
         }
 
         ApplyDocumentChange(nextDocument, $"{FormatCreatedToolName(toolName)} added.");
@@ -1316,7 +1324,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        ApplyDocumentChange(SketchDimensionSolverService.ApplyDimension(_document, dimension), status);
+        var solve = SketchSolveWorkflow.ApplyDimension(_document, dimension, SketchSolver);
+        if (!solve.Applied)
+        {
+            _status = $"Dimension rejected. {solve.FailureMessage}";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        ApplyDocumentChange(solve.Document, status);
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -1339,7 +1355,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        ApplyDocumentChange(SketchDimensionSolverService.ApplyDimension(_document, dimension), status);
+        var solve = SketchSolveWorkflow.ApplyDimension(_document, dimension, SketchSolver);
+        if (!solve.Applied)
+        {
+            _status = $"Dimension rejected. {solve.FailureMessage}";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        ApplyDocumentChange(solve.Document, status);
         _activeTool = WorkbenchTool.Dimension;
         _status = $"{status} Dimension tool stays active; pick another reference or Esc to cancel.";
         ResetSelection();
@@ -1385,12 +1409,19 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return false;
         }
 
-        var nextDocument = SketchConstraintService.ApplyConstraint(_document, constraint);
-        var appliedConstraint = nextDocument.Constraints.FirstOrDefault(candidate => candidate.Id == constraint.Id);
+        var solve = SketchSolveWorkflow.ApplyConstraint(_document, constraint, SketchSolver);
+        if (!solve.Applied)
+        {
+            _status = $"{status} {solve.FailureMessage}";
+            _ = InvokeAsync(StateHasChanged);
+            return false;
+        }
+
+        var appliedConstraint = solve.Document.Constraints.FirstOrDefault(candidate => candidate.Id == constraint.Id);
         var appliedStatus = appliedConstraint?.State == SketchConstraintState.Unsatisfied
             ? $"{status} Constraint is currently unsatisfied."
             : status;
-        ApplyDocumentChange(nextDocument, appliedStatus);
+        ApplyDocumentChange(solve.Document, appliedStatus);
         if (keepModal && TryGetConstraintTool(kind, out var tool))
         {
             _activeTool = tool;
