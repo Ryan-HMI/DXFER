@@ -78,6 +78,55 @@ public sealed class SketchSolverAbstractionTests
     }
 
     [Fact]
+    public void SolveStatusCanRepresentFeatureScriptLifecycleOutcomes()
+    {
+        Enum.GetNames<SketchSolveStatus>().Should().Contain(new[]
+        {
+            nameof(SketchSolveStatus.Solved),
+            nameof(SketchSolveStatus.Unavailable),
+            nameof(SketchSolveStatus.Failed),
+            "Underconstrained",
+            "Overconstrained",
+            "Unsupported",
+            "InvalidInput"
+        });
+    }
+
+    [Fact]
+    public void SolveRequestCarriesDefensiveCopyOfInitialGuessesByStableReference()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(5, 0))
+        });
+        var guesses = new Dictionary<string, SketchInitialGuess>
+        {
+            ["edge:start"] = SketchInitialGuess.Point(new Point2(1, 2)),
+            ["edge"] = SketchInitialGuess.Entity(new[]
+            {
+                new KeyValuePair<string, Point2>("start", new Point2(1, 2)),
+                new KeyValuePair<string, Point2>("end", new Point2(6, 2))
+            })
+        };
+
+        var request = new SketchSolveRequest(
+            document,
+            Array.Empty<SketchConstraint>(),
+            Array.Empty<SketchDimension>(),
+            guesses);
+        guesses["edge:start"] = SketchInitialGuess.Point(new Point2(99, 99));
+
+        request.InitialGuesses.Should().HaveCount(2);
+        request.InitialGuesses["edge:start"].Points.Should().ContainSingle()
+            .Which.Should().Be(new KeyValuePair<string, Point2>("point", new Point2(1, 2)));
+        request.InitialGuesses["edge"].Points.Should().Equal(new[]
+        {
+            new KeyValuePair<string, Point2>("start", new Point2(1, 2)),
+            new KeyValuePair<string, Point2>("end", new Point2(6, 2))
+        });
+    }
+
+    [Fact]
     public void PlaneGcsAdapterIsReplaceableAndReportsUnavailableUntilWasmIsWired()
     {
         var document = new DrawingDocument(new DrawingEntity[]

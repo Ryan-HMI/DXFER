@@ -1,4 +1,5 @@
 using DXFER.Blazor.Components;
+using DXFER.Core.Sketching;
 using DXFER.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,6 +13,7 @@ builder.Services.AddRazorComponents()
     });
 builder.Services.AddScoped<WorkbenchMenuCommandService>();
 builder.Services.AddScoped<ToolHotkeyService>();
+builder.Services.AddScoped<ISketchSolver, LegacySketchSolverAdapter>();
 
 var app = builder.Build();
 

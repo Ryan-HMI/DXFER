@@ -4,5 +4,9 @@ public enum SketchSolveStatus
 {
     Solved,
     Unavailable,
-    Failed
+    Failed,
+    Underconstrained,
+    Overconstrained,
+    Unsupported,
+    InvalidInput
 }

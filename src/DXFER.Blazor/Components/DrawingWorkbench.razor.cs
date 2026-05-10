@@ -73,6 +73,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private ToolHotkeyService ToolHotkeys { get; set; } = default!;
 
     [Inject]
+    private ISketchSolver SketchSolver { get; set; } = default!;
+
+    [Inject]
     private IJSRuntime JsRuntime { get; set; } = default!;
 
     protected override void OnInitialized()
@@ -1427,8 +1430,16 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             nextValue,
             existing.Anchor,
             isDriving: true);
+        var solve = SketchSolveWorkflow.ApplyDimensionEdit(_document, nextDimension, SketchSolver);
+        if (!solve.Applied)
+        {
+            _status = $"Dimension edit rejected. {solve.FailureMessage}";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
         ApplyDocumentChange(
-            SketchDimensionSolverService.ApplyDimension(_document, nextDimension),
+            solve.Document,
             $"Updated {FormatDimensionKind(existing.Kind)} dimension to {FormatNumber(nextValue)}.");
         _ = InvokeAsync(StateHasChanged);
     }
