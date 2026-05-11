@@ -1509,21 +1509,21 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         CanvasPointDto dragEnd,
         bool constrainToCurrentVector)
     {
-        if (!SketchGeometryDragService.TryApplyDrag(
-                _document,
-                selectionKey,
-                ToPoint(dragStart),
-                ToPoint(dragEnd),
-                constrainToCurrentVector,
-                out var nextDocument,
-                out var status))
+        var solve = SketchSolveWorkflow.ApplyGeometryDrag(
+            _document,
+            selectionKey,
+            ToPoint(dragStart),
+            ToPoint(dragEnd),
+            constrainToCurrentVector,
+            SketchSolver);
+        if (!solve.Applied)
         {
-            _status = status;
+            _status = solve.FailureMessage;
             _ = InvokeAsync(StateHasChanged);
             return;
         }
 
-        ApplyDocumentChange(nextDocument, status);
+        ApplyDocumentChange(solve.Document, solve.FailureMessage);
         _ = InvokeAsync(StateHasChanged);
     }
 

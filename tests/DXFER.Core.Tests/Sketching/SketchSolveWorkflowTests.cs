@@ -211,6 +211,54 @@ public sealed class SketchSolveWorkflowTests
             && constraint.ReferenceKeys.SequenceEqual(new[] { "edge:start" }));
     }
 
+    [Theory]
+    [InlineData(SketchConstraintKind.Tangent, "TANGENT")]
+    [InlineData(SketchConstraintKind.Symmetric, "MIRROR")]
+    public void ApplyConstraintRejectsDeferredCapabilitiesBeforeSolver(
+        SketchConstraintKind kind,
+        string featureScriptName)
+    {
+        var document = CreateConstrainedLineDocument();
+        var constraint = new SketchConstraint(
+            "deferred",
+            kind,
+            new[] { "edge" });
+        var mutatedDocument = CreateDimensionedLineDocument(12);
+        var solver = new CapturingSolver(new SketchSolveResult(SketchSolveStatus.Solved, mutatedDocument));
+
+        var result = SketchSolveWorkflow.ApplyConstraint(document, constraint, solver);
+
+        result.Applied.Should().BeFalse();
+        result.Document.Should().BeSameAs(document);
+        result.SolveResult.Status.Should().Be(SketchSolveStatus.Unsupported);
+        result.SolveResult.Document.Should().BeSameAs(document);
+        result.FailureMessage.Should().Contain(featureScriptName);
+        result.FailureMessage.Should().Contain("not supported for live sketch solving");
+        solver.Request.Should().BeNull();
+    }
+
+    [Fact]
+    public void ApplyConstraintRejectsUnmappedConstraintKindAsInvalidInputBeforeSolver()
+    {
+        var document = CreateConstrainedLineDocument();
+        var constraint = new SketchConstraint(
+            "unknown",
+            (SketchConstraintKind)999,
+            new[] { "edge" });
+        var mutatedDocument = CreateDimensionedLineDocument(12);
+        var solver = new CapturingSolver(new SketchSolveResult(SketchSolveStatus.Solved, mutatedDocument));
+
+        var result = SketchSolveWorkflow.ApplyConstraint(document, constraint, solver);
+
+        result.Applied.Should().BeFalse();
+        result.Document.Should().BeSameAs(document);
+        result.SolveResult.Status.Should().Be(SketchSolveStatus.InvalidInput);
+        result.SolveResult.Document.Should().BeSameAs(document);
+        result.FailureMessage.Should().Contain("unknown");
+        result.FailureMessage.Should().Contain("does not map to a FeatureScript constraint capability");
+        solver.Request.Should().BeNull();
+    }
+
     [Fact]
     public void ApplyConstraintsRoutesConstraintBatchThroughSolver()
     {
@@ -232,6 +280,110 @@ public sealed class SketchSolveWorkflowTests
             .Should().Equal("edge-horizontal", "edge-fix");
         solver.Request.InitialGuesses.Should().ContainKey("edge");
         solver.Request.InitialGuesses.Should().ContainKey("edge:start");
+    }
+
+    [Fact]
+    public void ApplyConstraintsRejectsBatchWhenAnyConstraintCapabilityIsNotSupported()
+    {
+        var document = CreateDimensionedLineDocument(4);
+        var constraints = new[]
+        {
+            new SketchConstraint("edge-horizontal", SketchConstraintKind.Horizontal, new[] { "edge" }),
+            new SketchConstraint("edge-tangent", SketchConstraintKind.Tangent, new[] { "edge", "circle" })
+        };
+        var mutatedDocument = CreateConstrainedLineDocument();
+        var solver = new CapturingSolver(new SketchSolveResult(SketchSolveStatus.Solved, mutatedDocument));
+
+        var result = SketchSolveWorkflow.ApplyConstraints(document, constraints, solver);
+
+        result.Applied.Should().BeFalse();
+        result.Document.Should().BeSameAs(document);
+        result.SolveResult.Status.Should().Be(SketchSolveStatus.Unsupported);
+        result.SolveResult.Document.Should().BeSameAs(document);
+        result.FailureMessage.Should().Contain("edge-tangent");
+        solver.Request.Should().BeNull();
+    }
+
+    [Fact]
+    public void ApplyGeometryDragRoutesDraggedCandidateThroughSolver()
+    {
+        var document = CreateBareLineDocument();
+        var solvedDocument = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new Point2(2, 3), new Point2(12, 3))
+        });
+        var solver = new CapturingSolver(new SketchSolveResult(SketchSolveStatus.Solved, solvedDocument));
+
+        var result = SketchSolveWorkflow.ApplyGeometryDrag(
+            document,
+            "edge",
+            new Point2(0, 0),
+            new Point2(2, 3),
+            constrainToCurrentVector: false,
+            solver);
+
+        result.Applied.Should().BeTrue();
+        result.Document.Should().BeSameAs(solvedDocument);
+        solver.Request.Should().NotBeNull();
+        solver.Request!.Document.Entities.Should().Equal(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new Point2(2, 3), new Point2(12, 3))
+        });
+        solver.Request.Constraints.Should().BeEmpty();
+        solver.Request.Dimensions.Should().BeEmpty();
+        solver.Request.InitialGuesses.Should().ContainKey("edge")
+            .WhoseValue.Points.Should().Equal(new[]
+            {
+                new KeyValuePair<string, Point2>("start", new Point2(0, 0)),
+                new KeyValuePair<string, Point2>("end", new Point2(10, 0))
+            });
+    }
+
+    [Fact]
+    public void ApplyGeometryDragRejectsFailedSolverResultAndPreservesOriginalDocument()
+    {
+        var document = CreateBareLineDocument();
+        var mutatedDocument = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new Point2(2, 3), new Point2(12, 3))
+        });
+        var solver = new CapturingSolver(new SketchSolveResult(
+            SketchSolveStatus.Overconstrained,
+            mutatedDocument,
+            new[] { "Drag conflicts with fixed references." }));
+
+        var result = SketchSolveWorkflow.ApplyGeometryDrag(
+            document,
+            "edge",
+            new Point2(0, 0),
+            new Point2(2, 3),
+            constrainToCurrentVector: false,
+            solver);
+
+        result.Applied.Should().BeFalse();
+        result.Document.Should().BeSameAs(document);
+        result.SolveResult.Status.Should().Be(SketchSolveStatus.Overconstrained);
+        result.FailureMessage.Should().Contain("Drag conflicts");
+    }
+
+    [Fact]
+    public void ApplyGeometryDragDoesNotCallSolverWhenDragServiceCannotMoveGeometry()
+    {
+        var document = CreateBareLineDocument();
+        var solver = new CapturingSolver(new SketchSolveResult(SketchSolveStatus.Solved, document));
+
+        var result = SketchSolveWorkflow.ApplyGeometryDrag(
+            document,
+            "edge",
+            new Point2(0, 0),
+            new Point2(0, 0),
+            constrainToCurrentVector: false,
+            solver);
+
+        result.Applied.Should().BeFalse();
+        result.Document.Should().BeSameAs(document);
+        result.FailureMessage.Should().Contain("Drag distance");
+        solver.Request.Should().BeNull();
     }
 
     [Theory]
@@ -278,6 +430,12 @@ public sealed class SketchSolveWorkflowTests
             new[] { dimension },
             Array.Empty<SketchConstraint>());
     }
+
+    private static DrawingDocument CreateBareLineDocument() =>
+        new(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(10, 0))
+        });
 
     private static DrawingDocument CreateConstrainedLineDocument()
     {

@@ -58,12 +58,21 @@ public static class SketchSolveWorkflow
         ArgumentNullException.ThrowIfNull(constraints);
         ArgumentNullException.ThrowIfNull(solver);
 
-        var nextConstraints = document.Constraints;
-        var referenceKeys = new List<string>();
-        foreach (var constraint in constraints)
+        var constraintList = constraints.ToArray();
+        foreach (var constraint in constraintList)
         {
             ArgumentNullException.ThrowIfNull(constraint);
 
+            if (TryCreateCapabilityFailure(document, constraint, out var failure))
+            {
+                return failure;
+            }
+        }
+
+        var nextConstraints = document.Constraints;
+        var referenceKeys = new List<string>();
+        foreach (var constraint in constraintList)
+        {
             nextConstraints = UpsertConstraint(nextConstraints, constraint);
             referenceKeys.AddRange(constraint.ReferenceKeys);
         }
@@ -90,8 +99,121 @@ public static class SketchSolveWorkflow
             BuildFailureMessage(solveResult));
     }
 
+    public static SketchSolveWorkflowResult ApplyGeometryDrag(
+        DrawingDocument document,
+        string selectionKey,
+        Point2 dragStart,
+        Point2 dragEnd,
+        bool constrainToCurrentVector,
+        ISketchSolver solver)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(solver);
+
+        if (!SketchGeometryDragService.TryApplyDrag(
+                document,
+                selectionKey,
+                dragStart,
+                dragEnd,
+                constrainToCurrentVector,
+                out var draggedDocument,
+                out var dragStatus))
+        {
+            var dragResult = new SketchSolveResult(
+                SketchSolveStatus.Failed,
+                document,
+                new[] { dragStatus });
+            return new SketchSolveWorkflowResult(
+                Applied: false,
+                document,
+                dragResult,
+                BuildFailureMessage(dragResult));
+        }
+
+        var request = new SketchSolveRequest(
+            draggedDocument,
+            draggedDocument.Constraints,
+            draggedDocument.Dimensions,
+            CreateInitialGuesses(document, GetDragInitialGuessReferenceKeys(selectionKey)));
+        var solveResult = solver.Solve(request);
+        if (CanApplyResult(solveResult.Status))
+        {
+            return new SketchSolveWorkflowResult(
+                Applied: true,
+                solveResult.Document,
+                solveResult,
+                FailureMessage: dragStatus);
+        }
+
+        return new SketchSolveWorkflowResult(
+            Applied: false,
+            document,
+            solveResult,
+            BuildFailureMessage(solveResult));
+    }
+
     private static bool CanApplyResult(SketchSolveStatus status) =>
         status is SketchSolveStatus.Solved or SketchSolveStatus.Underconstrained;
+
+    private static bool TryCreateCapabilityFailure(
+        DrawingDocument document,
+        SketchConstraint constraint,
+        out SketchSolveWorkflowResult failure)
+    {
+        var capability = GetCapabilityForConstraintKind(constraint.Kind);
+        if (capability is null)
+        {
+            var invalidResult = new SketchSolveResult(
+                SketchSolveStatus.InvalidInput,
+                document,
+                new[]
+                {
+                    $"Constraint '{constraint.Id}' kind '{constraint.Kind}' does not map to a FeatureScript constraint capability."
+                });
+            failure = new SketchSolveWorkflowResult(
+                Applied: false,
+                document,
+                invalidResult,
+                BuildFailureMessage(invalidResult));
+            return true;
+        }
+
+        if (capability.Support == FeatureScriptConstraintSupport.Supported)
+        {
+            failure = default!;
+            return false;
+        }
+
+        var status = capability.Support == FeatureScriptConstraintSupport.NotApplicable
+            ? SketchSolveStatus.InvalidInput
+            : SketchSolveStatus.Unsupported;
+        var result = new SketchSolveResult(
+            status,
+            document,
+            new[]
+            {
+                $"Constraint '{constraint.Id}' ({capability.FeatureScriptName}/{constraint.Kind}) is {capability.Support} and not supported for live sketch solving. {capability.Diagnostic}"
+            });
+        failure = new SketchSolveWorkflowResult(
+            Applied: false,
+            document,
+            result,
+            BuildFailureMessage(result));
+        return true;
+    }
+
+    private static FeatureScriptConstraintCapability? GetCapabilityForConstraintKind(SketchConstraintKind kind)
+    {
+        foreach (var capability in FeatureScriptConstraintCapabilities.All)
+        {
+            if (capability.SketchConstraintKind == kind)
+            {
+                return capability;
+            }
+        }
+
+        return null;
+    }
 
     private static IReadOnlyDictionary<string, SketchInitialGuess> CreateInitialGuesses(
         DrawingDocument document,
@@ -113,6 +235,24 @@ public static class SketchSolveWorkflow
         }
 
         return guesses;
+    }
+
+    private static IEnumerable<string> GetDragInitialGuessReferenceKeys(string selectionKey)
+    {
+        if (string.IsNullOrWhiteSpace(selectionKey))
+        {
+            yield break;
+        }
+
+        yield return selectionKey;
+        if (SketchReference.TryParse(selectionKey, out var reference))
+        {
+            yield return reference.EntityId;
+        }
+        else if (SketchReference.TryParseCanvasPointCoordinates(selectionKey, out var entityId, out _, out _))
+        {
+            yield return entityId;
+        }
     }
 
     private static bool TryGetEntityGuess(
