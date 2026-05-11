@@ -4262,10 +4262,19 @@ function buildPolygonPath(state, entity) {
     return false;
   }
 
-  const first = worldToScreen(state, points[0]);
   state.context.beginPath();
-  state.context.moveTo(first.x, first.y);
+  const guidePoints = getPolygonGuideCircleWorldPointsForEntity(entity);
+  if (guidePoints.length >= 2) {
+    const firstGuidePoint = worldToScreen(state, guidePoints[0]);
+    state.context.moveTo(firstGuidePoint.x, firstGuidePoint.y);
+    for (let index = 1; index < guidePoints.length; index += 1) {
+      const guidePoint = worldToScreen(state, guidePoints[index]);
+      state.context.lineTo(guidePoint.x, guidePoint.y);
+    }
+  }
 
+  const first = worldToScreen(state, points[0]);
+  state.context.moveTo(first.x, first.y);
   for (let index = 1; index < points.length; index += 1) {
     const screenPoint = worldToScreen(state, points[index]);
     state.context.lineTo(screenPoint.x, screenPoint.y);
@@ -8907,6 +8916,7 @@ function sketchReferenceToKey(reference) {
 }
 
 function applyGeometryDragPreviewMutation(document, selectionKey, delta, dragEnd, constrainToCurrentVector = false) {
+  const dragStart = subtractPoints(dragEnd, delta);
   const segmentReference = parseSegmentSelectionKey(selectionKey);
   if (segmentReference) {
     return translatePreviewPolylineSegment(document, segmentReference.entityId, segmentReference.segmentIndex, delta);
@@ -8916,15 +8926,22 @@ function applyGeometryDragPreviewMutation(document, selectionKey, delta, dragEnd
   if (pointReference) {
     const entity = findCanvasDocumentEntity(document, pointReference.entityId);
     return entity
-      ? applyPreviewPointDrag(document, entity, pointReference.label, delta, dragEnd, constrainToCurrentVector)
+      ? applyPreviewPointDrag(
+        document,
+        entity,
+        pointReference.label,
+        pointReference.point || dragStart,
+        delta,
+        dragEnd,
+        constrainToCurrentVector)
       : false;
   }
 
   const entity = findCanvasDocumentEntity(document, selectionKey);
-  return entity ? applyPreviewEntityDrag(document, entity, delta, dragEnd) : false;
+  return entity ? applyPreviewEntityDrag(document, entity, delta, dragStart, dragEnd) : false;
 }
 
-function applyPreviewPointDrag(document, entity, label, delta, dragEnd, constrainToCurrentVector = false) {
+function applyPreviewPointDrag(document, entity, label, dragStart, delta, dragEnd, constrainToCurrentVector = false) {
   const normalizedLabel = String(label || "").split("|")[0].toLowerCase();
   const kind = getEntityKind(entity);
   if (kind === "line") {
@@ -9033,8 +9050,13 @@ function applyPreviewPointDrag(document, entity, label, delta, dragEnd, constrai
     return applyPreviewSplinePointDrag(entity, normalizedLabel, delta, dragEnd);
   }
 
-  if (kind === "polygon" && (normalizedLabel === "center" || normalizedLabel.startsWith("mid-"))) {
+  if (kind === "polygon" && normalizedLabel === "center") {
     return translatePreviewPolygon(entity, delta);
+  }
+
+  if (kind === "polygon"
+    && (normalizedLabel.startsWith("vertex-") || normalizedLabel.startsWith("mid-"))) {
+    return scalePreviewPolygon(entity, dragStart, dragEnd);
   }
 
   return false;
@@ -9171,7 +9193,7 @@ function setPreviewSplineEditablePoints(entity, sourceKind, points, movedPointIn
   entity.points = copiedPoints.map(point => ({ ...point }));
 }
 
-function applyPreviewEntityDrag(document, entity, delta, dragEnd) {
+function applyPreviewEntityDrag(document, entity, delta, dragStart, dragEnd) {
   const kind = getEntityKind(entity);
   if (kind === "line" || kind === "polyline") {
     entity.points = getEntityPoints(entity).map(point => addWorldPoints(point, delta));
@@ -9179,7 +9201,7 @@ function applyPreviewEntityDrag(document, entity, delta, dragEnd) {
   }
 
   if (kind === "polygon") {
-    return translatePreviewPolygon(entity, delta);
+    return scalePreviewPolygon(entity, dragStart, dragEnd);
   }
 
   if (kind === "point") {
@@ -9351,6 +9373,30 @@ function translatePreviewPolygon(entity, delta) {
   return true;
 }
 
+function scalePreviewPolygon(entity, dragStart, dragEnd) {
+  const center = getEntityCenter(entity);
+  const radius = getEntityRadius(entity);
+  if (!center || !isFinitePositive(radius) || !dragStart || !dragEnd) {
+    return false;
+  }
+
+  const startDistance = distanceBetweenWorldPoints(center, dragStart);
+  const endDistance = distanceBetweenWorldPoints(center, dragEnd);
+  if (startDistance <= WORLD_GEOMETRY_TOLERANCE || endDistance <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
+  const nextRadius = radius * endDistance / startDistance;
+  if (!isFinitePositive(nextRadius)) {
+    return false;
+  }
+
+  entity.radius = nextRadius;
+  entity.Radius = nextRadius;
+  updatePreviewPolygonPoints(entity);
+  return true;
+}
+
 function translatePreviewPolylineSegment(document, entityId, segmentIndex, delta) {
   const entity = findCanvasDocumentEntity(document, entityId);
   const points = entity ? getEntityPoints(entity) : [];
@@ -9417,7 +9463,7 @@ function getTranslatedDimensionEntityId(document, selectionKey) {
     if ((kind === "line" && label === "mid")
       || (kind === "polyline" && label.startsWith("mid-"))
       || ((kind === "circle" || kind === "arc" || kind === "ellipse") && label === "center")
-      || (kind === "polygon" && (label === "center" || label.startsWith("mid-")))
+      || (kind === "polygon" && label === "center")
       || (kind === "point" && label === "point")) {
       return pointReference.entityId;
     }
@@ -9427,7 +9473,7 @@ function getTranslatedDimensionEntityId(document, selectionKey) {
 
   const entity = findCanvasDocumentEntity(document, key);
   const kind = getEntityKind(entity);
-  return kind === "line" || kind === "polyline" || kind === "ellipse" || kind === "polygon" || kind === "point"
+  return kind === "line" || kind === "polyline" || kind === "ellipse" || kind === "point"
     ? key
     : null;
 }
@@ -9500,21 +9546,15 @@ function cloneCanvasEntity(entity) {
 }
 
 function parsePointSelectionKey(selectionKey) {
-  const key = String(selectionKey || "");
-  const separatorIndex = key.indexOf(POINT_KEY_SEPARATOR);
-  if (separatorIndex < 0) {
-    return null;
-  }
-
-  const entityId = key.slice(0, separatorIndex);
-  const parts = key.slice(separatorIndex + POINT_KEY_SEPARATOR.length).split("|");
-  if (!entityId || parts.length < 3) {
+  const parts = parsePointTargetKeyParts(selectionKey);
+  if (!parts || !parts.entityId) {
     return null;
   }
 
   return {
-    entityId,
-    label: parts.slice(0, parts.length - 2).join("|")
+    entityId: parts.entityId,
+    label: parts.label,
+    point: parts.point
   };
 }
 
@@ -12126,6 +12166,63 @@ export function getPolygonGuideCircleWorldPoints(center, radiusPoint) {
   return Number.isFinite(radius) && radius > WORLD_GEOMETRY_TOLERANCE
     ? getCircleWorldPoints(center, radius)
     : [];
+}
+
+export function getPolygonGuideCircleWorldPointsForEntity(entity) {
+  const center = getEntityCenter(entity);
+  const radius = getEntityRadius(entity);
+  return center && isFinitePositive(radius)
+    ? getCircleWorldPoints(center, radius)
+    : [];
+}
+
+function updatePreviewPolygonPoints(entity) {
+  const center = getEntityCenter(entity);
+  const radius = getEntityRadius(entity);
+  if (!center || !isFinitePositive(radius)) {
+    return false;
+  }
+
+  const radiusPoint = pointOnCircle(center, radius, getPolygonRotationAngle(entity));
+  const points = getPolygonWorldPoints(
+    center,
+    radiusPoint,
+    getPolygonCircumscribed(entity),
+    getPolygonEntitySideCount(entity));
+  if (points.length < 3) {
+    return false;
+  }
+
+  entity.points = points;
+  entity.Points = points;
+  return true;
+}
+
+function getPolygonRotationAngle(entity) {
+  const value = Number(readProperty(entity, "rotationAngleDegrees", "RotationAngleDegrees"));
+  if (Number.isFinite(value)) {
+    return value;
+  }
+
+  const center = getEntityCenter(entity);
+  const firstPoint = getEntityPoints(entity)[0];
+  return center && firstPoint
+    ? radiansToDegrees(Math.atan2(firstPoint.y - center.y, firstPoint.x - center.x))
+    : 0;
+}
+
+function getPolygonEntitySideCount(entity) {
+  const sideCount = Number(readProperty(entity, "sideCount", "SideCount"));
+  if (Number.isFinite(sideCount)) {
+    return clamp(Math.round(sideCount), 3, 64);
+  }
+
+  return clamp(getEntityPoints(entity).length || 6, 3, 64);
+}
+
+function getPolygonCircumscribed(entity) {
+  const value = readProperty(entity, "circumscribed", "Circumscribed");
+  return value === true || String(value).toLowerCase() === "true";
 }
 
 function getQuadraticBezierWorldPoints(start, control, end, segmentCount = 32) {

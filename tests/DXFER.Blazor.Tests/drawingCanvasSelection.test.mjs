@@ -45,6 +45,7 @@ import {
   getPersistentDimensionCommitValue,
   getPolygonWorldPoints,
   getPolygonGuideCircleWorldPoints,
+  getPolygonGuideCircleWorldPointsForEntity,
   getPendingPersistentDimensionEditId,
   getRadialDimensionScreenGeometry,
   getRadialDimensionPreference,
@@ -564,6 +565,24 @@ test("polygon preview guide circle follows the picked radius or apothem", () => 
   assert.equal(guide.length > 16, true);
   for (const point of guide) {
     assertApproxEqual(distanceBetweenTestPoints(point, { x: 2, y: 3 }), 5);
+  }
+});
+
+test("polygon entity guide circle follows the stored guide radius", () => {
+  const guide = getPolygonGuideCircleWorldPointsForEntity({
+    id: "polygon",
+    kind: "polygon",
+    center: { x: 2, y: 3 },
+    radius: 5,
+    rotationAngleDegrees: 30,
+    sideCount: 6,
+    circumscribed: true,
+    points: []
+  });
+
+  assert.equal(guide.length > 16, true);
+  for (const point of guide) {
+    assertApproxEqual(Math.hypot(point.x - 2, point.y - 3), 5);
   }
 });
 
@@ -2902,7 +2921,7 @@ test("geometry drag preview translates polygon center and dimension anchors", ()
   assert.deepEqual(preview.dimensions[0].anchor, { x: 8, y: 4 });
 });
 
-test("geometry drag preview translates polygon midpoint and dimension anchors", () => {
+test("geometry drag preview translates dimensioned polygon midpoint and dimension anchors", () => {
   const document = {
     entities: [
       {
@@ -2940,7 +2959,7 @@ test("geometry drag preview translates polygon midpoint and dimension anchors", 
   assert.deepEqual(preview.dimensions[0].anchor, { x: 8, y: 4 });
 });
 
-test("geometry drag preview translates whole polygon from edge selection", () => {
+test("geometry drag preview translates dimensioned polygon from edge selection", () => {
   const document = {
     entities: [
       {
@@ -2960,6 +2979,13 @@ test("geometry drag preview translates whole polygon from edge selection", () =>
         referenceKeys: ["polygon"],
         value: 6,
         anchor: { x: 0, y: -3 }
+      },
+      {
+        id: "polygon-radius",
+        kind: "radius",
+        referenceKeys: ["polygon"],
+        value: 5,
+        anchor: { x: 5, y: 0 }
       }
     ],
     constraints: []
@@ -2975,6 +3001,95 @@ test("geometry drag preview translates whole polygon from edge selection", () =>
   assert.equal(preview.entities[0].radius, 5);
   assert.equal(preview.entities[0].rotationAngleDegrees, 30);
   assert.deepEqual(preview.dimensions[0].anchor, { x: 3, y: 1 });
+  assert.deepEqual(preview.dimensions[1].anchor, { x: 8, y: 4 });
+});
+
+test("geometry drag preview scales unconstrained polygon midpoint", () => {
+  const document = {
+    entities: [
+      {
+        id: "polygon",
+        kind: "polygon",
+        center: { x: 0, y: 0 },
+        radius: 5,
+        rotationAngleDegrees: 0,
+        sideCount: 4,
+        points: [{ x: 5, y: 0 }, { x: 0, y: 5 }, { x: -5, y: 0 }, { x: 0, y: -5 }]
+      }
+    ],
+    dimensions: [],
+    constraints: []
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "polygon|point|mid-0|2.5|2.5",
+    { x: 2.5, y: 2.5 },
+    { x: 4, y: 4 });
+
+  assert.deepEqual(preview.entities[0].center, { x: 0, y: 0 });
+  assert.equal(preview.entities[0].radius, 8);
+  assert.deepEqual(preview.entities[0].points[0], { x: 8, y: 0 });
+  assert.equal(preview.entities[0].rotationAngleDegrees, 0);
+  assert.equal(preview.dimensions.length, 0);
+});
+
+test("geometry drag preview scales unconstrained polygon from edge selection", () => {
+  const document = {
+    entities: [
+      {
+        id: "polygon",
+        kind: "polygon",
+        center: { x: 0, y: 0 },
+        radius: 5,
+        rotationAngleDegrees: 30,
+        sideCount: 6,
+        points: [{ x: 5, y: 0 }, { x: 2.5, y: 4.33 }, { x: -2.5, y: 4.33 }]
+      }
+    ],
+    dimensions: [],
+    constraints: []
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "polygon",
+    { x: 5, y: 0 },
+    { x: 8, y: 4 });
+
+  assert.deepEqual(preview.entities[0].center, { x: 0, y: 0 });
+  assertApproxEqual(preview.entities[0].radius, 8.944272);
+  assert.equal(preview.entities[0].rotationAngleDegrees, 30);
+  assert.equal(preview.dimensions.length, 0);
+});
+
+test("geometry drag preview scales unconstrained polygon vertex", () => {
+  const document = {
+    entities: [
+      {
+        id: "polygon",
+        kind: "polygon",
+        center: { x: 0, y: 0 },
+        radius: 5,
+        rotationAngleDegrees: 0,
+        sideCount: 4,
+        circumscribed: false,
+        points: [{ x: 5, y: 0 }, { x: 0, y: 5 }, { x: -5, y: 0 }, { x: 0, y: -5 }]
+      }
+    ],
+    dimensions: [],
+    constraints: []
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "polygon|point|vertex-0|5|0",
+    { x: 5, y: 0 },
+    { x: 8, y: 0 });
+
+  assert.deepEqual(preview.entities[0].center, { x: 0, y: 0 });
+  assert.equal(preview.entities[0].radius, 8);
+  assert.deepEqual(preview.entities[0].points[0], { x: 8, y: 0 });
 });
 
 test("point sketch tool needs one click", () => {

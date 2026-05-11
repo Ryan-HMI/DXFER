@@ -920,6 +920,53 @@ public sealed class SketchGeometryDragServiceTests
     }
 
     [Fact]
+    public void DraggingUnconstrainedPolygonPerimeterScalesRadius()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new PolygonEntity(EntityId.Create("polygon"), new Point2(0, 0), 5, 0, 4)
+        });
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "polygon",
+            new Point2(2.5, 2.5),
+            new Point2(4, 4),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        var polygon = next.Entities.Should().ContainSingle().Which.Should().BeOfType<PolygonEntity>().Subject;
+        polygon.Center.Should().Be(new Point2(0, 0));
+        polygon.Radius.Should().BeApproximately(8, 0.000001);
+        polygon.RotationAngleDegrees.Should().Be(0);
+        polygon.NormalizedSideCount.Should().Be(4);
+    }
+
+    [Fact]
+    public void DraggingUnconstrainedPolygonVertexScalesRadius()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new PolygonEntity(EntityId.Create("polygon"), new Point2(0, 0), 5, 0, 4)
+        });
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "polygon|point|vertex-0|5|0",
+            new Point2(5, 0),
+            new Point2(8, 0),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        var polygon = next.Entities.Should().ContainSingle().Which.Should().BeOfType<PolygonEntity>().Subject;
+        polygon.Center.Should().Be(new Point2(0, 0));
+        polygon.Radius.Should().Be(8);
+        polygon.RotationAngleDegrees.Should().Be(0);
+    }
+
+    [Fact]
     public void DraggingWholePolygonTranslatesCenterAndDimensionAnchors()
     {
         var document = new DrawingDocument(
@@ -934,13 +981,15 @@ public sealed class SketchGeometryDragServiceTests
                     SketchDimensionKind.Radius,
                     new[] { "polygon" },
                     5,
-                    new Point2(5, 0)),
+                    new Point2(5, 0),
+                    isDriving: true),
                 new SketchDimension(
                     "polygon-count",
                     SketchDimensionKind.Count,
                     new[] { "polygon" },
                     6,
-                    new Point2(0, -3))
+                    new Point2(0, -3),
+                    isDriving: true)
             },
             Array.Empty<SketchConstraint>());
 
@@ -976,7 +1025,8 @@ public sealed class SketchGeometryDragServiceTests
                     SketchDimensionKind.Radius,
                     new[] { "polygon" },
                     5,
-                    new Point2(5, 0))
+                    new Point2(5, 0),
+                    isDriving: true)
             },
             Array.Empty<SketchConstraint>());
 
@@ -1011,7 +1061,8 @@ public sealed class SketchGeometryDragServiceTests
                     SketchDimensionKind.Radius,
                     new[] { "polygon" },
                     5,
-                    new Point2(5, 0))
+                    new Point2(5, 0),
+                    isDriving: true)
             },
             Array.Empty<SketchConstraint>());
 

@@ -57,7 +57,7 @@ public static class SketchGeometryDragService
             return false;
         }
 
-        if (!TryApplyGeometryDrag(entities, fixedReferences, selectionKey, delta, dragEnd, constrainToCurrentVector, out status))
+        if (!TryApplyGeometryDrag(entities, fixedReferences, selectionKey, delta, dragStart, dragEnd, constrainToCurrentVector, out status))
         {
             return false;
         }
@@ -900,6 +900,7 @@ public static class SketchGeometryDragService
         SketchFixedReferences fixedReferences,
         string selectionKey,
         Point2 delta,
+        Point2 dragStart,
         Point2 dragEnd,
         bool constrainToCurrentVector,
         out string status)
@@ -933,7 +934,7 @@ public static class SketchGeometryDragService
 
         if (SketchGeometryEditor.TryFindEntity(entities, selectionKey, out var entityIndex, out var entity))
         {
-            return TryApplyEntityDrag(entities, fixedReferences, entityIndex, entity, delta, dragEnd, out status);
+            return TryApplyEntityDrag(entities, fixedReferences, entityIndex, entity, delta, dragStart, dragEnd, out status);
         }
 
         status = "Selected geometry no longer exists.";
@@ -1018,7 +1019,9 @@ public static class SketchGeometryDragService
                     entityIndex,
                     polygon,
                     label,
+                    targetPoint,
                     delta,
+                    dragEnd,
                     out status);
             case PointEntity pointEntity:
                 return TrySetPointEntityLocation(entities, fixedReferences, entityIndex, pointEntity, Add(pointEntity.Location, delta), out status);
@@ -1522,6 +1525,7 @@ public static class SketchGeometryDragService
         int entityIndex,
         DrawingEntity entity,
         Point2 delta,
+        Point2 dragStart,
         Point2 dragEnd,
         out string status)
     {
@@ -1540,7 +1544,7 @@ public static class SketchGeometryDragService
             case SplineEntity spline:
                 return TryTranslateSpline(entities, fixedReferences, entityIndex, spline, delta, out status);
             case PolygonEntity polygon:
-                return TryTranslatePolygon(entities, fixedReferences, entityIndex, polygon, delta, out status);
+                return TryScalePolygon(entities, fixedReferences, entityIndex, polygon, dragStart, dragEnd, out status);
             case PointEntity pointEntity:
                 return TrySetPointEntityLocation(entities, fixedReferences, entityIndex, pointEntity, Add(pointEntity.Location, delta), out status);
             default:
@@ -1726,16 +1730,60 @@ public static class SketchGeometryDragService
         int entityIndex,
         PolygonEntity polygon,
         string label,
+        Point2 targetPoint,
         Point2 delta,
+        Point2 dragEnd,
         out string status)
     {
-        if (label == "center" || label.StartsWith("mid-", StringComparison.Ordinal))
+        if (label == "center")
         {
             return TryTranslatePolygon(entities, fixedReferences, entityIndex, polygon, delta, out status);
         }
 
-        status = "Drag the polygon center to move it.";
+        if (label.StartsWith("vertex-", StringComparison.Ordinal)
+            || label.StartsWith("mid-", StringComparison.Ordinal))
+        {
+            return TryScalePolygon(entities, fixedReferences, entityIndex, polygon, targetPoint, dragEnd, out status);
+        }
+
+        status = "Drag the polygon center to move it or the perimeter to scale it.";
         return false;
+    }
+
+    private static bool TryScalePolygon(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        int entityIndex,
+        PolygonEntity polygon,
+        Point2 dragStart,
+        Point2 dragEnd,
+        out string status)
+    {
+        var reference = new SketchReference(polygon.Id.Value, SketchReferenceTarget.Entity);
+        if (!fixedReferences.CanChangeCircleLikeRadius(reference))
+        {
+            status = "Polygon radius is constrained.";
+            return false;
+        }
+
+        var startDistance = SketchGeometryEditor.Distance(polygon.Center, dragStart);
+        var endDistance = SketchGeometryEditor.Distance(polygon.Center, dragEnd);
+        if (startDistance <= SketchGeometryEditor.Tolerance)
+        {
+            status = "Polygon perimeter drag must start away from the center.";
+            return false;
+        }
+
+        if (endDistance <= SketchGeometryEditor.Tolerance)
+        {
+            status = "Polygon radius must stay positive.";
+            return false;
+        }
+
+        var currentRadius = Math.Max(Math.Abs(polygon.Radius), SketchGeometryEditor.Tolerance);
+        entities[entityIndex] = polygon.WithRadius(currentRadius * endDistance / startDistance);
+        status = "Changed polygon radius.";
+        return true;
     }
 
     private static bool TryTranslatePolygon(
@@ -2109,7 +2157,7 @@ public static class SketchGeometryDragService
                 LineEntity => normalizedLabel == "mid",
                 PolylineEntity => normalizedLabel.StartsWith("mid-", StringComparison.Ordinal),
                 CircleEntity or ArcEntity or EllipseEntity => normalizedLabel == "center",
-                PolygonEntity => normalizedLabel == "center" || normalizedLabel.StartsWith("mid-", StringComparison.Ordinal),
+                PolygonEntity => normalizedLabel == "center",
                 PointEntity => normalizedLabel == "point",
                 _ => false
             };
@@ -2118,7 +2166,7 @@ public static class SketchGeometryDragService
         }
 
         var wholeEntity = document.Entities.FirstOrDefault(entity => StringComparer.Ordinal.Equals(entity.Id.Value, selectionKey));
-        var isWholeEntityTranslation = wholeEntity is LineEntity or PolylineEntity or EllipseEntity or SplineEntity or PolygonEntity or PointEntity;
+        var isWholeEntityTranslation = wholeEntity is LineEntity or PolylineEntity or EllipseEntity or SplineEntity or PointEntity;
         entityId = isWholeEntityTranslation ? selectionKey : string.Empty;
         return isWholeEntityTranslation;
     }
