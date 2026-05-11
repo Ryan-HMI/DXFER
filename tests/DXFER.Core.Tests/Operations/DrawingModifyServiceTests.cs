@@ -214,6 +214,80 @@ public sealed class DrawingModifyServiceTests
     }
 
     [Fact]
+    public void PowerTrimUpdatesDimensionedTargetLineToRetainedSpan()
+    {
+        var dimension = new SketchDimension(
+            "target-length",
+            SketchDimensionKind.LinearDistance,
+            new[] { "target:start", "target:end" },
+            10,
+            new Point2(5, 1),
+            isDriving: true);
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("target"), new Point2(0, 0), new Point2(10, 0)),
+                new LineEntity(EntityId.Create("left"), new Point2(3, -1), new Point2(3, 1)),
+                new LineEntity(EntityId.Create("right"), new Point2(7, -1), new Point2(7, 1))
+            },
+            new[] { dimension },
+            Array.Empty<SketchConstraint>());
+
+        var trimmed = DrawingModifyService.TryPowerTrimOrExtendLine(
+            document,
+            "target",
+            new Point2(5, 0),
+            prefix => EntityId.Create($"{prefix}-split"),
+            out var next);
+
+        trimmed.Should().BeTrue();
+        var refreshedDimension = next.Dimensions.Should().ContainSingle().Subject;
+        refreshedDimension.ReferenceKeys.Should().Equal("target:start", "target:end");
+        refreshedDimension.Value.Should().BeApproximately(3, 0.000001);
+        refreshedDimension.IsDriving.Should().BeTrue();
+        SketchDimensionSolverService.GetDimensionState(next, refreshedDimension)
+            .Should()
+            .Be(SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void PowerTrimRefreshesAffectedCanvasPointDimensionReferences()
+    {
+        var dimension = new SketchDimension(
+            "target-mid-distance",
+            SketchDimensionKind.LinearDistance,
+            new[] { "target|point|mid|5|0", "marker" },
+            5,
+            new Point2(2.5, 1),
+            isDriving: true);
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("target"), new Point2(0, 0), new Point2(10, 0)),
+                new PointEntity(EntityId.Create("marker"), new Point2(0, 0)),
+                new LineEntity(EntityId.Create("left"), new Point2(3, -1), new Point2(3, 1)),
+                new LineEntity(EntityId.Create("right"), new Point2(7, -1), new Point2(7, 1))
+            },
+            new[] { dimension },
+            Array.Empty<SketchConstraint>());
+
+        var trimmed = DrawingModifyService.TryPowerTrimOrExtendLine(
+            document,
+            "target",
+            new Point2(5, 0),
+            prefix => EntityId.Create($"{prefix}-split"),
+            out var next);
+
+        trimmed.Should().BeTrue();
+        var refreshedDimension = next.Dimensions.Should().ContainSingle().Subject;
+        refreshedDimension.ReferenceKeys.Should().Equal("target|point|mid|1.5|0", "marker");
+        refreshedDimension.Value.Should().BeApproximately(1.5, 0.000001);
+        SketchDimensionSolverService.GetDimensionState(next, refreshedDimension)
+            .Should()
+            .Be(SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
     public void PowerTrimDeletesPickedLineWhenNoCuttersExist()
     {
         var document = new DrawingDocument(new DrawingEntity[]
@@ -1263,12 +1337,29 @@ public sealed class DrawingModifyServiceTests
             .Should()
             .HaveCount(5);
         next.Dimensions.Should().BeEmpty();
-        next.Constraints.Should().HaveCount(4);
+        var coincidentConstraints = next.Constraints
+            .Where(constraint => constraint.Kind == SketchConstraintKind.Coincident)
+            .ToArray();
+        var equalConstraints = next.Constraints
+            .Where(constraint => constraint.Kind == SketchConstraintKind.Equal)
+            .ToArray();
+        coincidentConstraints.Should().HaveCount(4);
+        equalConstraints.Should().HaveCount(2);
         next.Constraints.Should().OnlyContain(constraint =>
-            constraint.Kind == SketchConstraintKind.Coincident
+            (constraint.Kind == SketchConstraintKind.Coincident || constraint.Kind == SketchConstraintKind.Equal)
             && constraint.State == SketchConstraintState.Satisfied
             && constraint.ReferenceKeys.All(key => !key.Contains("target", StringComparison.Ordinal))
             && constraint.ReferenceKeys.All(key => key.StartsWith("polygon-line-", StringComparison.Ordinal)));
+        equalConstraints
+            .SelectMany(constraint => constraint.ReferenceKeys)
+            .Distinct()
+            .Should()
+            .BeEquivalentTo(new[]
+            {
+                "polygon-line-3-split",
+                "polygon-line-4-split",
+                "polygon-line-5-split"
+            });
     }
 
     [Fact]
@@ -1298,7 +1389,8 @@ public sealed class DrawingModifyServiceTests
             .Where(line => line.Id.Value.StartsWith("polygon-line-", StringComparison.Ordinal))
             .Should()
             .HaveCount(5);
-        next.Constraints.Should().HaveCount(4);
+        next.Constraints.Count(constraint => constraint.Kind == SketchConstraintKind.Coincident).Should().Be(4);
+        next.Constraints.Count(constraint => constraint.Kind == SketchConstraintKind.Equal).Should().Be(2);
     }
 
     [Fact]
@@ -1327,7 +1419,8 @@ public sealed class DrawingModifyServiceTests
         AssertLine(next.Entities[2], "polygon-line-3-split", new Point2(-5, 0), new Point2(0, -5));
         AssertLine(next.Entities[3], "polygon-line-4-split", new Point2(0, -5), new Point2(5, 0));
         next.Entities[4].Should().Be(new LineEntity(EntityId.Create("crossing"), new Point2(2, -10), new Point2(2, 10)));
-        next.Constraints.Should().HaveCount(3);
+        next.Constraints.Count(constraint => constraint.Kind == SketchConstraintKind.Coincident).Should().Be(3);
+        next.Constraints.Count(constraint => constraint.Kind == SketchConstraintKind.Equal).Should().Be(2);
     }
 
     [Theory]

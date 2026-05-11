@@ -277,5 +277,31 @@ public sealed class SketchCreationConstraintFactoryTests
             && constraint.ReferenceKeys.SequenceEqual(new[] { "previous", "arc" }));
     }
 
+    [Fact]
+    public void CreatesTangentConstraintForInsertedTangentArcAfterOffsetLine()
+    {
+        var existing = new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("previous"), new Point2(5, 7), new Point2(15, 7))
+        };
+        var created = new DrawingEntity[]
+        {
+            new ArcEntity(EntityId.Create("arc"), new Point2(15, 12), 5, -90, 0)
+        };
+
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForInsertion(
+            "tangentarc",
+            existing,
+            created,
+            CreateConstraintId);
+
+        constraints.Should().Contain(constraint =>
+            constraint.Kind == SketchConstraintKind.Coincident
+            && constraint.ReferenceKeys.SequenceEqual(new[] { "previous:end", "arc:start" }));
+        constraints.Should().Contain(constraint =>
+            constraint.Kind == SketchConstraintKind.Tangent
+            && constraint.ReferenceKeys.SequenceEqual(new[] { "previous", "arc" }));
+    }
+
     private static string CreateConstraintId(SketchConstraintKind kind) => $"constraint-{kind}-{Guid.NewGuid():N}";
 }

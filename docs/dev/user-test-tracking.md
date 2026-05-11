@@ -40,7 +40,9 @@ These rows are coded, automated-tested, and verified in the running canvas by Co
 | UT-TRIM-007 | Trim a polygon into exploded line segments and confirm shared vertices carry coincident constraints. |
 | UT-SPLINE-002 | Drag spline endpoint tangent handles and confirm adjacent fit points do not move; drag adjacent fit points and confirm endpoint handle vector/magnitude stays put. |
 | UT-SOLVER-004 | Retest polygon center/midpoint/whole free-drag, dimensioned rectangle edge/vertex rigid translation with dimensions staying satisfied, undimensioned rectangle edge/corner resize including the live drag preview, and circle center/circumference drag behavior. |
-| UT-SOLVER-005 | Retest drag behavior by constraint/dimension logic across all applicable entities, not just rectangles: point, edge, center, circumference/quadrant, fit/control/tangent handle, dimension-anchor, and coincident-weld drags. |
+| UT-SOLVER-005 | Retest drag behavior by constraint/dimension logic across all applicable entities, not just rectangles: point, edge, center, circumference/quadrant, fit/control/tangent handle, dimension-anchor, and coincident-weld drags. Include the new automated slice for Fix, Equal line/radius, Concentric, Midpoint, Tangent, point-to-line distance free-direction drag, driving radius-dimensioned circle edge drag, driving ellipse-axis drag, and arc sweep-dimension translation. |
+| UT-CONSTRAINT-001 | Apply Fix to whole geometry and editable points, then drag them; preview and release should leave fixed references pinned. |
+| UT-CONSTRAINT-002 | Apply Equal to line pairs and circle/radius pairs, then drag one side; the peer length/radius should update or fail safely if fixed. |
 | UT-SOLVER-006 | Add a diagonal dimension across width/height constrained rectangle geometry and confirm it renders red/unsatisfied as an overconstrained derived dimension. |
 | UT-SOLVER-001 | Resize/drag a rectangle, add/edit width and height dimensions, retroactively dimension a rectangle side from a midpoint/edge pick, and add an angle dimension between already-constrained rectangle sides; side dimensions should stay satisfied and the redundant angle should render red/unsatisfied. Broader dimensioned drag/deletion checks still remain open. |
 | UT-ELLIPSE-001 | Create keyed ellipses and confirm persistent dimensions/geometry do not immediately draw red. |
@@ -56,13 +58,13 @@ These rows are still open and should not be treated as fixed yet.
 |---|---|
 | UT-SOLVER-001 | Dimensioned geometry drag/deletion robustness. Rectangle side dimension edits after resize/drag, retroactive rectangle side dimensioning, redundant rectangle-side angle failure painting, and one-/two-dimension rectangle edge and vertex drag anchor travel are app-verified. Broader dimension dragging and deletion cleanup still remain open. |
 | UT-SOLVER-004 | Uniform entity drag behavior for all applicable entity geometry. Rectangle partial-dimension edge drag, partial-dimension vertex decomposition, and full-dimension drag coherence are app-verified, and polygon center/midpoint/whole drag plus circle center/circumference drag are app-verified. Remaining entity classes still need entity-by-entity passes. |
-| UT-SOLVER-005 | Entity-agnostic constraint-driven drag planner. `DRAG-LINE-001` line endpoint dimension-preserving fallback is app-verified; current rectangle-specific decomposition must still be generalized so every applicable entity and grip follows the same constraint/dimension decision model. |
+| UT-SOLVER-005 | Entity-agnostic constraint-driven drag planner. `DRAG-LINE-001` line endpoint dimension-preserving fallback is app-verified. Fix, Equal, Concentric, Midpoint, Tangent, point-to-line distance free-direction drag, driving radius-dimensioned circle edge drag, driving ellipse-axis drag, and arc sweep-dimension translation are coded and auto-passed; running-app/user retest and remaining entity/grip coverage still open. |
 | UT-SOLVER-006 | Diagonal derived dimensions should be overconstrained when the referenced geometry is already fixed by width/height dimensions. |
 | UT-SOLVER-007 | After editing a driving dimension value, dragging the associated geometry keeps dimension graphics/anchors traveling with that geometry. |
 | UT-SOLVER-002 | Coincident constraint vertex welding. Line-chain endpoint welding is app-verified for preview and release; broader mixed-entity coincidence coverage remains open. |
 | UT-SOLVER-003 | Deleted vertical constraint reasserting through dimension dragging. Persistent dimension anchor drag skip-commit is app-verified; exact deleted-vertical workflow still needs user retest. |
-| UT-CONSTRAINT-001 | Fix constraints pin/fix referenced geometry during drag/solve. |
-| UT-CONSTRAINT-002 | Equal constraints enforce equal geometry during drag/solve. |
+| UT-CONSTRAINT-001 | Fix constraints pin/fix referenced geometry during drag/solve. Coded and auto-passed for core drag plus canvas preview; running-app/user retest still open. |
+| UT-CONSTRAINT-002 | Equal constraints enforce equal geometry during drag/solve. Coded and auto-passed for core equal line/radius propagation plus canvas preview; running-app/user retest still open. |
 
 ## Queued User-Tested Failures
 
@@ -78,8 +80,8 @@ These rows are still open and should not be treated as fixed yet.
 | UT-SOLVER-002 | Coincident constraints weld vertices for drag/solve behavior. | USER-FAILED | PARTIAL | PARTIAL | Line-chain coincident endpoint drag is coded, auto-passed, and app-verified for live preview plus server release; broader mixed-entity coincidence matrix remains queued |
 | UT-ELLIPSE-001 | Keyed-in ellipse creation does not create broken solves or red failed-state geometry on creation. | USER-FAILED | AUTO-PASSED | CODED | Custom keyed ellipse axis dimensions resolve as satisfied; needs app/user retest |
 | UT-SOLVER-003 | Deleted vertical constraints do not reassert through associated dimension dragging. | USER-FAILED | PARTIAL | PARTIAL | Persistent dimension anchor drag now skips synthetic blur/change value commits, is auto-passed, and is app-verified with no value-change callback; exact deleted-vertical workflow still queued for user retest |
-| UT-CONSTRAINT-001 | Fix constraints pin/fix referenced geometry during drag/solve. | USER-FAILED | OPEN | OPEN | Logged; queued behind active UI worker |
-| UT-CONSTRAINT-002 | Equal constraints enforce equal geometry during drag/solve. | USER-FAILED | OPEN | OPEN | Logged; queued behind active UI worker |
+| UT-CONSTRAINT-001 | Fix constraints pin/fix referenced geometry during drag/solve. | USER-FAILED | AUTO-PASSED | CODED | Core drag and canvas preview block fixed references; needs app/user retest |
+| UT-CONSTRAINT-002 | Equal constraints enforce equal geometry during drag/solve. | USER-FAILED | AUTO-PASSED | CODED | Core drag and canvas preview propagate equal line length and circle-like radius; needs app/user retest |
 | UT-UI-001 | Left/right docked toolbars have no stray horizontal scrollbar and can collapse. | USER-REQUESTED | AUTO-PASSED | APP-VERIFIED | Header-only vertical side collapse with single chevrons coded and app-verified; double-click header no longer triggers compaction or leaves drag state; awaiting user retest |
 | UT-ICON-001 | Toolbar icons are larger and hotkey labels no longer block icon art. | USER-REQUESTED | AUTO-PASSED | APP-VERIFIED | Visible hotkey labels removed and icon art enlarged; awaiting user visual eval |
 | UT-ICON-002 | Construction, cut-at-point, scale, pattern, circular pattern, rotate, and text icons match requested artwork. | USER-REQUESTED | AUTO-PASSED | APP-VERIFIED | Requested motifs coded and DOM-verified; awaiting user visual eval |

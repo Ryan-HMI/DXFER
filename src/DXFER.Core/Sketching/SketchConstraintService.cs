@@ -109,6 +109,7 @@ public static class SketchConstraintService
                 ApplyLinePairDirection(entities, fixedReferences, constraint, perpendicular: true);
                 break;
             case SketchConstraintKind.Tangent:
+                ApplyTangent(entities, fixedReferences, constraint);
                 break;
             case SketchConstraintKind.Concentric:
                 ApplyConcentric(entities, fixedReferences, constraint);
@@ -303,6 +304,75 @@ public static class SketchConstraintService
         }
     }
 
+    private static void ApplyTangent(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        SketchConstraint constraint)
+    {
+        if (TryGetLineAndCircleLikeReferences(
+                entities,
+                constraint,
+                out var lineReference,
+                out var line,
+                out var circleReference,
+                out var center,
+                out var radius))
+        {
+            if (fixedReferences.CanMoveCircleLikeCenter(circleReference)
+                && TryMoveCircleLikeCenterTangentToLine(entities, circleReference, center, radius, line))
+            {
+                return;
+            }
+
+            if (fixedReferences.CanMoveWholeLine(lineReference)
+                && TryMoveLineTangentToCircle(entities, lineReference, line, center, radius))
+            {
+                return;
+            }
+
+            if (fixedReferences.CanChangeCircleLikeRadius(circleReference))
+            {
+                SketchGeometryEditor.TrySetCircleLikeRadius(entities, circleReference, DistancePointToLine(center, line));
+            }
+
+            return;
+        }
+
+        if (!TryGetTwoCircleLikeReferences(
+                entities,
+                constraint,
+                out var firstReference,
+                out var firstCenter,
+                out var firstRadius,
+                out var secondReference,
+                out var secondCenter,
+                out var secondRadius))
+        {
+            return;
+        }
+
+        if (TryMoveOrResizeCircleLikeForTangency(
+                entities,
+                fixedReferences,
+                movingReference: secondReference,
+                movingCenter: secondCenter,
+                movingRadius: secondRadius,
+                anchorCenter: firstCenter,
+                anchorRadius: firstRadius))
+        {
+            return;
+        }
+
+        TryMoveOrResizeCircleLikeForTangency(
+            entities,
+            fixedReferences,
+            movingReference: firstReference,
+            movingCenter: firstCenter,
+            movingRadius: firstRadius,
+            anchorCenter: secondCenter,
+            anchorRadius: secondRadius);
+    }
+
     private static void ApplyEqual(
         DrawingEntity[] entities,
         SketchFixedReferences fixedReferences,
@@ -414,6 +484,101 @@ public static class SketchConstraintService
         };
 
         SketchGeometryEditor.TrySetLine(entities, lineReference, moved);
+    }
+
+    private static bool TryMoveLineTangentToCircle(
+        DrawingEntity[] entities,
+        SketchReference lineReference,
+        LineEntity line,
+        Point2 center,
+        double radius)
+    {
+        if (!TryGetLineNormal(line, out var normalX, out var normalY))
+        {
+            return false;
+        }
+
+        var signedDistance = SignedPointLineDistance(center, line, normalX, normalY);
+        var sign = signedDistance < 0 ? -1.0 : 1.0;
+        var targetSignedDistance = sign * Math.Abs(radius);
+        var offset = signedDistance - targetSignedDistance;
+        if (Math.Abs(offset) <= SketchGeometryEditor.Tolerance)
+        {
+            return false;
+        }
+
+        return SketchGeometryEditor.TrySetLine(
+            entities,
+            lineReference,
+            line with
+            {
+                Start = new Point2(line.Start.X + normalX * offset, line.Start.Y + normalY * offset),
+                End = new Point2(line.End.X + normalX * offset, line.End.Y + normalY * offset)
+            });
+    }
+
+    private static bool TryMoveCircleLikeCenterTangentToLine(
+        DrawingEntity[] entities,
+        SketchReference circleReference,
+        Point2 center,
+        double radius,
+        LineEntity line)
+    {
+        if (!TryGetLineNormal(line, out var normalX, out var normalY))
+        {
+            return false;
+        }
+
+        var signedDistance = SignedPointLineDistance(center, line, normalX, normalY);
+        var sign = signedDistance < 0 ? -1.0 : 1.0;
+        var targetSignedDistance = sign * Math.Abs(radius);
+        var offset = targetSignedDistance - signedDistance;
+        if (Math.Abs(offset) <= SketchGeometryEditor.Tolerance)
+        {
+            return false;
+        }
+
+        return SketchGeometryEditor.TrySetCircleLikeCenter(
+            entities,
+            circleReference,
+            new Point2(center.X + normalX * offset, center.Y + normalY * offset));
+    }
+
+    private static bool TryMoveOrResizeCircleLikeForTangency(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        SketchReference movingReference,
+        Point2 movingCenter,
+        double movingRadius,
+        Point2 anchorCenter,
+        double anchorRadius)
+    {
+        var centerDistance = Distance(anchorCenter, movingCenter);
+        var externalDistance = Math.Abs(anchorRadius) + Math.Abs(movingRadius);
+        var internalDistance = Math.Abs(Math.Abs(anchorRadius) - Math.Abs(movingRadius));
+        var useInternal = Math.Abs(centerDistance - internalDistance) < Math.Abs(centerDistance - externalDistance);
+        var targetDistance = useInternal ? internalDistance : externalDistance;
+
+        if (fixedReferences.CanMoveCircleLikeCenter(movingReference)
+            && targetDistance > SketchGeometryEditor.Tolerance)
+        {
+            var unit = UnitVector(anchorCenter, movingCenter);
+            return SketchGeometryEditor.TrySetCircleLikeCenter(
+                entities,
+                movingReference,
+                new Point2(anchorCenter.X + unit.X * targetDistance, anchorCenter.Y + unit.Y * targetDistance));
+        }
+
+        if (!fixedReferences.CanChangeCircleLikeRadius(movingReference))
+        {
+            return false;
+        }
+
+        var nextRadius = useInternal
+            ? Math.Abs(centerDistance - Math.Abs(anchorRadius))
+            : centerDistance - Math.Abs(anchorRadius);
+        return nextRadius > SketchGeometryEditor.Tolerance
+            && SketchGeometryEditor.TrySetCircleLikeRadius(entities, movingReference, nextRadius);
     }
 
     private static bool IsCoincident(IReadOnlyList<DrawingEntity> entities, SketchConstraint constraint)
@@ -764,6 +929,37 @@ public static class SketchConstraintService
 
     private static double GetLineAngleDegrees(LineEntity line) =>
         Math.Atan2(line.End.Y - line.Start.Y, line.End.X - line.Start.X) * 180.0 / Math.PI;
+
+    private static Point2 UnitVector(Point2 start, Point2 end)
+    {
+        var deltaX = end.X - start.X;
+        var deltaY = end.Y - start.Y;
+        var length = Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
+        return length <= SketchGeometryEditor.Tolerance
+            ? new Point2(1, 0)
+            : new Point2(deltaX / length, deltaY / length);
+    }
+
+    private static bool TryGetLineNormal(LineEntity line, out double normalX, out double normalY)
+    {
+        if (!SketchGeometryEditor.TryGetLineDirection(line, out var unitX, out var unitY, out _))
+        {
+            normalX = default;
+            normalY = default;
+            return false;
+        }
+
+        normalX = -unitY;
+        normalY = unitX;
+        return true;
+    }
+
+    private static double SignedPointLineDistance(
+        Point2 point,
+        LineEntity line,
+        double normalX,
+        double normalY) =>
+        (point.X - line.Start.X) * normalX + (point.Y - line.Start.Y) * normalY;
 
     private static double Distance(Point2 first, Point2 second)
     {

@@ -1,3 +1,4 @@
+using System.Globalization;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
 using DXFER.Core.Sketching;
@@ -305,7 +306,7 @@ public static class DrawingModifyService
             secondChamferPoint,
             lines[0].IsConstruction && lines[1].IsConstruction);
 
-        nextDocument = ReplaceEntities(
+        nextDocument = ReplaceTrimmedEntities(
             document,
             new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
             {
@@ -346,7 +347,7 @@ public static class DrawingModifyService
             IsConstruction = lines[0].IsConstruction && lines[1].IsConstruction
         };
 
-        nextDocument = ReplaceEntities(
+        nextDocument = ReplaceTrimmedEntities(
             document,
             new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
             {
@@ -474,6 +475,11 @@ public static class DrawingModifyService
         var right = insideCuts.FirstOrDefault(parameter => parameter > pickedParameter, double.NaN);
         if (double.IsFinite(left) && double.IsFinite(right))
         {
+            var splitLine = new LineEntity(
+                createEntityId("line"),
+                PointAtParameter(target, right),
+                target.End,
+                target.IsConstruction);
             var nextEntities = new List<DrawingEntity>();
             foreach (var entity in document.Entities)
             {
@@ -484,14 +490,15 @@ public static class DrawingModifyService
                 }
 
                 nextEntities.Add(target with { End = PointAtParameter(target, left) });
-                nextEntities.Add(new LineEntity(
-                    createEntityId("line"),
-                    PointAtParameter(target, right),
-                    target.End,
-                    target.IsConstruction));
+                nextEntities.Add(splitLine);
             }
 
-            nextDocument = new DrawingDocument(nextEntities, document.Dimensions, document.Constraints, document.Metadata);
+            var splitDocument = new DrawingDocument(nextEntities, document.Dimensions, document.Constraints, document.Metadata);
+            nextDocument = new DrawingDocument(
+                splitDocument.Entities,
+                RefreshDimensionsForReplacedEntities(splitDocument, new[] { target.Id.Value }),
+                splitDocument.Constraints,
+                splitDocument.Metadata);
             return true;
         }
 
@@ -614,7 +621,7 @@ public static class DrawingModifyService
             return FailUnchanged(document, out nextDocument);
         }
 
-        nextDocument = ReplaceEntities(
+        nextDocument = ReplaceTrimmedEntities(
             document,
             new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
             {
@@ -668,7 +675,7 @@ public static class DrawingModifyService
             vertices.Add(extensionPoint);
         }
 
-        nextDocument = ReplaceEntities(
+        nextDocument = ReplaceTrimmedEntities(
             document,
             new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
             {
@@ -685,7 +692,8 @@ public static class DrawingModifyService
         Func<string, EntityId> createEntityId,
         out DrawingDocument nextDocument)
     {
-        var samples = GetClosedPathSamples(target.GetVertices());
+        var polygonVertices = target.GetVertices();
+        var samples = GetClosedPathSamples(polygonVertices);
         if (samples.Count < 4
             || !TryBuildSampledPathDistances(samples, out var cumulativeDistances, out var totalLength)
             || !TryProjectPointToSampledPath(samples, cumulativeDistances, pickedPoint, out var pickedDistance))
@@ -794,8 +802,11 @@ public static class DrawingModifyService
             return FailUnchanged(document, out nextDocument);
         }
 
-        var coincidentConstraints = CreateCoincidentConstraintsForSharedLineEndpoints(keptLines);
-        nextDocument = ReplaceEntityWithAdditionsRemovingReferences(document, target.Id.Value, keptLines, coincidentConstraints);
+        var wholeSideLines = GetWholePolygonSideLines(polygonVertices, keptLines.OfType<LineEntity>());
+        var polygonConstraints = CreateCoincidentConstraintsForSharedLineEndpoints(keptLines)
+            .Concat(CreateEqualConstraintsForWholePolygonSides(wholeSideLines))
+            .ToArray();
+        nextDocument = ReplaceEntityWithAdditionsRemovingReferences(document, target.Id.Value, keptLines, polygonConstraints);
         return true;
     }
 
@@ -933,7 +944,7 @@ public static class DrawingModifyService
             endAngle,
             target.IsConstruction);
 
-        nextDocument = ReplaceEntities(
+        nextDocument = ReplaceTrimmedEntities(
             document,
             new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
             {
@@ -1050,7 +1061,7 @@ public static class DrawingModifyService
                 return FailUnchanged(document, out nextDocument);
             }
 
-            nextDocument = ReplaceEntities(
+            nextDocument = ReplaceTrimmedEntities(
                 document,
                 new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
                 {
@@ -1205,7 +1216,7 @@ public static class DrawingModifyService
                 return FailUnchanged(document, out nextDocument);
             }
 
-            nextDocument = ReplaceEntities(
+            nextDocument = ReplaceTrimmedEntities(
                 document,
                 new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
                 {
@@ -1370,7 +1381,7 @@ public static class DrawingModifyService
             return FailUnchanged(document, out nextDocument);
         }
 
-        nextDocument = ReplaceEntities(
+        nextDocument = ReplaceTrimmedEntities(
             document,
             new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
             {
@@ -1425,7 +1436,7 @@ public static class DrawingModifyService
             points.Add(extensionPoint);
         }
 
-        nextDocument = ReplaceEntities(
+        nextDocument = ReplaceTrimmedEntities(
             document,
             new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
             {
@@ -1512,6 +1523,384 @@ public static class DrawingModifyService
             document.Metadata);
     }
 
+    private static DrawingDocument ReplaceTrimmedEntities(
+        DrawingDocument document,
+        IReadOnlyDictionary<string, DrawingEntity> replacements,
+        IEnumerable<DrawingEntity> additions)
+    {
+        var nextDocument = ReplaceEntities(document, replacements, additions);
+        var dimensions = RefreshDimensionsForReplacedEntities(nextDocument, replacements.Keys);
+        return new DrawingDocument(
+            nextDocument.Entities,
+            dimensions,
+            nextDocument.Constraints,
+            nextDocument.Metadata);
+    }
+
+    private static IReadOnlyList<SketchDimension> RefreshDimensionsForReplacedEntities(
+        DrawingDocument document,
+        IEnumerable<string> replacedEntityIds)
+    {
+        var replacedIds = replacedEntityIds.ToHashSet(StringComparer.Ordinal);
+        if (replacedIds.Count == 0)
+        {
+            return document.Dimensions;
+        }
+
+        var dimensions = new List<SketchDimension>(document.Dimensions.Count);
+        foreach (var dimension in document.Dimensions)
+        {
+            if (!ReferenceKeysContainAnyEntity(dimension.ReferenceKeys, replacedIds))
+            {
+                dimensions.Add(dimension);
+                continue;
+            }
+
+            if (!TryRefreshDimensionReferenceKeys(
+                    document.Entities,
+                    dimension.ReferenceKeys,
+                    replacedIds,
+                    out var referenceKeys))
+            {
+                continue;
+            }
+
+            var refreshedDimension = new SketchDimension(
+                dimension.Id,
+                dimension.Kind,
+                referenceKeys,
+                dimension.Value,
+                dimension.Anchor,
+                dimension.IsDriving);
+            if (!SketchDimensionSolverService.TryGetDimensionMeasurement(document, refreshedDimension, out var measuredValue)
+                || !IsUsableDimensionMeasurement(dimension.Kind, measuredValue))
+            {
+                continue;
+            }
+
+            dimensions.Add(new SketchDimension(
+                dimension.Id,
+                dimension.Kind,
+                referenceKeys,
+                measuredValue,
+                dimension.Anchor,
+                dimension.IsDriving));
+        }
+
+        return dimensions;
+    }
+
+    private static bool TryRefreshDimensionReferenceKeys(
+        IReadOnlyList<DrawingEntity> entities,
+        IEnumerable<string> referenceKeys,
+        IReadOnlySet<string> replacedEntityIds,
+        out IReadOnlyList<string> refreshedKeys)
+    {
+        var keys = new List<string>();
+        foreach (var referenceKey in referenceKeys)
+        {
+            if (!SketchReference.TryParseCanvasPointCoordinates(referenceKey, out var entityId, out var label, out _)
+                || !replacedEntityIds.Contains(entityId))
+            {
+                keys.Add(referenceKey);
+                continue;
+            }
+
+            if (!TryGetCanvasPointReferencePoint(entities, entityId, label, out var point))
+            {
+                refreshedKeys = Array.Empty<string>();
+                return false;
+            }
+
+            keys.Add(CreateCanvasPointReferenceKey(entityId, label, point));
+        }
+
+        refreshedKeys = keys;
+        return true;
+    }
+
+    private static bool TryGetCanvasPointReferencePoint(
+        IReadOnlyList<DrawingEntity> entities,
+        string entityId,
+        string label,
+        out Point2 point)
+    {
+        var entity = entities.FirstOrDefault(candidate => StringComparer.Ordinal.Equals(candidate.Id.Value, entityId));
+        if (entity is null)
+        {
+            point = default;
+            return false;
+        }
+
+        return TryGetCanvasPointReferencePoint(entity, label, out point);
+    }
+
+    private static bool TryGetCanvasPointReferencePoint(DrawingEntity entity, string label, out Point2 point)
+    {
+        var normalizedLabel = label.Trim().ToLowerInvariant();
+        switch (entity)
+        {
+            case LineEntity line:
+                return TryGetLineCanvasPoint(line, normalizedLabel, out point);
+            case PolylineEntity polyline:
+                return TryGetPathCanvasPoint(polyline.Vertices, normalizedLabel, closed: false, out point);
+            case PolygonEntity polygon:
+                if (StringComparer.Ordinal.Equals(normalizedLabel, "center"))
+                {
+                    point = polygon.Center;
+                    return true;
+                }
+
+                return TryGetPathCanvasPoint(polygon.GetVertices(), normalizedLabel, closed: true, out point);
+            case CircleEntity circle:
+                return TryGetCircleCanvasPoint(circle.Center, circle.Radius, normalizedLabel, out point);
+            case ArcEntity arc:
+                return TryGetArcCanvasPoint(arc, normalizedLabel, out point);
+            case EllipseEntity ellipse:
+                return TryGetEllipseCanvasPoint(ellipse, normalizedLabel, out point);
+            case SplineEntity spline:
+                return TryGetSplineCanvasPoint(spline, normalizedLabel, out point);
+            case PointEntity pointEntity:
+                if (StringComparer.Ordinal.Equals(normalizedLabel, "point")
+                    || StringComparer.Ordinal.Equals(normalizedLabel, "center")
+                    || StringComparer.Ordinal.Equals(normalizedLabel, "entity"))
+                {
+                    point = pointEntity.Location;
+                    return true;
+                }
+
+                point = default;
+                return false;
+            default:
+                point = default;
+                return false;
+        }
+    }
+
+    private static bool TryGetLineCanvasPoint(LineEntity line, string label, out Point2 point)
+    {
+        if (StringComparer.Ordinal.Equals(label, "start"))
+        {
+            point = line.Start;
+            return true;
+        }
+
+        if (StringComparer.Ordinal.Equals(label, "end"))
+        {
+            point = line.End;
+            return true;
+        }
+
+        if (StringComparer.Ordinal.Equals(label, "mid") || StringComparer.Ordinal.Equals(label, "center"))
+        {
+            point = Midpoint(line.Start, line.End);
+            return true;
+        }
+
+        point = default;
+        return false;
+    }
+
+    private static bool TryGetPathCanvasPoint(
+        IReadOnlyList<Point2> points,
+        string label,
+        bool closed,
+        out Point2 point)
+    {
+        if (TryParseIndexedLabel(label, "vertex-", out var vertexIndex)
+            && vertexIndex >= 0
+            && vertexIndex < points.Count)
+        {
+            point = points[vertexIndex];
+            return true;
+        }
+
+        var segmentCount = closed ? points.Count : Math.Max(0, points.Count - 1);
+        if (TryParseIndexedLabel(label, "mid-", out var midIndex)
+            && midIndex >= 0
+            && midIndex < segmentCount)
+        {
+            point = Midpoint(points[midIndex], points[(midIndex + 1) % points.Count]);
+            return true;
+        }
+
+        point = default;
+        return false;
+    }
+
+    private static bool TryGetCircleCanvasPoint(Point2 center, double radius, string label, out Point2 point)
+    {
+        if (StringComparer.Ordinal.Equals(label, "center"))
+        {
+            point = center;
+            return true;
+        }
+
+        if (TryParseIndexedLabel(label, "quadrant-", out var quadrantDegrees))
+        {
+            point = PointOnCircle(center, radius, quadrantDegrees);
+            return true;
+        }
+
+        point = default;
+        return false;
+    }
+
+    private static bool TryGetArcCanvasPoint(ArcEntity arc, string label, out Point2 point)
+    {
+        if (StringComparer.Ordinal.Equals(label, "center"))
+        {
+            point = arc.Center;
+            return true;
+        }
+
+        if (StringComparer.Ordinal.Equals(label, "start"))
+        {
+            point = PointOnCircle(arc.Center, arc.Radius, arc.StartAngleDegrees);
+            return true;
+        }
+
+        if (StringComparer.Ordinal.Equals(label, "end"))
+        {
+            point = PointOnCircle(arc.Center, arc.Radius, arc.EndAngleDegrees);
+            return true;
+        }
+
+        if (TryParseIndexedLabel(label, "quadrant-", out var quadrantDegrees)
+            && GetCounterClockwiseDeltaDegrees(arc.StartAngleDegrees, quadrantDegrees)
+                <= GetPositiveSweepDegrees(arc.StartAngleDegrees, arc.EndAngleDegrees) + GeometryTolerance)
+        {
+            point = PointOnCircle(arc.Center, arc.Radius, quadrantDegrees);
+            return true;
+        }
+
+        point = default;
+        return false;
+    }
+
+    private static bool TryGetEllipseCanvasPoint(EllipseEntity ellipse, string label, out Point2 point)
+    {
+        if (StringComparer.Ordinal.Equals(label, "center"))
+        {
+            point = ellipse.Center;
+            return true;
+        }
+
+        var majorEnd = Add(ellipse.Center, ellipse.MajorAxisEndPoint);
+        var majorStart = new Point2(
+            ellipse.Center.X - ellipse.MajorAxisEndPoint.X,
+            ellipse.Center.Y - ellipse.MajorAxisEndPoint.Y);
+        if (StringComparer.Ordinal.Equals(label, "major-start"))
+        {
+            point = majorStart;
+            return true;
+        }
+
+        if (StringComparer.Ordinal.Equals(label, "major-end"))
+        {
+            point = majorEnd;
+            return true;
+        }
+
+        var majorLength = Distance(ellipse.Center, majorEnd);
+        if (majorLength <= GeometryTolerance)
+        {
+            point = default;
+            return false;
+        }
+
+        var minorLength = majorLength * ellipse.MinorRadiusRatio;
+        var minorUnit = new Point2(
+            -ellipse.MajorAxisEndPoint.Y / majorLength,
+            ellipse.MajorAxisEndPoint.X / majorLength);
+        if (StringComparer.Ordinal.Equals(label, "minor-start"))
+        {
+            point = new Point2(
+                ellipse.Center.X - (minorUnit.X * minorLength),
+                ellipse.Center.Y - (minorUnit.Y * minorLength));
+            return true;
+        }
+
+        if (StringComparer.Ordinal.Equals(label, "minor-end"))
+        {
+            point = new Point2(
+                ellipse.Center.X + (minorUnit.X * minorLength),
+                ellipse.Center.Y + (minorUnit.Y * minorLength));
+            return true;
+        }
+
+        point = default;
+        return false;
+    }
+
+    private static bool TryGetSplineCanvasPoint(SplineEntity spline, string label, out Point2 point)
+    {
+        if (TryParseIndexedLabel(label, "fit-", out var fitIndex)
+            && fitIndex >= 0
+            && fitIndex < spline.FitPoints.Count)
+        {
+            point = spline.FitPoints[fitIndex];
+            return true;
+        }
+
+        if (TryParseIndexedLabel(label, "control-", out var controlIndex)
+            && controlIndex >= 0
+            && controlIndex < spline.ControlPoints.Count)
+        {
+            point = spline.ControlPoints[controlIndex];
+            return true;
+        }
+
+        var samples = spline.GetSamplePoints();
+        if (StringComparer.Ordinal.Equals(label, "start") && samples.Count > 0)
+        {
+            point = samples[0];
+            return true;
+        }
+
+        if (StringComparer.Ordinal.Equals(label, "end") && samples.Count > 0)
+        {
+            point = samples[^1];
+            return true;
+        }
+
+        if (StringComparer.Ordinal.Equals(label, "mid") && samples.Count > 0)
+        {
+            point = samples[samples.Count / 2];
+            return true;
+        }
+
+        point = default;
+        return false;
+    }
+
+    private static bool TryParseIndexedLabel(string label, string prefix, out int index)
+    {
+        index = default;
+        return label.StartsWith(prefix, StringComparison.Ordinal)
+            && int.TryParse(label[prefix.Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out index);
+    }
+
+    private static bool IsUsableDimensionMeasurement(SketchDimensionKind kind, double value)
+    {
+        if (!double.IsFinite(value))
+        {
+            return false;
+        }
+
+        return kind == SketchDimensionKind.Count
+            ? value >= PolygonEntity.MinSideCount
+            : Math.Abs(value) > GeometryTolerance;
+    }
+
+    private static string CreateCanvasPointReferenceKey(string entityId, string label, Point2 point) =>
+        string.Create(
+            CultureInfo.InvariantCulture,
+            $"{entityId}|point|{label}|{CleanCoordinate(point.X)}|{CleanCoordinate(point.Y)}");
+
+    private static double CleanCoordinate(double value) =>
+        Math.Abs(value) <= GeometryTolerance ? 0.0 : value;
+
     private static DrawingDocument ReplaceEntityWithAdditionsRemovingReferences(
         DrawingDocument document,
         string removedEntityId,
@@ -1579,6 +1968,62 @@ public static class DrawingModifyService
         return constraints;
     }
 
+    private static IReadOnlyList<LineEntity> GetWholePolygonSideLines(
+        IReadOnlyList<Point2> polygonVertices,
+        IEnumerable<LineEntity> lines)
+    {
+        if (polygonVertices.Count < 3)
+        {
+            return Array.Empty<LineEntity>();
+        }
+
+        return lines
+            .Where(line => IsWholePolygonSide(line, polygonVertices))
+            .ToArray();
+    }
+
+    private static bool IsWholePolygonSide(LineEntity line, IReadOnlyList<Point2> polygonVertices)
+    {
+        for (var index = 0; index < polygonVertices.Count; index++)
+        {
+            var start = polygonVertices[index];
+            var end = polygonVertices[(index + 1) % polygonVertices.Count];
+            if ((PointsCoincide(line.Start, start) && PointsCoincide(line.End, end))
+                || (PointsCoincide(line.Start, end) && PointsCoincide(line.End, start)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IReadOnlyList<SketchConstraint> CreateEqualConstraintsForWholePolygonSides(
+        IReadOnlyList<LineEntity> wholeSideLines)
+    {
+        if (wholeSideLines.Count < 2)
+        {
+            return Array.Empty<SketchConstraint>();
+        }
+
+        var constraints = new List<SketchConstraint>(wholeSideLines.Count - 1);
+        for (var index = 1; index < wholeSideLines.Count; index++)
+        {
+            var previous = wholeSideLines[index - 1];
+            var current = wholeSideLines[index];
+            constraints.Add(new SketchConstraint(
+                $"equal-{previous.Id.Value}-{current.Id.Value}",
+                SketchConstraintKind.Equal,
+                new[] { previous.Id.Value, current.Id.Value },
+                SketchConstraintState.Satisfied));
+        }
+
+        return constraints;
+    }
+
+    private static bool PointsCoincide(Point2 first, Point2 second) =>
+        Distance(first, second) <= GeometryTolerance;
+
     private static bool ReplaceTargetLine(
         DrawingDocument document,
         LineEntity target,
@@ -1591,7 +2036,7 @@ public static class DrawingModifyService
             return false;
         }
 
-        nextDocument = ReplaceEntities(
+        nextDocument = ReplaceTrimmedEntities(
             document,
             new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
             {
@@ -5229,7 +5674,7 @@ public static class DrawingModifyService
             return false;
         }
 
-        nextDocument = ReplaceEntities(
+        nextDocument = ReplaceTrimmedEntities(
             document,
             new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
             {
@@ -5254,7 +5699,7 @@ public static class DrawingModifyService
             return false;
         }
 
-        nextDocument = ReplaceEntities(
+        nextDocument = ReplaceTrimmedEntities(
             document,
             new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
             {
@@ -5401,14 +5846,42 @@ public static class DrawingModifyService
     {
         foreach (var referenceKey in referenceKeys)
         {
-            if (SketchReference.TryParse(referenceKey, out var reference)
-                && StringComparer.Ordinal.Equals(reference.EntityId, entityId))
+            if (StringComparer.Ordinal.Equals(GetReferenceEntityId(referenceKey), entityId))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    private static bool ReferenceKeysContainAnyEntity(
+        IEnumerable<string> referenceKeys,
+        IReadOnlySet<string> entityIds)
+    {
+        foreach (var referenceKey in referenceKeys)
+        {
+            var entityId = GetReferenceEntityId(referenceKey);
+            if (!string.IsNullOrEmpty(entityId)
+                && entityIds.Contains(entityId))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string GetReferenceEntityId(string referenceKey)
+    {
+        if (SketchReference.TryParseCanvasPointCoordinates(referenceKey, out var canvasEntityId, out _, out _))
+        {
+            return canvasEntityId;
+        }
+
+        return SketchReference.TryParse(referenceKey, out var reference)
+            ? reference.EntityId
+            : string.Empty;
     }
 
     private static Point2? Unit(Point2 point)
@@ -5418,4 +5891,7 @@ public static class DrawingModifyService
             ? null
             : new Point2(point.X / length, point.Y / length);
     }
+
+    private static Point2 Midpoint(Point2 first, Point2 second) =>
+        new((first.X + second.X) / 2.0, (first.Y + second.Y) / 2.0);
 }

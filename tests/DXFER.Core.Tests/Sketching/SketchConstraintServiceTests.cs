@@ -207,6 +207,44 @@ public sealed class SketchConstraintServiceTests
     }
 
     [Fact]
+    public void AppliesTangentLineAndCircleConstraint()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new Point2(-5, 0), new Point2(5, 0)),
+            new CircleEntity(EntityId.Create("circle"), new Point2(0, 3), 1)
+        });
+
+        var solved = SketchConstraintService.ApplyConstraint(
+            document,
+            Constraint("tangent", SketchConstraintKind.Tangent, "edge", "circle"));
+
+        solved.Entities[1].Should().BeOfType<CircleEntity>()
+            .Which.Center.Should().Be(new Point2(0, 1));
+        solved.Constraints.Should().ContainSingle()
+            .Which.State.Should().Be(SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void AppliesTangentCirclePairConstraint()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new CircleEntity(EntityId.Create("first"), new Point2(0, 0), 2),
+            new CircleEntity(EntityId.Create("second"), new Point2(8, 0), 3)
+        });
+
+        var solved = SketchConstraintService.ApplyConstraint(
+            document,
+            Constraint("tangent", SketchConstraintKind.Tangent, "first", "second"));
+
+        solved.Entities[1].Should().BeOfType<CircleEntity>()
+            .Which.Center.Should().Be(new Point2(5, 0));
+        solved.Constraints.Should().ContainSingle()
+            .Which.State.Should().Be(SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
     public void AppliesConcentricCircleAndArcConstraint()
     {
         var document = new DrawingDocument(new DrawingEntity[]

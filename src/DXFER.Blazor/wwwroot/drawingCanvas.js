@@ -742,11 +742,31 @@ function drawEntity(state, entity, style) {
     return;
   }
 
+  if (getEntityKind(entity) === "polygon") {
+    drawPolygonControlCircle(state, entity, style);
+  }
+
   const hasPath = buildEntityPath(state, entity);
   if (hasPath) {
     context.stroke();
   }
 
+  context.restore();
+}
+
+function drawPolygonControlCircle(state, entity, style) {
+  const points = getPolygonControlCircleWorldPoints(entity);
+  if (points.length < 2) {
+    return;
+  }
+
+  const { context } = state;
+  context.save();
+  context.strokeStyle = style.strokeStyle;
+  context.globalAlpha = style.glow ? 0.82 : 0.46;
+  context.lineWidth = Math.max(1, (style.lineWidth || 1.5) * 0.8);
+  context.setLineDash([7, 5]);
+  drawWorldPolyline(state, points);
   context.restore();
 }
 
@@ -4981,7 +5001,8 @@ function handleSketchToolClick(state, screenPoint, event) {
     state.toolDraft = {
       points: [worldPoint],
       previewPoint: null,
-      dimensionValues: {}
+      dimensionValues: {},
+      startSnapTarget: getLineStartSnapTarget(tool, clickTarget, worldPoint)
     };
     setHoveredTarget(state, null);
     return;
@@ -5024,6 +5045,36 @@ function handleSketchToolClick(state, screenPoint, event) {
   }
 
   commitSketchToolPoints(state, tool, nextPoints);
+}
+
+function getLineStartSnapTarget(tool, target, worldPoint) {
+  if ((tool !== "line" && tool !== "midpointline")
+    || !target
+    || target.dynamic
+    || !target.entity
+    || !worldPoint) {
+    return null;
+  }
+
+  const kind = getEntityKind(target.entity);
+  if (kind !== "line" && kind !== "polyline" && kind !== "polygon" && kind !== "circle" && kind !== "arc") {
+    return null;
+  }
+
+  const snapPoint = getTargetWorldSnapPoint(target);
+  if (!snapPoint || distanceBetweenWorldPoints(worldPoint, snapPoint) > WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  return {
+    kind: target.kind,
+    key: target.key,
+    entityId: target.entityId,
+    entity: target.entity,
+    label: target.label,
+    segmentIndex: target.segmentIndex,
+    snapPoint: copyPoint(snapPoint)
+  };
 }
 
 function handleModifyToolClick(state, screenPoint, event) {
@@ -6065,6 +6116,7 @@ export function getDynamicSketchSnapHit(state, screenPoint, highlightedTarget = 
   const candidates = [];
   addAcquiredProjectionSnapCandidates(candidates, state, worldPoint);
   addHighlightedGeometryOrthoSnapCandidates(candidates, state, highlightedTarget);
+  addLineStartGeometrySnapCandidate(candidates, state, tool, worldPoint);
   addDynamicTangentSnapCandidates(candidates, state, tool, highlightedTarget, worldPoint);
 
   const hits = [];
@@ -6210,6 +6262,106 @@ function touchAcquiredSnapPoint(acquired) {
   if (acquired) {
     acquired.acquiredAt = getInteractionTimestamp();
   }
+}
+
+function addLineStartGeometrySnapCandidate(candidates, state, tool, worldPoint) {
+  if ((tool !== "line" && tool !== "midpointline")
+    || !state.toolDraft
+    || !Array.isArray(state.toolDraft.points)
+    || state.toolDraft.points.length !== 1
+    || !worldPoint) {
+    return;
+  }
+
+  const anchor = state.toolDraft.points[0];
+  const startTarget = state.toolDraft.startSnapTarget;
+  if (!anchor
+    || !startTarget
+    || !startTarget.entity
+    || !startTarget.snapPoint
+    || !sameOptionalWorldPoint(anchor, startTarget.snapPoint)) {
+    return;
+  }
+
+  const startSnap = getLineStartGeometrySnap(startTarget, anchor);
+  if (!startSnap) {
+    return;
+  }
+
+  const along = dotPoints(subtractPoints(worldPoint, anchor), startSnap.direction);
+  if (Math.abs(along) <= WORLD_GEOMETRY_TOLERANCE) {
+    return;
+  }
+
+  const point = {
+    x: anchor.x + startSnap.direction.x * along,
+    y: anchor.y + startSnap.direction.y * along
+  };
+  const entityId = startTarget.entityId || getEntityId(startTarget.entity) || "entity";
+  candidates.push({
+    label: `${startSnap.kind}-${entityId}`,
+    point,
+    guides: [{ orientation: "segment", start: anchor, point }],
+    priority: 9
+  });
+}
+
+function getLineStartGeometrySnap(startTarget, anchor) {
+  const entity = startTarget && startTarget.entity;
+  const kind = getEntityKind(entity);
+  if (kind === "line" || kind === "polyline" || kind === "polygon") {
+    const segment = getClosestLinearSegmentAtPoint(entity, anchor, startTarget.segmentIndex);
+    if (!segment) {
+      return null;
+    }
+
+    const segmentDirection = normalizeWorldVector(subtractPoints(segment.end, segment.start));
+    return segmentDirection
+      ? {
+        kind: "perpendicular",
+        direction: { x: -segmentDirection.y, y: segmentDirection.x }
+      }
+      : null;
+  }
+
+  if (kind === "circle" || kind === "arc") {
+    const center = getEntityCenter(entity);
+    const direction = center ? normalizeWorldVector(subtractPoints(anchor, center)) : null;
+    return direction
+      ? {
+        kind: "normal",
+        direction
+      }
+      : null;
+  }
+
+  return null;
+}
+
+function getClosestLinearSegmentAtPoint(entity, point, preferredSegmentIndex = null) {
+  const segments = getLinearSegments(entity);
+  if (segments.length === 0 || !point) {
+    return null;
+  }
+
+  if (Number.isInteger(preferredSegmentIndex)) {
+    const preferred = segments.find(segment => segment.segmentIndex === preferredSegmentIndex);
+    if (preferred) {
+      return preferred;
+    }
+  }
+
+  let closest = null;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (const segment of segments) {
+    const projection = closestPointOnWorldSegment(point, segment.start, segment.end);
+    if (projection.distance < closestDistance) {
+      closest = segment;
+      closestDistance = projection.distance;
+    }
+  }
+
+  return closestDistance <= WORLD_GEOMETRY_TOLERANCE ? closest : null;
 }
 
 function addDynamicTangentSnapCandidates(candidates, state, tool, highlightedTarget = null, worldPoint = null) {
@@ -7865,6 +8017,42 @@ function resolveCurrentPointTargetPoint(entity, label, fallbackPoint) {
     }
   }
 
+  if (kind === "ellipse") {
+    const ellipse = getEllipseFromEntity(entity);
+    if (!ellipse) {
+      return fallbackPoint;
+    }
+
+    if (normalizedLabel === "center") {
+      return ellipse.center;
+    }
+
+    const majorAxis = getEllipseAxisDiameterPoints(ellipse, "major");
+    if (majorAxis
+      && (normalizedLabel === "start"
+        || normalizedLabel === "end"
+        || normalizedLabel === "major-end"
+        || normalizedLabel === "quadrant-0")) {
+      return majorAxis.end;
+    }
+
+    if (majorAxis
+      && (normalizedLabel === "major-start" || normalizedLabel === "quadrant-180")) {
+      return majorAxis.start;
+    }
+
+    const minorAxis = getEllipseAxisDiameterPoints(ellipse, "minor");
+    if (minorAxis
+      && (normalizedLabel === "minor-end" || normalizedLabel === "quadrant-90")) {
+      return minorAxis.end;
+    }
+
+    if (minorAxis
+      && (normalizedLabel === "minor-start" || normalizedLabel === "quadrant-270")) {
+      return minorAxis.start;
+    }
+  }
+
   return fallbackPoint;
 }
 
@@ -7930,7 +8118,7 @@ export function applyGeometryDragPreview(document, selectionKey, dragStart, drag
     translatePreviewDimensionAnchorsForDrag(previewDocument, selectionKey, delta);
   }
 
-  propagatePreviewCoincidentConstraints(document, previewDocument);
+  propagatePreviewConstraints(document, previewDocument);
   previewDocument.bounds = computeEntityBounds(getDocumentEntities(previewDocument));
   return previewDocument;
 }
@@ -7947,8 +8135,7 @@ function applyDimensionAwareGeometryDragPreviewMutation(
     return false;
   }
 
-  const affectedEntityIds = new Set([getReferenceEntityId(selectionKey)].filter(id => id));
-  if (previewDrivingDimensionsRemainSatisfiedForEntity(editCandidate, affectedEntityIds)) {
+  if (previewDrivingDimensionsRemainSatisfied(editCandidate)) {
     copyPreviewDocumentGeometry(previewDocument, editCandidate);
     return true;
   }
@@ -7967,12 +8154,191 @@ function applyDimensionAwareGeometryDragPreviewMutation(
     translationCandidate,
     new Set([translatedEntityId]),
     delta);
-  if (!previewDrivingDimensionsRemainSatisfiedForEntity(translationCandidate, new Set([translatedEntityId]))) {
-    return false;
+  if (!previewDrivingDimensionsRemainSatisfied(translationCandidate)) {
+    const projectedCandidate = getDimensionPreservingPreviewTranslationCandidate(
+      originalDocument,
+      translatedEntityId,
+      delta);
+    if (!projectedCandidate) {
+      return false;
+    }
+
+    copyPreviewDocumentGeometry(previewDocument, projectedCandidate);
+    return true;
   }
 
   copyPreviewDocumentGeometry(previewDocument, translationCandidate);
   return true;
+}
+
+function getDimensionPreservingPreviewTranslationCandidate(originalDocument, entityId, delta) {
+  for (const dimension of getDocumentDimensions(originalDocument)) {
+    if (!isDrivingPreviewDimension(dimension)
+      || String(readProperty(dimension, "kind", "Kind") || "").toLowerCase() !== "pointtolinedistance"
+      || !dimensionReferencesPreviewEntity(dimension, entityId)) {
+      continue;
+    }
+
+    const projectedDelta = getPointToLineFreePreviewTranslationDelta(originalDocument, dimension, entityId, delta);
+    if (!projectedDelta || Math.hypot(projectedDelta.x, projectedDelta.y) <= WORLD_GEOMETRY_TOLERANCE) {
+      continue;
+    }
+
+    const candidate = cloneCanvasDocument(originalDocument);
+    if (!translatePreviewEntityById(candidate, entityId, projectedDelta)) {
+      continue;
+    }
+
+    translatePreviewDimensionAnchorsForReferencedEntity(candidate, entityId, projectedDelta);
+    if (!previewDrivingDimensionsRemainSatisfied(candidate)) {
+      continue;
+    }
+
+    return candidate;
+  }
+
+  return null;
+}
+
+function getPointToLineFreePreviewTranslationDelta(document, dimension, entityId, delta) {
+  const referenceKeys = getSketchReferenceKeys(dimension);
+  if (referenceKeys.length < 2
+    || !referenceKeys.some(key => StringComparer(getReferenceEntityId(key), entityId))) {
+    return null;
+  }
+
+  const state = { document };
+  const firstLine = resolveSketchLineReference(state, referenceKeys[0]);
+  const secondLine = resolveSketchLineReference(state, referenceKeys[1]);
+  if (!firstLine || !secondLine || !areWorldLinesParallel(firstLine, secondLine)) {
+    return null;
+  }
+
+  const selectedLine = StringComparer(getReferenceEntityId(referenceKeys[0]), entityId)
+    ? firstLine
+    : secondLine;
+  return projectWorldDeltaOntoLine(delta, selectedLine.start, selectedLine.end);
+}
+
+function isDrivingPreviewDimension(dimension) {
+  const isDriving = readProperty(dimension, "isDriving", "IsDriving");
+  return !(isDriving === false || String(isDriving).toLowerCase() === "false");
+}
+
+function dimensionReferencesPreviewEntity(dimension, entityId) {
+  return getSketchReferenceKeys(dimension)
+    .some(key => StringComparer(getReferenceEntityId(key), entityId));
+}
+
+function translatePreviewDimensionAnchorsForReferencedEntity(document, entityId, delta) {
+  let changed = false;
+  document.dimensions = getDocumentDimensions(document).map(dimension => {
+    const anchor = readPoint(readProperty(dimension, "anchor", "Anchor"));
+    if (!anchor || !dimensionReferencesPreviewEntity(dimension, entityId)) {
+      return dimension;
+    }
+
+    changed = true;
+    const nextAnchor = addWorldPoints(anchor, delta);
+    return {
+      ...dimension,
+      anchor: nextAnchor,
+      Anchor: nextAnchor
+    };
+  });
+
+  document.Dimensions = document.dimensions;
+  return changed;
+}
+
+function previewDrivingDimensionsRemainSatisfied(document) {
+  const state = { document };
+  return getDocumentDimensions(document).every(dimension => {
+    if (!isDrivingPreviewDimension(dimension)) {
+      return true;
+    }
+
+    const referenceKeys = getSketchReferenceKeys(dimension);
+    const expected = Number(readProperty(dimension, "value", "Value"));
+    if (!Number.isFinite(expected)) {
+      return true;
+    }
+
+    const measured = getPreviewDimensionMeasuredValue(state, dimension, referenceKeys);
+    return measured === null
+      ? true
+      : Math.abs(Math.abs(measured) - Math.abs(expected)) <= WORLD_GEOMETRY_TOLERANCE;
+  });
+}
+
+/*
+ * Keep this legacy helper for callers that intentionally scope checks to one
+ * entity group, such as rectangle decomposition. Generic drag uses the full
+ * dimension set above so mixed-entity dimensions can block partial movement.
+ */
+function previewDrivingDimensionsRemainSatisfiedForEntity(document, entityIds) {
+  const state = { document };
+  return getDocumentDimensions(document).every(dimension => {
+    if (!isDrivingPreviewDimension(dimension)) {
+      return true;
+    }
+
+    const referenceKeys = getSketchReferenceKeys(dimension);
+    if (referenceKeys.length === 0
+      || !referenceKeys.every(key => entityIds.has(getReferenceEntityId(key)))) {
+      return true;
+    }
+
+    const expected = Number(readProperty(dimension, "value", "Value"));
+    if (!Number.isFinite(expected)) {
+      return true;
+    }
+
+    const measured = getPreviewDimensionMeasuredValue(state, dimension, referenceKeys);
+    return measured === null
+      ? true
+      : Math.abs(Math.abs(measured) - Math.abs(expected)) <= WORLD_GEOMETRY_TOLERANCE;
+  });
+}
+
+function getPreviewDimensionMeasuredValue(state, dimension, referenceKeys = getSketchReferenceKeys(dimension)) {
+  const dimensionKind = String(readProperty(dimension, "kind", "Kind") || "").toLowerCase();
+  if (dimensionKind === "count") {
+    const entity = findDocumentEntity(state, getReferenceEntityId(referenceKeys[0]));
+    const sideCount = Number(readProperty(entity, "sideCount", "SideCount"));
+    return Number.isFinite(sideCount) ? Math.round(sideCount) : null;
+  }
+
+  if (dimensionKind === "angle" && referenceKeys.length === 1) {
+    const arcAngle = resolveSketchArcAngleReference(state, referenceKeys[0]);
+    return arcAngle
+      ? getPositiveSweepDegrees(arcAngle.startAngleDegrees, arcAngle.endAngleDegrees)
+      : null;
+  }
+
+  if (dimensionKind === "radius" || dimensionKind === "diameter") {
+    const circleLike = resolveSketchCircleLikeReference(state, referenceKeys[0]);
+    if (!circleLike) {
+      return null;
+    }
+
+    return dimensionKind === "diameter"
+      ? circleLike.radius * 2
+      : circleLike.radius;
+  }
+
+  const model = getDimensionModelFromReferences(
+    state,
+    referenceKeys,
+    Boolean(readProperty(dimension, "radialDiameter", "RadialDiameter")));
+  return model ? model.value : null;
+}
+
+function copyPreviewDocumentGeometry(target, source) {
+  target.entities = source.entities;
+  target.Entities = source.entities;
+  target.dimensions = source.dimensions;
+  target.Dimensions = source.dimensions;
 }
 
 function applyDimensionedRectanglePreviewTranslation(document, selectionKey, delta) {
@@ -8524,74 +8890,6 @@ function countDrivingPreviewDimensionsForEntityGroup(dimensions, entityIds) {
   }).length;
 }
 
-function previewDrivingDimensionsRemainSatisfied(document) {
-  const state = { document };
-  return getDocumentDimensions(document).every(dimension => {
-    const isDriving = readProperty(dimension, "isDriving", "IsDriving");
-    if (isDriving === false || String(isDriving).toLowerCase() === "false") {
-      return true;
-    }
-
-    const expected = Number(readProperty(dimension, "value", "Value"));
-    if (!Number.isFinite(expected)) {
-      return true;
-    }
-
-    const model = getDimensionModelFromReferences(
-      state,
-      getSketchReferenceKeys(dimension),
-      Boolean(readProperty(dimension, "radialDiameter", "RadialDiameter")));
-    return model
-      ? Math.abs(Math.abs(model.value) - Math.abs(expected)) <= WORLD_GEOMETRY_TOLERANCE
-      : false;
-  });
-}
-
-function previewDrivingDimensionsRemainSatisfiedForEntity(document, entityIds) {
-  const state = { document };
-  return getDocumentDimensions(document).every(dimension => {
-    const isDriving = readProperty(dimension, "isDriving", "IsDriving");
-    if (isDriving === false || String(isDriving).toLowerCase() === "false") {
-      return true;
-    }
-
-    const referenceKeys = getSketchReferenceKeys(dimension);
-    if (referenceKeys.length === 0
-      || !referenceKeys.every(key => entityIds.has(getReferenceEntityId(key)))) {
-      return true;
-    }
-
-    const expected = Number(readProperty(dimension, "value", "Value"));
-    if (!Number.isFinite(expected)) {
-      return true;
-    }
-
-    const dimensionKind = String(readProperty(dimension, "kind", "Kind") || "").toLowerCase();
-    if (dimensionKind === "count") {
-      const entity = findCanvasDocumentEntity(document, getReferenceEntityId(referenceKeys[0]));
-      const sideCount = Number(readProperty(entity, "sideCount", "SideCount"));
-      return Number.isFinite(sideCount)
-        ? Math.round(sideCount) === Math.round(expected)
-        : true;
-    }
-
-    const model = getDimensionModelFromReferences(
-      state,
-      referenceKeys,
-      Boolean(readProperty(dimension, "radialDiameter", "RadialDiameter")));
-    return model
-      ? Math.abs(Math.abs(model.value) - Math.abs(expected)) <= WORLD_GEOMETRY_TOLERANCE
-      : true;
-  });
-}
-
-function copyPreviewDocumentGeometry(target, source) {
-  target.entities = source.entities;
-  target.Entities = source.entities;
-  target.dimensions = source.dimensions;
-  target.Dimensions = source.dimensions;
-}
-
 function getSketchConstraintKind(constraint) {
   const kind = readProperty(constraint, "kind", "Kind");
   return kind === null || kind === undefined ? "" : String(kind).toLowerCase();
@@ -8608,16 +8906,31 @@ function getTwoSketchReferenceEntityIds(item) {
   return firstEntityId && secondEntityId ? [firstEntityId, secondEntityId] : null;
 }
 
-function propagatePreviewCoincidentConstraints(originalDocument, previewDocument) {
+function propagatePreviewConstraints(originalDocument, previewDocument) {
   const constraints = getDocumentConstraints(previewDocument)
-    .filter(constraint => getSketchConstraintKind(constraint) === "coincident"
-      && getSketchItemState(constraint) !== "suppressed");
+    .filter(constraint => getSketchItemState(constraint) !== "suppressed");
   if (constraints.length === 0) {
     return;
   }
 
   const fixedReferences = getPreviewFixedReferenceKeys(previewDocument);
-  const queue = getChangedPreviewPointReferences(originalDocument, previewDocument);
+  let previousDocument = originalDocument;
+  const guardLimit = Math.max(128, constraints.length * 32);
+  for (let guard = 0; guard < guardLimit; guard += 1) {
+    const beforeIteration = cloneCanvasDocument(previewDocument);
+    let changed = propagatePreviewPointConstraints(previousDocument, previewDocument, constraints, fixedReferences);
+    changed = propagatePreviewDrivenConstraints(originalDocument, previewDocument, constraints, fixedReferences) || changed;
+    if (!changed) {
+      return;
+    }
+
+    previousDocument = beforeIteration;
+  }
+}
+
+function propagatePreviewPointConstraints(previousDocument, previewDocument, constraints, fixedReferences) {
+  let changed = false;
+  const queue = getChangedPreviewPointReferences(previousDocument, previewDocument);
   const queued = new Set(queue.map(sketchReferenceToKey));
   const guardLimit = Math.max(128, constraints.length * 32);
   let guard = 0;
@@ -8630,37 +8943,428 @@ function propagatePreviewCoincidentConstraints(originalDocument, previewDocument
     }
 
     for (const constraint of constraints) {
-      const pair = getTwoPreviewPointReferences(constraint);
-      if (!pair) {
-        continue;
-      }
-
-      const changedKey = sketchReferenceToKey(changedReference);
-      const firstKey = sketchReferenceToKey(pair.first);
-      const secondKey = sketchReferenceToKey(pair.second);
-      const otherReference = StringComparer(firstKey, changedKey)
-        ? pair.second
-        : StringComparer(secondKey, changedKey)
-          ? pair.first
-          : null;
-      if (!otherReference || fixedReferences.has(sketchReferenceToKey(otherReference))) {
-        continue;
-      }
-
-      const before = getPreviewReferencePoint(previewDocument, otherReference);
-      if (!before
-        || distanceBetweenWorldPoints(before, changedPoint) <= WORLD_GEOMETRY_TOLERANCE
-        || !setPreviewReferencePoint(previewDocument, otherReference, changedPoint)) {
-        continue;
-      }
-
-      const otherKey = sketchReferenceToKey(otherReference);
-      if (!queued.has(otherKey)) {
-        queued.add(otherKey);
-        queue.push(otherReference);
+      switch (getSketchConstraintKind(constraint)) {
+        case "coincident":
+          changed = propagatePreviewCoincidentConstraint(
+            previewDocument,
+            fixedReferences,
+            constraint,
+            changedReference,
+            changedPoint,
+            queue,
+            queued) || changed;
+          break;
+        case "horizontal":
+          changed = propagatePreviewAxisConstraint(
+            previewDocument,
+            fixedReferences,
+            constraint,
+            changedReference,
+            changedPoint,
+            true,
+            queue,
+            queued) || changed;
+          break;
+        case "vertical":
+          changed = propagatePreviewAxisConstraint(
+            previewDocument,
+            fixedReferences,
+            constraint,
+            changedReference,
+            changedPoint,
+            false,
+            queue,
+            queued) || changed;
+          break;
+        case "parallel":
+          changed = propagatePreviewLineRelationConstraint(
+            previewDocument,
+            fixedReferences,
+            constraints,
+            constraint,
+            changedReference,
+            false,
+            queue,
+            queued) || changed;
+          break;
+        case "perpendicular":
+          changed = propagatePreviewLineRelationConstraint(
+            previewDocument,
+            fixedReferences,
+            constraints,
+            constraint,
+            changedReference,
+            true,
+            queue,
+            queued) || changed;
+          break;
       }
     }
   }
+
+  return changed;
+}
+
+function propagatePreviewCoincidentConstraint(
+  document,
+  fixedReferences,
+  constraint,
+  changedReference,
+  changedPoint,
+  queue,
+  queued) {
+  const pair = getTwoPreviewPointReferences(constraint);
+  if (!pair) {
+    return false;
+  }
+
+  const changedKey = sketchReferenceToKey(changedReference);
+  const firstKey = sketchReferenceToKey(pair.first);
+  const secondKey = sketchReferenceToKey(pair.second);
+  const otherReference = StringComparer(firstKey, changedKey)
+    ? pair.second
+    : StringComparer(secondKey, changedKey)
+      ? pair.first
+      : null;
+  if (!otherReference || !canMovePreviewPoint(fixedReferences, otherReference)) {
+    return false;
+  }
+
+  return trySetAndQueuePreviewPoint(document, otherReference, changedPoint, queue, queued);
+}
+
+function propagatePreviewAxisConstraint(
+  document,
+  fixedReferences,
+  constraint,
+  changedReference,
+  changedPoint,
+  isHorizontal,
+  queue,
+  queued) {
+  const referenceKeys = getSketchReferenceKeys(constraint);
+  if (referenceKeys.length === 1) {
+    const lineReference = parseSketchReference(referenceKeys[0]);
+    const changedLineReference = getPreviewLineReferenceForPoint(changedReference);
+    if (!lineReference
+      || !changedLineReference
+      || !previewReferencesEqual(lineReference, changedLineReference)
+      || !getPreviewOppositeEndpointReference(lineReference, changedReference, outPreviewReference)) {
+      return false;
+    }
+
+    const otherReference = outPreviewReference.value;
+    const otherPoint = getPreviewReferencePoint(document, otherReference);
+    if (!otherPoint || !canMovePreviewPoint(fixedReferences, otherReference)) {
+      return false;
+    }
+
+    const aligned = isHorizontal
+      ? { x: otherPoint.x, y: changedPoint.y }
+      : { x: changedPoint.x, y: otherPoint.y };
+    return trySetAndQueuePreviewPoint(document, otherReference, aligned, queue, queued);
+  }
+
+  const pair = getTwoPreviewPointReferences(constraint);
+  if (!pair) {
+    return false;
+  }
+
+  const changedKey = sketchReferenceToKey(changedReference);
+  const otherReference = StringComparer(sketchReferenceToKey(pair.first), changedKey)
+    ? pair.second
+    : StringComparer(sketchReferenceToKey(pair.second), changedKey)
+      ? pair.first
+      : null;
+  const otherPoint = otherReference ? getPreviewReferencePoint(document, otherReference) : null;
+  if (!otherReference || !otherPoint || !canMovePreviewPoint(fixedReferences, otherReference)) {
+    return false;
+  }
+
+  const aligned = isHorizontal
+    ? { x: otherPoint.x, y: changedPoint.y }
+    : { x: changedPoint.x, y: otherPoint.y };
+  return trySetAndQueuePreviewPoint(document, otherReference, aligned, queue, queued);
+}
+
+const outPreviewReference = { value: null };
+
+function propagatePreviewLineRelationConstraint(
+  document,
+  fixedReferences,
+  constraints,
+  constraint,
+  changedReference,
+  perpendicular,
+  queue,
+  queued) {
+  const pair = getTwoPreviewLineReferences(document, constraint);
+  const changedLineReference = getPreviewLineReferenceForPoint(changedReference);
+  if (!pair || !changedLineReference) {
+    return false;
+  }
+
+  if (arePreviewLineAxesAlreadyConstrained(constraints, pair.firstReference, pair.secondReference, perpendicular)) {
+    return false;
+  }
+
+  if (previewReferencesEqual(changedLineReference, pair.firstReference)) {
+    return tryApplyPreviewLineRelationPreservingPoint(
+      document,
+      fixedReferences,
+      pair.firstReference,
+      pair.secondLine,
+      changedReference,
+      perpendicular,
+      queue,
+      queued);
+  }
+
+  if (previewReferencesEqual(changedLineReference, pair.secondReference)) {
+    return tryApplyPreviewLineRelationPreservingPoint(
+      document,
+      fixedReferences,
+      pair.secondReference,
+      pair.firstLine,
+      changedReference,
+      perpendicular,
+      queue,
+      queued);
+  }
+
+  return false;
+}
+
+function tryApplyPreviewLineRelationPreservingPoint(
+  document,
+  fixedReferences,
+  lineReference,
+  referenceLine,
+  changedReference,
+  perpendicular,
+  queue,
+  queued) {
+  if (!getPreviewOppositeEndpointReference(lineReference, changedReference, outPreviewReference)) {
+    return false;
+  }
+
+  const otherReference = outPreviewReference.value;
+  const changedPoint = getPreviewReferencePoint(document, changedReference);
+  const otherPoint = getPreviewReferencePoint(document, otherReference);
+  if (!changedPoint || !otherPoint || !canMovePreviewPoint(fixedReferences, otherReference)) {
+    return false;
+  }
+
+  const referenceAngle = getPreviewLineAngleDegrees(referenceLine);
+  const currentAngle = radiansToDegrees(Math.atan2(otherPoint.y - changedPoint.y, otherPoint.x - changedPoint.x));
+  const targetAngle = getClosestPreviewLineRelationAngle(referenceAngle, currentAngle, perpendicular);
+  const radians = degreesToRadians(targetAngle);
+  const unit = { x: Math.cos(radians), y: Math.sin(radians) };
+  const scalar = ((otherPoint.x - changedPoint.x) * unit.x) + ((otherPoint.y - changedPoint.y) * unit.y);
+  return trySetAndQueuePreviewPoint(
+    document,
+    otherReference,
+    {
+      x: changedPoint.x + unit.x * scalar,
+      y: changedPoint.y + unit.y * scalar
+    },
+    queue,
+    queued);
+}
+
+function trySetAndQueuePreviewPoint(document, reference, point, queue, queued) {
+  const before = getPreviewReferencePoint(document, reference);
+  if (!before
+    || distanceBetweenWorldPoints(before, point) <= WORLD_GEOMETRY_TOLERANCE
+    || !setPreviewReferencePoint(document, reference, point)) {
+    return false;
+  }
+
+  const key = sketchReferenceToKey(reference);
+  if (!queued.has(key)) {
+    queued.add(key);
+    queue.push(reference);
+  }
+
+  return true;
+}
+
+function propagatePreviewDrivenConstraints(originalDocument, previewDocument, constraints, fixedReferences) {
+  let changed = false;
+  for (const constraint of constraints) {
+    switch (getSketchConstraintKind(constraint)) {
+      case "equal":
+        changed = propagatePreviewEqualConstraint(originalDocument, previewDocument, fixedReferences, constraint) || changed;
+        break;
+      case "concentric":
+        changed = propagatePreviewConcentricConstraint(originalDocument, previewDocument, fixedReferences, constraint) || changed;
+        break;
+      case "midpoint":
+        changed = propagatePreviewMidpointConstraint(originalDocument, previewDocument, fixedReferences, constraint) || changed;
+        break;
+      case "tangent":
+        changed = propagatePreviewTangentConstraint(originalDocument, previewDocument, fixedReferences, constraint) || changed;
+        break;
+    }
+  }
+
+  return changed;
+}
+
+function propagatePreviewEqualConstraint(originalDocument, previewDocument, fixedReferences, constraint) {
+  const linePair = getTwoPreviewLineReferences(previewDocument, constraint);
+  if (linePair) {
+    const firstLength = getPreviewLineLength(linePair.firstLine);
+    const secondLength = getPreviewLineLength(linePair.secondLine);
+    const firstChanged = hasPreviewLineLengthChanged(originalDocument, previewDocument, linePair.firstReference);
+    const secondChanged = hasPreviewLineLengthChanged(originalDocument, previewDocument, linePair.secondReference);
+    if (firstChanged && !secondChanged) {
+      return tryApplyPreviewLineLength(previewDocument, fixedReferences, linePair.secondReference, firstLength);
+    }
+
+    if (secondChanged && !firstChanged) {
+      return tryApplyPreviewLineLength(previewDocument, fixedReferences, linePair.firstReference, secondLength);
+    }
+
+    return false;
+  }
+
+  const circlePair = getTwoPreviewCircleLikeReferences(previewDocument, constraint);
+  if (!circlePair) {
+    return false;
+  }
+
+  const firstChanged = hasPreviewCircleLikeRadiusChanged(originalDocument, previewDocument, circlePair.firstReference);
+  const secondChanged = hasPreviewCircleLikeRadiusChanged(originalDocument, previewDocument, circlePair.secondReference);
+  if (firstChanged && !secondChanged && canChangePreviewCircleLikeRadius(fixedReferences, circlePair.secondReference)) {
+    return trySetPreviewCircleLikeRadius(previewDocument, circlePair.secondReference, circlePair.first.radius);
+  }
+
+  if (secondChanged && !firstChanged && canChangePreviewCircleLikeRadius(fixedReferences, circlePair.firstReference)) {
+    return trySetPreviewCircleLikeRadius(previewDocument, circlePair.firstReference, circlePair.second.radius);
+  }
+
+  return false;
+}
+
+function propagatePreviewConcentricConstraint(originalDocument, previewDocument, fixedReferences, constraint) {
+  const pair = getTwoPreviewCircleLikeReferences(previewDocument, constraint);
+  if (!pair) {
+    return false;
+  }
+
+  const firstChanged = hasPreviewCircleLikeCenterChanged(originalDocument, previewDocument, pair.firstReference);
+  const secondChanged = hasPreviewCircleLikeCenterChanged(originalDocument, previewDocument, pair.secondReference);
+  if (firstChanged && !secondChanged && canMovePreviewCircleLikeCenter(fixedReferences, pair.secondReference)) {
+    return trySetPreviewCircleLikeCenter(previewDocument, pair.secondReference, pair.first.center);
+  }
+
+  if (secondChanged && !firstChanged && canMovePreviewCircleLikeCenter(fixedReferences, pair.firstReference)) {
+    return trySetPreviewCircleLikeCenter(previewDocument, pair.firstReference, pair.second.center);
+  }
+
+  return false;
+}
+
+function propagatePreviewMidpointConstraint(originalDocument, previewDocument, fixedReferences, constraint) {
+  const references = getPreviewPointAndLineReferences(previewDocument, constraint);
+  if (!references) {
+    return false;
+  }
+
+  const pointChanged = hasPreviewPointChanged(originalDocument, previewDocument, references.pointReference);
+  const lineChanged = hasPreviewLineGeometryChanged(originalDocument, previewDocument, references.lineReference);
+  if (lineChanged && !pointChanged && canMovePreviewPoint(fixedReferences, references.pointReference)) {
+    return trySetPreviewPoint(previewDocument, references.pointReference, midpoint(references.line.start, references.line.end));
+  }
+
+  if (pointChanged && !lineChanged && canMovePreviewWholeLine(fixedReferences, references.lineReference)) {
+    const currentMidpoint = midpoint(references.line.start, references.line.end);
+    return tryTranslatePreviewLineToMidpoint(previewDocument, references.lineReference, references.line, {
+      x: references.point.x - currentMidpoint.x,
+      y: references.point.y - currentMidpoint.y
+    });
+  }
+
+  return false;
+}
+
+function propagatePreviewTangentConstraint(originalDocument, previewDocument, fixedReferences, constraint) {
+  const lineCircle = getPreviewLineAndCircleLikeReferences(previewDocument, constraint);
+  if (lineCircle) {
+    const lineChanged = hasPreviewLineGeometryChanged(originalDocument, previewDocument, lineCircle.lineReference);
+    const circleChanged = hasPreviewCircleLikeGeometryChanged(originalDocument, previewDocument, lineCircle.circleReference);
+    if (circleChanged && !lineChanged) {
+      if (canMovePreviewWholeLine(fixedReferences, lineCircle.lineReference)
+        && tryMovePreviewLineTangentToCircle(
+          previewDocument,
+          lineCircle.lineReference,
+          lineCircle.line,
+          lineCircle.circle.center,
+          lineCircle.circle.radius)) {
+        return true;
+      }
+
+      if (canChangePreviewCircleLikeRadius(fixedReferences, lineCircle.circleReference)) {
+        return trySetPreviewCircleLikeRadius(
+          previewDocument,
+          lineCircle.circleReference,
+          distancePointToPreviewLine(lineCircle.circle.center, lineCircle.line));
+      }
+    }
+
+    if (lineChanged && !circleChanged) {
+      if (canMovePreviewCircleLikeCenter(fixedReferences, lineCircle.circleReference)
+        && tryMovePreviewCircleLikeCenterTangentToLine(
+          previewDocument,
+          lineCircle.circleReference,
+          lineCircle.circle.center,
+          lineCircle.circle.radius,
+          lineCircle.line)) {
+        return true;
+      }
+
+      if (canChangePreviewCircleLikeRadius(fixedReferences, lineCircle.circleReference)) {
+        return trySetPreviewCircleLikeRadius(
+          previewDocument,
+          lineCircle.circleReference,
+          distancePointToPreviewLine(lineCircle.circle.center, lineCircle.line));
+      }
+    }
+
+    return false;
+  }
+
+  const pair = getTwoPreviewCircleLikeReferences(previewDocument, constraint);
+  if (!pair) {
+    return false;
+  }
+
+  const firstChanged = hasPreviewCircleLikeGeometryChanged(originalDocument, previewDocument, pair.firstReference);
+  const secondChanged = hasPreviewCircleLikeGeometryChanged(originalDocument, previewDocument, pair.secondReference);
+  if (firstChanged && !secondChanged) {
+    return tryMoveOrResizePreviewCircleLikeForTangency(
+      previewDocument,
+      fixedReferences,
+      pair.secondReference,
+      pair.second.center,
+      pair.second.radius,
+      pair.first.center,
+      pair.first.radius);
+  }
+
+  if (secondChanged && !firstChanged) {
+    return tryMoveOrResizePreviewCircleLikeForTangency(
+      previewDocument,
+      fixedReferences,
+      pair.firstReference,
+      pair.first.center,
+      pair.first.radius,
+      pair.second.center,
+      pair.second.radius);
+  }
+
+  return false;
 }
 
 function getPreviewFixedReferenceKeys(document) {
@@ -8679,6 +9383,310 @@ function getPreviewFixedReferenceKeys(document) {
   }
 
   return fixedReferences;
+}
+
+function isPreviewReferenceFixed(fixedReferences, reference) {
+  if (fixedReferences.has(sketchReferenceToKey(reference))) {
+    return true;
+  }
+
+  if (reference.target !== "entity"
+    && Number.isInteger(reference.segmentIndex)
+    && fixedReferences.has(sketchReferenceToKey({ ...reference, target: "entity" }))) {
+    return true;
+  }
+
+  return reference.target !== "entity" && fixedReferences.has(reference.entityId);
+}
+
+function isPreviewWholeEntityFixed(fixedReferences, reference) {
+  return fixedReferences.has(reference.entityId)
+    || (Number.isInteger(reference.segmentIndex) && fixedReferences.has(sketchReferenceToKey(reference)));
+}
+
+function canMovePreviewPoint(fixedReferences, reference) {
+  return !isPreviewReferenceFixed(fixedReferences, reference);
+}
+
+function canMovePreviewWholeLine(fixedReferences, reference) {
+  return !isPreviewWholeEntityFixed(fixedReferences, reference)
+    && !isPreviewReferenceFixed(fixedReferences, { ...reference, target: "start" })
+    && !isPreviewReferenceFixed(fixedReferences, { ...reference, target: "end" });
+}
+
+function canChangePreviewLineEndpoint(fixedReferences, reference, endpoint) {
+  return !isPreviewWholeEntityFixed(fixedReferences, reference)
+    && !isPreviewReferenceFixed(fixedReferences, { ...reference, target: endpoint });
+}
+
+function canMovePreviewCircleLikeCenter(fixedReferences, reference) {
+  return !isPreviewWholeEntityFixed(fixedReferences, reference)
+    && !isPreviewReferenceFixed(fixedReferences, { ...reference, target: "center" });
+}
+
+function canChangePreviewCircleLikeRadius(fixedReferences, reference) {
+  return !isPreviewWholeEntityFixed(fixedReferences, reference);
+}
+
+function canMovePreviewPolylineVertex(fixedReferences, entityId, vertexIndex, vertexCount) {
+  const entityReference = { entityId, target: "entity" };
+  if (isPreviewWholeEntityFixed(fixedReferences, entityReference)) {
+    return false;
+  }
+
+  if (vertexIndex > 0
+    && !canChangePreviewLineEndpoint(
+      fixedReferences,
+      { entityId, segmentIndex: vertexIndex - 1, target: "entity" },
+      "end")) {
+    return false;
+  }
+
+  return vertexIndex >= vertexCount - 1
+    || canChangePreviewLineEndpoint(
+      fixedReferences,
+      { entityId, segmentIndex: vertexIndex, target: "entity" },
+      "start");
+}
+
+function getPreviewLineReferenceForPoint(reference) {
+  return reference && (reference.target === "start" || reference.target === "end")
+    ? { entityId: reference.entityId, segmentIndex: reference.segmentIndex, target: "entity" }
+    : null;
+}
+
+function getPreviewOppositeEndpointReference(lineReference, changedReference, outReference) {
+  if (!changedReference
+    || !previewReferencesEqual(getPreviewLineReferenceForPoint(changedReference), lineReference)
+    || (changedReference.target !== "start" && changedReference.target !== "end")) {
+    outReference.value = null;
+    return false;
+  }
+
+  outReference.value = {
+    entityId: lineReference.entityId,
+    segmentIndex: lineReference.segmentIndex,
+    target: changedReference.target === "start" ? "end" : "start"
+  };
+  return true;
+}
+
+function previewReferencesEqual(first, second) {
+  return Boolean(first && second && StringComparer(sketchReferenceToKey(first), sketchReferenceToKey(second)));
+}
+
+function arePreviewLineAxesAlreadyConstrained(constraints, firstReference, secondReference, perpendicular) {
+  const firstAxis = getPreviewAxisConstraintKind(constraints, firstReference);
+  const secondAxis = getPreviewAxisConstraintKind(constraints, secondReference);
+  if (!firstAxis || !secondAxis) {
+    return false;
+  }
+
+  return perpendicular
+    ? firstAxis !== secondAxis
+    : firstAxis === secondAxis;
+}
+
+function getPreviewAxisConstraintKind(constraints, lineReference) {
+  for (const constraint of constraints) {
+    const kind = getSketchConstraintKind(constraint);
+    const referenceKeys = getSketchReferenceKeys(constraint);
+    if ((kind !== "horizontal" && kind !== "vertical") || referenceKeys.length !== 1) {
+      continue;
+    }
+
+    const reference = parseSketchReference(referenceKeys[0]);
+    if (previewReferencesEqual(reference, lineReference)) {
+      return kind;
+    }
+  }
+
+  return null;
+}
+
+function getPreviewLineLength(line) {
+  return line ? distanceBetweenWorldPoints(line.start, line.end) : Number.NaN;
+}
+
+function getPreviewLineDirection(line) {
+  const length = getPreviewLineLength(line);
+  return Number.isFinite(length) && length > WORLD_GEOMETRY_TOLERANCE
+    ? {
+      x: (line.end.x - line.start.x) / length,
+      y: (line.end.y - line.start.y) / length,
+      length
+    }
+    : null;
+}
+
+function getPreviewLineAngleDegrees(line) {
+  return radiansToDegrees(Math.atan2(line.end.y - line.start.y, line.end.x - line.start.x));
+}
+
+function getClosestPreviewLineRelationAngle(referenceAngleDegrees, currentDrivenAngleDegrees, perpendicular) {
+  const firstCandidate = perpendicular ? referenceAngleDegrees + 90 : referenceAngleDegrees;
+  const secondCandidate = perpendicular ? referenceAngleDegrees - 90 : referenceAngleDegrees + 180;
+  const firstDelta = Math.abs(normalizeSignedDegrees(firstCandidate - currentDrivenAngleDegrees));
+  const secondDelta = Math.abs(normalizeSignedDegrees(secondCandidate - currentDrivenAngleDegrees));
+  return secondDelta < firstDelta ? secondCandidate : firstCandidate;
+}
+
+function normalizeSignedDegrees(value) {
+  let normalized = ((value % 360) + 360) % 360;
+  if (normalized > 180) {
+    normalized -= 360;
+  }
+
+  return normalized;
+}
+
+function hasPreviewPointChanged(originalDocument, previewDocument, reference) {
+  const before = getPreviewReferencePoint(originalDocument, reference);
+  const after = getPreviewReferencePoint(previewDocument, reference);
+  return Boolean(before && after && distanceBetweenWorldPoints(before, after) > WORLD_GEOMETRY_TOLERANCE);
+}
+
+function hasPreviewLineGeometryChanged(originalDocument, previewDocument, reference) {
+  const before = resolveSketchLineReference({ document: originalDocument }, sketchReferenceToKey(reference));
+  const after = resolveSketchLineReference({ document: previewDocument }, sketchReferenceToKey(reference));
+  return Boolean(before && after
+    && (distanceBetweenWorldPoints(before.start, after.start) > WORLD_GEOMETRY_TOLERANCE
+      || distanceBetweenWorldPoints(before.end, after.end) > WORLD_GEOMETRY_TOLERANCE));
+}
+
+function hasPreviewLineLengthChanged(originalDocument, previewDocument, reference) {
+  const before = resolveSketchLineReference({ document: originalDocument }, sketchReferenceToKey(reference));
+  const after = resolveSketchLineReference({ document: previewDocument }, sketchReferenceToKey(reference));
+  return Boolean(before && after && Math.abs(getPreviewLineLength(before) - getPreviewLineLength(after)) > WORLD_GEOMETRY_TOLERANCE);
+}
+
+function hasPreviewCircleLikeGeometryChanged(originalDocument, previewDocument, reference) {
+  return hasPreviewCircleLikeCenterChanged(originalDocument, previewDocument, reference)
+    || hasPreviewCircleLikeRadiusChanged(originalDocument, previewDocument, reference);
+}
+
+function hasPreviewCircleLikeCenterChanged(originalDocument, previewDocument, reference) {
+  const before = getPreviewCircleLike(originalDocument, reference);
+  const after = getPreviewCircleLike(previewDocument, reference);
+  return Boolean(before && after && distanceBetweenWorldPoints(before.center, after.center) > WORLD_GEOMETRY_TOLERANCE);
+}
+
+function hasPreviewCircleLikeRadiusChanged(originalDocument, previewDocument, reference) {
+  const before = getPreviewCircleLike(originalDocument, reference);
+  const after = getPreviewCircleLike(previewDocument, reference);
+  return Boolean(before && after && Math.abs(before.radius - after.radius) > WORLD_GEOMETRY_TOLERANCE);
+}
+
+function getPreviewLineNormal(line) {
+  const direction = getPreviewLineDirection(line);
+  return direction ? { x: -direction.y, y: direction.x } : null;
+}
+
+function signedPointLineDistance(point, line, normal) {
+  return ((point.x - line.start.x) * normal.x) + ((point.y - line.start.y) * normal.y);
+}
+
+function distancePointToPreviewLine(point, line) {
+  const deltaX = line.end.x - line.start.x;
+  const deltaY = line.end.y - line.start.y;
+  const denominator = Math.hypot(deltaX, deltaY);
+  if (denominator <= WORLD_GEOMETRY_TOLERANCE) {
+    return distanceBetweenWorldPoints(point, line.start);
+  }
+
+  return Math.abs(
+    (deltaY * point.x)
+    - (deltaX * point.y)
+    + (line.end.x * line.start.y)
+    - (line.end.y * line.start.x)) / denominator;
+}
+
+function unitVector(start, end) {
+  const length = distanceBetweenWorldPoints(start, end);
+  return length <= WORLD_GEOMETRY_TOLERANCE
+    ? { x: 1, y: 0 }
+    : {
+      x: (end.x - start.x) / length,
+      y: (end.y - start.y) / length
+    };
+}
+
+function tryMovePreviewLineTangentToCircle(document, lineReference, line, center, radius) {
+  const normal = getPreviewLineNormal(line);
+  if (!normal) {
+    return false;
+  }
+
+  const signedDistance = signedPointLineDistance(center, line, normal);
+  const sign = signedDistance < 0 ? -1 : 1;
+  const targetSignedDistance = sign * Math.abs(radius);
+  const offset = signedDistance - targetSignedDistance;
+  if (Math.abs(offset) <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
+  return setPreviewLineReference(document, lineReference, {
+    start: {
+      x: line.start.x + normal.x * offset,
+      y: line.start.y + normal.y * offset
+    },
+    end: {
+      x: line.end.x + normal.x * offset,
+      y: line.end.y + normal.y * offset
+    }
+  });
+}
+
+function tryMovePreviewCircleLikeCenterTangentToLine(document, circleReference, center, radius, line) {
+  const normal = getPreviewLineNormal(line);
+  if (!normal) {
+    return false;
+  }
+
+  const signedDistance = signedPointLineDistance(center, line, normal);
+  const sign = signedDistance < 0 ? -1 : 1;
+  const targetSignedDistance = sign * Math.abs(radius);
+  const offset = targetSignedDistance - signedDistance;
+  if (Math.abs(offset) <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
+  return trySetPreviewCircleLikeCenter(document, circleReference, {
+    x: center.x + normal.x * offset,
+    y: center.y + normal.y * offset
+  });
+}
+
+function tryMoveOrResizePreviewCircleLikeForTangency(
+  document,
+  fixedReferences,
+  movingReference,
+  movingCenter,
+  movingRadius,
+  anchorCenter,
+  anchorRadius) {
+  const centerDistance = distanceBetweenWorldPoints(anchorCenter, movingCenter);
+  const externalDistance = Math.abs(anchorRadius) + Math.abs(movingRadius);
+  const internalDistance = Math.abs(Math.abs(anchorRadius) - Math.abs(movingRadius));
+  const useInternal = Math.abs(centerDistance - internalDistance) < Math.abs(centerDistance - externalDistance);
+  const targetDistance = useInternal ? internalDistance : externalDistance;
+  if (canMovePreviewCircleLikeCenter(fixedReferences, movingReference) && targetDistance > WORLD_GEOMETRY_TOLERANCE) {
+    const unit = unitVector(anchorCenter, movingCenter);
+    return trySetPreviewCircleLikeCenter(document, movingReference, {
+      x: anchorCenter.x + unit.x * targetDistance,
+      y: anchorCenter.y + unit.y * targetDistance
+    });
+  }
+
+  if (!canChangePreviewCircleLikeRadius(fixedReferences, movingReference)) {
+    return false;
+  }
+
+  const nextRadius = useInternal
+    ? Math.abs(centerDistance - Math.abs(anchorRadius))
+    : centerDistance - Math.abs(anchorRadius);
+  return nextRadius > WORLD_GEOMETRY_TOLERANCE
+    && trySetPreviewCircleLikeRadius(document, movingReference, nextRadius);
 }
 
 function getChangedPreviewPointReferences(originalDocument, previewDocument) {
@@ -8745,6 +9753,124 @@ function getTwoPreviewPointReferences(constraint) {
   const first = parseSketchReference(referenceKeys[0]);
   const second = parseSketchReference(referenceKeys[1]);
   return first && second ? { first, second } : null;
+}
+
+function getTwoPreviewLineReferences(document, constraint) {
+  const referenceKeys = getSketchReferenceKeys(constraint);
+  if (referenceKeys.length < 2) {
+    return null;
+  }
+
+  const firstReference = parseSketchReference(referenceKeys[0]);
+  const secondReference = parseSketchReference(referenceKeys[1]);
+  const state = { document };
+  const firstLine = firstReference ? resolveSketchLineReference(state, sketchReferenceToKey(firstReference)) : null;
+  const secondLine = secondReference ? resolveSketchLineReference(state, sketchReferenceToKey(secondReference)) : null;
+  return firstReference && secondReference && firstLine && secondLine
+    ? { firstReference, firstLine, secondReference, secondLine }
+    : null;
+}
+
+function getPreviewPointAndLineReferences(document, constraint) {
+  const pair = getTwoPreviewPointReferences(constraint);
+  if (!pair) {
+    return null;
+  }
+
+  const firstPoint = getPreviewReferencePoint(document, pair.first);
+  const secondPoint = getPreviewReferencePoint(document, pair.second);
+  const firstLine = resolveSketchLineReference({ document }, sketchReferenceToKey(pair.first));
+  const secondLine = resolveSketchLineReference({ document }, sketchReferenceToKey(pair.second));
+  if (firstLine && secondPoint) {
+    return {
+      pointReference: pair.second,
+      point: secondPoint,
+      lineReference: pair.first,
+      line: firstLine
+    };
+  }
+
+  if (firstPoint && secondLine) {
+    return {
+      pointReference: pair.first,
+      point: firstPoint,
+      lineReference: pair.second,
+      line: secondLine
+    };
+  }
+
+  return null;
+}
+
+function getTwoPreviewCircleLikeReferences(document, constraint) {
+  const referenceKeys = getSketchReferenceKeys(constraint);
+  if (referenceKeys.length < 2) {
+    return null;
+  }
+
+  const firstReference = parseSketchReference(referenceKeys[0]);
+  const secondReference = parseSketchReference(referenceKeys[1]);
+  const first = firstReference ? getPreviewCircleLike(document, firstReference) : null;
+  const second = secondReference ? getPreviewCircleLike(document, secondReference) : null;
+  return firstReference && secondReference && first && second
+    ? { firstReference, first, secondReference, second }
+    : null;
+}
+
+function getPreviewLineAndCircleLikeReferences(document, constraint) {
+  const referenceKeys = getSketchReferenceKeys(constraint);
+  if (referenceKeys.length < 2) {
+    return null;
+  }
+
+  const firstReference = parseSketchReference(referenceKeys[0]);
+  const secondReference = parseSketchReference(referenceKeys[1]);
+  if (!firstReference || !secondReference) {
+    return null;
+  }
+
+  const state = { document };
+  const firstLine = resolveSketchLineReference(state, sketchReferenceToKey(firstReference));
+  const secondLine = resolveSketchLineReference(state, sketchReferenceToKey(secondReference));
+  const firstCircle = getPreviewCircleLike(document, firstReference);
+  const secondCircle = getPreviewCircleLike(document, secondReference);
+  if (firstLine && secondCircle) {
+    return {
+      lineReference: firstReference,
+      line: firstLine,
+      circleReference: secondReference,
+      circle: secondCircle
+    };
+  }
+
+  if (firstCircle && secondLine) {
+    return {
+      lineReference: secondReference,
+      line: secondLine,
+      circleReference: firstReference,
+      circle: firstCircle
+    };
+  }
+
+  return null;
+}
+
+function getPreviewCircleLike(document, reference) {
+  if (reference.target !== "entity" && reference.target !== "center") {
+    return null;
+  }
+
+  const entity = findCanvasDocumentEntity(document, reference.entityId);
+  const kind = getEntityKind(entity);
+  if (kind !== "circle" && kind !== "arc" && kind !== "polygon") {
+    return null;
+  }
+
+  const center = getEntityCenter(entity);
+  const radius = getEntityRadius(entity);
+  return center && isFinitePositive(radius)
+    ? { entity, kind, center, radius }
+    : null;
 }
 
 function getPreviewReferencePoint(document, reference) {
@@ -8897,6 +10023,118 @@ function setPreviewReferencePoint(document, reference, point) {
   return false;
 }
 
+function trySetPreviewPoint(document, reference, point) {
+  const before = getPreviewReferencePoint(document, reference);
+  return Boolean(before)
+    && distanceBetweenWorldPoints(before, point) > WORLD_GEOMETRY_TOLERANCE
+    && setPreviewReferencePoint(document, reference, point);
+}
+
+function setPreviewLineReference(document, reference, line) {
+  const entity = findCanvasDocumentEntity(document, reference.entityId);
+  if (!entity || !line) {
+    return false;
+  }
+
+  if (Number.isInteger(reference.segmentIndex)) {
+    const points = getEntityPoints(entity);
+    if (reference.segmentIndex < 0 || reference.segmentIndex >= points.length - 1) {
+      return false;
+    }
+
+    points[reference.segmentIndex] = copyPoint(line.start);
+    points[reference.segmentIndex + 1] = copyPoint(line.end);
+    entity.points = points;
+    return true;
+  }
+
+  if (getEntityKind(entity) !== "line") {
+    return false;
+  }
+
+  entity.points = [copyPoint(line.start), copyPoint(line.end)];
+  return true;
+}
+
+function tryApplyPreviewLineLength(document, fixedReferences, reference, length) {
+  const line = resolveSketchLineReference({ document }, sketchReferenceToKey(reference));
+  const direction = getPreviewLineDirection(line);
+  if (!line || !direction || !Number.isFinite(length) || length <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
+  if (canChangePreviewLineEndpoint(fixedReferences, reference, "end")) {
+    return setPreviewLineReference(document, reference, {
+      start: line.start,
+      end: {
+        x: line.start.x + direction.x * length,
+        y: line.start.y + direction.y * length
+      }
+    });
+  }
+
+  if (canChangePreviewLineEndpoint(fixedReferences, reference, "start")) {
+    return setPreviewLineReference(document, reference, {
+      start: {
+        x: line.end.x - direction.x * length,
+        y: line.end.y - direction.y * length
+      },
+      end: line.end
+    });
+  }
+
+  return false;
+}
+
+function tryTranslatePreviewLineToMidpoint(document, reference, line, delta) {
+  if (!delta || Math.hypot(delta.x, delta.y) <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
+  return setPreviewLineReference(document, reference, {
+    start: addWorldPoints(line.start, delta),
+    end: addWorldPoints(line.end, delta)
+  });
+}
+
+function trySetPreviewCircleLikeCenter(document, reference, center) {
+  const entity = findCanvasDocumentEntity(document, reference.entityId);
+  const circleLike = getPreviewCircleLike(document, reference);
+  if (!entity || !circleLike || distanceBetweenWorldPoints(circleLike.center, center) <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
+  entity.center = copyPoint(center);
+  return true;
+}
+
+function trySetPreviewCircleLikeRadius(document, reference, radius) {
+  if (reference.target !== "entity" || !Number.isFinite(radius) || Math.abs(radius) <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
+  const entity = findCanvasDocumentEntity(document, reference.entityId);
+  const circleLike = getPreviewCircleLike(document, reference);
+  if (!entity || !circleLike || Math.abs(circleLike.radius - Math.abs(radius)) <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
+  entity.radius = Math.abs(radius);
+  if (circleLike.kind === "polygon") {
+    const sideCount = Number(readProperty(entity, "sideCount", "SideCount"));
+    const rotationAngle = Number(readProperty(entity, "rotationAngleDegrees", "RotationAngleDegrees")) || 0;
+    if (Number.isInteger(sideCount) && sideCount >= 3) {
+      entity.points = getPolygonWorldPoints(
+        circleLike.center,
+        pointOnCircle(circleLike.center, Math.abs(radius), rotationAngle),
+        false,
+        sideCount);
+    }
+  }
+
+  return true;
+}
+
 function sketchReferenceToKey(reference) {
   const baseKey = Number.isInteger(reference.segmentIndex)
     ? `${reference.entityId}${SEGMENT_KEY_SEPARATOR}${reference.segmentIndex}`
@@ -8906,7 +10144,96 @@ function sketchReferenceToKey(reference) {
     : `${baseKey}:${reference.target}`;
 }
 
+function canApplyPreviewDrag(document, selectionKey) {
+  const fixedReferences = getPreviewFixedReferenceKeys(document);
+  const segmentReference = parseSegmentSelectionKey(selectionKey);
+  if (segmentReference) {
+    return canMovePreviewWholeLine(
+      fixedReferences,
+      { entityId: segmentReference.entityId, segmentIndex: segmentReference.segmentIndex, target: "entity" });
+  }
+
+  const pointReference = parsePointSelectionKey(selectionKey);
+  if (pointReference) {
+    const entity = findCanvasDocumentEntity(document, pointReference.entityId);
+    const kind = getEntityKind(entity);
+    const label = String(pointReference.label || "").split("|")[0].toLowerCase();
+    const entityReference = { entityId: pointReference.entityId, target: "entity" };
+    if (kind === "line") {
+      if (label === "start" || label === "end") {
+        return canChangePreviewLineEndpoint(fixedReferences, entityReference, label);
+      }
+
+      return label === "mid" && canMovePreviewWholeLine(fixedReferences, entityReference);
+    }
+
+    if (kind === "polyline") {
+      const segmentIndex = parseIndexedPointLabel(label, "mid-");
+      if (segmentIndex !== null) {
+        return canMovePreviewWholeLine(
+          fixedReferences,
+          { entityId: pointReference.entityId, segmentIndex, target: "entity" });
+      }
+
+      const vertexIndex = parseIndexedPointLabel(label, "vertex-");
+      const points = getEntityPoints(entity);
+      return vertexIndex !== null
+        && canMovePreviewPolylineVertex(fixedReferences, pointReference.entityId, vertexIndex, points.length);
+    }
+
+    if (kind === "circle" || kind === "arc") {
+      return label === "center"
+        ? canMovePreviewCircleLikeCenter(fixedReferences, entityReference)
+        : canChangePreviewCircleLikeRadius(fixedReferences, entityReference);
+    }
+
+    if (kind === "ellipse") {
+      return label === "center"
+        ? canMovePreviewCircleLikeCenter(fixedReferences, entityReference)
+        : canChangePreviewCircleLikeRadius(fixedReferences, entityReference);
+    }
+
+    if (kind === "polygon") {
+      return (label === "center" || label.startsWith("mid-"))
+        && canMovePreviewCircleLikeCenter(fixedReferences, entityReference);
+    }
+
+    if (kind === "spline") {
+      return !isPreviewWholeEntityFixed(fixedReferences, entityReference);
+    }
+
+    if (kind === "point") {
+      return canMovePreviewPoint(fixedReferences, entityReference);
+    }
+  }
+
+  const entity = findCanvasDocumentEntity(document, selectionKey);
+  const kind = getEntityKind(entity);
+  const entityReference = { entityId: selectionKey, target: "entity" };
+  switch (kind) {
+    case "line":
+      return canMovePreviewWholeLine(fixedReferences, entityReference);
+    case "polyline":
+    case "spline":
+      return !isPreviewWholeEntityFixed(fixedReferences, entityReference);
+    case "circle":
+    case "arc":
+      return canChangePreviewCircleLikeRadius(fixedReferences, entityReference);
+    case "ellipse":
+    case "polygon":
+      return canMovePreviewCircleLikeCenter(fixedReferences, entityReference);
+    case "point":
+      return canMovePreviewPoint(fixedReferences, entityReference);
+    default:
+      return true;
+  }
+}
+
 function applyGeometryDragPreviewMutation(document, selectionKey, delta, dragEnd, constrainToCurrentVector = false) {
+  if (!canApplyPreviewDrag(document, selectionKey)) {
+    return false;
+  }
+
   const segmentReference = parseSegmentSelectionKey(selectionKey);
   if (segmentReference) {
     return translatePreviewPolylineSegment(document, segmentReference.entityId, segmentReference.segmentIndex, delta);
@@ -12124,6 +13451,14 @@ export function getPolygonWorldPoints(center, radiusPoint, circumscribed = false
 export function getPolygonGuideCircleWorldPoints(center, radiusPoint) {
   const radius = distanceBetweenWorldPoints(center, radiusPoint);
   return Number.isFinite(radius) && radius > WORLD_GEOMETRY_TOLERANCE
+    ? getCircleWorldPoints(center, radius)
+    : [];
+}
+
+export function getPolygonControlCircleWorldPoints(entity) {
+  const center = getEntityCenter(entity);
+  const radius = getEntityRadius(entity);
+  return center && isFinitePositive(radius)
     ? getCircleWorldPoints(center, radius)
     : [];
 }

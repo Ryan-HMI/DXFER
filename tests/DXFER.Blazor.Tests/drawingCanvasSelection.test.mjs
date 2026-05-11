@@ -48,6 +48,7 @@ import {
   getPendingPersistentDimensionEditId,
   getRadialDimensionScreenGeometry,
   getRadialDimensionPreference,
+  getPolygonControlCircleWorldPoints,
   getSketchToolDimensionLocks,
   getSketchToolPreviewMarkerPoints,
   getSketchChainContextFromCommittedTool,
@@ -560,6 +561,21 @@ test("polygon helper distinguishes inscribed and circumscribed radii", () => {
 
 test("polygon preview guide circle follows the picked radius or apothem", () => {
   const guide = getPolygonGuideCircleWorldPoints({ x: 2, y: 3 }, { x: 7, y: 3 });
+
+  assert.equal(guide.length > 16, true);
+  for (const point of guide) {
+    assertApproxEqual(distanceBetweenTestPoints(point, { x: 2, y: 3 }), 5);
+  }
+});
+
+test("persistent polygon control circle follows stored center and radius", () => {
+  const guide = getPolygonControlCircleWorldPoints({
+    id: "poly-a",
+    kind: "polygon",
+    center: { x: 2, y: 3 },
+    radius: 5,
+    points: getPolygonWorldPoints({ x: 2, y: 3 }, { x: 7, y: 3 })
+  });
 
   assert.equal(guide.length > 16, true);
   for (const point of guide) {
@@ -1142,6 +1158,111 @@ test("line after tangent arc snaps along the arc endpoint tangent", () => {
   assert.equal(getPointTargetMarker(hit.target), "tangent");
   assertApproxEqual(hit.target.point.x, 2);
   assertApproxEqual(hit.target.point.y, 5);
+});
+
+test("line started on straight geometry gets a perpendicular snap", () => {
+  const edge = {
+    id: "edge",
+    kind: "line",
+    points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+  };
+  const state = {
+    activeTool: "line",
+    document: { entities: [edge] },
+    acquiredSnapPoints: [],
+    toolDraft: {
+      points: [{ x: 4, y: 0 }],
+      startSnapTarget: {
+        kind: "entity",
+        key: "edge",
+        entityId: "edge",
+        entity: edge,
+        snapPoint: { x: 4, y: 0 }
+      }
+    },
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 100
+    }
+  };
+
+  const hit = getDynamicSketchSnapHit(state, { x: 40.5, y: 60 });
+
+  assert.equal(hit.target.label, "perpendicular-edge");
+  assertApproxEqual(hit.target.point.x, 4);
+  assertApproxEqual(hit.target.point.y, 4);
+  assert.deepEqual(hit.target.guides.map(guide => guide.orientation), ["segment"]);
+});
+
+test("line started on a polygon side gets a perpendicular snap from that side", () => {
+  const polygon = {
+    id: "poly",
+    kind: "polygon",
+    points: [{ x: -5, y: -5 }, { x: 5, y: -5 }, { x: 5, y: 5 }, { x: -5, y: 5 }]
+  };
+  const state = {
+    activeTool: "line",
+    document: { entities: [polygon] },
+    acquiredSnapPoints: [],
+    toolDraft: {
+      points: [{ x: 5, y: 2 }],
+      startSnapTarget: {
+        kind: "entity",
+        key: "poly",
+        entityId: "poly",
+        entity: polygon,
+        snapPoint: { x: 5, y: 2 }
+      }
+    },
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 100
+    }
+  };
+
+  const hit = getDynamicSketchSnapHit(state, { x: 80, y: 80.5 });
+
+  assert.equal(hit.target.label, "perpendicular-poly");
+  assertApproxEqual(hit.target.point.x, 8);
+  assertApproxEqual(hit.target.point.y, 2);
+});
+
+test("line started on circular geometry gets a normal snap", () => {
+  const circle = {
+    id: "hole",
+    kind: "circle",
+    center: { x: 0, y: 0 },
+    radius: 5
+  };
+  const state = {
+    activeTool: "line",
+    document: { entities: [circle] },
+    acquiredSnapPoints: [],
+    toolDraft: {
+      points: [{ x: 3, y: 4 }],
+      startSnapTarget: {
+        kind: "entity",
+        key: "hole",
+        entityId: "hole",
+        entity: circle,
+        snapPoint: { x: 3, y: 4 }
+      }
+    },
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 100
+    }
+  };
+
+  const hit = getDynamicSketchSnapHit(state, { x: 60, y: 20 });
+
+  assert.equal(hit.target.label, "normal-hole");
+  assertApproxEqual(hit.target.point.x, 6);
+  assertApproxEqual(hit.target.point.y, 8);
+  assert.deepEqual(hit.target.guides.map(guide => guide.orientation), ["segment"]);
 });
 
 test("locked draft dimensions reapply after cursor movement", () => {
@@ -2514,6 +2635,180 @@ test("geometry drag preview keeps coincident endpoints welded", () => {
   assert.deepEqual(preview.entities[1].points, [{ x: 12, y: 3 }, { x: 10, y: 5 }]);
 });
 
+test("geometry drag preview blocks fixed references", () => {
+  const document = {
+    entities: [
+      {
+        id: "edge",
+        kind: "line",
+        points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+      }
+    ],
+    dimensions: [],
+    constraints: [
+      {
+        id: "fix-edge",
+        kind: "fix",
+        referenceKeys: ["edge"],
+        state: "satisfied"
+      }
+    ]
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "edge|point|mid|5|0",
+    { x: 5, y: 0 },
+    { x: 7, y: 3 });
+
+  assert.equal(preview, null);
+});
+
+test("geometry drag preview propagates equal line constraints", () => {
+  const document = {
+    entities: [
+      {
+        id: "source",
+        kind: "line",
+        points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+      },
+      {
+        id: "peer",
+        kind: "line",
+        points: [{ x: 0, y: 5 }, { x: 6, y: 5 }]
+      }
+    ],
+    dimensions: [],
+    constraints: [
+      {
+        id: "equal",
+        kind: "equal",
+        referenceKeys: ["source", "peer"],
+        state: "satisfied"
+      }
+    ]
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "source|point|end|10|0",
+    { x: 10, y: 0 },
+    { x: 14, y: 0 });
+
+  assert.deepEqual(preview.entities[0].points, [{ x: 0, y: 0 }, { x: 14, y: 0 }]);
+  assert.deepEqual(preview.entities[1].points, [{ x: 0, y: 5 }, { x: 14, y: 5 }]);
+});
+
+test("geometry drag preview propagates concentric constraints", () => {
+  const document = {
+    entities: [
+      {
+        id: "source",
+        kind: "circle",
+        center: { x: 0, y: 0 },
+        radius: 4
+      },
+      {
+        id: "peer",
+        kind: "arc",
+        center: { x: 0, y: 0 },
+        radius: 2,
+        startAngleDegrees: 0,
+        endAngleDegrees: 90
+      }
+    ],
+    dimensions: [],
+    constraints: [
+      {
+        id: "concentric",
+        kind: "concentric",
+        referenceKeys: ["source", "peer"],
+        state: "satisfied"
+      }
+    ]
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "source|point|center|0|0",
+    { x: 0, y: 0 },
+    { x: 2, y: 3 });
+
+  assert.deepEqual(preview.entities[0].center, { x: 2, y: 3 });
+  assert.deepEqual(preview.entities[1].center, { x: 2, y: 3 });
+});
+
+test("geometry drag preview propagates midpoint constraints", () => {
+  const document = {
+    entities: [
+      {
+        id: "edge",
+        kind: "line",
+        points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+      },
+      {
+        id: "mid",
+        kind: "point",
+        points: [{ x: 5, y: 0 }]
+      }
+    ],
+    dimensions: [],
+    constraints: [
+      {
+        id: "midpoint",
+        kind: "midpoint",
+        referenceKeys: ["mid", "edge"],
+        state: "satisfied"
+      }
+    ]
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "edge|point|end|10|0",
+    { x: 10, y: 0 },
+    { x: 14, y: 0 });
+
+  assert.deepEqual(preview.entities[0].points, [{ x: 0, y: 0 }, { x: 14, y: 0 }]);
+  assert.deepEqual(preview.entities[1].points, [{ x: 7, y: 0 }]);
+});
+
+test("geometry drag preview propagates tangent constraints", () => {
+  const document = {
+    entities: [
+      {
+        id: "edge",
+        kind: "line",
+        points: [{ x: -5, y: 0 }, { x: 5, y: 0 }]
+      },
+      {
+        id: "circle",
+        kind: "circle",
+        center: { x: 0, y: 2 },
+        radius: 2
+      }
+    ],
+    dimensions: [],
+    constraints: [
+      {
+        id: "tangent",
+        kind: "tangent",
+        referenceKeys: ["edge", "circle"],
+        state: "satisfied"
+      }
+    ]
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "circle|point|quadrant-90|0|4",
+    { x: 0, y: 4 },
+    { x: 0, y: 5 });
+
+  assert.deepEqual(preview.entities[1].radius, 3);
+  assert.deepEqual(preview.entities[0].points, [{ x: -5, y: -1 }, { x: 5, y: -1 }]);
+});
+
 test("finishing geometry drag keeps the final preview until server confirmation", () => {
   const originalDocument = {
     entities: [{
@@ -2656,6 +2951,114 @@ test("geometry drag preview translates a dimensioned line when endpoint edit wou
   assert.deepEqual(preview.entities[0].points, [{ x: 4, y: 0 }, { x: 14, y: 0 }]);
   assert.deepEqual(preview.dimensions[0].anchor, { x: 9, y: 2 });
   assert.deepEqual(document.entities[0].points, [{ x: 0, y: 0 }, { x: 10, y: 0 }]);
+});
+
+test("geometry drag preview translates a dimensioned circle when radius edit would break radius", () => {
+  const document = {
+    entities: [
+      {
+        id: "circle",
+        kind: "circle",
+        center: { x: 0, y: 0 },
+        radius: 3
+      }
+    ],
+    dimensions: [
+      {
+        id: "circle-radius",
+        kind: "radius",
+        referenceKeys: ["circle"],
+        value: 3,
+        anchor: { x: 3, y: 1 },
+        isDriving: true
+      }
+    ],
+    constraints: []
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "circle|point|quadrant-0|3|0",
+    { x: 3, y: 0 },
+    { x: 5, y: 0 });
+
+  assert.deepEqual(preview.entities[0].center, { x: 2, y: 0 });
+  assert.equal(preview.entities[0].radius, 3);
+  assert.deepEqual(preview.dimensions[0].anchor, { x: 5, y: 1 });
+});
+
+test("geometry drag preview applies free motion for point-to-line distance dimensions", () => {
+  const document = {
+    entities: [
+      {
+        id: "base",
+        kind: "line",
+        points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+      },
+      {
+        id: "offset",
+        kind: "line",
+        points: [{ x: 0, y: 5 }, { x: 10, y: 5 }]
+      }
+    ],
+    dimensions: [
+      {
+        id: "offset-distance",
+        kind: "pointtolinedistance",
+        referenceKeys: ["base", "offset"],
+        value: 5,
+        anchor: { x: 5, y: 2.5 },
+        isDriving: true
+      }
+    ],
+    constraints: []
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "offset|point|mid|5|5",
+    { x: 5, y: 5 },
+    { x: 8, y: 7 });
+
+  assert.deepEqual(preview.entities[1].points, [{ x: 3, y: 5 }, { x: 13, y: 5 }]);
+  assert.deepEqual(preview.dimensions[0].anchor, { x: 8, y: 2.5 });
+});
+
+test("geometry drag preview translates an arc with a driving sweep dimension", () => {
+  const document = {
+    entities: [
+      {
+        id: "arc",
+        kind: "arc",
+        center: { x: 0, y: 0 },
+        radius: 3,
+        startAngleDegrees: 0,
+        endAngleDegrees: 90
+      }
+    ],
+    dimensions: [
+      {
+        id: "sweep",
+        kind: "angle",
+        referenceKeys: ["arc"],
+        value: 90,
+        anchor: { x: 2, y: 2 },
+        isDriving: true
+      }
+    ],
+    constraints: []
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "arc|point|end|0|3",
+    { x: 0, y: 3 },
+    { x: 1, y: 4 });
+
+  assert.deepEqual(preview.entities[0].center, { x: 1, y: 1 });
+  assert.equal(preview.entities[0].radius, 3);
+  assert.equal(preview.entities[0].endAngleDegrees, 90);
+  assert.deepEqual(preview.dimensions[0].anchor, { x: 3, y: 3 });
 });
 
 test("geometry drag preview resizes an undimensioned rectangle edge using only perpendicular motion", () => {
@@ -2827,6 +3230,43 @@ test("geometry drag preview updates ellipse major and minor handles", () => {
     { x: 0, y: 3 });
 
   assert.equal(minorPreview.entities[0].minorRadiusRatio, 0.75);
+});
+
+test("geometry drag preview translates a dimensioned ellipse when axis edit would break axis", () => {
+  const document = {
+    entities: [
+      {
+        id: "ellipse",
+        kind: "ellipse",
+        center: { x: 0, y: 0 },
+        majorAxisEndPoint: { x: 4, y: 0 },
+        minorRadiusRatio: 0.5,
+        startAngleDegrees: 0,
+        endAngleDegrees: 360
+      }
+    ],
+    dimensions: [
+      {
+        id: "ellipse-major",
+        kind: "lineardistance",
+        referenceKeys: ["ellipse|point|major-start|-4|0", "ellipse|point|major-end|4|0"],
+        value: 8,
+        anchor: { x: 0, y: 3 },
+        isDriving: true
+      }
+    ],
+    constraints: []
+  };
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "ellipse|point|quadrant-0|4|0",
+    { x: 4, y: 0 },
+    { x: 6, y: 0 });
+
+  assert.deepEqual(preview.entities[0].center, { x: 2, y: 0 });
+  assert.deepEqual(preview.entities[0].majorAxisEndPoint, { x: 4, y: 0 });
+  assert.deepEqual(preview.dimensions[0].anchor, { x: 2, y: 3 });
 });
 
 test("geometry drag preview translates whole ellipse and dimension anchors", () => {

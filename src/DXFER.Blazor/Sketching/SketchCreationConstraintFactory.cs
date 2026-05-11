@@ -340,17 +340,24 @@ public static class SketchCreationConstraintFactory
 
     private static bool IsLineTangentToArc(LineEntity line, ArcEntity arc)
     {
-        if (!TryGetDirection(line, out var lineX, out var lineY))
+        return Math.Abs(DistancePointToLine(arc.Center, line) - arc.Radius) <= GeometryTolerance;
+    }
+
+    private static double DistancePointToLine(Point2 point, LineEntity line)
+    {
+        var deltaX = line.End.X - line.Start.X;
+        var deltaY = line.End.Y - line.Start.Y;
+        var denominator = Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
+        if (denominator <= GeometryTolerance)
         {
-            return false;
+            return Distance(point, line.Start);
         }
 
-        var numerator = Math.Abs(
-            (lineY * arc.Center.X)
-            - (lineX * arc.Center.Y)
+        return Math.Abs(
+            (deltaY * point.X)
+            - (deltaX * point.Y)
             + (line.End.X * line.Start.Y)
-            - (line.End.Y * line.Start.X));
-        return Math.Abs(numerator - arc.Radius) <= GeometryTolerance;
+            - (line.End.Y * line.Start.X)) / denominator;
     }
 
     private static bool TryGetDirection(LineEntity line, out double x, out double y)
@@ -379,6 +386,13 @@ public static class SketchCreationConstraintFactory
         return new Point2(
             arc.Center.X + arc.Radius * Math.Cos(radians),
             arc.Center.Y + arc.Radius * Math.Sin(radians));
+    }
+
+    private static double Distance(Point2 first, Point2 second)
+    {
+        var deltaX = second.X - first.X;
+        var deltaY = second.Y - first.Y;
+        return Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
     }
 
     private static bool AreClose(Point2 first, Point2 second) =>

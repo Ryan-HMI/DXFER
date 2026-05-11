@@ -554,6 +554,43 @@ public sealed class SketchGeometryDragServiceTests
     }
 
     [Fact]
+    public void DraggingPointToLineDimensionedOffsetLineKeepsDistanceAndAppliesParallelComponent()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("base"), new Point2(0, 0), new Point2(10, 0)),
+                new LineEntity(EntityId.Create("offset"), new Point2(0, 5), new Point2(10, 5))
+            },
+            new[]
+            {
+                new SketchDimension(
+                    "offset-distance",
+                    SketchDimensionKind.PointToLineDistance,
+                    new[] { "base", "offset" },
+                    5,
+                    new Point2(5, 2.5),
+                    isDriving: true)
+            },
+            Array.Empty<SketchConstraint>());
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "offset|point|mid|5|5",
+            new Point2(5, 5),
+            new Point2(8, 7),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        next.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("base"), new Point2(0, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("offset"), new Point2(3, 5), new Point2(13, 5)));
+        next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(8, 2.5));
+        next.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(next, dimension));
+    }
+
+    [Fact]
     public void DraggingSplineFitPointUpdatesFitPointSpline()
     {
         var document = new DrawingDocument(new DrawingEntity[]
@@ -734,6 +771,41 @@ public sealed class SketchGeometryDragServiceTests
     }
 
     [Fact]
+    public void DraggingCirclePerimeterWithDrivingRadiusDimensionTranslatesCircleAndDimensionAnchor()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new CircleEntity(EntityId.Create("circle"), new Point2(0, 0), 3)
+            },
+            new[]
+            {
+                new SketchDimension(
+                    "circle-radius",
+                    SketchDimensionKind.Radius,
+                    new[] { "circle" },
+                    3,
+                    new Point2(3, 1),
+                    isDriving: true)
+            },
+            Array.Empty<SketchConstraint>());
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "circle|point|quadrant-0|3|0",
+            new Point2(3, 0),
+            new Point2(5, 0),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        next.Entities.Should().ContainSingle().Which.Should().BeOfType<CircleEntity>()
+            .Which.Should().Be(new CircleEntity(EntityId.Create("circle"), new Point2(2, 0), 3));
+        next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(5, 1));
+        next.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(next, dimension));
+    }
+
+    [Fact]
     public void DraggingEllipseCenterMovesEllipseAndDimensions()
     {
         var document = new DrawingDocument(
@@ -787,6 +859,43 @@ public sealed class SketchGeometryDragServiceTests
         var ellipse = next.Entities.Should().ContainSingle().Which.Should().BeOfType<EllipseEntity>().Subject;
         ellipse.MajorAxisEndPoint.Should().Be(new Point2(6, 0));
         ellipse.MinorRadiusRatio.Should().Be(0.5);
+    }
+
+    [Fact]
+    public void DraggingEllipseMajorQuadrantWithDrivingAxisDimensionTranslatesEllipseAndDimensionAnchor()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new EllipseEntity(EntityId.Create("ellipse"), new Point2(0, 0), new Point2(4, 0), 0.5)
+            },
+            new[]
+            {
+                new SketchDimension(
+                    "ellipse-major",
+                    SketchDimensionKind.LinearDistance,
+                    new[] { "ellipse|point|major-start|-4|0", "ellipse|point|major-end|4|0" },
+                    8,
+                    new Point2(0, 3),
+                    isDriving: true)
+            },
+            Array.Empty<SketchConstraint>());
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "ellipse|point|quadrant-0|4|0",
+            new Point2(4, 0),
+            new Point2(6, 0),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        var ellipse = next.Entities.Should().ContainSingle().Which.Should().BeOfType<EllipseEntity>().Subject;
+        ellipse.Center.Should().Be(new Point2(2, 0));
+        ellipse.MajorAxisEndPoint.Should().Be(new Point2(4, 0));
+        ellipse.MinorRadiusRatio.Should().Be(0.5);
+        next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(2, 3));
+        next.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(next, dimension));
     }
 
     [Fact]
@@ -894,6 +1003,44 @@ public sealed class SketchGeometryDragServiceTests
         var arc = next.Entities.Should().ContainSingle().Which.Should().BeOfType<ArcEntity>().Which;
         arc.Radius.Should().Be(3);
         arc.EndAngleDegrees.Should().BeApproximately(45, 0.000001);
+    }
+
+    [Fact]
+    public void DraggingArcEndpointWithDrivingSweepDimensionTranslatesArcAndDimensionAnchor()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new ArcEntity(EntityId.Create("arc"), new Point2(0, 0), 3, 0, 90)
+            },
+            new[]
+            {
+                new SketchDimension(
+                    "sweep",
+                    SketchDimensionKind.Angle,
+                    new[] { "arc" },
+                    90,
+                    new Point2(2, 2),
+                    isDriving: true)
+            },
+            Array.Empty<SketchConstraint>());
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "arc|point|end|0|3",
+            new Point2(0, 3),
+            new Point2(1, 4),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        var arc = next.Entities.Should().ContainSingle().Which.Should().BeOfType<ArcEntity>().Subject;
+        arc.Center.Should().Be(new Point2(1, 1));
+        arc.Radius.Should().Be(3);
+        arc.StartAngleDegrees.Should().Be(0);
+        arc.EndAngleDegrees.Should().Be(90);
+        next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(3, 3));
+        next.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(next, dimension));
     }
 
     [Fact]
@@ -1029,6 +1176,157 @@ public sealed class SketchGeometryDragServiceTests
         polygon.Radius.Should().Be(5);
         polygon.RotationAngleDegrees.Should().Be(30);
         next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(8, 4));
+    }
+
+    [Fact]
+    public void DraggingEqualLineEndpointUpdatesPeerLineLength()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("anchor"), new Point2(0, 0), new Point2(5, 0)),
+                new LineEntity(EntityId.Create("peer"), new Point2(10, 0), new Point2(15, 0))
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint("equal-lines", SketchConstraintKind.Equal, new[] { "anchor", "peer" }, SketchConstraintState.Satisfied)
+            });
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document,
+            "anchor|point|end|5|0",
+            new Point2(5, 0),
+            new Point2(8, 0),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        next.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("anchor"), new Point2(0, 0), new Point2(8, 0)),
+            new LineEntity(EntityId.Create("peer"), new Point2(10, 0), new Point2(18, 0)));
+        next.Constraints.Should().ContainSingle().Which.State.Should().Be(SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingEqualCircleRadiusUpdatesPeerRadius()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new CircleEntity(EntityId.Create("anchor"), new Point2(0, 0), 3),
+                new CircleEntity(EntityId.Create("peer"), new Point2(10, 0), 3)
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint("equal-radii", SketchConstraintKind.Equal, new[] { "anchor", "peer" }, SketchConstraintState.Satisfied)
+            });
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "anchor|point|quadrant-0|3|0",
+            new Point2(3, 0),
+            new Point2(5, 0),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        next.Entities.Should().Equal(
+            new CircleEntity(EntityId.Create("anchor"), new Point2(0, 0), 5),
+            new CircleEntity(EntityId.Create("peer"), new Point2(10, 0), 5));
+        next.Constraints.Should().ContainSingle().Which.State.Should().Be(SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingConcentricCircleCenterMovesPeerCenter()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new CircleEntity(EntityId.Create("anchor"), new Point2(0, 0), 3),
+                new CircleEntity(EntityId.Create("peer"), new Point2(0, 0), 5)
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint("concentric", SketchConstraintKind.Concentric, new[] { "anchor", "peer" }, SketchConstraintState.Satisfied)
+            });
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "anchor|point|center|0|0",
+            new Point2(0, 0),
+            new Point2(2, 3),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        next.Entities.Should().Equal(
+            new CircleEntity(EntityId.Create("anchor"), new Point2(2, 3), 3),
+            new CircleEntity(EntityId.Create("peer"), new Point2(2, 3), 5));
+        next.Constraints.Should().ContainSingle().Which.State.Should().Be(SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingLineWithMidpointConstraintMovesMidpointReference()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("baseline"), new Point2(0, 0), new Point2(10, 0)),
+                new PointEntity(EntityId.Create("marker"), new Point2(5, 0))
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint("midpoint", SketchConstraintKind.Midpoint, new[] { "baseline", "marker" }, SketchConstraintState.Satisfied)
+            });
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "baseline|point|end|10|0",
+            new Point2(10, 0),
+            new Point2(12, 4),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        next.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("baseline"), new Point2(0, 0), new Point2(12, 4)),
+            new PointEntity(EntityId.Create("marker"), new Point2(6, 2)));
+        next.Constraints.Should().ContainSingle().Which.State.Should().Be(SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingTangentCircleRadiusMovesPeerLine()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("edge"), new Point2(-5, 3), new Point2(5, 3)),
+                new CircleEntity(EntityId.Create("circle"), new Point2(0, 0), 3)
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint("tangent", SketchConstraintKind.Tangent, new[] { "edge", "circle" }, SketchConstraintState.Satisfied)
+            });
+
+        SketchGeometryDragService.TryApplyDrag(
+            document,
+            "circle|point|quadrant-0|3|0",
+            new Point2(3, 0),
+            new Point2(5, 0),
+            false,
+            out var next,
+            out _).Should().BeTrue();
+
+        next.Entities.Should().Equal(
+            new LineEntity(EntityId.Create("edge"), new Point2(-5, 5), new Point2(5, 5)),
+            new CircleEntity(EntityId.Create("circle"), new Point2(0, 0), 5));
+        next.Constraints.Should().ContainSingle().Which.State.Should().Be(SketchConstraintState.Satisfied);
     }
 
     [Fact]
