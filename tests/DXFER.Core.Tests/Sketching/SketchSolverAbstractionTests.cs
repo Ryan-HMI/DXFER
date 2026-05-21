@@ -78,6 +78,46 @@ public sealed class SketchSolverAbstractionTests
     }
 
     [Fact]
+    public void SolveRequestCarriesFixedReferencesAndInitialGuessesForExternalAdapters()
+    {
+        var fix = new SketchConstraint(
+            "fix-start",
+            SketchConstraintKind.Fix,
+            new[] { "edge:start" },
+            SketchConstraintState.Satisfied);
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(7, 0))
+            },
+            Array.Empty<SketchDimension>(),
+            new[] { fix });
+        var initialGuess = new SketchSolveInitialGuess("edge:end", new Point2(7, 0));
+
+        var request = new SketchSolveRequest(
+            document,
+            new[] { fix },
+            Array.Empty<SketchDimension>(),
+            initialGuesses: new[] { initialGuess });
+
+        request.FixedReferenceKeys.Should().Equal("edge:start");
+        request.InitialGuesses.Should().ContainSingle()
+            .Which.Should().BeEquivalentTo(initialGuess);
+    }
+
+    [Fact]
+    public void SolveStatusCanRepresentFeatureScriptInspiredDiagnosticStates()
+    {
+        Enum.GetNames<SketchSolveStatus>()
+            .Should()
+            .Contain(new[]
+            {
+                nameof(SketchSolveStatus.UnderConstrained),
+                nameof(SketchSolveStatus.OverConstrained)
+            });
+    }
+
+    [Fact]
     public void PlaneGcsAdapterIsReplaceableAndReportsUnavailableUntilWasmIsWired()
     {
         var document = new DrawingDocument(new DrawingEntity[]
@@ -96,7 +136,7 @@ public sealed class SketchSolverAbstractionTests
     }
 
     [Fact]
-    public void FallbackSolverReportsAffectedReferencesForUnsatisfiedDimensions()
+    public void FallbackSolverReportsOverConstrainedAffectedReferencesForUnsatisfiedDimensions()
     {
         var fixStart = new SketchConstraint(
             "fix-start",
@@ -125,7 +165,7 @@ public sealed class SketchSolverAbstractionTests
 
         var result = solver.Solve(new SketchSolveRequest(document, new[] { fixStart, fixEnd }, new[] { distance }));
 
-        result.Status.Should().Be(SketchSolveStatus.Failed);
+        result.Status.Should().Be(SketchSolveStatus.OverConstrained);
         result.AffectedDiagnostics.Should().ContainSingle()
             .Which.Should().Match<SketchSolveDiagnostic>(diagnostic =>
                 diagnostic.ItemId == "distance"

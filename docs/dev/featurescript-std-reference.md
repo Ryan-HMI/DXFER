@@ -95,3 +95,22 @@ The useful next extraction target is a DXFER-owned sketch contract:
 
 That contract should be DXFER-owned even when its vocabulary is informed by the
 FeatureScript std library.
+
+Current DXFER progress:
+
+- `SketchSolveRequest` carries document entities, constraints, dimensions,
+  normalized fixed reference keys, and optional initial guesses.
+- `SketchSolveResult` carries diagnostics plus affected dimension/constraint
+  references.
+- `SketchSolveStatus` can represent solved, underconstrained, overconstrained,
+  unavailable, and failed states.
+- The Blazor workbench routes new sketch constraints and driving dimension
+  changes through `ISketchSolver`; the active implementation remains the
+  behavior-preserving `LegacySketchSolverAdapter`.
+
+Remaining work:
+
+- The legacy adapter does not yet produce underconstrained diagnostics.
+- PlaneGCS remains unavailable until a browser/WASM bridge is wired and tested.
+- Future solver adapters still need broader initial-guess consumption tests
+  against the required primitive and constraint set.

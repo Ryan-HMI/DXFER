@@ -61,6 +61,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private readonly HashSet<string> _selectedEntityIds = new(StringComparer.Ordinal);
     private readonly Stack<DrawingDocument> _undoStack = new();
     private readonly Stack<DrawingDocument> _redoStack = new();
+    private readonly ISketchSolver _sketchSolver = new LegacySketchSolverAdapter();
     private IJSObjectReference? _hotkeyModule;
     private IJSObjectReference? _hotkeyListener;
     private IJSObjectReference? _downloadModule;
@@ -718,7 +719,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             _document.Metadata);
         if (newConstraints.Count > 0)
         {
-            nextDocument = SketchConstraintService.ApplyConstraints(nextDocument, newConstraints);
+            nextDocument = SolveSketchChange(
+                nextDocument,
+                newConstraints,
+                Array.Empty<SketchDimension>()).Document;
         }
 
         ApplyDocumentChange(nextDocument, $"{FormatCreatedToolName(toolName)} added.");
@@ -1313,7 +1317,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        ApplyDocumentChange(SketchDimensionSolverService.ApplyDimension(_document, dimension), status);
+        ApplyDocumentChange(
+            SolveSketchChange(
+                _document,
+                Array.Empty<SketchConstraint>(),
+                new[] { dimension }).Document,
+            status);
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -1336,7 +1345,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        ApplyDocumentChange(SketchDimensionSolverService.ApplyDimension(_document, dimension), status);
+        ApplyDocumentChange(
+            SolveSketchChange(
+                _document,
+                Array.Empty<SketchConstraint>(),
+                new[] { dimension }).Document,
+            status);
         _activeTool = WorkbenchTool.Dimension;
         _status = $"{status} Dimension tool stays active; pick another reference or Esc to cancel.";
         ResetSelection();
@@ -1382,7 +1396,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return false;
         }
 
-        var nextDocument = SketchConstraintService.ApplyConstraint(_document, constraint);
+        var nextDocument = SolveSketchChange(
+            _document,
+            new[] { constraint },
+            Array.Empty<SketchDimension>()).Document;
         var appliedConstraint = nextDocument.Constraints.FirstOrDefault(candidate => candidate.Id == constraint.Id);
         var appliedStatus = appliedConstraint?.State == SketchConstraintState.Unsatisfied
             ? $"{status} Constraint is currently unsatisfied."
@@ -1428,7 +1445,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             existing.Anchor,
             isDriving: true);
         ApplyDocumentChange(
-            SketchDimensionSolverService.ApplyDimension(_document, nextDimension),
+            SolveSketchChange(
+                _document,
+                Array.Empty<SketchConstraint>(),
+                new[] { nextDimension }).Document,
             $"Updated {FormatDimensionKind(existing.Kind)} dimension to {FormatNumber(nextValue)}.");
         _ = InvokeAsync(StateHasChanged);
     }
@@ -1642,6 +1662,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             DrawingPrepService.RotateAboutBoundsCenter(_document, degrees),
             status);
     }
+
+    private SketchSolveResult SolveSketchChange(
+        DrawingDocument document,
+        IEnumerable<SketchConstraint> constraints,
+        IEnumerable<SketchDimension> dimensions) =>
+        _sketchSolver.Solve(new SketchSolveRequest(document, constraints, dimensions));
 
     private void ApplyDocumentChange(DrawingDocument nextDocument, string status)
     {

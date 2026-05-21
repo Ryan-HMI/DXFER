@@ -38,9 +38,15 @@ Known gaps:
 
 Current behavior:
 
-- `SketchConstraintService` and `SketchDimensionSolverService` apply constraints
-  directly with DXFER-owned C# logic.
-- There is no replaceable sketch-solver interface.
+- `ISketchSolver` owns the sketch-solve boundary with DXFER-owned request/result
+  types.
+- `LegacySketchSolverAdapter` delegates to the existing C# constraint and
+  dimension services without changing geometry behavior.
+- `PlaneGcsSketchSolverAdapter` is present but intentionally reports
+  unavailable until WASM/browser integration exists.
+- The Blazor workbench routes new sketch constraints and driving dimension
+  changes through `ISketchSolver`; lower-level drag/validation helpers still use
+  the legacy services directly where they are the implementation detail.
 
 Target behavior:
 
@@ -61,6 +67,8 @@ Known gaps:
 
 - Full PlaneGCS WASM loading and solving is not complete until browser and node
   tests prove it can solve the required primitive/constraint set.
+- The legacy adapter can report overconstrained failures for unsatisfied driving
+  dimensions/constraints, but it does not yet detect underconstrained sketches.
 
 ## Pass 2 - Constraint Command System
 

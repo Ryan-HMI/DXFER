@@ -67,6 +67,19 @@ public sealed class WorkbenchRenderBoundaryTests
         methodBody.Should().Contain("return;");
     }
 
+    [Fact]
+    public void WorkbenchRoutesSketchSolvesThroughSolverAdapter()
+    {
+        var workbench = FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs");
+        var source = File.ReadAllText(workbench);
+
+        source.Should().Contain("private readonly ISketchSolver _sketchSolver = new LegacySketchSolverAdapter();");
+        source.Should().Contain("private SketchSolveResult SolveSketchChange(");
+        source.Should().NotContain("SketchConstraintService.ApplyConstraint(");
+        source.Should().NotContain("SketchConstraintService.ApplyConstraints(");
+        source.Should().NotContain("SketchDimensionSolverService.ApplyDimension(");
+    }
+
     private static string FindRepositoryFile(params string[] segments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
