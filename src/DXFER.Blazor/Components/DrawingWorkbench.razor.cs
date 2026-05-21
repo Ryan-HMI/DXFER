@@ -53,6 +53,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private int _createdEntitySequence;
     private int _createdDimensionSequence;
     private int _createdConstraintSequence;
+    private double? _cornerModifyDistance;
     private PendingCircleSplit? _pendingCircleSplit;
     private DockResizeTarget _resizeTarget = DockResizeTarget.None;
     private double _resizeStartClientX;
@@ -171,9 +172,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             .Take(2)
             .Count() == 1;
 
-    private bool CanFilletOrChamferSelectedLines =>
-        GetSelectedWholeEntities().OfType<LineEntity>().Take(3).Count() == 2;
-
     private bool CanCreateSketchDimension =>
         SketchCommandFactory.TryBuildDimension(
             _document,
@@ -248,8 +246,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.SplitAtPoint, WorkbenchTool.SplitAtPoint, CadIconName.Split, "Split at point"),
             Command(WorkbenchCommandId.AddSplinePoint, WorkbenchTool.AddSplinePoint, CadIconName.SplineControlPoint, "Add spline point", !CanAddSplinePoint),
             Command(WorkbenchCommandId.Offset, WorkbenchTool.Offset, CadIconName.Offset, "Offset", !CanModifySelectedGeometry),
-            Command(WorkbenchCommandId.Fillet, null, CadIconName.Fillet, "Fillet", !CanFilletOrChamferSelectedLines),
-            Command(WorkbenchCommandId.Chamfer, null, CadIconName.Chamfer, "Chamfer", !CanFilletOrChamferSelectedLines),
+            Command(WorkbenchCommandId.Fillet, WorkbenchTool.Fillet, CadIconName.Fillet, "Fillet"),
+            Command(WorkbenchCommandId.Chamfer, WorkbenchTool.Chamfer, CadIconName.Chamfer, "Chamfer"),
             Command(WorkbenchCommandId.Dimension, WorkbenchTool.Dimension, CadIconName.Dimension, "Dimension")
         }, "Edit"),
         new WorkbenchToolGroup("Transform", new[]
@@ -348,6 +346,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.SplitAtPoint => "Split at point",
         WorkbenchTool.AddSplinePoint => "Add spline point",
         WorkbenchTool.Offset => "Offset",
+        WorkbenchTool.Fillet => "Fillet",
+        WorkbenchTool.Chamfer => "Chamfer",
         WorkbenchTool.Translate => "Translate",
         WorkbenchTool.Rotate => "Rotate",
         WorkbenchTool.Scale => "Scale",
@@ -361,6 +361,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private string HoverText => FormatSelectionKey(_hoveredEntityId);
 
     private string ActiveSelectionText => FormatSelectionKey(_activeSelectionKey);
+
+    private bool IsCornerModifyToolActive =>
+        TryGetCornerModifyCommand(_activeTool, out _);
+
+    private string CornerModifyDistanceLabel =>
+        _activeTool == WorkbenchTool.Fillet ? "R" : "D";
+
+    private string CornerModifyDistanceValue =>
+        FormatNumber(GetCornerModifyDistance());
 
     private string CommandPromptText => _activeTool switch
     {
@@ -390,6 +399,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.SplitAtPoint => "Split at point: click a line or arc, or pick two points on a circle. Esc: cancel.",
         WorkbenchTool.AddSplinePoint => "Add spline point: select one fit-point spline, then click the spline where the new fit point belongs. Esc: cancel.",
         WorkbenchTool.Offset => "Offset: select whole geometry, then click the through side or radius point. Esc: cancel.",
+        WorkbenchTool.Fillet => "Fillet: select two converging edges, or one vertex with exactly two adjacent edges. Esc: cancel.",
+        WorkbenchTool.Chamfer => "Chamfer: select two converging edges, or one vertex with exactly two adjacent edges. Esc: cancel.",
         WorkbenchTool.Translate => "Translate: select whole geometry, click from point, then to point. Esc: cancel.",
         WorkbenchTool.Rotate => "Rotate: select whole geometry, click center, reference point, then target point. Esc: cancel.",
         WorkbenchTool.Scale => "Scale: select whole geometry, click center, reference radius, then target radius. Esc: cancel.",
@@ -622,12 +633,20 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
                 break;
             case WorkbenchCommandId.Fillet:
-                await SyncSelectionFromCanvasAsync();
-                FilletSelectedLines();
-                break;
             case WorkbenchCommandId.Chamfer:
                 await SyncSelectionFromCanvasAsync();
-                ChamferSelectedLines();
+                if (TryApplyCornerModifyTool(commandId, keepModal: false))
+                {
+                    break;
+                }
+
+                if (TryGetCornerModifyTool(commandId, out var cornerTool))
+                {
+                    ActivateTool(
+                        cornerTool,
+                        $"{FormatCommandName(commandId)} active. Select two converging edges, or one vertex with exactly two adjacent edges. Esc to cancel.");
+                }
+
                 break;
             case WorkbenchCommandId.Dimension:
                 ActivateTool(
@@ -1167,36 +1186,166 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         return true;
     }
 
-    private void FilletSelectedLines()
+    private bool TryApplyCornerModifyTool(WorkbenchCommandId commandId, bool keepModal)
     {
-        if (!DrawingModifyService.TryFilletSelectedLines(
-                _document,
-                GetWholeEntityIdsForOperations(),
-                GetDefaultCornerDistance(),
-                out var nextDocument))
+        if (!TryGetCornerModifyTool(commandId, out var tool))
         {
-            _status = "Fillet needs exactly two nonparallel selected lines with enough length.";
-            return;
+            return false;
         }
 
-        ApplyDocumentChange(nextDocument, "Filleted selected lines.");
+        var selectedKeys = _selectedEntityIds.ToArray();
+        if (selectedKeys.Length == 0)
+        {
+            _status = $"{FormatCommandName(commandId)} active. Select two converging edges, or one vertex with exactly two adjacent edges.";
+            return false;
+        }
+
+        var distance = GetCornerModifyDistance();
+        DrawingDocument nextDocument;
+        bool applied;
+        switch (commandId)
+        {
+            case WorkbenchCommandId.Fillet:
+                applied = DrawingModifyService.TryFilletSelectedCorner(
+                    _document,
+                    selectedKeys,
+                    distance,
+                    CreateEntityId,
+                    out nextDocument);
+                break;
+            case WorkbenchCommandId.Chamfer:
+                applied = DrawingModifyService.TryChamferSelectedCorner(
+                    _document,
+                    selectedKeys,
+                    distance,
+                    CreateEntityId,
+                    out nextDocument);
+                break;
+            default:
+                nextDocument = _document;
+                applied = false;
+                break;
+        }
+
+        if (!applied)
+        {
+            _status = $"{FormatCommandName(commandId)} needs two converging edges or one vertex with exactly two adjacent edges and enough length.";
+            _ = InvokeAsync(StateHasChanged);
+            return false;
+        }
+
+        nextDocument = AddGeneratedCornerModifyDimension(commandId, _document, nextDocument);
+        var appliedStatus = $"{FormatCommandName(commandId)} applied at {FormatNumber(distance)}.";
+        ApplyDocumentChange(nextDocument, appliedStatus);
+        if (keepModal)
+        {
+            _activeTool = tool;
+            _status = $"{appliedStatus} {FormatCommandName(commandId)} stays active; select the next corner or Esc to cancel.";
+        }
+        else
+        {
+            _activeTool = null;
+        }
+
         ResetSelection();
+        _ = InvokeAsync(StateHasChanged);
+        return true;
     }
 
-    private void ChamferSelectedLines()
+    private DrawingDocument AddGeneratedCornerModifyDimension(
+        WorkbenchCommandId commandId,
+        DrawingDocument previous,
+        DrawingDocument next)
     {
-        if (!DrawingModifyService.TryChamferSelectedLines(
-                _document,
-                GetWholeEntityIdsForOperations(),
-                GetDefaultCornerDistance(),
-                out var nextDocument))
+        var previousEntityIds = previous.Entities
+            .Select(entity => entity.Id.Value)
+            .ToHashSet(StringComparer.Ordinal);
+
+        SketchDimension? dimension = commandId switch
         {
-            _status = "Chamfer needs exactly two nonparallel selected lines with enough length.";
-            return;
+            WorkbenchCommandId.Fillet => CreateGeneratedFilletRadiusDimension(next, previousEntityIds),
+            WorkbenchCommandId.Chamfer => CreateGeneratedChamferBridgeDimension(next, previousEntityIds),
+            _ => null
+        };
+        if (dimension is null)
+        {
+            return next;
         }
 
-        ApplyDocumentChange(nextDocument, "Chamfered selected lines.");
-        ResetSelection();
+        return new DrawingDocument(
+            next.Entities,
+            next.Dimensions.Concat(new[] { dimension }),
+            next.Constraints,
+            next.Metadata);
+    }
+
+    private SketchDimension? CreateGeneratedFilletRadiusDimension(
+        DrawingDocument next,
+        IReadOnlySet<string> previousEntityIds)
+    {
+        var fillet = next.Entities
+            .OfType<ArcEntity>()
+            .FirstOrDefault(arc => !previousEntityIds.Contains(arc.Id.Value));
+        if (fillet is null)
+        {
+            return null;
+        }
+
+        return new SketchDimension(
+            CreateDimensionId(),
+            SketchDimensionKind.Radius,
+            new[] { fillet.Id.Value },
+            fillet.Radius,
+            GetFilletDimensionAnchor(fillet),
+            isDriving: false);
+    }
+
+    private SketchDimension? CreateGeneratedChamferBridgeDimension(
+        DrawingDocument next,
+        IReadOnlySet<string> previousEntityIds)
+    {
+        var chamfer = next.Entities
+            .OfType<LineEntity>()
+            .FirstOrDefault(line => !previousEntityIds.Contains(line.Id.Value));
+        if (chamfer is null)
+        {
+            return null;
+        }
+
+        return new SketchDimension(
+            CreateDimensionId(),
+            SketchDimensionKind.LinearDistance,
+            new[] { $"{chamfer.Id.Value}:start", $"{chamfer.Id.Value}:end" },
+            Distance(chamfer.Start, chamfer.End),
+            GetChamferDimensionAnchor(chamfer),
+            isDriving: false);
+    }
+
+    private static Point2 GetFilletDimensionAnchor(ArcEntity fillet)
+    {
+        var sweep = GetPositiveSweepDegrees(fillet.StartAngleDegrees, fillet.EndAngleDegrees);
+        var midAngle = fillet.StartAngleDegrees + sweep / 2.0;
+        return PointOnCircle(
+            fillet.Center,
+            fillet.Radius + Math.Max(0.5, fillet.Radius * 0.45),
+            midAngle);
+    }
+
+    private static Point2 GetChamferDimensionAnchor(LineEntity chamfer)
+    {
+        var length = Distance(chamfer.Start, chamfer.End);
+        if (length <= 0.000001)
+        {
+            return new Point2(chamfer.Start.X, chamfer.Start.Y);
+        }
+
+        var midpoint = new Point2(
+            (chamfer.Start.X + chamfer.End.X) / 2.0,
+            (chamfer.Start.Y + chamfer.End.Y) / 2.0);
+        var normalX = -(chamfer.End.Y - chamfer.Start.Y) / length;
+        var normalY = (chamfer.End.X - chamfer.Start.X) / length;
+        var offset = Math.Max(1.25, length * 0.6);
+        return new Point2(midpoint.X + normalX * offset, midpoint.Y + normalY * offset);
     }
 
     private double GetDefaultCornerDistance()
@@ -1205,6 +1354,47 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         var size = Math.Max(bounds.Width, bounds.Height);
         return Math.Max(0.1, size * 0.05);
     }
+
+    private double GetCornerModifyDistance() =>
+        Math.Max(0.001, _cornerModifyDistance ?? GetDefaultCornerDistance());
+
+    private void OnCornerModifyDistanceChanged(ChangeEventArgs args)
+    {
+        var valueText = Convert.ToString(args.Value, CultureInfo.InvariantCulture) ?? string.Empty;
+        if ((!double.TryParse(valueText, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+                && !double.TryParse(valueText, NumberStyles.Float, CultureInfo.CurrentCulture, out value))
+            || !double.IsFinite(value)
+            || value <= 0)
+        {
+            _status = $"{ActiveToolLabel} size must be a positive number.";
+            return;
+        }
+
+        _cornerModifyDistance = value;
+        _status = $"{ActiveToolLabel} size set to {FormatNumber(value)}.";
+    }
+
+    private static double GetPositiveSweepDegrees(double startAngleDegrees, double endAngleDegrees)
+    {
+        var sweep = (endAngleDegrees - startAngleDegrees) % 360.0;
+        if (sweep < 0)
+        {
+            sweep += 360.0;
+        }
+
+        return sweep <= 0.000001 ? 360.0 : sweep;
+    }
+
+    private static Point2 PointOnCircle(Point2 center, double radius, double angleDegrees)
+    {
+        var radians = angleDegrees * Math.PI / 180.0;
+        return new Point2(
+            center.X + radius * Math.Cos(radians),
+            center.Y + radius * Math.Sin(radians));
+    }
+
+    private static double Distance(Point2 first, Point2 second) =>
+        Math.Sqrt(Math.Pow(second.X - first.X, 2) + Math.Pow(second.Y - first.Y, 2));
 
     private async Task SyncSelectionFromCanvasAsync()
     {
@@ -1791,6 +1981,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         if (_selectedEntityIds.Count > 0
             && TryGetConstraintKind(_activeTool, out var constraintKind)
             && TryApplySketchConstraint(constraintKind, keepModal: true))
+        {
+            return;
+        }
+
+        if (_selectedEntityIds.Count > 0
+            && TryGetCornerModifyCommand(_activeTool, out var commandId)
+            && TryApplyCornerModifyTool(commandId, keepModal: true))
         {
             return;
         }
@@ -2480,6 +2677,38 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
     }
 
+    private static bool TryGetCornerModifyTool(WorkbenchCommandId commandId, out WorkbenchTool tool)
+    {
+        switch (commandId)
+        {
+            case WorkbenchCommandId.Fillet:
+                tool = WorkbenchTool.Fillet;
+                return true;
+            case WorkbenchCommandId.Chamfer:
+                tool = WorkbenchTool.Chamfer;
+                return true;
+            default:
+                tool = default;
+                return false;
+        }
+    }
+
+    private static bool TryGetCornerModifyCommand(WorkbenchTool? tool, out WorkbenchCommandId commandId)
+    {
+        switch (tool)
+        {
+            case WorkbenchTool.Fillet:
+                commandId = WorkbenchCommandId.Fillet;
+                return true;
+            case WorkbenchTool.Chamfer:
+                commandId = WorkbenchCommandId.Chamfer;
+                return true;
+            default:
+                commandId = default;
+                return false;
+        }
+    }
+
     private static bool TryGetConstraintKind(WorkbenchCommandId commandId, out SketchConstraintKind kind)
     {
         switch (commandId)
@@ -2629,6 +2858,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.PowerTrim => "Click a line, polyline, polygon, circle, arc, ellipse, spline, or point section to trim, or click past a line endpoint to extend.",
         WorkbenchTool.AddSplinePoint => "Click the selected fit-point spline where the new fit point belongs.",
         WorkbenchTool.Offset => "Click the through side or radius point.",
+        WorkbenchTool.Fillet => "Select two converging edges, or one vertex with exactly two adjacent edges.",
+        WorkbenchTool.Chamfer => "Select two converging edges, or one vertex with exactly two adjacent edges.",
         WorkbenchTool.Translate => "Pick from point, then to point.",
         WorkbenchTool.Rotate => "Pick center, reference point, then target point.",
         WorkbenchTool.Scale => "Pick center, reference radius, then target radius.",

@@ -150,7 +150,7 @@
     position: relative;
     z-index: 8;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: start;
     gap: 0.35rem;
     min-height: 2rem;
@@ -177,6 +177,34 @@
     justify-content: flex-end;
     flex-wrap: wrap;
     gap: 0.35rem;
+}
+
+.dxfer-corner-size-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+    min-width: 7rem;
+    color: #8fa4b2;
+    font-size: 0.74rem;
+    font-weight: 650;
+}
+
+.dxfer-corner-size-control input {
+    width: 5.6rem;
+    min-width: 0;
+    height: 1.55rem;
+    box-sizing: border-box;
+    padding: 0 0.42rem;
+    color: #f2f7fa;
+    background: #0e141a;
+    border: 1px solid #34414b;
+    border-radius: 4px;
+    font: 0.76rem/1.1 "Segoe UI", system-ui, sans-serif;
+}
+
+.dxfer-corner-size-control input:focus {
+    outline: 1px solid #7f96a8;
+    outline-offset: 1px;
 }
 
 .dxfer-live-readout-item {

@@ -191,6 +191,519 @@ public sealed class DrawingModifyServiceTests
     }
 
     [Fact]
+    public void FilletSelectedCornerAcceptsSingleVertexWithExactlyTwoAdjacentEdges()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("horizontal"), new Point2(0, 0), new Point2(10, 0)),
+                new LineEntity(EntityId.Create("vertical"), new Point2(0, 0), new Point2(0, 10))
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint(
+                    "corner",
+                    SketchConstraintKind.Coincident,
+                    new[] { "horizontal:start", "vertical:start" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "horizontal-axis",
+                    SketchConstraintKind.Horizontal,
+                    new[] { "horizontal" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "vertical-axis",
+                    SketchConstraintKind.Vertical,
+                    new[] { "vertical" },
+                    SketchConstraintState.Satisfied)
+            });
+
+        var filleted = DrawingModifyService.TryFilletSelectedCorner(
+            document,
+            new[] { "horizontal|point|start|0|0" },
+            2,
+            prefix => EntityId.Create($"{prefix}-created"),
+            out var next);
+
+        filleted.Should().BeTrue();
+        next.Entities.Should().HaveCount(3);
+        var horizontal = next.Entities[0].Should().BeOfType<LineEntity>().Subject;
+        horizontal.Id.Should().Be(EntityId.Create("horizontal"));
+        horizontal.Start.X.Should().BeApproximately(2, 0.000001);
+        horizontal.Start.Y.Should().BeApproximately(0, 0.000001);
+        horizontal.End.Should().Be(new Point2(10, 0));
+        var vertical = next.Entities[1].Should().BeOfType<LineEntity>().Subject;
+        vertical.Id.Should().Be(EntityId.Create("vertical"));
+        vertical.Start.X.Should().BeApproximately(0, 0.000001);
+        vertical.Start.Y.Should().BeApproximately(2, 0.000001);
+        vertical.End.Should().Be(new Point2(0, 10));
+        next.Entities[2].Should().BeOfType<ArcEntity>()
+            .Which.Radius.Should().BeApproximately(2, 0.000001);
+        next.Constraints.Should().NotContain(constraint => constraint.Id == "corner");
+        next.Constraints
+            .Select(constraint => SketchConstraintService.ValidateConstraint(next, constraint).State)
+            .Should()
+            .OnlyContain(state => state == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void FilletSelectedCornerUsesShortestArcSweep()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("top"), new Point2(0, 10), new Point2(10, 10)),
+            new LineEntity(EntityId.Create("right"), new Point2(10, 0), new Point2(10, 10))
+        });
+
+        var filleted = DrawingModifyService.TryFilletSelectedCorner(
+            document,
+            new[] { "top", "right" },
+            2,
+            prefix => EntityId.Create($"{prefix}-created"),
+            out var next);
+
+        filleted.Should().BeTrue();
+        var arc = next.Entities.OfType<ArcEntity>().Single();
+        GetCounterClockwiseSweepDegrees(arc.StartAngleDegrees, arc.EndAngleDegrees)
+            .Should()
+            .BeApproximately(90, 0.000001);
+        next.Constraints
+            .Select(constraint => SketchConstraintService.ValidateConstraint(next, constraint).State)
+            .Should()
+            .OnlyContain(state => state == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void ChamferSelectedCornerAcceptsTwoConvergingEdgesAndPreservesSatisfiedConstraints()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("horizontal"), new Point2(0, 0), new Point2(10, 0)),
+                new LineEntity(EntityId.Create("vertical"), new Point2(0, 0), new Point2(0, 10))
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint(
+                    "corner",
+                    SketchConstraintKind.Coincident,
+                    new[] { "horizontal:start", "vertical:start" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "horizontal-axis",
+                    SketchConstraintKind.Horizontal,
+                    new[] { "horizontal" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "vertical-axis",
+                    SketchConstraintKind.Vertical,
+                    new[] { "vertical" },
+                    SketchConstraintState.Satisfied)
+            });
+
+        var chamfered = DrawingModifyService.TryChamferSelectedCorner(
+            document,
+            new[] { "horizontal", "vertical" },
+            2,
+            prefix => EntityId.Create($"{prefix}-created"),
+            out var next);
+
+        chamfered.Should().BeTrue();
+        next.Entities.Should().HaveCount(3);
+        next.Entities[0].Should().Be(new LineEntity(EntityId.Create("horizontal"), new Point2(2, 0), new Point2(10, 0)));
+        next.Entities[1].Should().Be(new LineEntity(EntityId.Create("vertical"), new Point2(0, 2), new Point2(0, 10)));
+        next.Entities[2].Should().BeOfType<LineEntity>()
+            .Which.Should().Be(new LineEntity(EntityId.Create("chamfer-created"), new Point2(2, 0), new Point2(0, 2)));
+        next.Constraints.Should().NotContain(constraint => constraint.Id == "corner");
+        next.Constraints
+            .Select(constraint => SketchConstraintService.ValidateConstraint(next, constraint).State)
+            .Should()
+            .OnlyContain(state => state == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void FilletSelectedCornerRejectsSingleVertexWithMoreThanTwoAdjacentEdges()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("horizontal"), new Point2(0, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("vertical"), new Point2(0, 0), new Point2(0, 10)),
+            new LineEntity(EntityId.Create("diagonal"), new Point2(0, 0), new Point2(10, 10))
+        });
+
+        var filleted = DrawingModifyService.TryFilletSelectedCorner(
+            document,
+            new[] { "horizontal|point|start|0|0" },
+            2,
+            prefix => EntityId.Create($"{prefix}-created"),
+            out var next);
+
+        filleted.Should().BeFalse();
+        next.Should().BeSameAs(document);
+    }
+
+    [Fact]
+    public void DraggingGeneratedFilletArcAdjustsRadiusAndKeepsCornerConstraintsSatisfied()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("horizontal"), new Point2(0, 0), new Point2(10, 0)),
+                new LineEntity(EntityId.Create("vertical"), new Point2(0, 0), new Point2(0, 10))
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint(
+                    "corner",
+                    SketchConstraintKind.Coincident,
+                    new[] { "horizontal:start", "vertical:start" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "horizontal-axis",
+                    SketchConstraintKind.Horizontal,
+                    new[] { "horizontal" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "vertical-axis",
+                    SketchConstraintKind.Vertical,
+                    new[] { "vertical" },
+                    SketchConstraintState.Satisfied)
+            });
+
+        DrawingModifyService.TryFilletSelectedCorner(
+            document,
+            new[] { "horizontal", "vertical" },
+            2,
+            prefix => EntityId.Create($"{prefix}-created"),
+            out var filletedDocument).Should().BeTrue();
+
+        SketchGeometryDragService.TryApplyDrag(
+            filletedDocument,
+            "fillet-created",
+            new Point2(2, 0),
+            new Point2(2, -1),
+            false,
+            out var draggedDocument,
+            out _).Should().BeTrue();
+
+        draggedDocument.Entities.OfType<ArcEntity>().Single().Radius.Should().BeApproximately(3, 0.000001);
+        draggedDocument.Constraints
+            .Select(constraint => SketchConstraintService.ValidateConstraint(draggedDocument, constraint).State)
+            .Should()
+            .OnlyContain(state => state == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingGeneratedFilletArcRefreshesReferenceRadiusDimension()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("horizontal"), new Point2(0, 0), new Point2(10, 0)),
+                new LineEntity(EntityId.Create("vertical"), new Point2(0, 0), new Point2(0, 10))
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint(
+                    "corner",
+                    SketchConstraintKind.Coincident,
+                    new[] { "horizontal:start", "vertical:start" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "horizontal-axis",
+                    SketchConstraintKind.Horizontal,
+                    new[] { "horizontal" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "vertical-axis",
+                    SketchConstraintKind.Vertical,
+                    new[] { "vertical" },
+                    SketchConstraintState.Satisfied)
+            });
+
+        DrawingModifyService.TryFilletSelectedCorner(
+            document,
+            new[] { "horizontal", "vertical" },
+            2,
+            prefix => EntityId.Create($"{prefix}-created"),
+            out var filletedDocument).Should().BeTrue();
+        filletedDocument = new DrawingDocument(
+            filletedDocument.Entities,
+            new[]
+            {
+                new SketchDimension(
+                    "fillet-radius",
+                    SketchDimensionKind.Radius,
+                    new[] { "fillet-created" },
+                    2,
+                    new Point2(3, 3),
+                    isDriving: false)
+            },
+            filletedDocument.Constraints);
+
+        SketchGeometryDragService.TryApplyDrag(
+            filletedDocument,
+            "fillet-created",
+            new Point2(2, 0),
+            new Point2(2, -1),
+            false,
+            out var draggedDocument,
+            out _).Should().BeTrue();
+
+        draggedDocument.Entities.OfType<ArcEntity>().Single().Radius.Should().BeApproximately(3, 0.000001);
+        var dimension = draggedDocument.Dimensions.Should().ContainSingle().Subject;
+        dimension.Value.Should().BeApproximately(3, 0.000001);
+        dimension.IsDriving.Should().BeFalse();
+        draggedDocument.Constraints
+            .Select(constraint => SketchConstraintService.ValidateConstraint(draggedDocument, constraint).State)
+            .Should()
+            .OnlyContain(state => state == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void EditingGeneratedFilletRadiusDimensionAdjustsCornerAndKeepsConstraintsSatisfied()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("horizontal"), new Point2(0, 0), new Point2(10, 0)),
+                new LineEntity(EntityId.Create("vertical"), new Point2(0, 0), new Point2(0, 10))
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint(
+                    "corner",
+                    SketchConstraintKind.Coincident,
+                    new[] { "horizontal:start", "vertical:start" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "horizontal-axis",
+                    SketchConstraintKind.Horizontal,
+                    new[] { "horizontal" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "vertical-axis",
+                    SketchConstraintKind.Vertical,
+                    new[] { "vertical" },
+                    SketchConstraintState.Satisfied)
+            });
+
+        DrawingModifyService.TryFilletSelectedCorner(
+            document,
+            new[] { "horizontal", "vertical" },
+            2,
+            prefix => EntityId.Create($"{prefix}-created"),
+            out var filletedDocument).Should().BeTrue();
+        var radiusDimension = new SketchDimension(
+            "fillet-radius",
+            SketchDimensionKind.Radius,
+            new[] { "fillet-created" },
+            3,
+            new Point2(3, 3),
+            isDriving: true);
+
+        var resizedDocument = SketchDimensionSolverService.ApplyDimension(filletedDocument, radiusDimension);
+
+        resizedDocument.Entities.OfType<ArcEntity>().Single().Radius.Should().BeApproximately(3, 0.000001);
+        resizedDocument.Constraints
+            .Select(constraint => SketchConstraintService.ValidateConstraint(resizedDocument, constraint).State)
+            .Should()
+            .OnlyContain(state => state == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingGeneratedChamferBridgeAdjustsCornerAndKeepsConstraintsSatisfied()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("horizontal"), new Point2(0, 0), new Point2(10, 0)),
+                new LineEntity(EntityId.Create("vertical"), new Point2(0, 0), new Point2(0, 10))
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint(
+                    "corner",
+                    SketchConstraintKind.Coincident,
+                    new[] { "horizontal:start", "vertical:start" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "horizontal-axis",
+                    SketchConstraintKind.Horizontal,
+                    new[] { "horizontal" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "vertical-axis",
+                    SketchConstraintKind.Vertical,
+                    new[] { "vertical" },
+                    SketchConstraintState.Satisfied)
+            });
+
+        DrawingModifyService.TryChamferSelectedCorner(
+            document,
+            new[] { "horizontal", "vertical" },
+            2,
+            prefix => EntityId.Create($"{prefix}-created"),
+            out var chamferedDocument).Should().BeTrue();
+
+        SketchGeometryDragService.TryApplyDrag(
+            chamferedDocument,
+            "chamfer-created|point|mid|1|1",
+            new Point2(1, 1),
+            new Point2(2, 2),
+            false,
+            out var draggedDocument,
+            out _).Should().BeTrue();
+
+        draggedDocument.Entities[0].Should().Be(new LineEntity(EntityId.Create("horizontal"), new Point2(4, 0), new Point2(10, 0)));
+        draggedDocument.Entities[1].Should().Be(new LineEntity(EntityId.Create("vertical"), new Point2(0, 4), new Point2(0, 10)));
+        draggedDocument.Entities
+            .OfType<LineEntity>()
+            .Single(line => line.Id.Value == "chamfer-created")
+            .Should()
+            .Be(new LineEntity(EntityId.Create("chamfer-created"), new Point2(4, 0), new Point2(0, 4)));
+        draggedDocument.Constraints
+            .Select(constraint => SketchConstraintService.ValidateConstraint(draggedDocument, constraint).State)
+            .Should()
+            .OnlyContain(state => state == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingGeneratedChamferBridgeRefreshesReferenceBridgeDimension()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("horizontal"), new Point2(0, 0), new Point2(10, 0)),
+                new LineEntity(EntityId.Create("vertical"), new Point2(0, 0), new Point2(0, 10))
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint(
+                    "corner",
+                    SketchConstraintKind.Coincident,
+                    new[] { "horizontal:start", "vertical:start" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "horizontal-axis",
+                    SketchConstraintKind.Horizontal,
+                    new[] { "horizontal" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "vertical-axis",
+                    SketchConstraintKind.Vertical,
+                    new[] { "vertical" },
+                    SketchConstraintState.Satisfied)
+            });
+
+        DrawingModifyService.TryChamferSelectedCorner(
+            document,
+            new[] { "horizontal", "vertical" },
+            2,
+            prefix => EntityId.Create($"{prefix}-created"),
+            out var chamferedDocument).Should().BeTrue();
+        chamferedDocument = new DrawingDocument(
+            chamferedDocument.Entities,
+            new[]
+            {
+                new SketchDimension(
+                    "chamfer-bridge",
+                    SketchDimensionKind.LinearDistance,
+                    new[] { "chamfer-created:start", "chamfer-created:end" },
+                    Math.Sqrt(8),
+                    new Point2(1, 1),
+                    isDriving: false)
+            },
+            chamferedDocument.Constraints);
+
+        SketchGeometryDragService.TryApplyDrag(
+            chamferedDocument,
+            "chamfer-created",
+            new Point2(1, 1),
+            new Point2(2, 2),
+            false,
+            out var draggedDocument,
+            out _).Should().BeTrue();
+
+        var chamfer = draggedDocument.Entities
+            .OfType<LineEntity>()
+            .Single(line => line.Id.Value == "chamfer-created");
+        var expectedLength = Math.Sqrt(Math.Pow(chamfer.End.X - chamfer.Start.X, 2) + Math.Pow(chamfer.End.Y - chamfer.Start.Y, 2));
+        expectedLength.Should().BeApproximately(Math.Sqrt(32), 0.000001);
+        var dimension = draggedDocument.Dimensions.Should().ContainSingle().Subject;
+        dimension.Value.Should().BeApproximately(expectedLength, 0.000001);
+        dimension.IsDriving.Should().BeFalse();
+        draggedDocument.Constraints
+            .Select(constraint => SketchConstraintService.ValidateConstraint(draggedDocument, constraint).State)
+            .Should()
+            .OnlyContain(state => state == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void EditingGeneratedChamferBridgeDimensionAdjustsCornerAndKeepsConstraintsSatisfied()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("horizontal"), new Point2(0, 0), new Point2(10, 0)),
+                new LineEntity(EntityId.Create("vertical"), new Point2(0, 0), new Point2(0, 10))
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint(
+                    "corner",
+                    SketchConstraintKind.Coincident,
+                    new[] { "horizontal:start", "vertical:start" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "horizontal-axis",
+                    SketchConstraintKind.Horizontal,
+                    new[] { "horizontal" },
+                    SketchConstraintState.Satisfied),
+                new SketchConstraint(
+                    "vertical-axis",
+                    SketchConstraintKind.Vertical,
+                    new[] { "vertical" },
+                    SketchConstraintState.Satisfied)
+            });
+
+        DrawingModifyService.TryChamferSelectedCorner(
+            document,
+            new[] { "horizontal", "vertical" },
+            2,
+            prefix => EntityId.Create($"{prefix}-created"),
+            out var chamferedDocument).Should().BeTrue();
+        var bridgeDimension = new SketchDimension(
+            "chamfer-bridge",
+            SketchDimensionKind.LinearDistance,
+            new[] { "chamfer-created:start", "chamfer-created:end" },
+            Math.Sqrt(18),
+            new Point2(2, 2),
+            isDriving: true);
+
+        var resizedDocument = SketchDimensionSolverService.ApplyDimension(chamferedDocument, bridgeDimension);
+
+        var chamfer = resizedDocument.Entities
+            .OfType<LineEntity>()
+            .Single(line => line.Id.Value == "chamfer-created");
+        Math.Sqrt(Math.Pow(chamfer.End.X - chamfer.Start.X, 2) + Math.Pow(chamfer.End.Y - chamfer.Start.Y, 2))
+            .Should()
+            .BeApproximately(Math.Sqrt(18), 0.000001);
+        resizedDocument.Constraints
+            .Select(constraint => SketchConstraintService.ValidateConstraint(resizedDocument, constraint).State)
+            .Should()
+            .OnlyContain(state => state == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
     public void PowerTrimRemovesPickedMiddleSpanBetweenCutters()
     {
         var document = new DrawingDocument(new DrawingEntity[]
@@ -2765,6 +3278,17 @@ public sealed class DrawingModifyServiceTests
         }
 
         return normalized;
+    }
+
+    private static double GetCounterClockwiseSweepDegrees(double startAngleDegrees, double endAngleDegrees)
+    {
+        var sweep = endAngleDegrees - startAngleDegrees;
+        while (sweep < 0)
+        {
+            sweep += 360.0;
+        }
+
+        return sweep;
     }
 
     private static Point2 EvaluateCatmullRom(Point2 previous, Point2 start, Point2 end, Point2 next, double t)

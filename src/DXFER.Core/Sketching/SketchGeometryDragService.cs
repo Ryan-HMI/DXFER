@@ -9,6 +9,11 @@ public static class SketchGeometryDragService
     private const string PointKeySeparator = "|point|";
     private const string SegmentKeySeparator = "|segment|";
 
+    private readonly record struct ChamferBridgeEndpoint(
+        SketchReference BridgeEndpointReference,
+        SketchReference EdgeEndpointReference,
+        SketchReference EdgeLineReference);
+
     public static bool TryApplyDrag(
         DrawingDocument document,
         string selectionKey,
@@ -57,6 +62,16 @@ public static class SketchGeometryDragService
             return false;
         }
 
+        if (TryApplyChamferBridgeDrag(document, selectionKey, delta, out var chamferBridgeHandled, out nextDocument, out status))
+        {
+            return true;
+        }
+
+        if (chamferBridgeHandled)
+        {
+            return false;
+        }
+
         if (!TryApplyGeometryDrag(entities, fixedReferences, selectionKey, delta, dragEnd, constrainToCurrentVector, out status))
         {
             return false;
@@ -77,6 +92,7 @@ public static class SketchGeometryDragService
         var dimensions = TryGetTranslatedDimensionEntityId(document, selectionKey, out var translatedEntityId)
             ? TranslateDimensionAnchors(document.Dimensions, translatedEntityId, delta)
             : document.Dimensions;
+        dimensions = RefreshMeasuredReferenceDimensions(entities, dimensions);
         var draggedDocument = new DrawingDocument(entities, dimensions, document.Constraints, document.Metadata);
         draggedDocument = new DrawingDocument(
             draggedDocument.Entities,
@@ -520,6 +536,230 @@ public static class SketchGeometryDragService
 
         nextDocument = resizedDocument;
         status = "Resized rectangle edge.";
+        return true;
+    }
+
+    private static bool TryApplyChamferBridgeDrag(
+        DrawingDocument document,
+        string selectionKey,
+        Point2 delta,
+        out bool handled,
+        out DrawingDocument nextDocument,
+        out string status)
+    {
+        handled = false;
+        nextDocument = document;
+        status = string.Empty;
+
+        if (!TryGetChamferBridgeEntityId(selectionKey, out var bridgeEntityId)
+            || !SketchGeometryEditor.TryFindEntity(document.Entities, bridgeEntityId, out _, out var selectedEntity)
+            || selectedEntity is not LineEntity bridge
+            || !TryGetChamferBridgeEndpoints(document, bridge.Id.Value, out var firstEndpoint, out var secondEndpoint))
+        {
+            return false;
+        }
+
+        handled = true;
+        var entities = document.Entities.ToArray();
+        if (!SketchGeometryEditor.TryGetLine(entities, firstEndpoint.EdgeLineReference, out _, out var firstEdge)
+            || !SketchGeometryEditor.TryGetLine(entities, secondEndpoint.EdgeLineReference, out _, out var secondEdge)
+            || !TryGetInfiniteLineIntersection(firstEdge.Start, firstEdge.End, secondEdge.Start, secondEdge.End, out var corner)
+            || !TryGetInfiniteLineIntersection(
+                firstEdge.Start,
+                firstEdge.End,
+                Add(bridge.Start, delta),
+                Add(bridge.End, delta),
+                out var firstTrimPoint)
+            || !TryGetInfiniteLineIntersection(
+                secondEdge.Start,
+                secondEdge.End,
+                Add(bridge.Start, delta),
+                Add(bridge.End, delta),
+                out var secondTrimPoint))
+        {
+            status = "Chamfer bridge drag could not resolve the adjacent corner.";
+            return false;
+        }
+
+        if (!IsChamferTrimPointWithinEdge(firstEdge, firstEndpoint.EdgeEndpointReference.Target, corner, firstTrimPoint)
+            || !IsChamferTrimPointWithinEdge(secondEdge, secondEndpoint.EdgeEndpointReference.Target, corner, secondTrimPoint))
+        {
+            status = "Chamfer bridge drag would collapse the adjacent edge.";
+            return false;
+        }
+
+        var resizedFirstEdge = SetLineEndpoint(firstEdge, firstEndpoint.EdgeEndpointReference.Target, firstTrimPoint);
+        var resizedSecondEdge = SetLineEndpoint(secondEdge, secondEndpoint.EdgeEndpointReference.Target, secondTrimPoint);
+        var resizedBridge = SetLineEndpoint(bridge, firstEndpoint.BridgeEndpointReference.Target, firstTrimPoint);
+        resizedBridge = SetLineEndpoint(resizedBridge, secondEndpoint.BridgeEndpointReference.Target, secondTrimPoint);
+
+        if (!SketchGeometryEditor.TrySetLine(entities, firstEndpoint.EdgeLineReference, resizedFirstEdge)
+            || !SketchGeometryEditor.TrySetLine(entities, secondEndpoint.EdgeLineReference, resizedSecondEdge)
+            || !SketchGeometryEditor.TrySetLine(entities, new SketchReference(bridge.Id.Value, SketchReferenceTarget.Entity), resizedBridge))
+        {
+            status = "Chamfer bridge drag could not update the adjacent corner.";
+            return false;
+        }
+
+        var dimensions = RefreshMeasuredReferenceDimensions(entities, document.Dimensions);
+        var candidate = BuildValidatedDragDocument(document, entities, dimensions);
+        if (!DrivingDimensionsRemainSatisfied(candidate.Entities, candidate.Dimensions, candidate.Constraints)
+            || candidate.Constraints.Any(constraint => constraint.State == SketchConstraintState.Unsatisfied)
+            || GeometryMatches(document.Entities, candidate.Entities))
+        {
+            status = "Chamfer bridge drag would break existing constraints.";
+            return false;
+        }
+
+        nextDocument = candidate;
+        status = "Adjusted chamfer.";
+        return true;
+    }
+
+    private static bool TryGetChamferBridgeEntityId(string selectionKey, out string entityId)
+    {
+        if (SketchReference.TryParseCanvasPointCoordinates(selectionKey, out var pointEntityId, out var label, out _))
+        {
+            if (StringComparer.Ordinal.Equals(NormalizePointLabel(label), "mid"))
+            {
+                entityId = pointEntityId;
+                return true;
+            }
+
+            entityId = string.Empty;
+            return false;
+        }
+
+        entityId = selectionKey;
+        return !string.IsNullOrWhiteSpace(entityId);
+    }
+
+    private static bool TryGetChamferBridgeEndpoints(
+        DrawingDocument document,
+        string bridgeEntityId,
+        out ChamferBridgeEndpoint firstEndpoint,
+        out ChamferBridgeEndpoint secondEndpoint)
+    {
+        var endpoints = new List<ChamferBridgeEndpoint>(2);
+        foreach (var constraint in document.Constraints)
+        {
+            if (constraint.Kind != SketchConstraintKind.Coincident
+                || constraint.State == SketchConstraintState.Suppressed
+                || constraint.ReferenceKeys.Count < 2)
+            {
+                continue;
+            }
+
+            SketchReference? bridgeReference = null;
+            SketchReference? edgeReference = null;
+            foreach (var referenceKey in constraint.ReferenceKeys)
+            {
+                if (!SketchReference.TryParse(referenceKey, out var reference)
+                    || !IsEndpointReference(reference))
+                {
+                    continue;
+                }
+
+                if (StringComparer.Ordinal.Equals(reference.EntityId, bridgeEntityId))
+                {
+                    bridgeReference = reference;
+                }
+                else if (edgeReference is null)
+                {
+                    edgeReference = reference;
+                }
+            }
+
+            if (bridgeReference is not { } bridgeEndpointReference
+                || edgeReference is not { } edgeEndpointReference)
+            {
+                continue;
+            }
+
+            var edgeLineReference = GetEntityLineReference(edgeEndpointReference);
+            if (StringComparer.Ordinal.Equals(edgeLineReference.EntityId, bridgeEntityId)
+                || !SketchGeometryEditor.TryGetLine(document.Entities, edgeLineReference, out _, out _))
+            {
+                continue;
+            }
+
+            endpoints.Add(new ChamferBridgeEndpoint(bridgeEndpointReference, edgeEndpointReference, edgeLineReference));
+        }
+
+        endpoints = endpoints
+            .GroupBy(endpoint => endpoint.BridgeEndpointReference.Target)
+            .Select(group => group.First())
+            .ToList();
+
+        if (endpoints.Count != 2
+            || endpoints.Select(endpoint => endpoint.EdgeLineReference.ToString()).Distinct(StringComparer.Ordinal).Count() != 2
+            || endpoints.Any(endpoint => !IsEndpointReference(endpoint.EdgeEndpointReference))
+            || endpoints.All(endpoint => endpoint.BridgeEndpointReference.Target != SketchReferenceTarget.Start)
+            || endpoints.All(endpoint => endpoint.BridgeEndpointReference.Target != SketchReferenceTarget.End))
+        {
+            firstEndpoint = default;
+            secondEndpoint = default;
+            return false;
+        }
+
+        firstEndpoint = endpoints[0];
+        secondEndpoint = endpoints[1];
+        return true;
+    }
+
+    private static SketchReference GetEntityLineReference(SketchReference reference) =>
+        new(reference.EntityId, SketchReferenceTarget.Entity, reference.SegmentIndex);
+
+    private static bool IsEndpointReference(SketchReference reference) =>
+        reference.Target is SketchReferenceTarget.Start or SketchReferenceTarget.End;
+
+    private static LineEntity SetLineEndpoint(LineEntity line, SketchReferenceTarget target, Point2 point) =>
+        target == SketchReferenceTarget.Start
+            ? line with { Start = point }
+            : line with { End = point };
+
+    private static bool IsChamferTrimPointWithinEdge(
+        LineEntity edge,
+        SketchReferenceTarget trimmedEndpoint,
+        Point2 corner,
+        Point2 trimPoint)
+    {
+        var farPoint = trimmedEndpoint == SketchReferenceTarget.Start ? edge.End : edge.Start;
+        var edgeVector = new Point2(farPoint.X - corner.X, farPoint.Y - corner.Y);
+        var trimVector = new Point2(trimPoint.X - corner.X, trimPoint.Y - corner.Y);
+        if (!TryNormalize(edgeVector, out var edgeUnit))
+        {
+            return false;
+        }
+
+        var edgeLength = SketchGeometryEditor.Distance(corner, farPoint);
+        var trimDistance = Dot(trimVector, edgeUnit);
+        return trimDistance > SketchGeometryEditor.Tolerance
+            && trimDistance < edgeLength - SketchGeometryEditor.Tolerance
+            && Math.Abs(Cross(trimVector, edgeUnit)) <= SketchGeometryEditor.Tolerance * 10;
+    }
+
+    private static bool TryGetInfiniteLineIntersection(
+        Point2 firstStart,
+        Point2 firstEnd,
+        Point2 secondStart,
+        Point2 secondEnd,
+        out Point2 intersection)
+    {
+        var firstDirection = new Point2(firstEnd.X - firstStart.X, firstEnd.Y - firstStart.Y);
+        var secondDirection = new Point2(secondEnd.X - secondStart.X, secondEnd.Y - secondStart.Y);
+        var denominator = Cross(firstDirection, secondDirection);
+        if (Math.Abs(denominator) <= SketchGeometryEditor.Tolerance)
+        {
+            intersection = default;
+            return false;
+        }
+
+        var offset = new Point2(secondStart.X - firstStart.X, secondStart.Y - firstStart.Y);
+        var parameter = Cross(offset, secondDirection) / denominator;
+        intersection = new Point2(
+            firstStart.X + firstDirection.X * parameter,
+            firstStart.Y + firstDirection.Y * parameter);
         return true;
     }
 
@@ -2371,6 +2611,9 @@ public static class SketchGeometryDragService
     private static double Dot(Point2 first, Point2 second) =>
         (first.X * second.X) + (first.Y * second.Y);
 
+    private static double Cross(Point2 first, Point2 second) =>
+        (first.X * second.Y) - (first.Y * second.X);
+
     private static Point2 ProjectDeltaOntoAxis(Point2 delta, Point2 axis)
     {
         var scalar = Dot(delta, axis);
@@ -2532,6 +2775,37 @@ public static class SketchGeometryDragService
         }
 
         return true;
+    }
+
+    private static IReadOnlyList<SketchDimension> RefreshMeasuredReferenceDimensions(
+        IReadOnlyList<DrawingEntity> entities,
+        IReadOnlyList<SketchDimension> dimensions)
+    {
+        var changed = false;
+        var refreshed = new SketchDimension[dimensions.Count];
+        for (var index = 0; index < dimensions.Count; index++)
+        {
+            var dimension = dimensions[index];
+            if (!dimension.IsDriving
+                && TryMeasureDimension(entities, dimension, out var measured)
+                && double.IsFinite(measured)
+                && Math.Abs(measured - dimension.Value) > SketchGeometryEditor.Tolerance)
+            {
+                refreshed[index] = new SketchDimension(
+                    dimension.Id,
+                    dimension.Kind,
+                    dimension.ReferenceKeys,
+                    measured,
+                    dimension.Anchor,
+                    isDriving: false);
+                changed = true;
+                continue;
+            }
+
+            refreshed[index] = dimension;
+        }
+
+        return changed ? refreshed : dimensions;
     }
 
     private static bool TryMeasureDimension(

@@ -115,6 +115,17 @@
 
     <footer class="dxfer-command-bar" aria-label="Command and measurement readout">
         <div class="dxfer-command-prompt">@CommandPromptText</div>
+        @if (IsCornerModifyToolActive)
+        {
+            <label class="dxfer-corner-size-control">
+                <span>@CornerModifyDistanceLabel</span>
+                <input type="number"
+                       min="0.001"
+                       step="0.1"
+                       value="@CornerModifyDistanceValue"
+                       @onchange="OnCornerModifyDistanceChanged" />
+            </label>
+        }
         <div class="dxfer-command-chips" aria-label="Live measurement readout">
             @foreach (var item in LiveMeasurementReadouts)
             {

@@ -16,6 +16,7 @@ public static class DrawingModifyService
 
     private readonly record struct SampledPathCut(double Distance, Point2 Point);
     private readonly record struct LineEndpointReference(LineEntity Line, string Target, Point2 Point);
+    private readonly record struct CornerEdge(SketchReference Reference, LineEntity Line);
 
     public static DrawingDocument TranslateSelected(
         DrawingDocument document,
@@ -356,6 +357,89 @@ public static class DrawingModifyService
             },
             new[] { fillet });
         return true;
+    }
+
+    public static bool TryChamferSelectedCorner(
+        DrawingDocument document,
+        IEnumerable<string> selectionKeys,
+        double distance,
+        Func<string, EntityId> createEntityId,
+        out DrawingDocument nextDocument)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(selectionKeys);
+        ArgumentNullException.ThrowIfNull(createEntityId);
+
+        if (!TryResolveSelectedCornerEdges(document, selectionKeys, out var edges, out var intersection)
+            || edges.Length != 2)
+        {
+            nextDocument = document;
+            return false;
+        }
+
+        var trimDistance = Math.Max(GeometryTolerance, distance);
+        if (!TryTrimLineFromIntersection(edges[0].Line, intersection, trimDistance, out var firstTrimmed, out var firstChamferPoint)
+            || !TryTrimLineFromIntersection(edges[1].Line, intersection, trimDistance, out var secondTrimmed, out var secondChamferPoint))
+        {
+            nextDocument = document;
+            return false;
+        }
+
+        var chamfer = new LineEntity(
+            createEntityId("chamfer"),
+            firstChamferPoint,
+            secondChamferPoint,
+            edges[0].Line.IsConstruction && edges[1].Line.IsConstruction);
+
+        return TryReplaceCornerEdges(
+            document,
+            edges,
+            intersection,
+            new[] { firstTrimmed, secondTrimmed },
+            chamfer,
+            CreateChamferCornerConstraints(edges, intersection, chamfer),
+            out nextDocument);
+    }
+
+    public static bool TryFilletSelectedCorner(
+        DrawingDocument document,
+        IEnumerable<string> selectionKeys,
+        double radius,
+        Func<string, EntityId> createEntityId,
+        out DrawingDocument nextDocument)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(selectionKeys);
+        ArgumentNullException.ThrowIfNull(createEntityId);
+
+        if (!TryResolveSelectedCornerEdges(document, selectionKeys, out var edges, out var intersection)
+            || edges.Length != 2)
+        {
+            nextDocument = document;
+            return false;
+        }
+
+        var filletRadius = Math.Max(GeometryTolerance, radius);
+        if (!TryBuildFillet(edges[0].Line, edges[1].Line, intersection, filletRadius, out var firstTrimmed, out var secondTrimmed, out var arc))
+        {
+            nextDocument = document;
+            return false;
+        }
+
+        var fillet = arc with
+        {
+            Id = createEntityId("fillet"),
+            IsConstruction = edges[0].Line.IsConstruction && edges[1].Line.IsConstruction
+        };
+
+        return TryReplaceCornerEdges(
+            document,
+            edges,
+            intersection,
+            new[] { firstTrimmed, secondTrimmed },
+            fillet,
+            CreateFilletCornerConstraints(edges, intersection, new[] { firstTrimmed, secondTrimmed }, fillet),
+            out nextDocument);
     }
 
     public static bool TryPowerTrimOrExtendLine(
@@ -1537,6 +1621,346 @@ public static class DrawingModifyService
             nextDocument.Metadata);
     }
 
+    private static bool TryResolveSelectedCornerEdges(
+        DrawingDocument document,
+        IEnumerable<string> selectionKeys,
+        out CornerEdge[] edges,
+        out Point2 intersection)
+    {
+        var selectedEdges = new List<CornerEdge>();
+        var selectedPoints = new List<Point2>();
+        foreach (var selectionKey in selectionKeys.Where(key => !string.IsNullOrWhiteSpace(key)).Distinct(StringComparer.Ordinal))
+        {
+            if (!SketchReference.TryParse(selectionKey, out var reference))
+            {
+                edges = Array.Empty<CornerEdge>();
+                intersection = default;
+                return false;
+            }
+
+            if (reference.Target == SketchReferenceTarget.Entity)
+            {
+                if (!SketchGeometryEditor.TryGetLine(document.Entities, reference, out _, out var line)
+                    || !AddDistinctCornerEdge(selectedEdges, new CornerEdge(reference, line)))
+                {
+                    edges = Array.Empty<CornerEdge>();
+                    intersection = default;
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (!SketchGeometryEditor.TryGetPoint(document.Entities, reference, out var point))
+            {
+                edges = Array.Empty<CornerEdge>();
+                intersection = default;
+                return false;
+            }
+
+            selectedPoints.Add(point);
+        }
+
+        if (selectedEdges.Count == 2 && selectedPoints.Count == 0)
+        {
+            return TryResolveTwoCornerEdges(selectedEdges, out edges, out intersection);
+        }
+
+        if (selectedEdges.Count == 0 && selectedPoints.Count == 1)
+        {
+            var vertex = selectedPoints[0];
+            var adjacentEdges = EnumerateAdjacentCornerEdges(document.Entities, vertex).ToList();
+            if (adjacentEdges.Count != 2
+                || !TryResolveTwoCornerEdges(adjacentEdges, out edges, out intersection)
+                || Distance(intersection, vertex) > GeometryTolerance)
+            {
+                edges = Array.Empty<CornerEdge>();
+                intersection = default;
+                return false;
+            }
+
+            return true;
+        }
+
+        edges = Array.Empty<CornerEdge>();
+        intersection = default;
+        return false;
+    }
+
+    private static bool TryResolveTwoCornerEdges(
+        IReadOnlyList<CornerEdge> candidateEdges,
+        out CornerEdge[] edges,
+        out Point2 intersection)
+    {
+        if (candidateEdges.Count != 2
+            || ReferencesEqual(candidateEdges[0].Reference, candidateEdges[1].Reference)
+            || !TryGetLineIntersection(candidateEdges[0].Line, candidateEdges[1].Line, false, false, out intersection, out _, out _))
+        {
+            edges = Array.Empty<CornerEdge>();
+            intersection = default;
+            return false;
+        }
+
+        edges = candidateEdges.Take(2).ToArray();
+        return true;
+    }
+
+    private static IEnumerable<CornerEdge> EnumerateAdjacentCornerEdges(
+        IReadOnlyList<DrawingEntity> entities,
+        Point2 vertex)
+    {
+        foreach (var entity in entities)
+        {
+            switch (entity)
+            {
+                case LineEntity line:
+                    if (Distance(line.Start, vertex) <= GeometryTolerance
+                        || Distance(line.End, vertex) <= GeometryTolerance)
+                    {
+                        yield return new CornerEdge(
+                            new SketchReference(line.Id.Value, SketchReferenceTarget.Entity),
+                            line);
+                    }
+
+                    break;
+
+                case PolylineEntity polyline:
+                    for (var segmentIndex = 0; segmentIndex < polyline.Vertices.Count - 1; segmentIndex++)
+                    {
+                        var start = polyline.Vertices[segmentIndex];
+                        var end = polyline.Vertices[segmentIndex + 1];
+                        if (Distance(start, vertex) > GeometryTolerance
+                            && Distance(end, vertex) > GeometryTolerance)
+                        {
+                            continue;
+                        }
+
+                        var reference = new SketchReference(
+                            polyline.Id.Value,
+                            SketchReferenceTarget.Entity,
+                            segmentIndex);
+                        yield return new CornerEdge(
+                            reference,
+                            new LineEntity(EntityId.Create(reference.ToString()), start, end, polyline.IsConstruction));
+                    }
+
+                    break;
+            }
+        }
+    }
+
+    private static bool AddDistinctCornerEdge(ICollection<CornerEdge> edges, CornerEdge candidate)
+    {
+        if (edges.Any(edge => ReferencesEqual(edge.Reference, candidate.Reference)))
+        {
+            return false;
+        }
+
+        edges.Add(candidate);
+        return true;
+    }
+
+    private static bool TryReplaceCornerEdges(
+        DrawingDocument document,
+        IReadOnlyList<CornerEdge> edges,
+        Point2 intersection,
+        IReadOnlyList<LineEntity> trimmedEdges,
+        DrawingEntity addition,
+        IEnumerable<SketchConstraint> additionalConstraints,
+        out DrawingDocument nextDocument)
+    {
+        if (edges.Count != trimmedEdges.Count)
+        {
+            nextDocument = document;
+            return false;
+        }
+
+        var nextEntities = document.Entities.ToArray();
+        for (var index = 0; index < edges.Count; index++)
+        {
+            if (!SketchGeometryEditor.TrySetLine(nextEntities, edges[index].Reference, trimmedEdges[index]))
+            {
+                nextDocument = document;
+                return false;
+            }
+        }
+
+        var preservedConstraints = document.Constraints
+            .Where(constraint => !IsStaleCornerCoincidentConstraint(document, constraint, intersection))
+            .ToArray();
+        var createdConstraints = additionalConstraints.ToArray();
+        var nextConstraints = preservedConstraints.Concat(createdConstraints).ToArray();
+        var changedDocument = new DrawingDocument(
+            nextEntities.Concat(new[] { addition }),
+            document.Dimensions,
+            nextConstraints,
+            document.Metadata);
+        if (InvalidatesPreviouslySatisfiedConstraints(document, changedDocument, preservedConstraints)
+            || createdConstraints
+                .Any(constraint => SketchConstraintService.ValidateConstraint(changedDocument, constraint).State != SketchConstraintState.Satisfied))
+        {
+            nextDocument = document;
+            return false;
+        }
+
+        var replacedIds = edges.Select(edge => edge.Reference.EntityId).ToHashSet(StringComparer.Ordinal);
+        var refreshedDimensions = RefreshDimensionsForReplacedEntities(changedDocument, replacedIds);
+        nextDocument = new DrawingDocument(
+            changedDocument.Entities,
+            refreshedDimensions,
+            nextConstraints,
+            changedDocument.Metadata);
+        return true;
+    }
+
+    private static IEnumerable<SketchConstraint> CreateChamferCornerConstraints(
+        IReadOnlyList<CornerEdge> edges,
+        Point2 intersection,
+        LineEntity chamfer)
+    {
+        yield return new SketchConstraint(
+            $"{chamfer.Id.Value}-edge-1-coincident",
+            SketchConstraintKind.Coincident,
+            new[]
+            {
+                GetCornerEndpointReference(edges[0], intersection).ToString(),
+                new SketchReference(chamfer.Id.Value, SketchReferenceTarget.Start).ToString()
+            },
+            SketchConstraintState.Satisfied);
+        yield return new SketchConstraint(
+            $"{chamfer.Id.Value}-edge-2-coincident",
+            SketchConstraintKind.Coincident,
+            new[]
+            {
+                GetCornerEndpointReference(edges[1], intersection).ToString(),
+                new SketchReference(chamfer.Id.Value, SketchReferenceTarget.End).ToString()
+            },
+            SketchConstraintState.Satisfied);
+    }
+
+    private static IEnumerable<SketchConstraint> CreateFilletCornerConstraints(
+        IReadOnlyList<CornerEdge> edges,
+        Point2 intersection,
+        IReadOnlyList<LineEntity> trimmedEdges,
+        ArcEntity fillet)
+    {
+        var firstCornerEndpoint = GetCornerEndpointReference(edges[0], intersection);
+        var secondCornerEndpoint = GetCornerEndpointReference(edges[1], intersection);
+        var firstFilletEndpoint = GetArcEndpointReferenceClosestTo(
+            fillet,
+            GetLineEndpointPoint(trimmedEdges[0], firstCornerEndpoint.Target));
+        var secondFilletEndpoint = GetArcEndpointReferenceClosestTo(
+            fillet,
+            GetLineEndpointPoint(trimmedEdges[1], secondCornerEndpoint.Target));
+
+        yield return new SketchConstraint(
+            $"{fillet.Id.Value}-edge-1-coincident",
+            SketchConstraintKind.Coincident,
+            new[]
+            {
+                firstCornerEndpoint.ToString(),
+                firstFilletEndpoint.ToString()
+            },
+            SketchConstraintState.Satisfied);
+        yield return new SketchConstraint(
+            $"{fillet.Id.Value}-edge-2-coincident",
+            SketchConstraintKind.Coincident,
+            new[]
+            {
+                secondCornerEndpoint.ToString(),
+                secondFilletEndpoint.ToString()
+            },
+            SketchConstraintState.Satisfied);
+        yield return new SketchConstraint(
+            $"{fillet.Id.Value}-edge-1-tangent",
+            SketchConstraintKind.Tangent,
+            new[] { edges[0].Reference.ToString(), fillet.Id.Value },
+            SketchConstraintState.Satisfied);
+        yield return new SketchConstraint(
+            $"{fillet.Id.Value}-edge-2-tangent",
+            SketchConstraintKind.Tangent,
+            new[] { edges[1].Reference.ToString(), fillet.Id.Value },
+            SketchConstraintState.Satisfied);
+    }
+
+    private static SketchReference GetArcEndpointReferenceClosestTo(ArcEntity arc, Point2 point)
+    {
+        var start = PointOnArc(arc, arc.StartAngleDegrees);
+        var end = PointOnArc(arc, arc.EndAngleDegrees);
+        return new SketchReference(
+            arc.Id.Value,
+            Distance(start, point) <= Distance(end, point)
+                ? SketchReferenceTarget.Start
+                : SketchReferenceTarget.End);
+    }
+
+    private static Point2 GetLineEndpointPoint(LineEntity line, SketchReferenceTarget target) =>
+        target == SketchReferenceTarget.Start ? line.Start : line.End;
+
+    private static SketchReference GetCornerEndpointReference(CornerEdge edge, Point2 intersection) =>
+        new(
+            edge.Reference.EntityId,
+            Distance(edge.Line.Start, intersection) <= Distance(edge.Line.End, intersection)
+                ? SketchReferenceTarget.Start
+                : SketchReferenceTarget.End,
+            edge.Reference.SegmentIndex);
+
+    private static bool IsStaleCornerCoincidentConstraint(
+        DrawingDocument document,
+        SketchConstraint constraint,
+        Point2 intersection)
+    {
+        if (constraint.Kind != SketchConstraintKind.Coincident
+            || constraint.ReferenceKeys.Count < 2)
+        {
+            return false;
+        }
+
+        foreach (var referenceKey in constraint.ReferenceKeys)
+        {
+            if (!SketchReference.TryParse(referenceKey, out var reference)
+                || !SketchGeometryEditor.TryGetPoint(document.Entities, reference, out var point)
+                || Distance(point, intersection) > GeometryTolerance)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool InvalidatesPreviouslySatisfiedConstraints(
+        DrawingDocument previousDocument,
+        DrawingDocument nextDocument,
+        IEnumerable<SketchConstraint> constraints)
+    {
+        foreach (var constraint in constraints)
+        {
+            if (constraint.State == SketchConstraintState.Suppressed)
+            {
+                continue;
+            }
+
+            var previousState = SketchConstraintService.ValidateConstraint(previousDocument, constraint).State;
+            if (previousState != SketchConstraintState.Satisfied)
+            {
+                continue;
+            }
+
+            if (SketchConstraintService.ValidateConstraint(nextDocument, constraint).State != SketchConstraintState.Satisfied)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ReferencesEqual(SketchReference first, SketchReference second) =>
+        StringComparer.Ordinal.Equals(first.EntityId, second.EntityId)
+        && first.Target == second.Target
+        && first.SegmentIndex == second.SegmentIndex;
+
     private static IReadOnlyList<SketchDimension> RefreshDimensionsForReplacedEntities(
         DrawingDocument document,
         IEnumerable<string> replacedEntityIds)
@@ -2394,9 +2818,18 @@ public static class DrawingModifyService
 
         var startAngle = AngleDegrees(center, firstTangent);
         var endAngle = AngleDegrees(center, secondTangent);
-        arc = new ArcEntity(EntityId.Create("fillet"), center, radius, startAngle, endAngle);
+        arc = GetShortestArc(new ArcEntity(EntityId.Create("fillet"), center, radius, startAngle, endAngle));
         return true;
     }
+
+    private static ArcEntity GetShortestArc(ArcEntity arc) =>
+        GetPositiveSweepDegrees(arc.StartAngleDegrees, arc.EndAngleDegrees) <= 180.0 + GeometryTolerance
+            ? arc
+            : arc with
+            {
+                StartAngleDegrees = arc.EndAngleDegrees,
+                EndAngleDegrees = arc.StartAngleDegrees
+            };
 
     private static bool TryTrimLineFromIntersection(
         LineEntity line,

@@ -8,3 +8,12 @@ export function markDimensionInputCollectionToSkipNextCommit(inputs) {
     input.dataset.skipNextChangeCommit = "true";
   }
 }
+
+export function clearDimensionInputSkipNextCommit(input) {
+  if (!input || !input.dataset) {
+    return;
+  }
+
+  input.dataset.skipNextBlurCommit = "false";
+  input.dataset.skipNextChangeCommit = "false";
+}

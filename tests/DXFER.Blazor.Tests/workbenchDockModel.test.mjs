@@ -128,6 +128,23 @@ test("cleanup tools remain available as a dockable group", () => {
   assert.match(workbenchCode, /RemoveDuplicates/);
 });
 
+test("fillet and chamfer are modal tools that do not require valid preselection", () => {
+  assert.match(workbenchCode, /Command\(WorkbenchCommandId\.Fillet,\s*WorkbenchTool\.Fillet,\s*CadIconName\.Fillet,\s*"Fillet"\)/);
+  assert.match(workbenchCode, /Command\(WorkbenchCommandId\.Chamfer,\s*WorkbenchTool\.Chamfer,\s*CadIconName\.Chamfer,\s*"Chamfer"\)/);
+  assert.doesNotMatch(workbenchCode, /CanFilletOrChamferSelectedLines/);
+  assert.match(workbenchCode, /TryApplyCornerModifyTool\(commandId, keepModal: false\)/);
+  assert.match(workbenchCode, /TryGetCornerModifyCommand\(_activeTool, out var commandId\)/);
+  assert.match(workbenchMarkup, /dxfer-corner-size-control/);
+  assert.match(workbenchCode, /OnCornerModifyDistanceChanged/);
+  assert.match(workbenchCode, /AddGeneratedCornerModifyDimension\(commandId, _document, nextDocument\)/);
+  assert.match(workbenchCode, /CreateGeneratedFilletRadiusDimension/);
+  assert.match(workbenchCode, /SketchDimensionKind\.Radius/);
+  assert.match(workbenchCode, /CreateGeneratedChamferBridgeDimension/);
+  assert.match(workbenchCode, /SketchDimensionKind\.LinearDistance/);
+  assert.match(workbenchCode, /Math\.Max\(1\.25,\s*length \* 0\.6\)/);
+  assert.match(workbenchCss, /\.dxfer-corner-size-control/);
+});
+
 test("confirmed-good green styling is not reintroduced", () => {
   assert.doesNotMatch(paletteMarkup, /IsConfirmedWorking/);
   assert.doesNotMatch(paletteMarkup, /dxfer-icon-button-confirmed/);

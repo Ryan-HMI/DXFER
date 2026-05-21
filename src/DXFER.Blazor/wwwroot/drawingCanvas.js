@@ -2838,6 +2838,7 @@ function getOrCreatePersistentDimensionInput(state, dimension) {
   input.addEventListener("click", event => event.stopPropagation());
   input.addEventListener("dblclick", event => handlePersistentDimensionDoubleClick(state, input, event));
   input.addEventListener("focus", () => {
+    clearDimensionInputSkipNextCommit(input);
     input.dataset.dimensionEditing = "true";
     input.dataset.dimensionDragging = "false";
     input.classList.add("drawing-dimension-input-active");
@@ -2854,6 +2855,10 @@ function getOrCreatePersistentDimensionInput(state, dimension) {
     }
   });
   input.addEventListener("keydown", event => handlePersistentDimensionInputKeyDown(state, input, event));
+  input.addEventListener("input", () => {
+    clearDimensionInputSkipNextCommit(input);
+    input.dataset.dimensionEditing = "true";
+  });
   input.addEventListener("change", () => {
     const skipNextChangeCommit = input.dataset.skipNextChangeCommit === "true";
     input.dataset.skipNextChangeCommit = "false";
@@ -3009,6 +3014,7 @@ function commitPersistentDimensionInputValue(state, input) {
 function handlePersistentDimensionDoubleClick(state, input, event) {
   event.preventDefault();
   event.stopPropagation();
+  clearDimensionInputSkipNextCommit(input);
   selectPersistentDimension(state, input.dataset.dimensionId);
   focusElement(input);
   selectInputText(input);
@@ -3947,7 +3953,10 @@ function getOrCreateDimensionInput(state, dimension) {
   input.addEventListener("click", event => {
     event.stopPropagation();
   });
-  input.addEventListener("focus", () => setActiveDimensionInput(state, input));
+  input.addEventListener("focus", () => {
+    clearDimensionInputSkipNextCommit(input);
+    setActiveDimensionInput(state, input);
+  });
   input.addEventListener("blur", () => {
     const skipNextBlurCommit = input.dataset.skipNextBlurCommit === "true";
     input.dataset.skipNextBlurCommit = "false";
@@ -3963,6 +3972,7 @@ function getOrCreateDimensionInput(state, dimension) {
     input.classList.remove("drawing-dimension-input-active");
   });
   input.addEventListener("input", () => {
+    clearDimensionInputSkipNextCommit(input);
     input.dataset.dimensionEditing = "true";
     commitDimensionInputValue(state, input);
   });
@@ -4118,6 +4128,15 @@ function focusCanvasWithoutDimensionCommit(state) {
 export function markDimensionInputsToSkipNextBlurCommit(state) {
   markDimensionInputCollectionToSkipNextCommit(state.dimensionInputs);
   markDimensionInputCollectionToSkipNextCommit(state.persistentDimensionInputs);
+}
+
+function clearDimensionInputSkipNextCommit(input) {
+  if (!input || !input.dataset) {
+    return;
+  }
+
+  input.dataset.skipNextBlurCommit = "false";
+  input.dataset.skipNextChangeCommit = "false";
 }
 
 function selectInputText(input) {
