@@ -47,6 +47,75 @@ public sealed class DrawingPrepServiceTests
     }
 
     [Fact]
+    public void TransformSelectedMovesDimensionAnchorsForFullySelectedReferences()
+    {
+        var selectedId = EntityId.Create("selected");
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(selectedId, new Point2(0, 0), new Point2(10, 0)),
+                new LineEntity(EntityId.Create("stationary"), new Point2(20, 0), new Point2(30, 0))
+            },
+            new[]
+            {
+                new SketchDimension(
+                    "selected-dimension",
+                    SketchDimensionKind.LinearDistance,
+                    new[] { "selected:start", "selected:end" },
+                    10,
+                    new Point2(5, 2),
+                    isDriving: true),
+                new SketchDimension(
+                    "mixed-dimension",
+                    SketchDimensionKind.LinearDistance,
+                    new[] { "selected:end", "stationary:start" },
+                    10,
+                    new Point2(15, 2),
+                    isDriving: true)
+            },
+            Array.Empty<SketchConstraint>());
+
+        var transformed = DrawingPrepService.TransformSelected(
+            document,
+            new[] { selectedId.Value },
+            Transform2.Translation(2, 3));
+
+        transformed.Dimensions[0].Anchor.Should().Be(new Point2(7, 5));
+        transformed.Dimensions[1].Anchor.Should().Be(new Point2(15, 2));
+    }
+
+    [Fact]
+    public void TransformSelectedRefreshesCanvasPointDimensionReferenceCoordinates()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new EllipseEntity(EntityId.Create("ellipse"), new Point2(0, 0), new Point2(4, 0), 0.5)
+            },
+            new[]
+            {
+                new SketchDimension(
+                    "major",
+                    SketchDimensionKind.LinearDistance,
+                    new[] { "ellipse|point|major-start|-4|0", "ellipse|point|major-end|4|0" },
+                    8,
+                    new Point2(0, 2),
+                    isDriving: true)
+            },
+            Array.Empty<SketchConstraint>());
+
+        var transformed = DrawingPrepService.TransformSelected(
+            document,
+            new[] { "ellipse" },
+            Transform2.Translation(2, 3));
+
+        transformed.Dimensions[0].ReferenceKeys.Should().Equal(
+            "ellipse|point|major-start|-2|3",
+            "ellipse|point|major-end|6|3");
+        transformed.Dimensions[0].Anchor.Should().Be(new Point2(2, 5));
+    }
+
+    [Fact]
     public void RotatesDocumentAboutBoundsCenter()
     {
         var document = new DrawingDocument(new DrawingEntity[]
@@ -61,6 +130,31 @@ public sealed class DrawingPrepServiceTests
         edge.Start.Y.Should().BeApproximately(-5, 0.0001);
         edge.End.X.Should().BeApproximately(5, 0.0001);
         edge.End.Y.Should().BeApproximately(5, 0.0001);
+    }
+
+    [Fact]
+    public void RotateAboutBoundsCenterRotatesDimensionAnchors()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("edge"), new Point2(0, 0), new Point2(10, 0))
+            },
+            new[]
+            {
+                new SketchDimension(
+                    "edge-dimension",
+                    SketchDimensionKind.LinearDistance,
+                    new[] { "edge:start", "edge:end" },
+                    10,
+                    new Point2(5, 2),
+                    isDriving: true)
+            },
+            Array.Empty<SketchConstraint>());
+
+        var rotated = DrawingPrepService.RotateAboutBoundsCenter(document, 90);
+
+        rotated.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(3, 0));
     }
 
     [Fact]

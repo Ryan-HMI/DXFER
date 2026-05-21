@@ -1,5 +1,7 @@
+using System.Globalization;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
+using DXFER.Core.Sketching;
 
 namespace DXFER.Core.Operations;
 
@@ -26,9 +28,12 @@ public static class DrawingPrepService
     {
         ArgumentNullException.ThrowIfNull(document);
 
+        var transformedEntityIds = document.Entities
+            .Select(entity => entity.Id.Value)
+            .ToHashSet(StringComparer.Ordinal);
         return new DrawingDocument(
             document.Entities.Select(entity => entity.Transform(transform)),
-            document.Dimensions,
+            TransformDimensions(document.Dimensions, transformedEntityIds, transform),
             document.Constraints,
             document.Metadata);
     }
@@ -50,10 +55,137 @@ public static class DrawingPrepService
         return new DrawingDocument(
             document.Entities.Select(entity =>
                 selected.Contains(entity.Id.Value) ? entity.Transform(transform) : entity),
-            document.Dimensions,
+            TransformDimensions(document.Dimensions, selected, transform),
             document.Constraints,
             document.Metadata);
     }
+
+    private static IReadOnlyList<SketchDimension> TransformDimensions(
+        IReadOnlyList<SketchDimension> dimensions,
+        IReadOnlySet<string> transformedEntityIds,
+        Transform2 transform)
+    {
+        if (dimensions.Count == 0 || transformedEntityIds.Count == 0)
+        {
+            return dimensions;
+        }
+
+        var changed = false;
+        var nextDimensions = new SketchDimension[dimensions.Count];
+        for (var index = 0; index < dimensions.Count; index++)
+        {
+            var dimension = dimensions[index];
+            var referenceKeys = TransformDimensionReferenceKeys(
+                dimension.ReferenceKeys,
+                transformedEntityIds,
+                transform,
+                out var referenceKeysChanged);
+            var anchor = dimension.Anchor;
+            if (anchor.HasValue && ShouldTransformDimensionAnchor(dimension, transformedEntityIds))
+            {
+                anchor = anchor.Value.Transform(transform);
+            }
+
+            if (!referenceKeysChanged && anchor == dimension.Anchor)
+            {
+                nextDimensions[index] = dimension;
+                continue;
+            }
+
+            changed = true;
+            nextDimensions[index] = new SketchDimension(
+                dimension.Id,
+                dimension.Kind,
+                referenceKeys,
+                dimension.Value,
+                anchor,
+                dimension.IsDriving);
+        }
+
+        return changed ? nextDimensions : dimensions;
+    }
+
+    private static IReadOnlyList<string> TransformDimensionReferenceKeys(
+        IReadOnlyList<string> referenceKeys,
+        IReadOnlySet<string> transformedEntityIds,
+        Transform2 transform,
+        out bool changed)
+    {
+        changed = false;
+        if (referenceKeys.Count == 0)
+        {
+            return referenceKeys;
+        }
+
+        var nextKeys = new string[referenceKeys.Count];
+        for (var index = 0; index < referenceKeys.Count; index++)
+        {
+            var key = referenceKeys[index];
+            if (TryTransformCanvasPointReferenceKey(key, transformedEntityIds, transform, out var transformedKey))
+            {
+                nextKeys[index] = transformedKey;
+                changed = true;
+                continue;
+            }
+
+            nextKeys[index] = key;
+        }
+
+        return changed ? nextKeys : referenceKeys;
+    }
+
+    private static bool TryTransformCanvasPointReferenceKey(
+        string referenceKey,
+        IReadOnlySet<string> transformedEntityIds,
+        Transform2 transform,
+        out string transformedKey)
+    {
+        if (!SketchReference.TryParseCanvasPointCoordinates(referenceKey, out var entityId, out var label, out var point)
+            || !transformedEntityIds.Contains(entityId))
+        {
+            transformedKey = string.Empty;
+            return false;
+        }
+
+        var transformedPoint = point.Transform(transform);
+        transformedKey = $"{entityId}|point|{label}|{FormatReferenceNumber(transformedPoint.X)}|{FormatReferenceNumber(transformedPoint.Y)}";
+        return true;
+    }
+
+    private static bool ShouldTransformDimensionAnchor(
+        SketchDimension dimension,
+        IReadOnlySet<string> transformedEntityIds)
+    {
+        if (dimension.ReferenceKeys.Count == 0)
+        {
+            return false;
+        }
+
+        var referencedEntityIds = dimension.ReferenceKeys
+            .Select(GetReferenceEntityId)
+            .Where(entityId => !string.IsNullOrWhiteSpace(entityId))
+            .ToArray();
+        return referencedEntityIds.Length > 0
+            && referencedEntityIds.All(transformedEntityIds.Contains);
+    }
+
+    private static string GetReferenceEntityId(string referenceKey)
+    {
+        if (SketchReference.TryParseCanvasPointCoordinates(referenceKey, out var canvasEntityId, out _, out _))
+        {
+            return canvasEntityId;
+        }
+
+        return SketchReference.TryParse(referenceKey, out var reference)
+            ? reference.EntityId
+            : string.Empty;
+    }
+
+    private static string FormatReferenceNumber(double value) =>
+        CleanNearZero(value).ToString("0.######", CultureInfo.InvariantCulture);
+
+    private static double CleanNearZero(double value) =>
+        Math.Abs(value) <= 0.000000001 ? 0 : value;
 
     public static DrawingDocument RotateAboutBoundsCenter(DrawingDocument document, double degrees)
     {

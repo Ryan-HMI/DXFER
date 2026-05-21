@@ -1,5 +1,6 @@
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
+using DXFER.Core.Operations;
 using DXFER.Core.Sketching;
 using DXFER.Blazor.Sketching;
 using FluentAssertions;
@@ -253,6 +254,54 @@ public sealed class SketchGeometryDragServiceTests
             new LineEntity(EntityId.Create("rect-3"), new Point2(12, 8), new Point2(2, 8)),
             new LineEntity(EntityId.Create("rect-4"), new Point2(2, 8), new Point2(2, 3)));
         next.Dimensions.Select(dimension => dimension.Anchor).Should().Equal(new Point2(7, 4.2), new Point2(11.4, 5.5));
+        next.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(next, dimension));
+        next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingRotatedDimensionedRectangleKeepsTransformedDimensionAnchorsAttached()
+    {
+        var sequence = 0;
+        var dimensionSequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "alignedrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false,
+            dimensionValues: new Dictionary<string, double> { ["length"] = 10, ["depth"] = 5 });
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "alignedrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            "alignedrectangle",
+            entities,
+            new Dictionary<string, double> { ["length"] = 10, ["depth"] = 5 },
+            () => $"dim-{++dimensionSequence}");
+        var document = new DrawingDocument(entities, dimensions, constraints);
+        var rotated = DrawingModifyService.RotateSelected(
+            document,
+            entities.Select(entity => entity.Id.Value),
+            new Point2(0, 0),
+            new Point2(1, 0),
+            new Point2(0, 1));
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            rotated,
+            "rect-3",
+            new Point2(-5, 5),
+            new Point2(-3, 8),
+            false,
+            out var next,
+            out _);
+
+        changed.Should().BeTrue();
+        next.Dimensions.Select(dimension => dimension.Anchor).Should().BeEquivalentTo(
+            new[] { new Point2(0.8, 8), new Point2(-0.5, 12.4) },
+            options => options
+                .WithStrictOrdering()
+                .Using<double>(context => context.Subject.Should().BeApproximately(context.Expectation, 0.000001))
+                .WhenTypeIs<double>());
         next.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(next, dimension));
         next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
     }
