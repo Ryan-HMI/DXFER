@@ -60,6 +60,14 @@ import {
   getPersistentDimensionCommitValue
 } from "./canvas/dimensionInputParsing.js";
 import {
+  DEFAULT_DIMENSION_INPUT_SCREEN_MARGIN_X,
+  DEFAULT_DIMENSION_INPUT_SCREEN_MARGIN_Y,
+  getClampedDimensionInputScreenPoint
+} from "./canvas/dimensionInputLayout.js";
+import {
+  markDimensionInputCollectionToSkipNextCommit
+} from "./canvas/dimensionInputLifecycle.js";
+import {
   getPointTargetMarker,
   isDynamicTargetCurrentToPointer,
   isPanPointerDownForTool,
@@ -73,6 +81,10 @@ import {
   parsePointTargetKeyParts,
   parseSegmentTargetKeyParts
 } from "./canvas/targetKeys.js";
+import {
+  getPowerTrimAlternateEdgeHit,
+  resolveNearestTargetHit
+} from "./canvas/targetResolution.js";
 
 export {
   getLinearDimensionScreenGeometry,
@@ -99,6 +111,9 @@ export {
   getPersistentDimensionCommitValue
 } from "./canvas/dimensionInputParsing.js";
 export {
+  getClampedDimensionInputScreenPoint
+} from "./canvas/dimensionInputLayout.js";
+export {
   getPointTargetMarker,
   isDynamicTargetCurrentToPointer,
   isPanPointerDownForTool,
@@ -122,8 +137,6 @@ const DYNAMIC_POINT_KEY_PREFIX = "__dynamic";
 const WORLD_GEOMETRY_TOLERANCE = 0.000001;
 const ORTHO_POLAR_SNAP_TOLERANCE = 6;
 const MAX_INFERENCE_GUIDE_SCREEN_DISTANCE = 360;
-const DIMENSION_INPUT_SCREEN_MARGIN_X = 52;
-const DIMENSION_INPUT_SCREEN_MARGIN_Y = 18;
 const DIMENSION_ARROWHEAD_SIZE = 15;
 const DIMENSION_TEXT_GAP_PADDING = 5;
 const DIMENSION_INPUT_LEADER_GAP = 12;
@@ -3883,16 +3896,9 @@ function updateDimensionInputs(state, dimensions) {
 export function clampDimensionInputScreenPoint(
   state,
   point,
-  marginX = DIMENSION_INPUT_SCREEN_MARGIN_X,
-  marginY = DIMENSION_INPUT_SCREEN_MARGIN_Y) {
-  const size = getCanvasCssSize(state);
-  const maxX = Math.max(marginX, size.width - marginX);
-  const maxY = Math.max(marginY, size.height - marginY);
-
-  return {
-    x: clamp(point.x, marginX, maxX),
-    y: clamp(point.y, marginY, maxY)
-  };
+  marginX = DEFAULT_DIMENSION_INPUT_SCREEN_MARGIN_X,
+  marginY = DEFAULT_DIMENSION_INPUT_SCREEN_MARGIN_Y) {
+  return getClampedDimensionInputScreenPoint(point, getCanvasCssSize(state), marginX, marginY);
 }
 
 function focusActiveDimensionInputIfNeeded(state, dimensions) {
@@ -4112,17 +4118,6 @@ function focusCanvasWithoutDimensionCommit(state) {
 export function markDimensionInputsToSkipNextBlurCommit(state) {
   markDimensionInputCollectionToSkipNextCommit(state.dimensionInputs);
   markDimensionInputCollectionToSkipNextCommit(state.persistentDimensionInputs);
-}
-
-function markDimensionInputCollectionToSkipNextCommit(inputs) {
-  if (!inputs) {
-    return;
-  }
-
-  for (const input of inputs.values()) {
-    input.dataset.skipNextBlurCommit = "true";
-    input.dataset.skipNextChangeCommit = "true";
-  }
 }
 
 function selectInputText(input) {
@@ -5785,37 +5780,37 @@ export function findNearestTarget(state, screenPoint) {
   const constraintTool = getConstraintTool(state);
   const { nearestPointHit, nearestEdgeHit } = getNearestEntityHits(state, screenPoint, constraintTool);
 
-  if (nearestPointHit && nearestPointHit.distance <= SNAP_POINT_TOLERANCE) {
-    return nearestPointHit.target;
-  }
-
-  if (constraintTool) {
-    return nearestEdgeHit && nearestEdgeHit.distance <= HIT_TEST_TOLERANCE
-      ? nearestEdgeHit.target
-      : null;
+  const immediateTarget = resolveNearestTargetHit({
+    nearestPointHit,
+    nearestEdgeHit,
+    constraintTool,
+    snapPointTolerance: SNAP_POINT_TOLERANCE,
+    hitTestTolerance: HIT_TEST_TOLERANCE,
+    edgeFallback: false
+  });
+  if (immediateTarget || constraintTool) {
+    return immediateTarget;
   }
 
   const dimensionHit = getPersistentDimensionHit(state, screenPoint);
-  if (dimensionHit && dimensionHit.distance <= HIT_TEST_TOLERANCE) {
-    return dimensionHit.target;
-  }
-
   const dynamicPointHit = getDynamicSketchSnapHit(state, screenPoint, nearestEdgeHit ? nearestEdgeHit.target : null);
-  if (dynamicPointHit && dynamicPointHit.distance <= SNAP_POINT_TOLERANCE) {
-    return dynamicPointHit.target;
-  }
-
-  if (nearestEdgeHit && nearestEdgeHit.distance <= HIT_TEST_TOLERANCE) {
-    return nearestEdgeHit.target;
-  }
-
-  return null;
+  return resolveNearestTargetHit({
+    nearestEdgeHit,
+    dimensionHit,
+    dynamicPointHit,
+    snapPointTolerance: SNAP_POINT_TOLERANCE,
+    hitTestTolerance: HIT_TEST_TOLERANCE
+  });
 }
 
 function findNearestPowerTrimTarget(state, screenPoint) {
   const { nearestPointHit, nearestEdgeHit, edgeHits } = getNearestEntityHits(state, screenPoint, null, true);
   const rawPoint = screenToWorld(state, screenPoint);
-  const alternateEdgeHit = getPowerTrimAlternateEdgeHit(nearestPointHit, edgeHits);
+  const alternateEdgeHit = getPowerTrimAlternateEdgeHit(nearestPointHit, edgeHits, {
+    snapPointTolerance: SNAP_POINT_TOLERANCE,
+    hitTestTolerance: HIT_TEST_TOLERANCE,
+    getEntityKind
+  });
   if (alternateEdgeHit) {
     return alternateEdgeHit.target;
   }
@@ -5833,27 +5828,6 @@ function findNearestPowerTrimTarget(state, screenPoint) {
   return nearestPointHit && nearestPointHit.distance <= SNAP_POINT_TOLERANCE
     ? nearestPointHit.target
     : null;
-}
-
-function getPowerTrimAlternateEdgeHit(pointHit, edgeHits) {
-  if (!pointHit
-    || pointHit.distance > SNAP_POINT_TOLERANCE
-    || !Array.isArray(edgeHits)
-    || edgeHits.length === 0) {
-    return null;
-  }
-
-  const pointEntityKind = getEntityKind(pointHit.target && pointHit.target.entity);
-  if (pointEntityKind !== "line" && pointEntityKind !== "polyline" && pointEntityKind !== "polygon") {
-    return null;
-  }
-
-  return edgeHits
-    .filter(hit => hit
-      && hit.distance <= HIT_TEST_TOLERANCE
-      && hit.target
-      && hit.target.entityId !== pointHit.target.entityId)
-    .sort((first, second) => first.distance - second.distance)[0] || null;
 }
 
 function getNearestEntityHits(state, screenPoint, constraintTool = null, includeEdgeHits = false) {

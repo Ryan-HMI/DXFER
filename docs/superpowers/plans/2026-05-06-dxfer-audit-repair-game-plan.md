@@ -359,8 +359,8 @@ Acceptance: toolbar behavior matches the documented scope, and icons communicate
 - [x] 7D. Add `*.dxfer.json` sidecar schema/export path.
 - [x] 7E. Move DXF IO behind a `DXFER.CadIO` adapter boundary without changing behavior.
 - [x] 7F. Add trusted/reference guardrails and unsupported entity warnings to import/open flows.
-- [ ] 7G. Split `drawingCanvas.js` into behavior-preserving modules.
-- [ ] 7H. Record the desktop shell decision and defer or plan `DXFER.Desktop`.
+- [ ] 7G. Split `drawingCanvas.js` into behavior-preserving modules. Geometry, dimension geometry, target classification, dimension presentation/input policy, dimension input state/parsing, raw target keys, dimension input layout/lifecycle guards, and target-resolution decision helpers are split; remaining screen-space hit discovery and tool interaction state stay open.
+- [x] 7H. Record the desktop shell decision and defer or plan `DXFER.Desktop`.
 
 Acceptance: each architecture gap gets its own plan and testable slice; these are not mixed into sketch-interaction patches.
 

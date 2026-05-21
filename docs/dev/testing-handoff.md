@@ -59,7 +59,7 @@ Use `docs/dev/user-test-tracking.md` as the source of truth for user status. Row
 
 - Continue the entity-agnostic drag matrix in `docs/dev/entity-drag-constraint-matrix.md`.
 - Continue Stage 7G canvas module splits in `docs/superpowers/plans/2026-05-06-dxfer-stage7-architecture-gap-plan.md`.
-- Record the Stage 7H desktop shell decision before creating any `DXFER.Desktop` project.
+- Follow the Stage 7H desktop-shell decision in `docs/dev/desktop-shell-decision.md`; `DXFER.Desktop` remains deferred until a separate runtime and acceptance-test plan exists.
 
 ## Known Environment Caveat
 

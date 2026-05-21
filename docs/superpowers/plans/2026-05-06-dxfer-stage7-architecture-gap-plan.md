@@ -279,8 +279,8 @@ Evidence: `DxfDocumentReader` now records unsupported entity counts and emits `u
 - [x] Split pure dimension input-state helpers; no behavior changes.
 - [x] Split pure dimension input parsing/commit-policy helpers; no behavior changes.
 - [x] Split raw target-key constants/parsers; no behavior changes.
-- [ ] Split remaining dimension rendering/input state; no behavior changes.
-- [ ] Split nearest-target hit testing/target resolution third; no behavior changes.
+- [ ] Split remaining dimension rendering/input state; dimension input screen-layout and lifecycle guard helpers are split, but DOM rendering/update orchestration remains in the facade.
+- [ ] Split nearest-target hit testing/target resolution third; target-resolution decision helpers are split, but screen-space entity hit discovery remains in the facade.
 - [ ] Split tool interaction state only after the first three splits are green.
 - [ ] After each module move, run JS tests and one running-app smoke test for drawing, selecting, dimensioning, and Power Trim.
 
@@ -298,15 +298,23 @@ Evidence for dimension input parsing split: added `src/DXFER.Blazor/wwwroot/canv
 
 Evidence for raw target-key split: added `src/DXFER.Blazor/wwwroot/canvas/targetKeys.js`, moved shared point/segment/constraint key separators plus raw point and segment key parsing out of `drawingCanvas.js`, while leaving current-entity resolution in the facade. Added `canvasTargetKeys.test.mjs`; JS target-key/parsing/input-state/presentation/target/dimension/geometry/canvas/dock suites passed 174/174, `DXFER.slnx` rebuilt cleanly, and after killing/restarting the main app the rebuilt canvas smoke found one nonblank `1098 x 718` canvas with no fresh console/page errors.
 
+Evidence for dimension input layout/lifecycle split: added `src/DXFER.Blazor/wwwroot/canvas/dimensionInputLayout.js` and `src/DXFER.Blazor/wwwroot/canvas/dimensionInputLifecycle.js`, moved input screen-point clamping plus shared skip-next-commit guard marking out of `drawingCanvas.js`, and kept the existing facade helper stable. Added `canvasDimensionInputLayout.test.mjs` and `canvasDimensionInputLifecycle.test.mjs`; focused JS tests covering the new modules plus `drawingCanvasSelection.test.mjs` passed 194/194, and the full Blazor node suite passed 240/240. The rebuilt app verified a line dimension input with value `10`, then a right-edge dimension input clamped to `left: 1158px` on a `1210px` canvas, matching the 52px screen margin.
+
+Evidence for target-resolution helper split: added `src/DXFER.Blazor/wwwroot/canvas/targetResolution.js`, moved the nearest-target priority decision helper and Power Trim alternate-edge disambiguation out of `drawingCanvas.js`, and preserved the existing `findNearestTarget` facade behavior. Added `canvasTargetResolution.test.mjs`; focused JS tests covering the new modules plus `drawingCanvasSelection.test.mjs` passed 194/194, and the full Blazor node suite passed 240/240. The rebuilt app verified drawing a line, selecting and dragging its midpoint from screen `485,418 -> 725,418` to `545,458 -> 785,458`, then hovering/clicking a crossing-line Power Trim target with `data-power-trim-mode="trim"` and `OnPowerTrimRequested:ok`.
+
 ## 7H - Desktop Shell Decision
 
 **Files:**
 - Create or modify: `docs/dev/desktop-shell-decision.md`
 - Do not create `src/DXFER.Desktop` until the decision doc identifies a concrete runtime target and acceptance tests.
 
-- [ ] Document whether V1 needs Blazor Hybrid/WebView now or after web prototype stabilization.
-- [ ] If deferred, record the production-file-access workaround and remaining risks.
-- [ ] If approved, create a separate implementation plan for the shell project.
+- [x] Document whether V1 needs Blazor Hybrid/WebView now or after web prototype stabilization.
+- [x] If deferred, record the production-file-access workaround and remaining risks.
+- [x] If approved, create a separate implementation plan for the shell project. Decision is deferred, so no shell project or shell implementation plan was created.
+
+Evidence: `docs/dev/desktop-shell-decision.md` records the decision to defer `DXFER.Desktop` until the web prototype and Stage 7 canvas split stabilize. It documents the current browser file-picker/download plus `.dxfer.json` sidecar workaround, the remaining production risks, and the acceptance tests required before creating a desktop shell project.
+
+Verification: `dotnet build DXFER.slnx --no-restore` passed with 0 warnings and 0 errors, `dotnet test tests\DXFER.Core.Tests\DXFER.Core.Tests.csproj --no-build` passed 477/477, and `node --test tests\DXFER.Blazor.Tests\*.test.mjs` passed 240/240. Browser console warning/error logs were empty after the drawing, drag, dimension, clamp, and Power Trim smoke tests.
 
 ## Completion Checklist
 
