@@ -258,6 +258,44 @@ public sealed class SketchDimensionSolverServiceTests
     }
 
     [Fact]
+    public void MeasuresSupplementaryLineAngleWithoutFollowingDraggedAnchorToAcuteSide()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("base"), new Point2(0, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("angled"), new Point2(0, 0), new Point2(-10, 10))
+        });
+        var supplementary = new SketchDimension(
+            "angle-135",
+            SketchDimensionKind.Angle,
+            new[] { "base", "angled" },
+            135,
+            new Point2(3, -3),
+            isDriving: true);
+
+        SketchDimensionSolverService.IsDimensionSatisfied(document, supplementary).Should().BeTrue();
+    }
+
+    [Fact]
+    public void AppliesSupplementaryLineAngleWithoutFoldingToAcuteAngle()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("anchor"), new Point2(0, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("driven"), new Point2(2, 2), new Point2(2, 7))
+        });
+
+        var solved = SketchDimensionSolverService.ApplyDimension(
+            document,
+            DrivingDimension("angle", SketchDimensionKind.Angle, 135, "anchor", "driven"));
+
+        var driven = solved.Entities[1].Should().BeOfType<LineEntity>().Subject;
+        driven.Start.Should().Be(new Point2(2, 2));
+        driven.End.X.Should().BeApproximately(2 - Math.Sqrt(12.5), 0.0001);
+        driven.End.Y.Should().BeApproximately(2 + Math.Sqrt(12.5), 0.0001);
+    }
+
+    [Fact]
     public void AppliesArcSweepAngle()
     {
         var document = new DrawingDocument(new DrawingEntity[]

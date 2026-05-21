@@ -118,14 +118,15 @@ public static class SketchCommandFactory
                     return true;
                 }
 
+                var dimensionAnchor = anchorOverride ?? Midpoint(
+                    Midpoint(firstLine.Start, firstLine.End),
+                    Midpoint(secondLine.Start, secondLine.End));
                 dimension = new SketchDimension(
                     id,
                     SketchDimensionKind.Angle,
                     new[] { lineSelections[0].Key, lineSelections[1].Key },
-                    AngleBetweenLines(firstLine, secondLine),
-                    anchorOverride ?? Midpoint(
-                        Midpoint(firstLine.Start, firstLine.End),
-                        Midpoint(secondLine.Start, secondLine.End)),
+                    AngleBetweenLines(firstLine, secondLine, anchorOverride),
+                    dimensionAnchor,
                     isDriving: true);
                 status = "Added line angle dimension.";
                 return true;
@@ -384,12 +385,123 @@ public static class SketchCommandFactory
         return new Point2(line.Start.X + deltaX * scalar, line.Start.Y + deltaY * scalar);
     }
 
-    private static double AngleBetweenLines(LineEntity first, LineEntity second)
+    private static double AngleBetweenLines(LineEntity first, LineEntity second, Point2? anchor)
+    {
+        if (anchor.HasValue
+            && TryGetLineIntersection(first, second, out var vertex)
+            && TryGetAnchorSelectedAngleBetweenLines(first, second, vertex, anchor.Value, out var selectedAngle))
+        {
+            return selectedAngle;
+        }
+
+        return AcuteAngleBetweenLines(first, second);
+    }
+
+    private static double AcuteAngleBetweenLines(LineEntity first, LineEntity second)
     {
         var firstAngle = Math.Atan2(first.End.Y - first.Start.Y, first.End.X - first.Start.X);
         var secondAngle = Math.Atan2(second.End.Y - second.Start.Y, second.End.X - second.Start.X);
         var delta = Math.Abs((secondAngle - firstAngle) * 180.0 / Math.PI) % 180.0;
         return delta > 90.0 ? 180.0 - delta : delta;
+    }
+
+    private static bool TryGetAnchorSelectedAngleBetweenLines(
+        LineEntity first,
+        LineEntity second,
+        Point2 vertex,
+        Point2 anchor,
+        out double angle)
+    {
+        var anchorVectorX = anchor.X - vertex.X;
+        var anchorVectorY = anchor.Y - vertex.Y;
+        if (Math.Sqrt(anchorVectorX * anchorVectorX + anchorVectorY * anchorVectorY) <= GeometryTolerance)
+        {
+            angle = default;
+            return false;
+        }
+
+        var anchorAngle = GetPositiveAngleDegrees(Math.Atan2(anchorVectorY, anchorVectorX) * 180.0 / Math.PI);
+        var firstAngle = GetLineAngleDegrees(first);
+        var secondAngle = GetLineAngleDegrees(second);
+        AngleSweep? best = null;
+
+        foreach (var candidateFirstAngle in new[] { firstAngle, firstAngle + 180.0 })
+        {
+            foreach (var candidateSecondAngle in new[] { secondAngle, secondAngle + 180.0 })
+            {
+                var sweep = GetShortestAngleSweep(candidateFirstAngle, candidateSecondAngle);
+                var containsAnchor = IsAngleWithinSweep(anchorAngle, sweep);
+                var score = (containsAnchor ? 0.0 : 1000.0)
+                    + AngleDistanceDegrees(anchorAngle, GetSweepMidAngle(sweep));
+                if (!best.HasValue || score < best.Value.Score)
+                {
+                    best = sweep with { Score = score };
+                }
+            }
+        }
+
+        if (!best.HasValue)
+        {
+            angle = default;
+            return false;
+        }
+
+        angle = best.Value.Measure;
+        return true;
+    }
+
+    private static bool TryGetLineIntersection(LineEntity first, LineEntity second, out Point2 point)
+    {
+        var firstDeltaX = first.End.X - first.Start.X;
+        var firstDeltaY = first.End.Y - first.Start.Y;
+        var secondDeltaX = second.End.X - second.Start.X;
+        var secondDeltaY = second.End.Y - second.Start.Y;
+        var denominator = firstDeltaX * secondDeltaY - firstDeltaY * secondDeltaX;
+        if (Math.Abs(denominator) <= GeometryTolerance)
+        {
+            point = default;
+            return false;
+        }
+
+        var offsetX = second.Start.X - first.Start.X;
+        var offsetY = second.Start.Y - first.Start.Y;
+        var scalar = (offsetX * secondDeltaY - offsetY * secondDeltaX) / denominator;
+        point = new Point2(first.Start.X + scalar * firstDeltaX, first.Start.Y + scalar * firstDeltaY);
+        return true;
+    }
+
+    private static AngleSweep GetShortestAngleSweep(double startAngle, double endAngle)
+    {
+        var start = GetPositiveAngleDegrees(startAngle);
+        var end = GetPositiveAngleDegrees(endAngle);
+        var delta = GetPositiveAngleDegrees(end - start);
+        return delta <= 180.0
+            ? new AngleSweep(start, start + delta, delta, 0)
+            : new AngleSweep(end, end + (360.0 - delta), 360.0 - delta, 0);
+    }
+
+    private static bool IsAngleWithinSweep(double angle, AngleSweep sweep)
+    {
+        var delta = GetPositiveAngleDegrees(angle - sweep.Start);
+        return delta <= sweep.Measure + GeometryTolerance;
+    }
+
+    private static double GetSweepMidAngle(AngleSweep sweep) =>
+        sweep.Start + sweep.Measure / 2.0;
+
+    private static double AngleDistanceDegrees(double first, double second)
+    {
+        var delta = Math.Abs(GetPositiveAngleDegrees(first - second));
+        return Math.Min(delta, 360.0 - delta);
+    }
+
+    private static double GetLineAngleDegrees(LineEntity line) =>
+        Math.Atan2(line.End.Y - line.Start.Y, line.End.X - line.Start.X) * 180.0 / Math.PI;
+
+    private static double GetPositiveAngleDegrees(double angle)
+    {
+        var normalized = angle % 360.0;
+        return normalized < 0 ? normalized + 360.0 : normalized;
     }
 
     private static bool AreLinesParallel(LineEntity first, LineEntity second)
@@ -418,4 +530,6 @@ public static class SketchCommandFactory
         CircleLikeSelection? CircleLike);
 
     private readonly record struct CircleLikeSelection(Point2 Center, double Radius, bool IsFullCircle);
+
+    private readonly record struct AngleSweep(double Start, double End, double Measure, double Score);
 }

@@ -283,6 +283,29 @@ public sealed class SketchCommandFactoryTests
     }
 
     [Fact]
+    public void BuildsSupplementaryLineAngleDimensionFromAnchorSide()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("base"), new Point2(0, 0), new Point2(10, 0)),
+            new LineEntity(EntityId.Create("angled"), new Point2(0, 0), new Point2(-10, 10))
+        });
+
+        var result = SketchCommandFactory.TryBuildDimension(
+            document,
+            new[] { "base", "angled" },
+            "dim-1",
+            out var dimension,
+            out _,
+            anchorOverride: new Point2(3, 3));
+
+        result.Should().BeTrue();
+        dimension.Kind.Should().Be(SketchDimensionKind.Angle);
+        dimension.Value.Should().BeApproximately(135, 0.000001);
+        dimension.Anchor.Should().Be(new Point2(3, 3));
+    }
+
+    [Fact]
     public void BuildsHorizontalConstraintFromSelectedLine()
     {
         var document = new DrawingDocument(new DrawingEntity[]

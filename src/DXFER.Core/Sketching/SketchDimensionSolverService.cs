@@ -921,8 +921,7 @@ public static class SketchDimensionSolverService
             return false;
         }
 
-        var delta = Math.Abs(SketchGeometryEditor.NormalizeSignedDegrees(GetLineAngleDegrees(secondLine) - GetLineAngleDegrees(firstLine)));
-        return TryAssign(delta > 90.0 ? 180.0 - delta : delta, out value);
+        return TryAssign(GetLineAngleMeasurementDegrees(firstLine, secondLine, dimension.Value), out value);
     }
 
     private static bool TryGetCountDimensionMeasurement(
@@ -1170,13 +1169,7 @@ public static class SketchDimensionSolverService
     {
         var signedDelta = SketchGeometryEditor.NormalizeSignedDegrees(currentDrivenAngleDegrees - referenceAngleDegrees);
         var sign = signedDelta < 0 ? -1.0 : 1.0;
-        var axisDelta = Math.Abs(signedDelta);
-        var targetAxisAngle = Math.Abs(dimensionValue);
-        var targetDelta = axisDelta > 90.0
-            ? sign * (180.0 - targetAxisAngle)
-            : sign * targetAxisAngle;
-
-        return referenceAngleDegrees + targetDelta;
+        return referenceAngleDegrees + sign * NormalizeLineAngleSpan(dimensionValue);
     }
 
     internal static bool TryApplyLineDirection(
@@ -1460,6 +1453,29 @@ public static class SketchDimensionSolverService
 
     private static double GetLineAngleDegrees(LineEntity line) =>
         Math.Atan2(line.End.Y - line.Start.Y, line.End.X - line.Start.X) * 180.0 / Math.PI;
+
+    private static double GetLineAngleMeasurementDegrees(
+        LineEntity firstLine,
+        LineEntity secondLine,
+        double dimensionValue)
+    {
+        var axisDelta = Math.Abs(SketchGeometryEditor.NormalizeSignedDegrees(
+            GetLineAngleDegrees(secondLine) - GetLineAngleDegrees(firstLine)));
+        var acute = axisDelta > 90.0 ? 180.0 - axisDelta : axisDelta;
+        var obtuse = axisDelta > 90.0 ? axisDelta : 180.0 - axisDelta;
+        var target = NormalizeLineAngleSpan(dimensionValue);
+        return Math.Abs(target - obtuse) < Math.Abs(target - acute)
+            ? obtuse
+            : acute;
+    }
+
+    private static double NormalizeLineAngleSpan(double value)
+    {
+        var normalized = Math.Abs(value) % 360.0;
+        return normalized > 180.0
+            ? 360.0 - normalized
+            : normalized;
+    }
 
     private static double CleanNearZero(double value) =>
         Math.Abs(value) <= SketchGeometryEditor.Tolerance ? 0 : value;

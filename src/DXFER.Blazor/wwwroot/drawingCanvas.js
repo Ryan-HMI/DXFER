@@ -2485,7 +2485,8 @@ function drawAngleDimensionGraphics(state, dimension, isPreview, visualState = n
     dimension.geometry.firstLine,
     dimension.geometry.secondLine,
     dimension.geometry.vertex,
-    dimension.geometry.anchorPoint);
+    dimension.geometry.anchorPoint,
+    dimension.value);
   if (!geometry) {
     return;
   }
@@ -2540,7 +2541,7 @@ function drawArcAngleDimensionGraphics(state, dimension, isPreview, visualState 
   drawDimensionCanvasText(state, dimension, isPreview, visualState);
 }
 
-export function getAngleDimensionScreenGeometry(state, firstLine, secondLine, vertex, anchor) {
+export function getAngleDimensionScreenGeometry(state, firstLine, secondLine, vertex, anchor, targetDegrees = null) {
   if (!vertex || !anchor) {
     return null;
   }
@@ -2554,7 +2555,7 @@ export function getAngleDimensionScreenGeometry(state, firstLine, secondLine, ve
   }
 
   const anchorDirection = normalizeScreenVector(subtractScreenPoints(screenAnchor, screenVertex));
-  const sweep = getAngleSweepForAnchor(firstAxis, secondAxis, anchorDirection);
+  const sweep = getAngleSweepForAnchor(firstAxis, secondAxis, anchorDirection, targetDegrees);
   if (!sweep) {
     return null;
   }
@@ -2658,7 +2659,7 @@ function getScreenLineDirection(state, line) {
   });
 }
 
-function getAngleSweepForAnchor(firstAxis, secondAxis, anchorDirection) {
+function getAngleSweepForAnchor(firstAxis, secondAxis, anchorDirection, targetDegrees = null) {
   const firstAngles = [
     Math.atan2(firstAxis.y, firstAxis.x),
     Math.atan2(-firstAxis.y, -firstAxis.x)
@@ -2670,13 +2671,19 @@ function getAngleSweepForAnchor(firstAxis, secondAxis, anchorDirection) {
   const anchorAngle = anchorDirection
     ? Math.atan2(anchorDirection.y, anchorDirection.x)
     : null;
+  const targetRadians = normalizeAngleSpanRadians(targetDegrees);
   let best = null;
 
   for (const firstAngle of firstAngles) {
     for (const secondAngle of secondAngles) {
       const sweep = getShortestScreenAngleSweep(firstAngle, secondAngle);
+      const measure = Math.abs(sweep.end - sweep.start);
       const containsAnchor = anchorAngle !== null && isScreenAngleWithinSweep(anchorAngle, sweep);
-      const score = (containsAnchor ? 0 : 1000)
+      const targetScore = targetRadians === null
+        ? 0
+        : Math.abs(measure - targetRadians) * 10000;
+      const score = targetScore
+        + (containsAnchor ? 0 : 1000)
         + getScreenAngleDistance(anchorAngle ?? getSweepMidAngle(sweep), getSweepMidAngle(sweep));
       if (!best || score < best.score) {
         best = { ...sweep, score };
@@ -2721,6 +2728,19 @@ function getScreenAngleDistance(first, second) {
   const fullCircle = Math.PI * 2;
   const delta = Math.abs(((first - second) % fullCircle + fullCircle) % fullCircle);
   return Math.min(delta, fullCircle - delta);
+}
+
+function normalizeAngleSpanRadians(degrees) {
+  if (!Number.isFinite(degrees)) {
+    return null;
+  }
+
+  let normalized = Math.abs(degrees) % 360;
+  if (normalized > 180) {
+    normalized = 360 - normalized;
+  }
+
+  return normalized * Math.PI / 180;
 }
 
 function pointFromScreenAngle(origin, angle, distance) {
@@ -6019,7 +6039,8 @@ function getDimensionGeometryScreenDistance(state, dimension, screenPoint) {
       geometry.firstLine,
       geometry.secondLine,
       geometry.vertex,
-      geometry.anchorPoint);
+      geometry.anchorPoint,
+      dimension.value);
     if (!angleGeometry) {
       return Number.POSITIVE_INFINITY;
     }

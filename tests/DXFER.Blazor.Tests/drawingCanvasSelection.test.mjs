@@ -1923,6 +1923,33 @@ test("angle dimension graphics use the line vertex and anchor-selected sweep", (
   assert.ok(geometry.sweep.start < geometry.sweep.end);
 });
 
+test("angle dimension graphics keep stored supplementary side when anchor crosses acute side", () => {
+  const state = {
+    view: {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 100
+    }
+  };
+
+  const unlocked = getAngleDimensionScreenGeometry(
+    state,
+    { start: { x: 0, y: 0 }, end: { x: 10, y: 0 } },
+    { start: { x: 0, y: 0 }, end: { x: -10, y: 10 } },
+    { x: 0, y: 0 },
+    { x: 3, y: -3 });
+  const locked = getAngleDimensionScreenGeometry(
+    state,
+    { start: { x: 0, y: 0 }, end: { x: 10, y: 0 } },
+    { start: { x: 0, y: 0 }, end: { x: -10, y: 10 } },
+    { x: 0, y: 0 },
+    { x: 3, y: -3 },
+    135);
+
+  assertApproxEqual(Math.abs(unlocked.sweep.end - unlocked.sweep.start) * 180 / Math.PI, 45);
+  assertApproxEqual(Math.abs(locked.sweep.end - locked.sweep.start) * 180 / Math.PI, 135);
+});
+
 test("diameter dimension uses an outside leader with a text gap", () => {
   const geometry = getRadialDimensionScreenGeometry(
     { x: 100, y: 100 },
