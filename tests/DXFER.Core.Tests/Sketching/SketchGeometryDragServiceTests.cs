@@ -307,6 +307,143 @@ public sealed class SketchGeometryDragServiceTests
     }
 
     [Fact]
+    public void DraggingDimensionedFilletedRectangleTranslatesFilletAndDimensionsWithoutChangingRadius()
+    {
+        var sequence = 0;
+        var dimensionSequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false,
+            dimensionValues: new Dictionary<string, double> { ["width"] = 10, ["height"] = 5 });
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            "twopointrectangle",
+            entities,
+            new Dictionary<string, double> { ["width"] = 10, ["height"] = 5 },
+            () => $"dim-{++dimensionSequence}");
+        var document = new DrawingDocument(entities, dimensions, constraints);
+
+        DrawingModifyService.TryFilletSelectedCorner(
+            document,
+            new[] { "rect-3", "rect-4" },
+            1,
+            prefix => EntityId.Create($"{prefix}-created"),
+            out var filletedDocument).Should().BeTrue();
+        var fillet = filletedDocument.Entities.OfType<ArcEntity>().Single();
+        filletedDocument = new DrawingDocument(
+            filletedDocument.Entities,
+            filletedDocument.Dimensions.Concat(new[]
+            {
+                new SketchDimension(
+                    "fillet-radius",
+                    SketchDimensionKind.Radius,
+                    new[] { fillet.Id.Value },
+                    fillet.Radius,
+                    new Point2(fillet.Center.X - 1, fillet.Center.Y + 1),
+                    isDriving: false)
+            }),
+            filletedDocument.Constraints,
+            filletedDocument.Metadata);
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            filletedDocument,
+            "rect-3",
+            new Point2(5, 5),
+            new Point2(7, 8),
+            false,
+            out var next,
+            out var status);
+
+        changed.Should().BeTrue(status);
+        var draggedFillet = next.Entities.OfType<ArcEntity>().Single();
+        draggedFillet.Center.Should().Be(new Point2(fillet.Center.X + 2, fillet.Center.Y + 3));
+        draggedFillet.Radius.Should().BeApproximately(1, 0.000001);
+        next.Dimensions.Select(dimension => dimension.Anchor).Should().Equal(
+            new Point2(7, 4.2),
+            new Point2(11.4, 5.5),
+            new Point2(fillet.Center.X + 1, fillet.Center.Y + 4));
+        next.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(next, dimension));
+        next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
+    public void DraggingDimensionedChamferedRectangleTranslatesBridgeAndDimensionsWithoutChangingLength()
+    {
+        var sequence = 0;
+        var dimensionSequence = 0;
+        var entities = SketchCreationEntityFactory.CreateEntitiesForTool(
+            "twopointrectangle",
+            new[] { new Point2(0, 0), new Point2(10, 5) },
+            prefix => EntityId.Create($"{prefix}-{++sequence}"),
+            isConstruction: false,
+            dimensionValues: new Dictionary<string, double> { ["width"] = 10, ["height"] = 5 });
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForTool(
+            "twopointrectangle",
+            entities,
+            kind => $"constraint-{kind}-{Guid.NewGuid():N}");
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool(
+            "twopointrectangle",
+            entities,
+            new Dictionary<string, double> { ["width"] = 10, ["height"] = 5 },
+            () => $"dim-{++dimensionSequence}");
+        var document = new DrawingDocument(entities, dimensions, constraints);
+
+        DrawingModifyService.TryChamferSelectedCorner(
+            document,
+            new[] { "rect-3", "rect-4" },
+            1,
+            prefix => EntityId.Create($"{prefix}-created"),
+            out var chamferedDocument).Should().BeTrue();
+        var chamfer = chamferedDocument.Entities
+            .OfType<LineEntity>()
+            .Single(line => line.Id.Value == "chamfer-created");
+        chamferedDocument = new DrawingDocument(
+            chamferedDocument.Entities,
+            chamferedDocument.Dimensions.Concat(new[]
+            {
+                new SketchDimension(
+                    "chamfer-bridge",
+                    SketchDimensionKind.LinearDistance,
+                    new[] { $"{chamfer.Id.Value}:start", $"{chamfer.Id.Value}:end" },
+                    Math.Sqrt(2),
+                    new Point2(1, 6),
+                    isDriving: false)
+            }),
+            chamferedDocument.Constraints,
+            chamferedDocument.Metadata);
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            chamferedDocument,
+            "rect-3",
+            new Point2(5, 5),
+            new Point2(7, 8),
+            false,
+            out var next,
+            out var status);
+
+        changed.Should().BeTrue(status);
+        next.Entities
+            .OfType<LineEntity>()
+            .Single(line => line.Id.Value == "chamfer-created")
+            .Should()
+            .Be(new LineEntity(
+                EntityId.Create("chamfer-created"),
+                new Point2(chamfer.Start.X + 2, chamfer.Start.Y + 3),
+                new Point2(chamfer.End.X + 2, chamfer.End.Y + 3)));
+        next.Dimensions.Select(dimension => dimension.Anchor).Should().Equal(
+            new Point2(7, 4.2),
+            new Point2(11.4, 5.5),
+            new Point2(3, 9));
+        next.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(next, dimension));
+        next.Constraints.Should().OnlyContain(constraint => constraint.State == SketchConstraintState.Satisfied);
+    }
+
+    [Fact]
     public void DraggingPartiallyDimensionedRectangleEdgeInFreeDirectionResizesWithoutDetaching()
     {
         var sequence = 0;

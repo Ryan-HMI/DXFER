@@ -3116,6 +3116,41 @@ test("geometry drag preview translates dimensioned rectangle edge as a rigid rec
   ]);
 });
 
+test("geometry drag preview translates filleted dimensioned rectangle edge with radius dimension", () => {
+  const document = createFilletedDimensionedRectanglePreviewDocument();
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "rect-3",
+    { x: 5, y: 5 },
+    { x: 7, y: 8 });
+
+  assert.deepEqual(preview.entities[4].center, { x: 3, y: 7 });
+  assert.equal(preview.entities[4].radius, 1);
+  assert.deepEqual(preview.dimensions.map(dimension => dimension.anchor), [
+    { x: 7, y: 4.2 },
+    { x: 11.4, y: 5.5 },
+    { x: 2, y: 8 }
+  ]);
+});
+
+test("geometry drag preview translates chamfered dimensioned rectangle edge with bridge dimension", () => {
+  const document = createChamferedDimensionedRectanglePreviewDocument();
+
+  const preview = applyGeometryDragPreview(
+    document,
+    "rect-3",
+    { x: 5, y: 5 },
+    { x: 7, y: 8 });
+
+  assert.deepEqual(preview.entities[4].points, [{ x: 3, y: 8 }, { x: 2, y: 7 }]);
+  assert.deepEqual(preview.dimensions.map(dimension => dimension.anchor), [
+    { x: 7, y: 4.2 },
+    { x: 11.4, y: 5.5 },
+    { x: 3, y: 9 }
+  ]);
+});
+
 test("geometry drag preview translates dimensioned rectangle vertex as a rigid rectangle", () => {
   const document = createDimensionedRectanglePreviewDocument();
 
@@ -3907,6 +3942,105 @@ function createDimensionedRectanglePreviewDocument() {
       { id: "horizontal", kind: "horizontal", referenceKeys: ["rect-1"], state: "satisfied" },
       { id: "vertical", kind: "vertical", referenceKeys: ["rect-2"], state: "satisfied" }
     ]
+  };
+}
+
+function createFilletedDimensionedRectanglePreviewDocument() {
+  const document = createDimensionedRectanglePreviewDocument();
+  return {
+    ...document,
+    entities: [
+      {
+        id: "rect-1",
+        kind: "line",
+        points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+      },
+      {
+        id: "rect-2",
+        kind: "line",
+        points: [{ x: 10, y: 0 }, { x: 10, y: 5 }]
+      },
+      {
+        id: "rect-3",
+        kind: "line",
+        points: [{ x: 10, y: 5 }, { x: 1, y: 5 }]
+      },
+      {
+        id: "rect-4",
+        kind: "line",
+        points: [{ x: 0, y: 4 }, { x: 0, y: 0 }]
+      },
+      {
+        id: "fillet-created",
+        kind: "arc",
+        center: { x: 1, y: 4 },
+        radius: 1,
+        startAngleDegrees: 90,
+        endAngleDegrees: 180
+      }
+    ],
+    dimensions: document.dimensions.concat({
+      id: "fillet-radius",
+      kind: "radius",
+      referenceKeys: ["fillet-created"],
+      value: 1,
+      anchor: { x: 0, y: 5 },
+      isDriving: false
+    }),
+    constraints: document.constraints
+      .filter(constraint => constraint.id !== "coincident-3")
+      .concat(
+        { id: "fillet-edge-1", kind: "coincident", referenceKeys: ["rect-3:end", "fillet-created:start"], state: "satisfied" },
+        { id: "fillet-edge-2", kind: "coincident", referenceKeys: ["rect-4:start", "fillet-created:end"], state: "satisfied" },
+        { id: "fillet-tangent-1", kind: "tangent", referenceKeys: ["rect-3", "fillet-created"], state: "satisfied" },
+        { id: "fillet-tangent-2", kind: "tangent", referenceKeys: ["rect-4", "fillet-created"], state: "satisfied" })
+  };
+}
+
+function createChamferedDimensionedRectanglePreviewDocument() {
+  const document = createDimensionedRectanglePreviewDocument();
+  return {
+    ...document,
+    entities: [
+      {
+        id: "rect-1",
+        kind: "line",
+        points: [{ x: 0, y: 0 }, { x: 10, y: 0 }]
+      },
+      {
+        id: "rect-2",
+        kind: "line",
+        points: [{ x: 10, y: 0 }, { x: 10, y: 5 }]
+      },
+      {
+        id: "rect-3",
+        kind: "line",
+        points: [{ x: 10, y: 5 }, { x: 1, y: 5 }]
+      },
+      {
+        id: "rect-4",
+        kind: "line",
+        points: [{ x: 0, y: 4 }, { x: 0, y: 0 }]
+      },
+      {
+        id: "chamfer-created",
+        kind: "line",
+        points: [{ x: 1, y: 5 }, { x: 0, y: 4 }]
+      }
+    ],
+    dimensions: document.dimensions.concat({
+      id: "chamfer-bridge",
+      kind: "lineardistance",
+      referenceKeys: ["chamfer-created:start", "chamfer-created:end"],
+      value: Math.SQRT2,
+      anchor: { x: 1, y: 6 },
+      isDriving: false
+    }),
+    constraints: document.constraints
+      .filter(constraint => constraint.id !== "coincident-3")
+      .concat(
+        { id: "chamfer-edge-1", kind: "coincident", referenceKeys: ["rect-3:end", "chamfer-created:start"], state: "satisfied" },
+        { id: "chamfer-edge-2", kind: "coincident", referenceKeys: ["rect-4:start", "chamfer-created:end"], state: "satisfied" })
   };
 }
 

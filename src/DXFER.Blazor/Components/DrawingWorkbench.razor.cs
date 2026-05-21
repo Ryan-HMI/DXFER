@@ -54,6 +54,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private int _createdDimensionSequence;
     private int _createdConstraintSequence;
     private double? _cornerModifyDistance;
+    private CornerModifyEqualChain? _cornerModifyEqualChain;
     private PendingCircleSplit? _pendingCircleSplit;
     private DockResizeTarget _resizeTarget = DockResizeTarget.None;
     private double _resizeStartClientX;
@@ -1234,7 +1235,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return false;
         }
 
-        nextDocument = AddGeneratedCornerModifyDimension(commandId, _document, nextDocument);
+        nextDocument = AddGeneratedCornerModifyDimension(commandId, _document, nextDocument, distance);
         var appliedStatus = $"{FormatCommandName(commandId)} applied at {FormatNumber(distance)}.";
         ApplyDocumentChange(nextDocument, appliedStatus);
         if (keepModal)
@@ -1255,33 +1256,66 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private DrawingDocument AddGeneratedCornerModifyDimension(
         WorkbenchCommandId commandId,
         DrawingDocument previous,
-        DrawingDocument next)
+        DrawingDocument next,
+        double distance)
     {
         var previousEntityIds = previous.Entities
             .Select(entity => entity.Id.Value)
             .ToHashSet(StringComparer.Ordinal);
 
-        SketchDimension? dimension = commandId switch
+        var shouldDriveDimension = _cornerModifyDistance.HasValue;
+        GeneratedCornerModifyDimension? generated = commandId switch
         {
-            WorkbenchCommandId.Fillet => CreateGeneratedFilletRadiusDimension(next, previousEntityIds),
-            WorkbenchCommandId.Chamfer => CreateGeneratedChamferBridgeDimension(next, previousEntityIds),
+            WorkbenchCommandId.Fillet => CreateGeneratedFilletRadiusDimension(next, previousEntityIds, shouldDriveDimension),
+            WorkbenchCommandId.Chamfer => CreateGeneratedChamferBridgeDimension(next, previousEntityIds, shouldDriveDimension),
             _ => null
         };
-        if (dimension is null)
+        if (generated is null)
         {
+            ResetCornerModifyEqualChain();
             return next;
         }
 
-        return new DrawingDocument(
-            next.Entities,
-            next.Dimensions.Concat(new[] { dimension }),
-            next.Constraints,
-            next.Metadata);
+        if (!shouldDriveDimension)
+        {
+            ResetCornerModifyEqualChain();
+            return new DrawingDocument(
+                next.Entities,
+                next.Dimensions.Concat(new[] { generated.Dimension }),
+                next.Constraints,
+                next.Metadata);
+        }
+
+        var constraints = Array.Empty<SketchConstraint>();
+        if (_cornerModifyEqualChain is null
+            || _cornerModifyEqualChain.CommandId != commandId
+            || Math.Abs(_cornerModifyEqualChain.Value - distance) > 0.000001
+            || !DocumentContainsReferenceEntity(next, _cornerModifyEqualChain.ReferenceKey))
+        {
+            _cornerModifyEqualChain = new CornerModifyEqualChain(commandId, distance, generated.EqualReferenceKey);
+        }
+        else if (!StringComparer.Ordinal.Equals(_cornerModifyEqualChain.ReferenceKey, generated.EqualReferenceKey))
+        {
+            constraints = new[]
+            {
+                new SketchConstraint(
+                    CreateConstraintId(SketchConstraintKind.Equal),
+                    SketchConstraintKind.Equal,
+                    new[] { _cornerModifyEqualChain.ReferenceKey, generated.EqualReferenceKey },
+                    SketchConstraintState.Satisfied)
+            };
+        }
+
+        return SolveSketchChange(
+            next,
+            constraints,
+            new[] { generated.Dimension }).Document;
     }
 
-    private SketchDimension? CreateGeneratedFilletRadiusDimension(
+    private GeneratedCornerModifyDimension? CreateGeneratedFilletRadiusDimension(
         DrawingDocument next,
-        IReadOnlySet<string> previousEntityIds)
+        IReadOnlySet<string> previousEntityIds,
+        bool shouldDriveDimension)
     {
         var fillet = next.Entities
             .OfType<ArcEntity>()
@@ -1291,18 +1325,21 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return null;
         }
 
-        return new SketchDimension(
-            CreateDimensionId(),
-            SketchDimensionKind.Radius,
-            new[] { fillet.Id.Value },
-            fillet.Radius,
-            GetFilletDimensionAnchor(fillet),
-            isDriving: false);
+        return new GeneratedCornerModifyDimension(
+            new SketchDimension(
+                CreateDimensionId(),
+                SketchDimensionKind.Radius,
+                new[] { fillet.Id.Value },
+                fillet.Radius,
+                GetFilletDimensionAnchor(fillet),
+                isDriving: shouldDriveDimension),
+            fillet.Id.Value);
     }
 
-    private SketchDimension? CreateGeneratedChamferBridgeDimension(
+    private GeneratedCornerModifyDimension? CreateGeneratedChamferBridgeDimension(
         DrawingDocument next,
-        IReadOnlySet<string> previousEntityIds)
+        IReadOnlySet<string> previousEntityIds,
+        bool shouldDriveDimension)
     {
         var chamfer = next.Entities
             .OfType<LineEntity>()
@@ -1312,13 +1349,28 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return null;
         }
 
-        return new SketchDimension(
-            CreateDimensionId(),
-            SketchDimensionKind.LinearDistance,
-            new[] { $"{chamfer.Id.Value}:start", $"{chamfer.Id.Value}:end" },
-            Distance(chamfer.Start, chamfer.End),
-            GetChamferDimensionAnchor(chamfer),
-            isDriving: false);
+        return new GeneratedCornerModifyDimension(
+            new SketchDimension(
+                CreateDimensionId(),
+                SketchDimensionKind.LinearDistance,
+                new[] { $"{chamfer.Id.Value}:start", $"{chamfer.Id.Value}:end" },
+                Distance(chamfer.Start, chamfer.End),
+                GetChamferDimensionAnchor(chamfer),
+                isDriving: shouldDriveDimension),
+            chamfer.Id.Value);
+    }
+
+    private static bool DocumentContainsReferenceEntity(DrawingDocument document, string referenceKey)
+    {
+        var entityId = SketchReference.TryParse(referenceKey, out var reference)
+            ? reference.EntityId
+            : referenceKey;
+        return document.Entities.Any(entity => StringComparer.Ordinal.Equals(entity.Id.Value, entityId));
+    }
+
+    private void ResetCornerModifyEqualChain()
+    {
+        _cornerModifyEqualChain = null;
     }
 
     private static Point2 GetFilletDimensionAnchor(ArcEntity fillet)
@@ -1371,6 +1423,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         _cornerModifyDistance = value;
+        ResetCornerModifyEqualChain();
         _status = $"{ActiveToolLabel} size set to {FormatNumber(value)}.";
     }
 
@@ -3064,6 +3117,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     }
 
     private sealed record LiveReadoutItem(string Label, string Value);
+
+    private sealed record GeneratedCornerModifyDimension(SketchDimension Dimension, string EqualReferenceKey);
+
+    private sealed record CornerModifyEqualChain(WorkbenchCommandId CommandId, double Value, string ReferenceKey);
 
     private readonly record struct ReadoutVector(Point2 Start, Point2 End);
 

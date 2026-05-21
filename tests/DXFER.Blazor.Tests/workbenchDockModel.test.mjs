@@ -136,13 +136,21 @@ test("fillet and chamfer are modal tools that do not require valid preselection"
   assert.match(workbenchCode, /TryGetCornerModifyCommand\(_activeTool, out var commandId\)/);
   assert.match(workbenchMarkup, /dxfer-corner-size-control/);
   assert.match(workbenchCode, /OnCornerModifyDistanceChanged/);
-  assert.match(workbenchCode, /AddGeneratedCornerModifyDimension\(commandId, _document, nextDocument\)/);
+  assert.match(workbenchCode, /AddGeneratedCornerModifyDimension\(commandId, _document, nextDocument, distance\)/);
   assert.match(workbenchCode, /CreateGeneratedFilletRadiusDimension/);
   assert.match(workbenchCode, /SketchDimensionKind\.Radius/);
   assert.match(workbenchCode, /CreateGeneratedChamferBridgeDimension/);
   assert.match(workbenchCode, /SketchDimensionKind\.LinearDistance/);
   assert.match(workbenchCode, /Math\.Max\(1\.25,\s*length \* 0\.6\)/);
   assert.match(workbenchCss, /\.dxfer-corner-size-control/);
+});
+
+test("keyed fillet and chamfer dimensions drive a reusable equal constraint chain", () => {
+  assert.match(workbenchCode, /CornerModifyEqualChain/);
+  assert.match(workbenchCode, /ResetCornerModifyEqualChain/);
+  assert.match(workbenchCode, /shouldDriveDimension/);
+  assert.match(workbenchCode, /SketchConstraintKind\.Equal/);
+  assert.match(workbenchCode, /AddGeneratedCornerModifyDimension\(commandId, _document, nextDocument, distance\)/);
 });
 
 test("confirmed-good green styling is not reintroduced", () => {

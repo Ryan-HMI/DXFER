@@ -8340,18 +8340,16 @@ function applyDimensionedRectanglePreviewTranslation(document, selectionKey, del
     return null;
   }
 
-  const rectangleEntityIds = getDimensionedRectanglePreviewEntityIds(document, selectedEntityId);
-  if (!rectangleEntityIds) {
+  const translationEntityIds = getDimensionedRectanglePreviewEntityIds(document, selectedEntityId);
+  if (!translationEntityIds) {
     return null;
   }
 
-  for (const entity of getDocumentEntities(document)) {
-    if (getEntityKind(entity) === "line" && rectangleEntityIds.has(getEntityId(entity))) {
-      entity.points = getEntityPoints(entity).map(point => addWorldPoints(point, delta));
-    }
+  for (const entityId of translationEntityIds) {
+    translatePreviewEntityById(document, entityId, delta);
   }
 
-  return rectangleEntityIds;
+  return translationEntityIds;
 }
 
 function applyPartiallyDimensionedRectanglePreviewDrag(document, selectionKey, delta) {
@@ -8795,9 +8793,15 @@ function getSelectedPreviewLineEntityId(document, selectionKey) {
 
 function getDimensionedRectanglePreviewEntityIds(document, selectedEntityId) {
   const rectangleEntityIds = getRectanglePreviewEntityIds(document, selectedEntityId);
-  return rectangleEntityIds
-    && countDrivingPreviewDimensionsForEntityGroup(getDocumentDimensions(document), rectangleEntityIds) >= 2
-    ? rectangleEntityIds
+  if (rectangleEntityIds
+    && countDrivingPreviewDimensionsForEntityGroup(getDocumentDimensions(document), rectangleEntityIds) >= 2) {
+    return getCornerModifiedRectanglePreviewTranslationEntityIds(document, rectangleEntityIds);
+  }
+
+  const modifiedRectangleEntityIds = getCornerModifiedRectanglePreviewEntityIds(document, selectedEntityId);
+  return modifiedRectangleEntityIds
+    && countDrivingPreviewDimensionsForEntityGroup(getDocumentDimensions(document), modifiedRectangleEntityIds) >= 2
+    ? getCornerModifiedRectanglePreviewTranslationEntityIds(document, modifiedRectangleEntityIds)
     : null;
 }
 
@@ -8843,6 +8847,35 @@ function getRectanglePreviewEntityIds(document, selectedEntityId) {
     : null;
 }
 
+function getCornerModifiedRectanglePreviewEntityIds(document, selectedEntityId) {
+  const lineIds = getDocumentEntities(document)
+    .filter(entity => getEntityKind(entity) === "line")
+    .map(getEntityId)
+    .filter(id => id);
+  if (!lineIds.some(id => StringComparer(id, selectedEntityId)) || lineIds.length < 4) {
+    return null;
+  }
+
+  for (let first = 0; first < lineIds.length - 3; first += 1) {
+    for (let second = first + 1; second < lineIds.length - 2; second += 1) {
+      for (let third = second + 1; third < lineIds.length - 1; third += 1) {
+        for (let fourth = third + 1; fourth < lineIds.length; fourth += 1) {
+          const candidate = new Set([lineIds[first], lineIds[second], lineIds[third], lineIds[fourth]]);
+          if (!candidate.has(selectedEntityId)
+            || !hasRectanglePreviewLineOrientationRelations(getDocumentConstraints(document), candidate)
+            || !hasConnectedPreviewRectangleCorners(document, candidate)) {
+            continue;
+          }
+
+          return candidate;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 function hasRectanglePreviewLineRelations(constraints, entityIds) {
   let coincidentCount = 0;
   const parallelPairs = new Set();
@@ -8870,6 +8903,164 @@ function hasRectanglePreviewLineRelations(constraints, entityIds) {
   return coincidentCount >= 4
     && parallelPairs.size >= 2
     && perpendicularCount >= 1;
+}
+
+function hasRectanglePreviewLineOrientationRelations(constraints, entityIds) {
+  const parallelPairs = new Set();
+  let perpendicularCount = 0;
+  for (const constraint of constraints) {
+    if (getSketchItemState(constraint) === "suppressed") {
+      continue;
+    }
+
+    const kind = getSketchConstraintKind(constraint);
+    if (kind !== "parallel" && kind !== "perpendicular") {
+      continue;
+    }
+
+    const pair = getTwoSketchReferenceEntityIds(constraint);
+    if (!pair || !entityIds.has(pair[0]) || !entityIds.has(pair[1]) || StringComparer(pair[0], pair[1])) {
+      continue;
+    }
+
+    if (kind === "parallel") {
+      parallelPairs.add(pair[0] <= pair[1] ? `${pair[0]}|${pair[1]}` : `${pair[1]}|${pair[0]}`);
+    } else {
+      perpendicularCount += 1;
+    }
+  }
+
+  return parallelPairs.size >= 2
+    && perpendicularCount >= 1;
+}
+
+function hasConnectedPreviewRectangleCorners(document, entityIds) {
+  const connections = getPreviewRectangleCornerConnections(document, entityIds);
+  if (connections.size < 4) {
+    return false;
+  }
+
+  const adjacency = new Map(Array.from(entityIds, entityId => [entityId, new Set()]));
+  for (const pair of connections) {
+    const [first, second] = pair.split("|");
+    if (!adjacency.has(first) || !adjacency.has(second)) {
+      continue;
+    }
+
+    adjacency.get(first).add(second);
+    adjacency.get(second).add(first);
+  }
+
+  const firstEntityId = Array.from(entityIds)[0];
+  const visited = new Set([firstEntityId]);
+  const queue = [firstEntityId];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    for (const next of adjacency.get(current) || []) {
+      if (!visited.has(next)) {
+        visited.add(next);
+        queue.push(next);
+      }
+    }
+  }
+
+  return visited.size === entityIds.size;
+}
+
+function getPreviewRectangleCornerConnections(document, entityIds) {
+  const connections = new Set();
+  const modifierLinks = getPreviewCornerModifierLinks(document, entityIds);
+  for (const constraint of getDocumentConstraints(document)) {
+    if (getSketchConstraintKind(constraint) !== "coincident"
+      || getSketchItemState(constraint) === "suppressed") {
+      continue;
+    }
+
+    const references = getSketchReferenceKeys(constraint).map(parseSketchReference);
+    if (references.length < 2
+      || !isPreviewEndpointReference(references[0])
+      || !isPreviewEndpointReference(references[1])
+      || !entityIds.has(references[0].entityId)
+      || !entityIds.has(references[1].entityId)
+      || StringComparer(references[0].entityId, references[1].entityId)) {
+      continue;
+    }
+
+    connections.add(getOrderedPreviewPairKey(references[0].entityId, references[1].entityId));
+  }
+
+  for (const linkedEntityIds of modifierLinks.values()) {
+    const linked = Array.from(linkedEntityIds);
+    for (let first = 0; first < linked.length - 1; first += 1) {
+      for (let second = first + 1; second < linked.length; second += 1) {
+        connections.add(getOrderedPreviewPairKey(linked[first], linked[second]));
+      }
+    }
+  }
+
+  return connections;
+}
+
+function getPreviewCornerModifierLinks(document, rectangleEntityIds) {
+  const links = new Map();
+  for (const constraint of getDocumentConstraints(document)) {
+    if (getSketchConstraintKind(constraint) !== "coincident"
+      || getSketchItemState(constraint) === "suppressed") {
+      continue;
+    }
+
+    const references = getSketchReferenceKeys(constraint).map(parseSketchReference);
+    if (references.length < 2
+      || !isPreviewEndpointReference(references[0])
+      || !isPreviewEndpointReference(references[1])) {
+      continue;
+    }
+
+    addPreviewCornerModifierLink(links, rectangleEntityIds, references[0], references[1]);
+    addPreviewCornerModifierLink(links, rectangleEntityIds, references[1], references[0]);
+  }
+
+  return links;
+}
+
+function addPreviewCornerModifierLink(links, rectangleEntityIds, rectangleReference, modifierReference) {
+  if (!rectangleEntityIds.has(rectangleReference.entityId)
+    || rectangleEntityIds.has(modifierReference.entityId)
+    || StringComparer(rectangleReference.entityId, modifierReference.entityId)) {
+    return;
+  }
+
+  if (!links.has(modifierReference.entityId)) {
+    links.set(modifierReference.entityId, new Set());
+  }
+
+  links.get(modifierReference.entityId).add(rectangleReference.entityId);
+}
+
+function getCornerModifiedRectanglePreviewTranslationEntityIds(document, rectangleEntityIds) {
+  const translationEntityIds = new Set(rectangleEntityIds);
+  const modifierLinks = getPreviewCornerModifierLinks(document, rectangleEntityIds);
+  for (const [modifierEntityId, linkedRectangleEntityIds] of modifierLinks.entries()) {
+    if (linkedRectangleEntityIds.size < 2) {
+      continue;
+    }
+
+    const modifier = findCanvasDocumentEntity(document, modifierEntityId);
+    const kind = getEntityKind(modifier);
+    if (kind === "line" || kind === "arc") {
+      translationEntityIds.add(modifierEntityId);
+    }
+  }
+
+  return translationEntityIds;
+}
+
+function isPreviewEndpointReference(reference) {
+  return reference && (reference.target === "start" || reference.target === "end");
+}
+
+function getOrderedPreviewPairKey(first, second) {
+  return first <= second ? `${first}|${second}` : `${second}|${first}`;
 }
 
 function countDrivingPreviewDimensionsForEntityGroup(dimensions, entityIds) {
