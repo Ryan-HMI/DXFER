@@ -194,6 +194,7 @@ public sealed class WorkbenchRenderBoundaryTests
         source.Should().Contain("ParseQueryString");
         source.Should().Contain("@if (!IsSyncLaunch)");
         source.Should().NotContain("Canvas prototype");
+        source.Should().NotContain("Sync cleanup");
         syncMenu.Should().Contain("@if (IsSyncLaunch)");
         syncMenu.Should().Contain("WorkbenchCommandId.SaveDxf");
         syncMenu.Should().Contain("WorkbenchCommandId.BoundsToOrigin");
