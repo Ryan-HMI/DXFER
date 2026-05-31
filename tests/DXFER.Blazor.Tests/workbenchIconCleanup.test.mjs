@@ -71,11 +71,15 @@ test("rotate icons use standard circular arrow motifs", () => {
   assert.match(iconCase("Rotate"), /A7 7 0 1 1/);
   assert.match(iconCase("Rotate"), /m18 5 1 5-5-1/);
   assert.match(iconCase("Rotate90Clockwise"), /dxfer-rotate-90-cw-icon/);
-  assert.match(iconCase("Rotate90Clockwise"), /A6 6 0 1 1/);
-  assert.match(iconCase("Rotate90Clockwise"), /<path d="M17 3v4h-4" \/>/);
+  assert.match(iconCase("Rotate90Clockwise"), /A7 7 0 1 1/);
+  assert.match(iconCase("Rotate90Clockwise"), /<path d="m18 6-4-1m4 1-1-4" \/>/);
+  assert.equal(iconCase("Rotate90Clockwise").match(/<path /g)?.length, 2);
+  assert.doesNotMatch(iconCase("Rotate90Clockwise"), /<circle|16\.5|M15 13|v4h/);
   assert.match(iconCase("Rotate90CounterClockwise"), /dxfer-rotate-90-ccw-icon/);
-  assert.match(iconCase("Rotate90CounterClockwise"), /A6 6 0 1 0/);
-  assert.match(iconCase("Rotate90CounterClockwise"), /<path d="M7 3v4h4" \/>/);
+  assert.match(iconCase("Rotate90CounterClockwise"), /A7 7 0 1 0/);
+  assert.match(iconCase("Rotate90CounterClockwise"), /<path d="m6 6 4-1m-4 1 1-4" \/>/);
+  assert.equal(iconCase("Rotate90CounterClockwise").match(/<path /g)?.length, 2);
+  assert.doesNotMatch(iconCase("Rotate90CounterClockwise"), /<circle|16\.5|M15 13|v4h/);
 });
 
 test("confirmed-good green icon styling remains absent from toolbar files", () => {
