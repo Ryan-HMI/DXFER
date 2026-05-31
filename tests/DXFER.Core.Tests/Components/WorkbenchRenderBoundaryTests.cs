@@ -189,6 +189,7 @@ public sealed class WorkbenchRenderBoundaryTests
         source.Should().NotContain("@if (IsSyncLaunch)");
         source.Should().NotContain("@if (!IsSyncLaunch)");
         source.Should().NotContain("Canvas prototype");
+        source.Should().NotContain("Sync cleanup");
         source.Should().Contain("WorkbenchCommandId.SaveDxf");
         source.Should().Contain("WorkbenchCommandId.BoundsToOrigin");
         source.Should().Contain("WorkbenchCommandId.VectorToX");
