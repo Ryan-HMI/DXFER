@@ -161,12 +161,13 @@ test("confirmed-good green styling is not reintroduced", () => {
 
 test("tool palette host overlays the canvas without owning a layout column", () => {
   assert.match(workbenchCss, /\.dxfer-tool-palette-host/);
-  assert.match(workbenchCss, /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+var\(--dxfer-inspector-width,\s*280px\)\s*!important/);
+  assert.match(workbenchCss, /grid-template-columns:\s*minmax\(0,\s*1fr\)\s*!important/);
   assert.match(workbenchCss, /\.dxfer-canvas-panel\s*\{[^}]*grid-column:\s*1\s*!important;/s);
-  assert.match(workbenchCss, /\.dxfer-inspector\s*\{[^}]*grid-column:\s*2\s*!important;/s);
-  assert.match(workbenchCss, /grid-template-rows:\s*minmax\(0,\s*1fr\)\s+auto\s+auto\s*!important/);
-  assert.match(workbenchCss, /\.dxfer-sync-control-bar\s*\{[^}]*grid-row:\s*2\s*!important;/s);
-  assert.match(workbenchCss, /\.dxfer-command-bar\s*\{[^}]*grid-row:\s*3\s*!important;/s);
+  assert.doesNotMatch(workbenchCss, /\.dxfer-inspector/);
+  assert.match(workbenchCss, /grid-template-rows:\s*minmax\(0,\s*1fr\)\s+auto\s*!important/);
+  assert.match(workbenchCss, /\.dxfer-sync-control-bar\s*\{[^}]*position:\s*absolute\s*!important;[^}]*top:\s*0\.55rem\s*!important;[^}]*right:\s*0\.55rem\s*!important;/s);
+  assert.match(workbenchCss, /\.dxfer-command-bar\s*\{[^}]*grid-row:\s*2\s*!important;/s);
+  assert.doesNotMatch(workbenchCss, /grid-template-rows:\s*minmax\(0,\s*1fr\)\s+auto\s+auto\s*!important/);
 });
 
 test("top and bottom dock zones reserve side dock width instead of overlapping side stacks", () => {

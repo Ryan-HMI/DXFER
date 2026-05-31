@@ -6,6 +6,7 @@ import {
   applyConstraintVisibilityState,
   applyGeometryDragPreview,
   applyLockedDraftDimensions,
+  createDrawingCanvas,
   applyDirectSelectionClick,
   applyPolarSnapIfRequested,
   canExtendDimensionSelection,
@@ -50,6 +51,7 @@ import {
   getRadialDimensionPreference,
   getPolygonControlCircleWorldPoints,
   getSketchToolDimensionLocks,
+  getModifyToolDimensionLocks,
   getSketchToolPreviewMarkerPoints,
   getSketchChainContextFromCommittedTool,
   getModifyToolPointCount,
@@ -58,6 +60,7 @@ import {
   getPersistentSplineTangentHandlesForEntity,
   getSplineFitWorldPoints,
   getSplineTangentHandles,
+  shouldShowPersistentSplineHandles,
   getTangentArc,
   getTangentArcFallbackPreviewPoints,
   getPointTargetMarker,
@@ -93,6 +96,66 @@ import {
   tryToggleSketchChainToolAtPoint
 } from "../../src/DXFER.Blazor/wwwroot/drawingCanvas.js";
 
+function createRecordingCanvas() {
+  const calls = [];
+  const contextTarget = {
+    calls,
+    measureText: text => ({ width: String(text).length * 7 })
+  };
+  const context = new Proxy(contextTarget, {
+    get(target, property) {
+      if (property in target) {
+        return target[property];
+      }
+
+      return (...args) => {
+        calls.push({ method: String(property), args });
+      };
+    },
+    set(target, property, value) {
+      target[property] = value;
+      return true;
+    }
+  });
+  const canvas = {
+    width: 0,
+    height: 0,
+    clientWidth: 640,
+    clientHeight: 480,
+    dataset: {},
+    style: { touchAction: "" },
+    getContext: () => context,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 640, height: 480 })
+  };
+
+  return { canvas, context };
+}
+
+function withCanvasRuntime(callback) {
+  const previousWindow = globalThis.window;
+  globalThis.window = {
+    devicePixelRatio: 1,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    requestAnimationFrame: action => {
+      action();
+      return 1;
+    }
+  };
+
+  try {
+    return callback();
+  } finally {
+    if (previousWindow === undefined) {
+      delete globalThis.window;
+    } else {
+      globalThis.window = previousWindow;
+    }
+  }
+}
+
 test("blank document fit uses a sane default sketch scale", () => {
   const view = getFitViewForDocument(
     {
@@ -105,6 +168,25 @@ test("blank document fit uses a sane default sketch scale", () => {
   assert.equal(view.offsetX, 600);
   assert.equal(view.offsetY, 400);
 });
+
+test("clearing grain direction removes the canvas grain flag", () => withCanvasRuntime(() => {
+  const { canvas, context } = createRecordingCanvas();
+  const canvasInstance = createDrawingCanvas(canvas, {});
+
+  canvasInstance.setGrainDirection("GlobalX", 0);
+  assert.equal(canvas.dataset.grainDirection, "globalx");
+  assert.equal(canvas.dataset.grainAngleDegrees, "0");
+  assert.equal(context.calls.some(call => call.method === "fillText" && String(call.args[0]).startsWith("GRAIN X")), true);
+
+  context.calls.length = 0;
+  canvasInstance.setGrainDirection("None", null);
+
+  assert.equal(canvas.dataset.grainDirection, "none");
+  assert.equal(canvas.dataset.grainAngleDegrees, "");
+  assert.equal(context.calls.some(call => call.method === "fillText" && String(call.args[0]).startsWith("GRAIN")), false);
+
+  canvasInstance.dispose();
+}));
 
 test("direct click selects an unselected target and makes it active", () => {
   const state = {
@@ -301,7 +383,62 @@ test("created spline entities expose persistent endpoint tangent handles", () =>
   assert.deepEqual(handles[1].point, { x: 3, y: 1 });
 });
 
-test("spline fit points are selectable point targets", () => {
+test("persistent spline edit handles display only while the spline is selected", () => {
+  const spline = {
+    id: "spline-a",
+    kind: "spline",
+    points: [
+      { x: 0, y: 0 },
+      { x: 2, y: 2 },
+      { x: 4, y: -1 },
+      { x: 6, y: 0 }
+    ],
+    fitPoints: [
+      { x: 0, y: 0 },
+      { x: 2, y: 2 },
+      { x: 4, y: -1 },
+      { x: 6, y: 0 }
+    ]
+  };
+  const state = createHitTestState([spline]);
+
+  assert.equal(shouldShowPersistentSplineHandles(state, spline), false);
+
+  state.selectedKeys = new Set(["spline-a"]);
+  assert.equal(shouldShowPersistentSplineHandles(state, spline), true);
+
+  state.selectedKeys = new Set(["spline-a|point|fit-1|2|2"]);
+  assert.equal(shouldShowPersistentSplineHandles(state, spline), true);
+});
+
+test("selected spline fit points are selectable point targets", () => {
+  const spline = {
+    id: "spline-a",
+    kind: "spline",
+    points: [
+      { x: 0, y: 0 },
+      { x: 2, y: 2 },
+      { x: 4, y: -1 },
+      { x: 6, y: 0 }
+    ],
+    fitPoints: [
+      { x: 0, y: 0 },
+      { x: 2, y: 2 },
+      { x: 4, y: -1 },
+      { x: 6, y: 0 }
+    ]
+  };
+
+  const state = createHitTestState([spline]);
+  state.selectedKeys = new Set(["spline-a"]);
+
+  const target = findNearestTarget(state, { x: 20, y: 80 });
+
+  assert.equal(target?.kind, "point");
+  assert.equal(target?.key, "spline-a|point|fit-1|2|2");
+});
+
+test("unselected spline fit points are hidden from point targeting", () => {
   const spline = {
     id: "spline-a",
     kind: "spline",
@@ -321,8 +458,7 @@ test("spline fit points are selectable point targets", () => {
 
   const target = findNearestTarget(createHitTestState([spline]), { x: 20, y: 80 });
 
-  assert.equal(target?.kind, "point");
-  assert.equal(target?.key, "spline-a|point|fit-1|2|2");
+  assert.notEqual(target?.key, "spline-a|point|fit-1|2|2");
 });
 
 test("add spline point request targets clicked fit spline projection", () => {
@@ -379,11 +515,35 @@ test("spline endpoint tangent handles are selectable point targets", () => {
       { x: 8, y: 2 }
     ]
   };
+  const state = createHitTestState([spline]);
+  state.selectedKeys = new Set(["spline-a"]);
 
-  const target = findNearestTarget(createHitTestState([spline]), { x: 10, y: 100 });
+  const target = findNearestTarget(state, { x: 10, y: 100 });
 
   assert.equal(target?.kind, "point");
   assert.equal(target?.key, "spline-a|point|tangent-start|1|0");
+});
+
+test("unselected spline tangent handles are hidden from point targeting", () => {
+  const spline = {
+    id: "spline-a",
+    kind: "spline",
+    points: [
+      { x: 0, y: 0 },
+      { x: 4, y: 0 },
+      { x: 8, y: 2 }
+    ],
+    fitPoints: [
+      { x: 0, y: 0 },
+      { x: 4, y: 0 },
+      { x: 8, y: 2 }
+    ],
+    startTangentHandle: { x: 0.4, y: 0 }
+  };
+
+  const target = findNearestTarget(createHitTestState([spline]), { x: 1.5, y: 100 });
+
+  assert.notEqual(target?.key, "spline-a|point|tangent-start|0.4|0");
 });
 
 test("spline tangent handle target wins over nearby fit point when grabbing handle", () => {
@@ -402,8 +562,10 @@ test("spline tangent handle target wins over nearby fit point when grabbing hand
     ],
     startTangentHandle: { x: 0.4, y: 0 }
   };
+  const state = createHitTestState([spline]);
+  state.selectedKeys = new Set(["spline-a"]);
 
-  const target = findNearestTarget(createHitTestState([spline]), { x: 1.5, y: 100 });
+  const target = findNearestTarget(state, { x: 1.5, y: 100 });
 
   assert.equal(target?.kind, "point");
   assert.equal(target?.key, "spline-a|point|tangent-start|0.4|0");
@@ -1305,6 +1467,37 @@ test("offset draft dimension updates the preview point on the picked side", () =
   assert.equal(state.toolDraft.dimensionValues.offset, 5);
 });
 
+test("rotate draft dimension accepts signed angle input", () => {
+  const state = {
+    activeTool: "rotate",
+    toolDraft: {
+      points: [{ x: 0, y: 0 }, { x: 4, y: 0 }],
+      previewPoint: null,
+      dimensionValues: {}
+    }
+  };
+
+  const changed = applyDraftDimensionValue(state, "angle", -30);
+
+  assert.equal(changed, true);
+  assert.equal(state.toolDraft.dimensionValues.angle, -30);
+  assertApproxEqual(state.toolDraft.previewPoint.x, 3.4641016151);
+  assertApproxEqual(state.toolDraft.previewPoint.y, -2);
+});
+
+test("modify tool dimension locks include signed rotate angles", () => {
+  const locks = getModifyToolDimensionLocks({
+    dimensionValues: {
+      angle: -45,
+      ignored: Number.NaN,
+      zero: 0
+    }
+  });
+
+  assert.deepEqual(locks.keys, ["angle"]);
+  assert.deepEqual(locks.values, [-45]);
+});
+
 test("sketch tool dimension locks only include finite positive values", () => {
   const locks = getSketchToolDimensionLocks({
     dimensionValues: {
@@ -1336,6 +1529,23 @@ test("shift is polar snap instead of pan while sketch tools are active", () => {
   assert.equal(isPanPointerDownForTool({ button: 0, shiftKey: true }, "select"), false);
   assert.equal(isPanPointerDownForTool({ button: 1, shiftKey: false }, "line"), true);
   assert.equal(isPanPointerDownForTool({ button: 2, shiftKey: false }, "line"), false);
+});
+
+test("rotate target point supports polar snap from the rotation center", () => {
+  const state = {
+    activeTool: "rotate",
+    view: { scale: 100 },
+    polarSnapIncrementDegrees: 15,
+    toolDraft: {
+      points: [{ x: 0, y: 0 }, { x: 4, y: 0 }],
+      previewPoint: null
+    }
+  };
+
+  const snapped = applyPolarSnapIfRequested(state, { x: 3, y: 3.2 }, "rotate", { shiftKey: true });
+
+  assertApproxEqual(snapped.x, Math.hypot(3, 3.2) * Math.SQRT1_2);
+  assertApproxEqual(snapped.y, Math.hypot(3, 3.2) * Math.SQRT1_2);
 });
 
 test("dynamic inferred target is hidden when cursor moves away from it", () => {

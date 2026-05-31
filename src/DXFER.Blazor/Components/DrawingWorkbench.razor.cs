@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using DXFER.CadIO;
 using DXFER.Blazor.IO;
 using DXFER.Blazor.Interop;
@@ -28,10 +27,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private const long MaxDxfFileSize = 25 * 1024 * 1024;
     private const string SegmentKeySeparator = "|segment|";
     private const string PointKeySeparator = "|point|";
-    private const int MinToolPanelWidth = 184;
-    private const int MaxToolPanelWidth = 360;
-    private const int MinInspectorWidth = 220;
-    private const int MaxInspectorWidth = 520;
     private const int DefaultPatternInstanceCount = 3;
 
     private DrawingCanvas? _canvas;
@@ -40,8 +35,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private string _status = "Blank drawing ready. Sketch geometry or open a DXF.";
     private string? _hoveredEntityId;
     private string? _activeSelectionKey;
-    private string _exportText = string.Empty;
     private GrainDirection _grainDirection = GrainDirection.None;
+    private double? _grainAngleDegrees;
     private SyncEditLaunchOptions _syncLaunchOptions = SyncEditLaunchOptions.Empty;
     private DrawingNormalizationResult? _lastAutoNormalization;
     private WorkbenchTool? _activeTool;
@@ -51,10 +46,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private bool _manualOverride;
     private bool _syncLaunchLoadAttempted;
     private bool _isSyncSaveInFlight;
-    private bool _isToolPanelCollapsed;
-    private bool _isInspectorCollapsed = true;
-    private int _toolPanelWidth = 220;
-    private int _inspectorWidth = 280;
     private int _selectionResetToken;
     private int _documentFitToken = 1;
     private int _createdEntitySequence;
@@ -63,10 +54,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private double? _cornerModifyDistance;
     private CornerModifyEqualChain? _cornerModifyEqualChain;
     private PendingCircleSplit? _pendingCircleSplit;
-    private DockResizeTarget _resizeTarget = DockResizeTarget.None;
-    private double _resizeStartClientX;
-    private int _resizeStartToolPanelWidth;
-    private int _resizeStartInspectorWidth;
     private readonly HashSet<string> _selectedEntityIds = new(StringComparer.Ordinal);
     private readonly Stack<DrawingDocument> _undoStack = new();
     private readonly Stack<DrawingDocument> _redoStack = new();
@@ -195,7 +182,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         !string.IsNullOrWhiteSpace(_syncLaunchOptions.ReturnUrl);
 
     private string SyncCallbackStateText =>
-        _syncLaunchOptions.IsCallbackConfigured ? "Sync callback ready" : "Sync callback missing";
+        _syncLaunchOptions.IsCallbackConfigured ? "Sync connection ready" : "Sync connection missing";
 
     private string SyncCallbackStateClass =>
         _syncLaunchOptions.IsCallbackConfigured
@@ -204,13 +191,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private string SyncArtifactText =>
         string.IsNullOrWhiteSpace(_syncLaunchOptions.ArtifactId)
-            ? "Artifact unavailable"
-            : $"Artifact {_syncLaunchOptions.ArtifactId}";
+            ? "Sync artifact unavailable"
+            : $"Sync artifact {_syncLaunchOptions.ArtifactId}";
 
     private string SyncJobText =>
         string.IsNullOrWhiteSpace(_syncLaunchOptions.JobId)
-            ? "Job unavailable"
-            : $"Job {_syncLaunchOptions.JobId}";
+            ? "Sync job unavailable"
+            : $"Sync job {_syncLaunchOptions.JobId}";
 
     private string SyncNormalizationStateText =>
         _manualOverride
@@ -218,14 +205,14 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             : _lastAutoNormalization is null ? "Manual edit" : "Auto-normalized";
 
     private string SyncSaveButtonText =>
-        _isSyncSaveInFlight ? "Saving..." : "Save back to Sync";
+        _isSyncSaveInFlight ? "Sending..." : "Send to Sync";
 
     private string SyncSaveButtonTitle =>
         CanSaveBackToSync
-            ? "Post normalized DXF and metadata to Sync"
+            ? "Send normalized DXF and geometry metadata to Sync."
             : _syncLaunchOptions.IsCallbackConfigured
-                ? "Open a DXF before saving back to Sync"
-                : "Sync callback launch fields are missing";
+                ? "Open a DXF before sending to Sync."
+                : "Sync launch fields are missing.";
 
     private bool CanAddSplinePoint =>
         GetSelectedWholeEntities()
@@ -259,17 +246,28 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private IReadOnlyList<WorkbenchToolGroup> ProductionToolGroups => new[]
     {
-        new WorkbenchToolGroup("Cleanup", SyncCleanupCommands, "Prep")
+        new WorkbenchToolGroup("Cleanup", SyncCleanupCommands, "Prep"),
+        new WorkbenchToolGroup("Grain", GrainCommands, "Mark")
     };
 
     private IReadOnlyList<WorkbenchToolCommand> SyncCleanupCommands => new[]
     {
+        Command(WorkbenchCommandId.AutoCleanup, null, CadIconName.AutoCleanup, "Auto", !HasDocument, tooltip: "Find the minimum-area rotation with the long side on X, then move bounds minimum to origin."),
+        Command(WorkbenchCommandId.Rotate, WorkbenchTool.Rotate, CadIconName.Rotate, "Free rotate", !CanModifySelectedGeometry, tooltip: "Free-rotate selected geometry around a picked center."),
         Command(WorkbenchCommandId.Rotate90Clockwise, null, CadIconName.Rotate90Clockwise, "Rotate 90 CW", !HasDocument),
         Command(WorkbenchCommandId.Rotate90CounterClockwise, null, CadIconName.Rotate90CounterClockwise, "Rotate 90 CCW", !HasDocument),
         Command(WorkbenchCommandId.BoundsToOrigin, null, CadIconName.BoundsToOrigin, "Bounds to origin", !HasDocument, tooltip: "Move drawing bounds minimum to global origin."),
         Command(WorkbenchCommandId.PointToOrigin, null, CadIconName.PointToOrigin, "Point to origin", !CanMoveSelectedPointToOrigin, tooltip: "Move the selected point to global origin."),
         Command(WorkbenchCommandId.VectorToX, null, CadIconName.VectorToX, "Vector to X", !CanAlignSelectedVector, tooltip: "Align the selected line, segment, or two selected points to global X."),
         Command(WorkbenchCommandId.VectorToY, null, CadIconName.VectorToY, "Vector to Y", !CanAlignSelectedVector, tooltip: "Align the selected line, segment, or two selected points to global Y.")
+    };
+
+    private IReadOnlyList<WorkbenchToolCommand> GrainCommands => new[]
+    {
+        Command(WorkbenchCommandId.GrainNone, null, CadIconName.GrainNone, "Grain none", !HasDocument, tooltip: "Clear the grain annotation."),
+        Command(WorkbenchCommandId.GrainX, null, CadIconName.GrainX, "Grain X", !HasDocument, tooltip: "Mark grain along global X on the GRAIN layer."),
+        Command(WorkbenchCommandId.GrainY, null, CadIconName.GrainY, "Grain Y", !HasDocument, tooltip: "Mark grain along global Y on the GRAIN layer."),
+        Command(WorkbenchCommandId.GrainFromVector, null, CadIconName.GrainVector, "Grain vector", !CanAlignSelectedVector, tooltip: "Mark grain along the selected line, segment, or two selected points on the GRAIN layer.")
     };
 
     private IReadOnlyList<WorkbenchToolGroup> AllToolGroups => new[]
@@ -356,11 +354,14 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.Symmetric, WorkbenchTool.Symmetric, CadIconName.Symmetric, "Symmetric", disabled: true, isFuture: true),
             Command(WorkbenchCommandId.Fix, WorkbenchTool.Fix, CadIconName.Fix, "Fix", tooltip: ConstraintTooltip(SketchConstraintKind.Fix))
         }, "Solve", InitiallyOpen: false),
-        new WorkbenchToolGroup("Cleanup", CleanupCommands, "Prep", InitiallyOpen: false)
+        new WorkbenchToolGroup("Cleanup", CleanupCommands, "Prep", InitiallyOpen: false),
+        new WorkbenchToolGroup("Grain", GrainCommands, "Mark", InitiallyOpen: false)
     };
 
     private IReadOnlyList<WorkbenchToolCommand> CleanupCommands => new[]
     {
+        Command(WorkbenchCommandId.AutoCleanup, null, CadIconName.AutoCleanup, "Auto", !HasDocument, tooltip: "Find the minimum-area rotation with the long side on X, then move bounds minimum to origin."),
+        Command(WorkbenchCommandId.Rotate, WorkbenchTool.Rotate, CadIconName.Rotate, "Free rotate", !CanModifySelectedGeometry, tooltip: "Free-rotate selected geometry around a picked center."),
         Command(WorkbenchCommandId.Rotate90Clockwise, null, CadIconName.Rotate90Clockwise, "Rotate 90 CW", !HasDocument),
         Command(WorkbenchCommandId.Rotate90CounterClockwise, null, CadIconName.Rotate90CounterClockwise, "Rotate 90 CCW", !HasDocument),
         Command(WorkbenchCommandId.BoundsToOrigin, null, CadIconName.BoundsToOrigin, "Bounds to origin", !HasDocument, tooltip: "Move drawing bounds minimum to global origin."),
@@ -375,27 +376,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         get
         {
             var classes = new List<string> { "dxfer-workbench" };
-            if (_isToolPanelCollapsed)
-            {
-                classes.Add("dxfer-tool-panel-collapsed");
-            }
-
-            if (_isInspectorCollapsed)
-            {
-                classes.Add("dxfer-inspector-collapsed");
-            }
-
-            if (_resizeTarget is not DockResizeTarget.None)
-            {
-                classes.Add("dxfer-dock-resizing");
-            }
-
             return string.Join(" ", classes);
         }
     }
 
-    private string WorkbenchGridStyle =>
-        $"--dxfer-tools-width:{_toolPanelWidth}px;--dxfer-inspector-width:{_inspectorWidth}px;";
+    private string WorkbenchGridStyle => string.Empty;
 
     private bool IsParametricCommandActive =>
         _activeTool.HasValue;
@@ -508,41 +493,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private IReadOnlyList<LiveReadoutItem> LiveMeasurementReadouts => BuildLiveMeasurementReadouts();
 
-    private string MetadataJson
-    {
-        get
-        {
-            var bounds = Bounds;
-            return JsonSerializer.Serialize(
-                new
-                {
-                    fileName = _fileName,
-                    entityCount = _document.Entities.Count,
-                    grainDirection = _grainDirection.ToString(),
-                    units = _document.Metadata.Units.ToString(),
-                    mode = _document.Metadata.Mode.ToString(),
-                    trustedSource = _document.Metadata.TrustedSource,
-                    warnings = _document.Metadata.Warnings.Select(warning => new
-                    {
-                        warning.Code,
-                        Severity = warning.Severity.ToString(),
-                        warning.Message
-                    }),
-                    unsupportedEntityCounts = _document.Metadata.UnsupportedEntityCounts,
-                    bounds = new
-                    {
-                        minX = Round(bounds.MinX),
-                        minY = Round(bounds.MinY),
-                        maxX = Round(bounds.MaxX),
-                        maxY = Round(bounds.MaxY),
-                        width = Round(bounds.Width),
-                        height = Round(bounds.Height)
-                    }
-                },
-                new JsonSerializerOptions { WriteIndented = true });
-        }
-    }
-
     private async Task OpenFileAsync(IBrowserFile file)
     {
         try
@@ -550,7 +500,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             if (file.Name.EndsWith(".dwg", StringComparison.OrdinalIgnoreCase))
             {
                 _fileName = file.Name;
-                _exportText = string.Empty;
                 _status = "DWG selected. V1 keeps DWG as an external viewer handoff; DXFER editing stays DXF-only.";
                 return;
             }
@@ -614,7 +563,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         bool autoNormalize)
     {
         _fileName = fileName;
-        _exportText = string.Empty;
+        _grainDirection = GrainDirection.None;
+        _grainAngleDegrees = null;
         var document = WithOpenFileMetadata(DxfDocumentReader.Read(text), fileName, text, trustedSource);
 
         if (document.Entities.Count == 0)
@@ -689,7 +639,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _documentFitToken++;
         _fileName = "Sample flat pattern";
         _status = "Sample drawing loaded.";
-        _exportText = string.Empty;
+        _grainDirection = GrainDirection.None;
+        _grainAngleDegrees = null;
         _lastAutoNormalization = null;
         _manualOverride = false;
         ClearHistory();
@@ -702,8 +653,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _documentFitToken++;
         _fileName = "Untitled.dxf";
         _status = "Blank drawing ready.";
-        _exportText = string.Empty;
         _grainDirection = GrainDirection.None;
+        _grainAngleDegrees = null;
         _lastAutoNormalization = null;
         _manualOverride = false;
         _activeTool = null;
@@ -727,6 +678,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 break;
             case WorkbenchCommandId.SaveDxf:
                 await DownloadDxfAsync();
+                break;
+            case WorkbenchCommandId.SendToSync:
+                await SaveBackToSyncAsync();
+                break;
+            case WorkbenchCommandId.ReturnToSync:
+                ReturnToSync();
                 break;
             case WorkbenchCommandId.Measure:
                 ActivateTool(WorkbenchTool.Measure, "Measure command active. Press Esc to return to selection.");
@@ -832,6 +789,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 await SyncSelectionFromCanvasAsync();
                 StartConstraintTool(commandId);
                 break;
+            case WorkbenchCommandId.AutoCleanup:
+                ApplyAutoCleanup();
+                break;
             case WorkbenchCommandId.BoundsToOrigin:
                 MoveBoundsToOrigin();
                 break;
@@ -846,6 +806,19 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchCommandId.VectorToY:
                 await SyncSelectionFromCanvasAsync();
                 AlignSelectedVectorToY();
+                break;
+            case WorkbenchCommandId.GrainNone:
+                SetGrainDirection(GrainDirection.None);
+                break;
+            case WorkbenchCommandId.GrainX:
+                SetGrainDirection(GrainDirection.GlobalX);
+                break;
+            case WorkbenchCommandId.GrainY:
+                SetGrainDirection(GrainDirection.GlobalY);
+                break;
+            case WorkbenchCommandId.GrainFromVector:
+                await SyncSelectionFromCanvasAsync();
+                SetGrainFromSelectedVector();
                 break;
             case WorkbenchCommandId.Rotate90Clockwise:
                 RotateDocumentAboutBoundsCenter(-90, "Rotated drawing 90 degrees clockwise.");
@@ -977,7 +950,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             clearTool: false);
     }
 
-    private void OnModifyToolCommitRequested(string toolName, IReadOnlyList<CanvasPointDto> points)
+    private void OnModifyToolCommitRequested(
+        string toolName,
+        IReadOnlyList<CanvasPointDto> points,
+        IReadOnlyDictionary<string, double> dimensionValues)
     {
         var wholeEntityIds = GetWholeEntityIdsForOperations().ToArray();
         if (wholeEntityIds.Length == 0)
@@ -988,7 +964,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         var toolPoints = points.Select(ToPoint).ToArray();
-        if (!TryApplyModifyTool(toolName, wholeEntityIds, toolPoints))
+        if (!TryApplyModifyTool(toolName, wholeEntityIds, toolPoints, dimensionValues))
         {
             _ = InvokeAsync(StateHasChanged);
             return;
@@ -1145,7 +1121,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         _redoStack.Push(_document);
         _document = previousDocument;
-        _exportText = string.Empty;
         MarkManualOverride();
         ResetSelection();
         _status = "Undo applied.";
@@ -1160,7 +1135,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         _undoStack.Push(_document);
         _document = nextDocument;
-        _exportText = string.Empty;
         MarkManualOverride();
         ResetSelection();
         _status = "Redo applied.";
@@ -1180,6 +1154,26 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         ApplyDocumentChange(
             DrawingPrepService.MoveBoundsMinimumToOrigin(_document),
             "Moved drawing bounds minimum to global origin.");
+    }
+
+    private void ApplyAutoCleanup()
+    {
+        if (_document.Metadata.Mode == DrawingDocumentMode.ReferenceOnly)
+        {
+            _status = "Reference-only document cannot be edited.";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var normalization = DrawingNormalizationService.AutoNormalize(_document);
+        _undoStack.Push(_document);
+        _redoStack.Clear();
+        _document = normalization.NormalizedDocument;
+        _lastAutoNormalization = normalization;
+        _manualOverride = false;
+        _status = $"Auto cleanup applied: minimum-area rotation, long side on X, bounds min to origin. "
+            + $"Rotation {FormatNumber(normalization.RotationDegrees)} deg, "
+            + $"bounds {FormatSize(normalization.NormalizedBounds.Width, normalization.NormalizedBounds.Height)}.";
     }
 
     private void DeleteSelectedGeometry()
@@ -1251,7 +1245,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
     }
 
-    private bool TryApplyModifyTool(string toolName, IReadOnlyList<string> selectedEntityIds, IReadOnlyList<Point2> points)
+    private bool TryApplyModifyTool(
+        string toolName,
+        IReadOnlyList<string> selectedEntityIds,
+        IReadOnlyList<Point2> points,
+        IReadOnlyDictionary<string, double> dimensionValues)
     {
         var normalizedTool = NormalizeToolName(toolName);
         var before = _document;
@@ -1263,6 +1261,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case "translate" when points.Count >= 2:
                 nextDocument = DrawingModifyService.TranslateSelected(_document, selectedEntityIds, points[0], points[1]);
                 status = $"Translated {selectedEntityIds.Count} selected entities.";
+                break;
+            case "rotate" when points.Count >= 2 && TryGetDimensionValue(dimensionValues, "angle", out var angleDegrees):
+                nextDocument = DrawingModifyService.RotateSelectedByDegrees(_document, selectedEntityIds, points[0], angleDegrees);
+                status = $"Rotated {selectedEntityIds.Count} selected entities {FormatNumber(angleDegrees)} degrees.";
                 break;
             case "rotate" when points.Count >= 3:
                 nextDocument = DrawingModifyService.RotateSelected(_document, selectedEntityIds, points[0], points[1], points[2]);
@@ -2003,50 +2005,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             : "Constraint glyphs hidden until referenced geometry is hovered.";
     }
 
-    private void ToggleToolPanel() => _isToolPanelCollapsed = !_isToolPanelCollapsed;
-
-    private void ToggleInspector() => _isInspectorCollapsed = !_isInspectorCollapsed;
-
-    private void BeginToolPanelResize(PointerEventArgs args) => BeginDockPanelResize(DockResizeTarget.ToolPanel, args.ClientX);
-
-    private void BeginInspectorResize(PointerEventArgs args) => BeginDockPanelResize(DockResizeTarget.Inspector, args.ClientX);
-
-    private void BeginDockPanelResize(DockResizeTarget target, double clientX)
-    {
-        _resizeTarget = target;
-        _resizeStartClientX = clientX;
-        _resizeStartToolPanelWidth = _toolPanelWidth;
-        _resizeStartInspectorWidth = _inspectorWidth;
-    }
-
-    private void OnWorkbenchPointerMove(PointerEventArgs args)
-    {
-        if (_resizeTarget is DockResizeTarget.None)
-        {
-            return;
-        }
-
-        var deltaX = args.ClientX - _resizeStartClientX;
-        if (_resizeTarget is DockResizeTarget.ToolPanel)
-        {
-            _toolPanelWidth = Math.Clamp(
-                _resizeStartToolPanelWidth + (int)Math.Round(deltaX),
-                MinToolPanelWidth,
-                MaxToolPanelWidth);
-            return;
-        }
-
-        _inspectorWidth = Math.Clamp(
-            _resizeStartInspectorWidth - (int)Math.Round(deltaX),
-            MinInspectorWidth,
-            MaxInspectorWidth);
-    }
-
-    private void EndDockPanelResize()
-    {
-        _resizeTarget = DockResizeTarget.None;
-    }
-
     private void AlignSelectedVector(AxisDirection axis)
     {
         if (!SelectionVectorResolver.TryGetAlignmentVector(_document, _selectedEntityIds, _activeSelectionKey, out var vectorStart, out var vectorEnd))
@@ -2097,7 +2055,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _undoStack.Push(_document);
         _redoStack.Clear();
         _document = nextDocument;
-        _exportText = string.Empty;
         MarkManualOverride();
         _status = status;
     }
@@ -2119,28 +2076,49 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private void SetGrainDirection(GrainDirection grainDirection)
     {
         _grainDirection = grainDirection;
+        _grainAngleDegrees = grainDirection switch
+        {
+            GrainDirection.GlobalX => 0,
+            GrainDirection.GlobalY => 90,
+            _ => null
+        };
         _status = grainDirection switch
         {
-            GrainDirection.GlobalX => "Grain annotation set to global X.",
-            GrainDirection.GlobalY => "Grain annotation set to global Y.",
+            GrainDirection.GlobalX => "Grain annotation set to global X on the GRAIN layer.",
+            GrainDirection.GlobalY => "Grain annotation set to global Y on the GRAIN layer.",
             _ => "Grain annotation cleared."
         };
     }
 
+    private void SetGrainFromSelectedVector()
+    {
+        if (!SelectionVectorResolver.TryGetAlignmentVector(_document, _selectedEntityIds, _activeSelectionKey, out var vectorStart, out var vectorEnd))
+        {
+            _status = "Select one line or segment, or exactly two points, before marking grain along a vector.";
+            return;
+        }
+
+        var dx = vectorEnd.X - vectorStart.X;
+        var dy = vectorEnd.Y - vectorStart.Y;
+        if (Math.Sqrt(dx * dx + dy * dy) <= 0.000001)
+        {
+            _status = "Selected vector has no usable length.";
+            return;
+        }
+
+        var angleDegrees = NormalizeDxfAngleDegrees(Math.Atan2(dy, dx) * 180.0 / Math.PI);
+        _grainAngleDegrees = angleDegrees;
+        _grainDirection = ClassifyGrainDirection(angleDegrees);
+        _status = $"Grain annotation set to selected vector ({FormatNumber(angleDegrees)} deg) on the GRAIN layer.";
+    }
+
     private void GenerateDxfExport()
     {
-        _exportText = DxfDocumentWriter.Write(_document);
-        _status = "Generated ASCII DXF export text for supported entities.";
+        _status = "DXF preview export was removed. Use Download DXF to download the normalized DXF.";
     }
 
     private async Task DownloadDxfAsync()
     {
-        if (_syncLaunchOptions.IsCallbackConfigured)
-        {
-            await SaveBackToSyncAsync();
-            return;
-        }
-
         await DownloadDxfFilesAsync();
     }
 
@@ -2148,7 +2126,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         if (!_syncLaunchOptions.IsCallbackConfigured)
         {
-            _status = "Sync callback save is unavailable for this launch.";
+            _status = "Send to Sync is unavailable for this launch.";
             return;
         }
 
@@ -2167,25 +2145,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private async Task DownloadDxfFilesAsync()
     {
-        var exportText = DxfDocumentWriter.Write(_document);
+        var exportText = DxfDocumentWriter.Write(_document, CreateDxfWriteOptions());
         var downloadName = DxfDownloadFileName.FromSourceName(_fileName);
-        var sidecarName = DxfDownloadFileName.SidecarFromSourceName(_fileName);
-        var sidecarText = DxferSidecarWriter.Write(
-            CreateExportDocument(downloadName),
-            normalizedContent: exportText);
-        _exportText = exportText;
         _downloadModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", DownloadModulePath);
         await _downloadModule.InvokeVoidAsync(
             "downloadTextFile",
             downloadName,
             exportText,
             "application/dxf;charset=utf-8");
-        await _downloadModule.InvokeVoidAsync(
-            "downloadTextFile",
-            sidecarName,
-            sidecarText,
-            "application/json;charset=utf-8");
-        _status = $"Saved {downloadName} and {sidecarName}.";
+        _status = $"Saved {downloadName}.";
     }
 
     private async Task SaveToSyncCallbackAsync()
@@ -2197,25 +2165,24 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         if (!_syncLaunchOptions.IsCallbackConfigured)
         {
-            _status = "Sync callback save requires syncBaseUrl, artifactId, jobId, and editToken.";
+            _status = "Send to Sync requires syncBaseUrl, artifactId, jobId, and editToken.";
             return;
         }
 
         if (!HasDocument)
         {
-            _status = "Open a DXF before saving back to Sync.";
+            _status = "Open a DXF before sending to Sync.";
             return;
         }
 
         _isSyncSaveInFlight = true;
-        _status = "Saving normalized DXF back to Sync.";
+        _status = "Sending normalized DXF to Sync.";
         await InvokeAsync(StateHasChanged);
 
         try
         {
-            var exportText = DxfDocumentWriter.Write(_document);
+            var exportText = DxfDocumentWriter.Write(_document, CreateDxfWriteOptions());
             var normalizedName = DxfDownloadFileName.FromSourceName(_fileName);
-            var metadataJson = BuildSyncMetadataJson(normalizedName, exportText);
             var bounds = _document.GetBounds();
             var normalization = _lastAutoNormalization;
             var manualOverride = _manualOverride;
@@ -2225,7 +2192,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 _syncLaunchOptions.EditToken!,
                 normalizedName,
                 exportText,
-                metadataJson,
                 bounds.Width,
                 bounds.Height,
                 normalization?.RotationDegrees ?? 0,
@@ -2235,8 +2201,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 manualOverride);
 
             await SyncCallbackClient.PostSaveAsync(_syncLaunchOptions, package);
-            _exportText = exportText;
-            _status = $"Saved normalized DXF back to Sync job {_syncLaunchOptions.JobId}.";
+            _status = $"Sent normalized DXF to Sync job {_syncLaunchOptions.JobId}.";
             if (!string.IsNullOrWhiteSpace(_syncLaunchOptions.ReturnUrl))
             {
                 Navigation.NavigateTo(_syncLaunchOptions.ReturnUrl, forceLoad: true);
@@ -2244,12 +2209,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
         {
-            var exportText = DxfDocumentWriter.Write(_document);
-            var normalizedName = DxfDownloadFileName.FromSourceName(_fileName);
-            var metadataJson = BuildSyncMetadataJson(normalizedName, exportText);
-            var wroteFallback = await ExportJobFolderFallbackAsync(exportText, metadataJson);
+            var exportText = DxfDocumentWriter.Write(_document, CreateDxfWriteOptions());
+            var wroteFallback = await ExportJobFolderFallbackAsync(exportText);
             _status = wroteFallback
-                ? $"Sync callback failed: {ex.Message} Wrote job-folder fallback package for explicit Sync import."
+                ? $"Sync callback failed: {ex.Message} Wrote normalized.dxf fallback for explicit Sync import."
                 : $"Sync callback failed: {ex.Message}";
         }
         finally
@@ -2259,7 +2222,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
     }
 
-    private async Task<bool> ExportJobFolderFallbackAsync(string normalizedDxf, string metadataJson)
+    private async Task<bool> ExportJobFolderFallbackAsync(string normalizedDxf)
     {
         if (string.IsNullOrWhiteSpace(_syncLaunchOptions.JobFolder))
         {
@@ -2268,61 +2231,31 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         Directory.CreateDirectory(_syncLaunchOptions.JobFolder);
         await File.WriteAllTextAsync(Path.Combine(_syncLaunchOptions.JobFolder, "normalized.dxf"), normalizedDxf);
-        await File.WriteAllTextAsync(Path.Combine(_syncLaunchOptions.JobFolder, "dxfer.json"), metadataJson);
         return true;
     }
 
-    private string BuildSyncMetadataJson(string normalizedFileName, string normalizedDxf)
-    {
-        var exportDocument = CreateExportDocument(normalizedFileName);
-        var sidecar = DxferSidecarWriter.Create(exportDocument, normalizedContent: normalizedDxf);
-        var bounds = exportDocument.GetBounds();
-        var normalization = _lastAutoNormalization;
-        var manualOverride = _manualOverride;
-        return JsonSerializer.Serialize(
-            new
-            {
-                sidecar.SchemaVersion,
-                sidecar.Source,
-                sidecar.Normalized,
-                sidecar.Units,
-                sidecar.Mode,
-                sidecar.TrustedSource,
-                sidecar.Bounds,
-                sidecar.Normalization,
-                grainDirection = ToSyncGrainDirection(_grainDirection).ToString(),
-                sync = new
-                {
-                    _syncLaunchOptions.ArtifactId,
-                    _syncLaunchOptions.JobId,
-                    boundingWidth = bounds.Width,
-                    boundingHeight = bounds.Height,
-                    rotationDegrees = normalization?.RotationDegrees ?? 0,
-                    originShiftX = normalization?.OriginShiftX ?? CleanNearZero(-bounds.MinX),
-                    originShiftY = normalization?.OriginShiftY ?? CleanNearZero(-bounds.MinY),
-                    manualOverride
-                },
-                sidecar.Warnings,
-                sidecar.UnsupportedEntityCounts
-            },
-            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true })
-            .Replace("\r\n", "\n", StringComparison.Ordinal);
-    }
+    private DxfWriteOptions CreateDxfWriteOptions() =>
+        new(CreateGrainAnnotation());
 
-    private DrawingDocument CreateExportDocument(string normalizedFileName)
+    private GrainAnnotation? CreateGrainAnnotation()
     {
-        var metadata = _document.Metadata with
+        if (_grainDirection == GrainDirection.None && _grainAngleDegrees is null)
         {
-            SourceFileName = _document.Metadata.SourceFileName ?? _fileName,
-            NormalizedFileName = normalizedFileName
-        };
+            return null;
+        }
 
-        return new DrawingDocument(
-            _document.Entities,
-            _document.Dimensions,
-            _document.Constraints,
-            metadata);
+        var angleDegrees = _grainAngleDegrees
+            ?? (_grainDirection == GrainDirection.GlobalY ? 90 : 0);
+        return new GrainAnnotation(CreateGrainLabel(angleDegrees), angleDegrees);
     }
+
+    private string CreateGrainLabel(double angleDegrees) =>
+        _grainDirection switch
+        {
+            GrainDirection.GlobalX => "GRAIN X",
+            GrainDirection.GlobalY => "GRAIN Y",
+            _ => $"GRAIN V {FormatNumber(angleDegrees)} DEG"
+        };
 
     private static GrainDirectionOption ToSyncGrainDirection(GrainDirection grainDirection) =>
         grainDirection switch
@@ -2830,11 +2763,51 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private static double CleanNearZero(double value) => Math.Abs(value) <= 0.000000001 ? 0 : value;
 
+    private static double NormalizeDxfAngleDegrees(double degrees)
+    {
+        var normalized = degrees % 360.0;
+        if (normalized < 0)
+        {
+            normalized += 360.0;
+        }
+
+        return Math.Abs(normalized - 360.0) <= 0.000001
+            ? 0
+            : CleanNearZero(normalized);
+    }
+
+    private static GrainDirection ClassifyGrainDirection(double angleDegrees)
+    {
+        var halfTurnAngle = NormalizeDxfAngleDegrees(angleDegrees) % 180.0;
+        if (Math.Abs(halfTurnAngle) <= 0.000001 || Math.Abs(halfTurnAngle - 180.0) <= 0.000001)
+        {
+            return GrainDirection.GlobalX;
+        }
+
+        return Math.Abs(halfTurnAngle - 90.0) <= 0.000001
+            ? GrainDirection.GlobalY
+            : GrainDirection.None;
+    }
+
     private IReadOnlyList<DrawingEntity> CreateEntitiesForTool(
         string toolName,
         IReadOnlyList<Point2> points,
         IReadOnlyDictionary<string, double> dimensionValues) =>
         SketchCreationEntityFactory.CreateEntitiesForTool(toolName, points, CreateEntityId, _constructionMode, dimensionValues);
+
+    private static bool TryGetDimensionValue(
+        IReadOnlyDictionary<string, double> dimensionValues,
+        string key,
+        out double value)
+    {
+        if (dimensionValues.TryGetValue(key, out value) && double.IsFinite(value))
+        {
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
 
     private WorkbenchToolCommand Command(
         WorkbenchCommandId id,
@@ -3324,10 +3297,17 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchCommandId.SplitAtPoint => "Split at point",
         WorkbenchCommandId.AddSplinePoint => "Add spline point",
         WorkbenchCommandId.SaveDxf => "Save DXF",
+        WorkbenchCommandId.SendToSync => "Send to Sync",
+        WorkbenchCommandId.ReturnToSync => "Return to Sync",
         WorkbenchCommandId.LinearPattern => "Linear pattern",
         WorkbenchCommandId.CircularPattern => "Circular pattern",
+        WorkbenchCommandId.AutoCleanup => "Auto",
         WorkbenchCommandId.Rotate90Clockwise => "Rotate 90 CW",
         WorkbenchCommandId.Rotate90CounterClockwise => "Rotate 90 CCW",
+        WorkbenchCommandId.GrainNone => "Grain none",
+        WorkbenchCommandId.GrainX => "Grain X",
+        WorkbenchCommandId.GrainY => "Grain Y",
+        WorkbenchCommandId.GrainFromVector => "Grain vector",
         WorkbenchCommandId.RemoveDuplicates => "Remove duplicates",
         WorkbenchCommandId.ToolHotkeys => "Tool hotkeys",
         _ => commandId.ToString()
@@ -3466,9 +3446,3 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private readonly record struct PendingCircleSplit(string CircleEntityId, Point2 FirstPoint);
 }
 
-internal enum DockResizeTarget
-{
-    None,
-    ToolPanel,
-    Inspector
-}

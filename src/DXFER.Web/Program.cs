@@ -4,7 +4,6 @@ using System.Text;
 using DXFER.CadIO;
 using DXFER.Blazor.Components;
 using DXFER.Core.Documents;
-using DXFER.Core.IO;
 using DXFER.Core.Operations;
 using DXFER.Core.Sync;
 using DXFER.Web.Components;
@@ -57,6 +56,13 @@ app.MapGet("/api/dxfer/capabilities", () => Results.Json(new
     },
     callbackPath = "/api/dxfer/edit-callback",
     normalizeEndpoint = "/api/dxfer/normalize",
+    syncImportEndpoint = "/api/dxfer/normalize",
+    syncExportCallbackPath = "/api/dxfer/edit-callback",
+    manualFileControls = new[]
+    {
+        "Open local DXF/DWG",
+        "Download DXF"
+    },
     grainDirections = Enum.GetNames<GrainDirectionOption>(),
     sourceOfTruth = "Sync validates token and artifact ownership, stores artifacts, updates metadata, and marks geometry clean."
 }));
@@ -94,17 +100,12 @@ app.MapPost("/api/dxfer/normalize", async (HttpRequest request) =>
     var normalizedFileName = GetNormalizedDxfFileName(file.FileName);
     var normalizedDocument = WithNormalizedFileName(normalization.NormalizedDocument, normalizedFileName);
     var normalizedDxf = DxfDocumentWriter.Write(normalizedDocument);
-    var metadataJson = DxferSidecarWriter.Write(
-        normalizedDocument,
-        sourceText,
-        normalizedDxf);
     var bounds = normalizedDocument.GetBounds();
 
     return Results.Json(new
     {
         normalizedDxfFileName = normalizedFileName,
         normalizedDxf,
-        metadataJson,
         boundingWidth = bounds.Width,
         boundingHeight = bounds.Height,
         rotationDegrees = normalization.RotationDegrees,

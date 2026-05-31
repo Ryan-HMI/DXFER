@@ -102,7 +102,6 @@ public void SavePackageKeepsSyncAsSourceOfTruth()
         EditToken: "token",
         NormalizedDxfFileName: "normalized.dxf",
         NormalizedDxfContent: "0\nEOF\n",
-        MetadataJson: "{}",
         BoundingWidth: 20,
         BoundingHeight: 10,
         RotationDegrees: -30,
@@ -216,7 +215,7 @@ Expected: failure because the Sync callback terms are absent.
 
 - [ ] **Step 3: Implement production save flow**
 
-Load launch options from query on app startup, auto-normalize after file load, build `SyncSavePackage` on Save, call `SyncCallbackClient`, and write `normalized.dxf` plus `dxfer.json` only when callback fails or fallback is explicitly requested.
+Load launch options from query on app startup, auto-normalize after file load, build `SyncSavePackage` on Save, call `SyncCallbackClient`, and write `normalized.dxf` only when callback fails or fallback is explicitly requested.
 
 - [ ] **Step 4: Verify source-boundary test passes**
 

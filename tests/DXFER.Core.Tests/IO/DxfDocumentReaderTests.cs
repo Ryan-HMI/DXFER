@@ -325,4 +325,68 @@ EOF
         dxf.Should().Contain("cut-line");
         dxf.Should().NotContain("construction-line");
     }
+
+    [Fact]
+    public void WritesGrainAnnotationOnDedicatedLayer()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("cut-line"), new Point2(0, 0), new Point2(10, 0))
+        });
+
+        var dxf = DxfDocumentWriter.Write(
+            document,
+            new DxfWriteOptions(new GrainAnnotation("GRAIN X", 0)));
+        var normalizedDxf = dxf.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        normalizedDxf.Should().Contain("0\nLAYER");
+        normalizedDxf.Should().Contain("2\nGRAIN");
+        normalizedDxf.Should().Contain("0\nTEXT");
+        normalizedDxf.Should().Contain("8\nGRAIN");
+        normalizedDxf.Should().Contain("1\nGRAIN X");
+        normalizedDxf.Should().Contain("50\n0");
+
+        var roundTripped = DxfDocumentReader.Read(dxf);
+        var bounds = roundTripped.GetBounds();
+        bounds.MinX.Should().BeApproximately(0, 0.0001);
+        bounds.MaxX.Should().BeApproximately(10, 0.0001);
+        roundTripped.Entities.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void OmitsGrainLayerAndCalloutWhenNoGrainAnnotationIsProvided()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("cut-line"), new Point2(0, 0), new Point2(10, 0))
+        });
+
+        var dxf = DxfDocumentWriter.Write(document);
+        var normalizedDxf = dxf.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        normalizedDxf.Should().NotContain("2\nGRAIN");
+        normalizedDxf.Should().NotContain("8\nGRAIN");
+        normalizedDxf.Should().NotContain("1\nGRAIN");
+    }
+
+    [Fact]
+    public void WritesReadableGrainVectorLabelOutsideCutBounds()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("cut-line"), new Point2(0, 0), new Point2(10, 0))
+        });
+
+        var dxf = DxfDocumentWriter.Write(
+            document,
+            new DxfWriteOptions(new GrainAnnotation("GRAIN V 45 DEG", 45)));
+        var normalizedDxf = dxf.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        normalizedDxf.Should().Contain("1\nGRAIN V 45 DEG");
+        normalizedDxf.Should().Contain("20\n-");
+        normalizedDxf.Should().Contain("50\n0");
+
+        var roundTripped = DxfDocumentReader.Read(dxf);
+        roundTripped.Entities.Should().ContainSingle();
+    }
 }

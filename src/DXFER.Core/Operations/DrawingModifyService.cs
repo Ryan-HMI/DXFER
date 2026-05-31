@@ -55,6 +55,23 @@ public static class DrawingModifyService
             Transform2.RotationDegreesAbout(degrees, center));
     }
 
+    public static DrawingDocument RotateSelectedByDegrees(
+        DrawingDocument document,
+        IEnumerable<string> selectedEntityIds,
+        Point2 center,
+        double degrees)
+    {
+        if (!double.IsFinite(degrees) || Math.Abs(degrees) <= GeometryTolerance)
+        {
+            return document;
+        }
+
+        return DrawingPrepService.TransformSelected(
+            document,
+            selectedEntityIds,
+            Transform2.RotationDegreesAbout(degrees, center));
+    }
+
     public static DrawingDocument ScaleSelected(
         DrawingDocument document,
         IEnumerable<string> selectedEntityIds,

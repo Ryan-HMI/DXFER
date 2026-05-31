@@ -33,21 +33,53 @@ public sealed class WorkbenchRenderBoundaryTests
     }
 
     [Fact]
-    public void WorkbenchSaveDownloadsNormalizedDxfAndSidecar()
+    public void WorkbenchSaveDownloadsNormalizedDxfOnly()
     {
         var workbench = FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs");
         var source = File.ReadAllText(workbench);
         var methodStart = source.IndexOf("private async Task DownloadDxfAsync()", StringComparison.Ordinal);
-        var methodEnd = source.IndexOf("    private void OnHoveredEntityChanged", StringComparison.Ordinal);
+        var methodEnd = source.IndexOf("    private async Task SaveBackToSyncAsync()", StringComparison.Ordinal);
 
         methodStart.Should().BeGreaterThanOrEqualTo(0);
         methodEnd.Should().BeGreaterThan(methodStart);
         var methodBody = source[methodStart..methodEnd];
 
-        methodBody.Should().Contain("DxferSidecarWriter.Write");
-        methodBody.Should().Contain("DxfDownloadFileName.SidecarFromSourceName");
-        methodBody.Split("\"downloadTextFile\"", StringSplitOptions.None)
-            .Should().HaveCount(3, "Save DXF should emit the DXF download and the matching .dxfer.json sidecar download");
+        methodBody.Should().Contain("await DownloadDxfFilesAsync();");
+        methodBody.Should().NotContain("SaveBackToSyncAsync");
+        methodBody.Should().NotContain("IsCallbackConfigured");
+
+        var downloadStart = source.IndexOf("private async Task DownloadDxfFilesAsync()", StringComparison.Ordinal);
+        var downloadEnd = source.IndexOf("    private async Task SaveToSyncCallbackAsync()", StringComparison.Ordinal);
+        downloadStart.Should().BeGreaterThanOrEqualTo(0);
+        downloadEnd.Should().BeGreaterThan(downloadStart);
+        var downloadBody = source[downloadStart..downloadEnd];
+
+        downloadBody.Should().Contain("CreateDxfWriteOptions");
+        source.Should().Contain("GRAIN");
+        downloadBody.Should().NotContain("DxferSidecarWriter.Write");
+        downloadBody.Should().NotContain("DxfDownloadFileName.SidecarFromSourceName");
+        downloadBody.Should().NotContain("metadataJson");
+        downloadBody.Split("\"downloadTextFile\"", StringSplitOptions.None)
+            .Should().HaveCount(2, "Download DXF should emit only the normalized DXF download");
+    }
+
+    [Fact]
+    public void WorkbenchDoesNotRenderInspectorOrJsonDebugPanel()
+    {
+        var markup = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor"));
+        var source = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs"));
+        var css = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.css"));
+
+        markup.Should().NotContain("dxfer-inspector");
+        markup.Should().NotContain("Show inspector");
+        markup.Should().NotContain("Sync Metadata");
+        markup.Should().NotContain("DXF Export");
+        source.Should().NotContain("_exportText");
+        source.Should().NotContain("BuildSyncMetadataJson");
+        source.Should().NotContain("ToggleInspector");
+        css.Should().NotContain("dxfer-inspector");
+        css.Should().NotContain("dxfer-metadata");
+        css.Should().NotContain("dxfer-export");
     }
 
     [Fact]
@@ -90,22 +122,29 @@ public sealed class WorkbenchRenderBoundaryTests
         source.Should().Contain("SyncCallbackClient");
         source.Should().Contain("manualOverride");
         source.Should().Contain("ExportJobFolderFallbackAsync");
+        source.Should().NotContain("dxfer.json");
+        source.Should().NotContain("metadataJson");
         source.Should().Contain("SyncLaunchOptionsParser");
         source.Should().Contain("ParseQueryString");
     }
 
     [Fact]
-    public void WorkbenchShowsVisibleSaveBackToSyncControls()
+    public void WorkbenchShowsCompactSyncStatusOnly()
     {
         var markup = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor"));
         var source = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs"));
 
         markup.Should().Contain("@if (IsSyncLaunch)");
         markup.Should().Contain("dxfer-sync-control-bar");
-        markup.Should().Contain("Save back to Sync");
-        markup.Should().Contain("Return to Sync");
-        markup.Should().Contain("CanSaveBackToSync");
-        markup.Should().Contain("SaveBackToSyncAsync");
+        markup.Should().Contain("aria-label=\"Sync connection status\"");
+        markup.Should().Contain("@SyncCallbackStateText");
+        markup.Should().NotContain("Open local DXF/DWG");
+        markup.Should().NotContain("Download DXF");
+        markup.Should().NotContain("Send to Sync");
+        markup.Should().NotContain("Save back to Sync");
+        markup.Should().NotContain("<InputFile OnChange=\"OpenInlineFileAsync\"");
+        markup.Should().NotContain("@onclick=\"DownloadDxfFilesAsync\"");
+        markup.Should().NotContain("Return to Sync");
         source.Should().Contain("private bool CanSaveBackToSync =>");
         source.Should().Contain("_syncLaunchOptions.IsCallbackConfigured");
         source.Should().Contain("_isSyncSaveInFlight");
@@ -137,10 +176,12 @@ public sealed class WorkbenchRenderBoundaryTests
     {
         var css = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.css"));
 
-        css.Should().Contain("grid-template-rows: minmax(0, 1fr) auto auto !important;");
-        css.Should().Contain(".dxfer-sync-control-bar {\n    grid-column: 1 / -1 !important;\n    grid-row: 2 !important;");
-        css.Should().Contain(".dxfer-command-bar {\n    grid-column: 1 / -1 !important;\n    grid-row: 3 !important;");
-        css.Should().NotContain("grid-template-rows: minmax(0, 1fr) auto !important;");
+        css.Should().Contain("grid-template-rows: minmax(0, 1fr) auto !important;");
+        css.Should().Contain(".dxfer-sync-control-bar {\n    position: absolute !important;");
+        css.Should().Contain("right: 0.55rem !important;");
+        css.Should().Contain("top: 0.55rem !important;");
+        css.Should().Contain(".dxfer-command-bar {\n    grid-column: 1 / -1 !important;\n    grid-row: 2 !important;");
+        css.Should().NotContain("grid-template-rows: minmax(0, 1fr) auto auto !important;");
     }
 
     [Fact]
@@ -159,9 +200,18 @@ public sealed class WorkbenchRenderBoundaryTests
         source.Should().NotContain("private IReadOnlyList<WorkbenchToolGroup> ToolGroups => IsSyncLaunch ? ProductionToolGroups : AllToolGroups;");
         productionGroups.Should().Contain("private IReadOnlyList<WorkbenchToolGroup> ProductionToolGroups => new[]");
         productionGroups.Should().Contain("new WorkbenchToolGroup(\"Cleanup\", SyncCleanupCommands, \"Prep\"");
+        productionGroups.Should().Contain("new WorkbenchToolGroup(\"Grain\", GrainCommands, \"Mark\"");
         productionGroups.Should().Contain("private IReadOnlyList<WorkbenchToolCommand> SyncCleanupCommands => new[]");
+        productionGroups.Should().Contain("private IReadOnlyList<WorkbenchToolCommand> GrainCommands => new[]");
+        productionGroups.Should().Contain("Command(WorkbenchCommandId.AutoCleanup");
+        productionGroups.Should().Contain("CadIconName.AutoCleanup");
+        productionGroups.Should().Contain("Command(WorkbenchCommandId.Rotate, WorkbenchTool.Rotate");
         productionGroups.Should().Contain("Command(WorkbenchCommandId.BoundsToOrigin");
         productionGroups.Should().Contain("Command(WorkbenchCommandId.VectorToX");
+        productionGroups.Should().Contain("CadIconName.GrainNone");
+        productionGroups.Should().Contain("CadIconName.GrainX");
+        productionGroups.Should().Contain("CadIconName.GrainY");
+        productionGroups.Should().Contain("CadIconName.GrainVector");
         productionGroups.Should().NotContain("new WorkbenchToolGroup(\"View\", new[]");
         productionGroups.Should().NotContain("WorkbenchCommandId.RemoveDuplicates");
     }
@@ -174,9 +224,13 @@ public sealed class WorkbenchRenderBoundaryTests
 
         source.Should().Contain("app.MapGet(\"/api/dxfer/capabilities\"");
         source.Should().Contain("app.MapPost(\"/api/dxfer/normalize\"");
+        source.Should().Contain("syncImportEndpoint = \"/api/dxfer/normalize\"");
+        source.Should().Contain("syncExportCallbackPath = \"/api/dxfer/edit-callback\"");
+        source.Should().Contain("manualFileControls = new[]");
         source.Should().Contain("DrawingNormalizationService.AutoNormalize");
         source.Should().Contain("DxfDocumentReader.Read");
         source.Should().Contain("DxfDocumentWriter.Write");
+        source.Should().NotContain("metadataJson");
     }
 
     [Fact]
@@ -185,14 +239,19 @@ public sealed class WorkbenchRenderBoundaryTests
         var layout = FindRepositoryFile("src", "DXFER.Web", "Components", "Layout", "MainLayout.razor");
         var source = File.ReadAllText(layout);
 
-        source.Should().NotContain("SyncLaunchOptionsParser");
-        source.Should().NotContain("@if (IsSyncLaunch)");
+        source.Should().Contain("SyncLaunchOptionsParser");
+        source.Should().Contain("@if (IsSyncLaunch)");
         source.Should().NotContain("@if (!IsSyncLaunch)");
         source.Should().NotContain("Canvas prototype");
         source.Should().NotContain("Sync cleanup");
+        source.Should().Contain("Open local DXF/DWG...");
+        source.Should().Contain("Download DXF");
+        source.Should().Contain("WorkbenchCommandId.SendToSync");
+        source.Should().Contain("WorkbenchCommandId.ReturnToSync");
         source.Should().Contain("WorkbenchCommandId.SaveDxf");
         source.Should().Contain("WorkbenchCommandId.BoundsToOrigin");
         source.Should().Contain("WorkbenchCommandId.VectorToX");
+        source.Should().NotContain(">Save DXF<");
         source.Should().NotContain("WorkbenchCommandId.LoadSample");
         source.Should().NotContain("WorkbenchCommandId.ExportDxfText");
         source.Should().NotContain("WorkbenchCommandId.Line");

@@ -7,11 +7,19 @@ namespace DXFER.CadIO;
 
 public static class DxfDocumentWriter
 {
-    public static string Write(DrawingDocument document)
+    private const string GrainLayerName = "GRAIN";
+
+    public static string Write(DrawingDocument document, DxfWriteOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(document);
+        options ??= new DxfWriteOptions();
 
         var builder = new StringBuilder();
+        if (options.GrainAnnotation is not null)
+        {
+            WriteGrainLayerTable(builder);
+        }
+
         WritePair(builder, 0, "SECTION");
         WritePair(builder, 2, "ENTITIES");
 
@@ -51,9 +59,74 @@ public static class DxfDocumentWriter
             }
         }
 
+        if (options.GrainAnnotation is { } grainAnnotation)
+        {
+            WriteGrainAnnotation(builder, document, grainAnnotation);
+        }
+
         WritePair(builder, 0, "ENDSEC");
         WritePair(builder, 0, "EOF");
         return builder.ToString();
+    }
+
+    private static void WriteGrainLayerTable(StringBuilder builder)
+    {
+        WritePair(builder, 0, "SECTION");
+        WritePair(builder, 2, "TABLES");
+        WritePair(builder, 0, "TABLE");
+        WritePair(builder, 2, "LAYER");
+        WritePair(builder, 70, "1");
+        WritePair(builder, 0, "LAYER");
+        WritePair(builder, 2, GrainLayerName);
+        WritePair(builder, 70, "0");
+        WritePair(builder, 62, "3");
+        WritePair(builder, 6, "CONTINUOUS");
+        WritePair(builder, 0, "ENDTAB");
+        WritePair(builder, 0, "ENDSEC");
+    }
+
+    private static void WriteGrainAnnotation(
+        StringBuilder builder,
+        DrawingDocument document,
+        GrainAnnotation annotation)
+    {
+        if (!TryGetWritableEntityBounds(document, out var bounds))
+        {
+            return;
+        }
+
+        var largerDimension = Math.Max(Math.Abs(bounds.Width), Math.Abs(bounds.Height));
+        var textHeight = Math.Clamp(largerDimension <= 0.000001 ? 0.25 : largerDimension * 0.05, 0.125, 0.5);
+        var margin = textHeight * 3.0;
+        var x = bounds.MinX;
+        var y = bounds.MinY - margin;
+
+        WritePair(builder, 0, "TEXT");
+        WritePair(builder, 8, GrainLayerName);
+        WritePair(builder, 10, Format(x));
+        WritePair(builder, 20, Format(y));
+        WritePair(builder, 40, Format(textHeight));
+        WritePair(builder, 1, SanitizeTextValue(annotation.Label));
+        WritePair(builder, 50, "0");
+    }
+
+    private static bool TryGetWritableEntityBounds(DrawingDocument document, out Bounds2 bounds)
+    {
+        bounds = Bounds2.Empty;
+        var hasBounds = false;
+
+        foreach (var entity in document.Entities)
+        {
+            if (entity.IsConstruction)
+            {
+                continue;
+            }
+
+            bounds = hasBounds ? bounds.Union(entity.GetBounds()) : entity.GetBounds();
+            hasBounds = true;
+        }
+
+        return hasBounds;
     }
 
     private static void WriteLine(StringBuilder builder, LineEntity line)
@@ -174,6 +247,10 @@ public static class DxfDocumentWriter
     }
 
     private static string Format(double value) => value.ToString("0.##########", CultureInfo.InvariantCulture);
+
+    private static string SanitizeTextValue(string value) =>
+        value.Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal);
 
     private static double DegreesToRadians(double degrees) => degrees * Math.PI / 180.0;
 }

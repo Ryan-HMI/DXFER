@@ -45,6 +45,9 @@ public partial class DrawingCanvas : IAsyncDisposable
     public GrainDirection GrainDirection { get; set; } = GrainDirection.None;
 
     [Parameter]
+    public double? GrainAngleDegrees { get; set; }
+
+    [Parameter]
     public bool ConstructionMode { get; set; }
 
     [Parameter]
@@ -72,7 +75,7 @@ public partial class DrawingCanvas : IAsyncDisposable
     public Action<string>? ConstructionToggleRequested { get; set; }
 
     [Parameter]
-    public Action<string, IReadOnlyList<CanvasPointDto>>? ModifyToolCommitRequested { get; set; }
+    public Action<string, IReadOnlyList<CanvasPointDto>, IReadOnlyDictionary<string, double>>? ModifyToolCommitRequested { get; set; }
 
     [Parameter]
     public Action<string, CanvasPointDto>? AddSplinePointRequested { get; set; }
@@ -281,7 +284,7 @@ public partial class DrawingCanvas : IAsyncDisposable
         {
             var key = dimensionKeys[index];
             var value = dimensionValues[index];
-            if (string.IsNullOrWhiteSpace(key) || !double.IsFinite(value) || value <= 0)
+            if (!IsValidDimensionLock(key, value, allowSignedAngle: false))
             {
                 continue;
             }
@@ -290,6 +293,44 @@ public partial class DrawingCanvas : IAsyncDisposable
         }
 
         return locks;
+    }
+
+    private static IReadOnlyDictionary<string, double> BuildModifyDimensionLocks(
+        IReadOnlyList<string>? dimensionKeys,
+        IReadOnlyList<double>? dimensionValues)
+    {
+        if (dimensionKeys is null || dimensionValues is null)
+        {
+            return new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var locks = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var count = Math.Min(dimensionKeys.Count, dimensionValues.Count);
+        for (var index = 0; index < count; index++)
+        {
+            var key = dimensionKeys[index];
+            var value = dimensionValues[index];
+            if (!IsValidDimensionLock(key, value, allowSignedAngle: true))
+            {
+                continue;
+            }
+
+            locks[key.Trim()] = value;
+        }
+
+        return locks;
+    }
+
+    private static bool IsValidDimensionLock(string? key, double value, bool allowSignedAngle)
+    {
+        if (string.IsNullOrWhiteSpace(key) || !double.IsFinite(value))
+        {
+            return false;
+        }
+
+        return allowSignedAngle && string.Equals(key.Trim(), "angle", StringComparison.OrdinalIgnoreCase)
+            ? Math.Abs(value) > 0.000001
+            : value > 0;
     }
 
     [JSInvokable]
@@ -315,7 +356,11 @@ public partial class DrawingCanvas : IAsyncDisposable
     }
 
     [JSInvokable]
-    public Task OnModifyToolCommitted(string toolName, double[] coordinates)
+    public Task OnModifyToolCommitted(
+        string toolName,
+        double[] coordinates,
+        string[]? dimensionKeys = null,
+        double[]? dimensionValues = null)
     {
         var points = new List<CanvasPointDto>();
         for (var index = 0; index + 1 < coordinates.Length; index += 2)
@@ -323,7 +368,7 @@ public partial class DrawingCanvas : IAsyncDisposable
             points.Add(new CanvasPointDto(coordinates[index], coordinates[index + 1]));
         }
 
-        ModifyToolCommitRequested?.Invoke(toolName, points);
+        ModifyToolCommitRequested?.Invoke(toolName, points, BuildModifyDimensionLocks(dimensionKeys, dimensionValues));
         return Task.CompletedTask;
     }
 
@@ -514,7 +559,7 @@ public partial class DrawingCanvas : IAsyncDisposable
             return;
         }
 
-        await _canvasInstance.InvokeVoidAsync("setGrainDirection", GrainDirection.ToString());
+        await _canvasInstance.InvokeVoidAsync("setGrainDirection", GrainDirection.ToString(), GrainAngleDegrees);
     }
 
     private async Task SetConstructionModeAsync()
