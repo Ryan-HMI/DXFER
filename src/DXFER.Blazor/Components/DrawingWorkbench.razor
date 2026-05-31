@@ -113,6 +113,37 @@
                 @onpointerdown:preventDefault="true" />
     }
 
+    @if (IsSyncLaunch)
+    {
+        <section class="dxfer-sync-control-bar" aria-label="Sync save controls">
+            <div class="dxfer-sync-control-main">
+                <span class="@SyncCallbackStateClass">@SyncCallbackStateText</span>
+                <span class="dxfer-sync-control-id">@SyncArtifactText</span>
+                <span class="dxfer-sync-control-id">@SyncJobText</span>
+                <span class="dxfer-sync-control-mode">@SyncNormalizationStateText</span>
+            </div>
+            <div class="dxfer-sync-control-actions">
+                <button type="button"
+                        class="dxfer-sync-action dxfer-sync-save-action"
+                        aria-label="Save back to Sync"
+                        title="@SyncSaveButtonTitle"
+                        disabled="@(!CanSaveBackToSync)"
+                        @onclick="SaveBackToSyncAsync">
+                    @SyncSaveButtonText
+                </button>
+                @if (CanReturnToSync)
+                {
+                    <button type="button"
+                            class="dxfer-sync-action"
+                            title="Return to Sync"
+                            @onclick="ReturnToSync">
+                        Return to Sync
+                    </button>
+                }
+            </div>
+        </section>
+    }
+
     <footer class="dxfer-command-bar" aria-label="Command and measurement readout">
         <div class="dxfer-command-prompt">@CommandPromptText</div>
         @if (IsCornerModifyToolActive)

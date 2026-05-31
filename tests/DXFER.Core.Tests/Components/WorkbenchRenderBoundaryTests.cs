@@ -95,6 +95,55 @@ public sealed class WorkbenchRenderBoundaryTests
     }
 
     [Fact]
+    public void WorkbenchShowsVisibleSaveBackToSyncControls()
+    {
+        var markup = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor"));
+        var source = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs"));
+
+        markup.Should().Contain("@if (IsSyncLaunch)");
+        markup.Should().Contain("dxfer-sync-control-bar");
+        markup.Should().Contain("Save back to Sync");
+        markup.Should().Contain("Return to Sync");
+        markup.Should().Contain("CanSaveBackToSync");
+        markup.Should().Contain("SaveBackToSyncAsync");
+        source.Should().Contain("private bool CanSaveBackToSync =>");
+        source.Should().Contain("_syncLaunchOptions.IsCallbackConfigured");
+        source.Should().Contain("_isSyncSaveInFlight");
+        source.Should().Contain("private async Task SaveBackToSyncAsync()");
+        source.Should().Contain("await SaveToSyncCallbackAsync();");
+        source.Should().Contain("private void ReturnToSync()");
+    }
+
+    [Fact]
+    public void WorkbenchSyncCallbackSaveBlocksDoubleSubmit()
+    {
+        var workbench = FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs");
+        var source = File.ReadAllText(workbench);
+        var methodStart = source.IndexOf("private async Task SaveToSyncCallbackAsync()", StringComparison.Ordinal);
+        var methodEnd = source.IndexOf("    private async Task<bool> ExportJobFolderFallbackAsync", StringComparison.Ordinal);
+
+        methodStart.Should().BeGreaterThanOrEqualTo(0);
+        methodEnd.Should().BeGreaterThan(methodStart);
+        var methodBody = source[methodStart..methodEnd];
+
+        methodBody.Should().Contain("if (_isSyncSaveInFlight)");
+        methodBody.Should().Contain("_isSyncSaveInFlight = true;");
+        methodBody.Should().Contain("_isSyncSaveInFlight = false;");
+        methodBody.Should().Contain("await InvokeAsync(StateHasChanged);");
+    }
+
+    [Fact]
+    public void WorkbenchSyncSaveControlsDoNotOverlapCommandBar()
+    {
+        var css = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.css"));
+
+        css.Should().Contain("grid-template-rows: minmax(0, 1fr) auto auto !important;");
+        css.Should().Contain(".dxfer-sync-control-bar {\n    grid-column: 1 / -1 !important;\n    grid-row: 2 !important;");
+        css.Should().Contain(".dxfer-command-bar {\n    grid-column: 1 / -1 !important;\n    grid-row: 3 !important;");
+        css.Should().NotContain("grid-template-rows: minmax(0, 1fr) auto !important;");
+    }
+
+    [Fact]
     public void ProductionSurfaceUsesCleanupOnlyToolGroups()
     {
         var workbench = FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs");
