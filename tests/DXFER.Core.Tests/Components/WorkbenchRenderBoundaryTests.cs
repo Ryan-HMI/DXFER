@@ -80,6 +80,43 @@ public sealed class WorkbenchRenderBoundaryTests
         source.Should().NotContain("SketchDimensionSolverService.ApplyDimension(");
     }
 
+    [Fact]
+    public void WorkbenchSaveUsesSyncCallbackWhenLaunchContextIsPresent()
+    {
+        var workbench = FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs");
+        var source = File.ReadAllText(workbench);
+
+        source.Should().Contain("DrawingNormalizationService.AutoNormalize");
+        source.Should().Contain("SyncCallbackClient");
+        source.Should().Contain("manualOverride");
+        source.Should().Contain("ExportJobFolderFallbackAsync");
+        source.Should().Contain("SyncLaunchOptionsParser.ParseQueryString");
+    }
+
+    [Fact]
+    public void SyncLaunchUsesProductionToolGroups()
+    {
+        var workbench = FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs");
+        var source = File.ReadAllText(workbench);
+
+        source.Should().Contain("private IReadOnlyList<WorkbenchToolGroup> ToolGroups => IsSyncLaunch ? ProductionToolGroups : AllToolGroups;");
+        source.Should().Contain("private IReadOnlyList<WorkbenchToolGroup> ProductionToolGroups => new[]");
+        source.Should().Contain("new WorkbenchToolGroup(\"Cleanup\", CleanupCommands, \"Prep\"");
+    }
+
+    [Fact]
+    public void WebProgramMapsSyncApiEndpoints()
+    {
+        var program = FindRepositoryFile("src", "DXFER.Web", "Program.cs");
+        var source = File.ReadAllText(program);
+
+        source.Should().Contain("app.MapGet(\"/api/dxfer/capabilities\"");
+        source.Should().Contain("app.MapPost(\"/api/dxfer/normalize\"");
+        source.Should().Contain("DrawingNormalizationService.AutoNormalize");
+        source.Should().Contain("DxfDocumentReader.Read");
+        source.Should().Contain("DxfDocumentWriter.Write");
+    }
+
     private static string FindRepositoryFile(params string[] segments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

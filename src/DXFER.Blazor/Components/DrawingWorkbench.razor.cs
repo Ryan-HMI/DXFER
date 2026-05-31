@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -12,6 +13,7 @@ using DXFER.Core.Geometry;
 using DXFER.Core.IO;
 using DXFER.Core.Operations;
 using DXFER.Core.Sketching;
+using DXFER.Core.Sync;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
@@ -40,10 +42,14 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private string? _activeSelectionKey;
     private string _exportText = string.Empty;
     private GrainDirection _grainDirection = GrainDirection.None;
+    private SyncEditLaunchOptions _syncLaunchOptions = SyncEditLaunchOptions.Empty;
+    private DrawingNormalizationResult? _lastAutoNormalization;
     private WorkbenchTool? _activeTool;
     private bool _showOriginAxes = true;
     private bool _showAllConstraints;
     private bool _constructionMode;
+    private bool _manualOverride;
+    private bool _syncLaunchLoadAttempted;
     private bool _isToolPanelCollapsed;
     private bool _isInspectorCollapsed = true;
     private int _toolPanelWidth = 220;
@@ -78,8 +84,18 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     [Inject]
     private IJSRuntime JsRuntime { get; set; } = default!;
 
+    [Inject]
+    private NavigationManager Navigation { get; set; } = default!;
+
+    [Inject]
+    private HttpClient SyncDownloadClient { get; set; } = default!;
+
+    [Inject]
+    private SyncCallbackClient SyncCallbackClient { get; set; } = default!;
+
     protected override void OnInitialized()
     {
+        _syncLaunchOptions = SyncLaunchOptionsParser.ParseQueryString(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
         MenuCommandService.CommandRequested += InvokeWorkbenchCommand;
         MenuCommandService.FileOpenRequested += OpenFileAsync;
         ToolHotkeys.BindingsChanged += OnToolHotkeysChanged;
@@ -97,6 +113,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _hotkeyListener = await _hotkeyModule.InvokeAsync<IJSObjectReference>(
             "createToolHotkeyListener",
             _hotkeyDotNetReference);
+        await TryLoadSyncLaunchDocumentAsync();
     }
 
     public void Dispose()
@@ -148,6 +165,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private bool HasDocument => _document.Entities.Count > 0;
 
+    private bool IsSyncLaunch => _syncLaunchOptions.IsCallbackConfigured || _syncLaunchOptions.HasInput;
+
     private bool HasSelection => _selectedEntityIds.Count > 0;
 
     private bool CanDeleteSelection =>
@@ -194,7 +213,20 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private Bounds2 Bounds => _document.GetBounds();
 
-    private IReadOnlyList<WorkbenchToolGroup> ToolGroups => new[]
+    private IReadOnlyList<WorkbenchToolGroup> ToolGroups => IsSyncLaunch ? ProductionToolGroups : AllToolGroups;
+
+    private IReadOnlyList<WorkbenchToolGroup> ProductionToolGroups => new[]
+    {
+        new WorkbenchToolGroup("View", new[]
+        {
+            Command(WorkbenchCommandId.Measure, WorkbenchTool.Measure, CadIconName.Measure, "Measure"),
+            Command(WorkbenchCommandId.FitExtents, null, CadIconName.Fit, "Fit extents", !HasDocument),
+            Command(WorkbenchCommandId.OriginAxes, null, CadIconName.OriginAxes, "Origin axes", pressed: _showOriginAxes)
+        }, "Display"),
+        new WorkbenchToolGroup("Cleanup", CleanupCommands, "Prep")
+    };
+
+    private IReadOnlyList<WorkbenchToolGroup> AllToolGroups => new[]
     {
         new WorkbenchToolGroup("View", new[]
         {
@@ -469,11 +501,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         try
         {
-            _fileName = file.Name;
-            _exportText = string.Empty;
-
             if (file.Name.EndsWith(".dwg", StringComparison.OrdinalIgnoreCase))
             {
+                _fileName = file.Name;
+                _exportText = string.Empty;
                 _status = "DWG selected. V1 keeps DWG as an external viewer handoff; DXFER editing stays DXF-only.";
                 return;
             }
@@ -481,21 +512,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             await using var stream = file.OpenReadStream(MaxDxfFileSize);
             using var reader = new StreamReader(stream);
             var text = await reader.ReadToEndAsync();
-            var document = WithOpenFileMetadata(DxfDocumentReader.Read(text), file.Name, text);
-
-            if (document.Entities.Count == 0)
-            {
-                _status = "No supported DXF entities were found. V1 reads LINE, CIRCLE, ARC, POINT, LWPOLYLINE, POLYLINE, and SPLINE."
-                    + FormatWarningSummary(document.Metadata.Warnings);
-                return;
-            }
-
-            _document = document;
-            _documentFitToken++;
-            ClearHistory();
-            ResetSelection();
-            _status = $"Loaded {document.Entities.Count} supported entities from DXF."
-                + FormatWarningSummary(document.Metadata.Warnings);
+            LoadDxfText(file.Name, text, trustedSource: false, autoNormalize: false);
         }
         finally
         {
@@ -503,16 +520,100 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
     }
 
+    private async Task TryLoadSyncLaunchDocumentAsync()
+    {
+        if (_syncLaunchLoadAttempted || !_syncLaunchOptions.HasInput)
+        {
+            return;
+        }
+
+        _syncLaunchLoadAttempted = true;
+        try
+        {
+            var (fileName, text) = await ReadSyncLaunchDxfAsync();
+            LoadDxfText(fileName, text, trustedSource: true, autoNormalize: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or HttpRequestException or InvalidOperationException)
+        {
+            _status = $"Sync launch load failed: {ex.Message}";
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task<(string FileName, string Text)> ReadSyncLaunchDxfAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(_syncLaunchOptions.InputPath))
+        {
+            var fileName = Path.GetFileName(_syncLaunchOptions.InputPath);
+            var text = await File.ReadAllTextAsync(_syncLaunchOptions.InputPath);
+            return (string.IsNullOrWhiteSpace(fileName) ? "sync-artifact.dxf" : fileName, text);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_syncLaunchOptions.DownloadUrl))
+        {
+            var text = await SyncDownloadClient.GetStringAsync(_syncLaunchOptions.DownloadUrl);
+            return (GetFileNameFromUrl(_syncLaunchOptions.DownloadUrl), text);
+        }
+
+        throw new InvalidOperationException("Sync launch did not include inputPath or downloadUrl.");
+    }
+
+    private void LoadDxfText(
+        string fileName,
+        string text,
+        bool trustedSource,
+        bool autoNormalize)
+    {
+        _fileName = fileName;
+        _exportText = string.Empty;
+        var document = WithOpenFileMetadata(DxfDocumentReader.Read(text), fileName, text, trustedSource);
+
+        if (document.Entities.Count == 0)
+        {
+            _status = "No supported DXF entities were found. V1 reads LINE, CIRCLE, ARC, POINT, LWPOLYLINE, POLYLINE, and SPLINE."
+                + FormatWarningSummary(document.Metadata.Warnings);
+            return;
+        }
+
+        if (autoNormalize)
+        {
+            var normalization = DrawingNormalizationService.AutoNormalize(document);
+            _lastAutoNormalization = normalization;
+            _manualOverride = false;
+            document = normalization.NormalizedDocument;
+            _status = $"Loaded and auto-normalized {document.Entities.Count} supported entities from Sync. "
+                + $"Rotation {FormatNumber(normalization.RotationDegrees)} deg, "
+                + $"bounds {FormatSize(normalization.NormalizedBounds.Width, normalization.NormalizedBounds.Height)}."
+                + FormatWarningSummary(document.Metadata.Warnings);
+        }
+        else
+        {
+            _lastAutoNormalization = null;
+            _manualOverride = false;
+            _status = $"Loaded {document.Entities.Count} supported entities from DXF."
+                + FormatWarningSummary(document.Metadata.Warnings);
+        }
+
+        _document = document;
+        _documentFitToken++;
+        ClearHistory();
+        ResetSelection();
+    }
+
     private static DrawingDocument WithOpenFileMetadata(
         DrawingDocument document,
         string fileName,
-        string sourceText)
+        string sourceText,
+        bool trustedSource = false)
     {
         var metadata = document.Metadata with
         {
             SourceFileName = fileName,
             SourceSha256 = ComputeSha256(sourceText),
-            TrustedSource = false
+            TrustedSource = trustedSource
         };
 
         return new DrawingDocument(
@@ -522,6 +623,20 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             metadata);
     }
 
+    private static string GetFileNameFromUrl(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            var fileName = Path.GetFileName(uri.LocalPath);
+            if (!string.IsNullOrWhiteSpace(fileName))
+            {
+                return fileName;
+            }
+        }
+
+        return "sync-artifact.dxf";
+    }
+
     private void LoadSample()
     {
         _document = SampleDrawingFactory.CreateCanvasPrototype();
@@ -529,6 +644,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _fileName = "Sample flat pattern";
         _status = "Sample drawing loaded.";
         _exportText = string.Empty;
+        _lastAutoNormalization = null;
+        _manualOverride = false;
         ClearHistory();
         ResetSelection();
     }
@@ -541,6 +658,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _status = "Blank drawing ready.";
         _exportText = string.Empty;
         _grainDirection = GrainDirection.None;
+        _lastAutoNormalization = null;
+        _manualOverride = false;
         _activeTool = null;
         _constructionMode = false;
         ClearHistory();
@@ -981,6 +1100,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _redoStack.Push(_document);
         _document = previousDocument;
         _exportText = string.Empty;
+        MarkManualOverride();
         ResetSelection();
         _status = "Undo applied.";
     }
@@ -995,6 +1115,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _undoStack.Push(_document);
         _document = nextDocument;
         _exportText = string.Empty;
+        MarkManualOverride();
         ResetSelection();
         _status = "Redo applied.";
     }
@@ -1931,7 +2052,16 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _redoStack.Clear();
         _document = nextDocument;
         _exportText = string.Empty;
+        MarkManualOverride();
         _status = status;
+    }
+
+    private void MarkManualOverride()
+    {
+        if (IsSyncLaunch && _lastAutoNormalization is not null)
+        {
+            _manualOverride = true;
+        }
     }
 
     private void ClearHistory()
@@ -1959,6 +2089,17 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private async Task DownloadDxfAsync()
     {
+        if (_syncLaunchOptions.IsCallbackConfigured)
+        {
+            await SaveToSyncCallbackAsync();
+            return;
+        }
+
+        await DownloadDxfFilesAsync();
+    }
+
+    private async Task DownloadDxfFilesAsync()
+    {
         var exportText = DxfDocumentWriter.Write(_document);
         var downloadName = DxfDownloadFileName.FromSourceName(_fileName);
         var sidecarName = DxfDownloadFileName.SidecarFromSourceName(_fileName);
@@ -1980,6 +2121,98 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _status = $"Saved {downloadName} and {sidecarName}.";
     }
 
+    private async Task SaveToSyncCallbackAsync()
+    {
+        var exportText = DxfDocumentWriter.Write(_document);
+        var normalizedName = DxfDownloadFileName.FromSourceName(_fileName);
+        var metadataJson = BuildSyncMetadataJson(normalizedName, exportText);
+        var bounds = _document.GetBounds();
+        var normalization = _lastAutoNormalization;
+        var manualOverride = _manualOverride;
+        var package = new SyncSavePackage(
+            _syncLaunchOptions.ArtifactId!,
+            _syncLaunchOptions.JobId!,
+            _syncLaunchOptions.EditToken!,
+            normalizedName,
+            exportText,
+            metadataJson,
+            bounds.Width,
+            bounds.Height,
+            normalization?.RotationDegrees ?? 0,
+            normalization?.OriginShiftX ?? CleanNearZero(-bounds.MinX),
+            normalization?.OriginShiftY ?? CleanNearZero(-bounds.MinY),
+            ToSyncGrainDirection(_grainDirection),
+            manualOverride);
+
+        try
+        {
+            await SyncCallbackClient.PostSaveAsync(_syncLaunchOptions, package);
+            _exportText = exportText;
+            _status = $"Saved normalized DXF back to Sync job {_syncLaunchOptions.JobId}.";
+            if (!string.IsNullOrWhiteSpace(_syncLaunchOptions.ReturnUrl))
+            {
+                Navigation.NavigateTo(_syncLaunchOptions.ReturnUrl, forceLoad: true);
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+        {
+            var wroteFallback = await ExportJobFolderFallbackAsync(exportText, metadataJson);
+            _status = wroteFallback
+                ? $"Sync callback failed: {ex.Message} Wrote job-folder fallback package for explicit Sync import."
+                : $"Sync callback failed: {ex.Message}";
+        }
+    }
+
+    private async Task<bool> ExportJobFolderFallbackAsync(string normalizedDxf, string metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(_syncLaunchOptions.JobFolder))
+        {
+            return false;
+        }
+
+        Directory.CreateDirectory(_syncLaunchOptions.JobFolder);
+        await File.WriteAllTextAsync(Path.Combine(_syncLaunchOptions.JobFolder, "normalized.dxf"), normalizedDxf);
+        await File.WriteAllTextAsync(Path.Combine(_syncLaunchOptions.JobFolder, "dxfer.json"), metadataJson);
+        return true;
+    }
+
+    private string BuildSyncMetadataJson(string normalizedFileName, string normalizedDxf)
+    {
+        var exportDocument = CreateExportDocument(normalizedFileName);
+        var sidecar = DxferSidecarWriter.Create(exportDocument, normalizedContent: normalizedDxf);
+        var bounds = exportDocument.GetBounds();
+        var normalization = _lastAutoNormalization;
+        var manualOverride = _manualOverride;
+        return JsonSerializer.Serialize(
+            new
+            {
+                sidecar.SchemaVersion,
+                sidecar.Source,
+                sidecar.Normalized,
+                sidecar.Units,
+                sidecar.Mode,
+                sidecar.TrustedSource,
+                sidecar.Bounds,
+                sidecar.Normalization,
+                grainDirection = ToSyncGrainDirection(_grainDirection).ToString(),
+                sync = new
+                {
+                    _syncLaunchOptions.ArtifactId,
+                    _syncLaunchOptions.JobId,
+                    boundingWidth = bounds.Width,
+                    boundingHeight = bounds.Height,
+                    rotationDegrees = normalization?.RotationDegrees ?? 0,
+                    originShiftX = normalization?.OriginShiftX ?? CleanNearZero(-bounds.MinX),
+                    originShiftY = normalization?.OriginShiftY ?? CleanNearZero(-bounds.MinY),
+                    manualOverride
+                },
+                sidecar.Warnings,
+                sidecar.UnsupportedEntityCounts
+            },
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true })
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+    }
+
     private DrawingDocument CreateExportDocument(string normalizedFileName)
     {
         var metadata = _document.Metadata with
@@ -1994,6 +2227,14 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             _document.Constraints,
             metadata);
     }
+
+    private static GrainDirectionOption ToSyncGrainDirection(GrainDirection grainDirection) =>
+        grainDirection switch
+        {
+            GrainDirection.GlobalX => GrainDirectionOption.X,
+            GrainDirection.GlobalY => GrainDirectionOption.Y,
+            _ => GrainDirectionOption.None
+        };
 
     private static string FormatWarningSummary(IReadOnlyList<DrawingDocumentWarning> warnings)
     {
@@ -2490,6 +2731,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private static string FormatNumber(double value) => Round(value).ToString("0.###", CultureInfo.InvariantCulture);
 
     private static double Round(double value) => Math.Round(value, 4);
+
+    private static double CleanNearZero(double value) => Math.Abs(value) <= 0.000000001 ? 0 : value;
 
     private IReadOnlyList<DrawingEntity> CreateEntitiesForTool(
         string toolName,
