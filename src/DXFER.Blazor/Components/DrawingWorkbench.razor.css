@@ -1,7 +1,7 @@
 .dxfer-workbench {
     display: grid;
     grid-template-columns: var(--dxfer-tools-width, 220px) minmax(0, 1fr) var(--dxfer-inspector-width, 280px);
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr) auto auto;
     height: 100%;
     min-height: 0;
     position: relative;
@@ -146,7 +146,7 @@
 
 .dxfer-command-bar {
     grid-column: 1 / -1;
-    grid-row: 2;
+    grid-row: 3;
     position: relative;
     z-index: 8;
     display: grid;
@@ -160,6 +160,111 @@
     border-top: 1px solid #2d3841;
     box-sizing: border-box;
     overflow: hidden;
+}
+
+.dxfer-sync-control-bar {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    position: relative;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    min-height: 2.45rem;
+    padding: 0.32rem 0.55rem;
+    color: #dce7ed;
+    background: #141d22;
+    border-top: 1px solid #2d3841;
+    box-sizing: border-box;
+}
+
+.dxfer-sync-control-main,
+.dxfer-sync-control-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.dxfer-sync-control-main {
+    flex: 1 1 auto;
+}
+
+.dxfer-sync-control-actions {
+    flex: 0 0 auto;
+    justify-content: flex-end;
+}
+
+.dxfer-sync-state,
+.dxfer-sync-control-id,
+.dxfer-sync-control-mode {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.45rem;
+    max-width: 18rem;
+    padding: 0 0.48rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: #1d252d;
+    border: 1px solid #34414b;
+    border-radius: 4px;
+    font-size: 0.73rem;
+    line-height: 1.1;
+}
+
+.dxfer-sync-state {
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.dxfer-sync-state-ready {
+    color: #d7f7e6;
+    background: #10281f;
+    border-color: #2e6d53;
+}
+
+.dxfer-sync-state-missing {
+    color: #f5d48b;
+    background: #2b2412;
+    border-color: #7a6229;
+}
+
+.dxfer-sync-action {
+    min-height: 1.9rem;
+    padding: 0 0.65rem;
+    color: #edf3f7;
+    background: #26323b;
+    border: 1px solid #46545f;
+    border-radius: 4px;
+    font: 0.78rem/1.1 "Segoe UI", system-ui, sans-serif;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.dxfer-sync-save-action {
+    background: #244052;
+    border-color: #4e7b93;
+}
+
+.dxfer-sync-action:hover:not(:disabled),
+.dxfer-sync-action:focus-visible:not(:disabled) {
+    background: #31404a;
+    border-color: #7f96a8;
+    outline: none;
+}
+
+.dxfer-sync-save-action:hover:not(:disabled),
+.dxfer-sync-save-action:focus-visible:not(:disabled) {
+    background: #2f5369;
+}
+
+.dxfer-sync-action:disabled {
+    color: #697781;
+    background: #1d242a;
+    border-color: #313941;
 }
 
 .dxfer-command-prompt {
@@ -221,6 +326,16 @@
 }
 
 @media (max-width: 900px) {
+    .dxfer-sync-control-bar {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 0.45rem;
+    }
+
+    .dxfer-sync-control-actions {
+        justify-content: flex-start;
+    }
+
     .dxfer-command-bar {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -575,7 +690,7 @@
 .dxfer-workbench,
 .dxfer-workbench.dxfer-tool-panel-collapsed {
     grid-template-columns: minmax(0, 1fr) var(--dxfer-inspector-width, 280px) !important;
-    grid-template-rows: minmax(0, 1fr) auto !important;
+    grid-template-rows: minmax(0, 1fr) auto auto !important;
 }
 
 .dxfer-workbench.dxfer-inspector-collapsed,
@@ -603,9 +718,14 @@
     grid-row: 1 !important;
 }
 
-.dxfer-command-bar {
+.dxfer-sync-control-bar {
     grid-column: 1 / -1 !important;
     grid-row: 2 !important;
+}
+
+.dxfer-command-bar {
+    grid-column: 1 / -1 !important;
+    grid-row: 3 !important;
 }
 
 @media (max-width: 980px) {

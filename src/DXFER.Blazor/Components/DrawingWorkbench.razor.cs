@@ -50,6 +50,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private bool _constructionMode;
     private bool _manualOverride;
     private bool _syncLaunchLoadAttempted;
+    private bool _isSyncSaveInFlight;
     private bool _isToolPanelCollapsed;
     private bool _isInspectorCollapsed = true;
     private int _toolPanelWidth = 220;
@@ -184,6 +185,47 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private bool CanModifySelectedGeometry =>
         GetWholeEntityIdsForOperations().Any();
+
+    private bool CanSaveBackToSync =>
+        HasDocument
+        && _syncLaunchOptions.IsCallbackConfigured
+        && !_isSyncSaveInFlight;
+
+    private bool CanReturnToSync =>
+        !string.IsNullOrWhiteSpace(_syncLaunchOptions.ReturnUrl);
+
+    private string SyncCallbackStateText =>
+        _syncLaunchOptions.IsCallbackConfigured ? "Sync callback ready" : "Sync callback missing";
+
+    private string SyncCallbackStateClass =>
+        _syncLaunchOptions.IsCallbackConfigured
+            ? "dxfer-sync-state dxfer-sync-state-ready"
+            : "dxfer-sync-state dxfer-sync-state-missing";
+
+    private string SyncArtifactText =>
+        string.IsNullOrWhiteSpace(_syncLaunchOptions.ArtifactId)
+            ? "Artifact unavailable"
+            : $"Artifact {_syncLaunchOptions.ArtifactId}";
+
+    private string SyncJobText =>
+        string.IsNullOrWhiteSpace(_syncLaunchOptions.JobId)
+            ? "Job unavailable"
+            : $"Job {_syncLaunchOptions.JobId}";
+
+    private string SyncNormalizationStateText =>
+        _manualOverride
+            ? "Manual override"
+            : _lastAutoNormalization is null ? "Manual edit" : "Auto-normalized";
+
+    private string SyncSaveButtonText =>
+        _isSyncSaveInFlight ? "Saving..." : "Save back to Sync";
+
+    private string SyncSaveButtonTitle =>
+        CanSaveBackToSync
+            ? "Post normalized DXF and metadata to Sync"
+            : _syncLaunchOptions.IsCallbackConfigured
+                ? "Open a DXF before saving back to Sync"
+                : "Sync callback launch fields are missing";
 
     private bool CanAddSplinePoint =>
         GetSelectedWholeEntities()
@@ -2095,11 +2137,32 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         if (_syncLaunchOptions.IsCallbackConfigured)
         {
-            await SaveToSyncCallbackAsync();
+            await SaveBackToSyncAsync();
             return;
         }
 
         await DownloadDxfFilesAsync();
+    }
+
+    private async Task SaveBackToSyncAsync()
+    {
+        if (!_syncLaunchOptions.IsCallbackConfigured)
+        {
+            _status = "Sync callback save is unavailable for this launch.";
+            return;
+        }
+
+        await SaveToSyncCallbackAsync();
+    }
+
+    private void ReturnToSync()
+    {
+        if (!CanReturnToSync)
+        {
+            return;
+        }
+
+        Navigation.NavigateTo(_syncLaunchOptions.ReturnUrl!, forceLoad: true);
     }
 
     private async Task DownloadDxfFilesAsync()
@@ -2127,29 +2190,50 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private async Task SaveToSyncCallbackAsync()
     {
-        var exportText = DxfDocumentWriter.Write(_document);
-        var normalizedName = DxfDownloadFileName.FromSourceName(_fileName);
-        var metadataJson = BuildSyncMetadataJson(normalizedName, exportText);
-        var bounds = _document.GetBounds();
-        var normalization = _lastAutoNormalization;
-        var manualOverride = _manualOverride;
-        var package = new SyncSavePackage(
-            _syncLaunchOptions.ArtifactId!,
-            _syncLaunchOptions.JobId!,
-            _syncLaunchOptions.EditToken!,
-            normalizedName,
-            exportText,
-            metadataJson,
-            bounds.Width,
-            bounds.Height,
-            normalization?.RotationDegrees ?? 0,
-            normalization?.OriginShiftX ?? CleanNearZero(-bounds.MinX),
-            normalization?.OriginShiftY ?? CleanNearZero(-bounds.MinY),
-            ToSyncGrainDirection(_grainDirection),
-            manualOverride);
+        if (_isSyncSaveInFlight)
+        {
+            return;
+        }
+
+        if (!_syncLaunchOptions.IsCallbackConfigured)
+        {
+            _status = "Sync callback save requires syncBaseUrl, artifactId, jobId, and editToken.";
+            return;
+        }
+
+        if (!HasDocument)
+        {
+            _status = "Open a DXF before saving back to Sync.";
+            return;
+        }
+
+        _isSyncSaveInFlight = true;
+        _status = "Saving normalized DXF back to Sync.";
+        await InvokeAsync(StateHasChanged);
 
         try
         {
+            var exportText = DxfDocumentWriter.Write(_document);
+            var normalizedName = DxfDownloadFileName.FromSourceName(_fileName);
+            var metadataJson = BuildSyncMetadataJson(normalizedName, exportText);
+            var bounds = _document.GetBounds();
+            var normalization = _lastAutoNormalization;
+            var manualOverride = _manualOverride;
+            var package = new SyncSavePackage(
+                _syncLaunchOptions.ArtifactId!,
+                _syncLaunchOptions.JobId!,
+                _syncLaunchOptions.EditToken!,
+                normalizedName,
+                exportText,
+                metadataJson,
+                bounds.Width,
+                bounds.Height,
+                normalization?.RotationDegrees ?? 0,
+                normalization?.OriginShiftX ?? CleanNearZero(-bounds.MinX),
+                normalization?.OriginShiftY ?? CleanNearZero(-bounds.MinY),
+                ToSyncGrainDirection(_grainDirection),
+                manualOverride);
+
             await SyncCallbackClient.PostSaveAsync(_syncLaunchOptions, package);
             _exportText = exportText;
             _status = $"Saved normalized DXF back to Sync job {_syncLaunchOptions.JobId}.";
@@ -2160,10 +2244,18 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
         {
+            var exportText = DxfDocumentWriter.Write(_document);
+            var normalizedName = DxfDownloadFileName.FromSourceName(_fileName);
+            var metadataJson = BuildSyncMetadataJson(normalizedName, exportText);
             var wroteFallback = await ExportJobFolderFallbackAsync(exportText, metadataJson);
             _status = wroteFallback
                 ? $"Sync callback failed: {ex.Message} Wrote job-folder fallback package for explicit Sync import."
                 : $"Sync callback failed: {ex.Message}";
+        }
+        finally
+        {
+            _isSyncSaveInFlight = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
