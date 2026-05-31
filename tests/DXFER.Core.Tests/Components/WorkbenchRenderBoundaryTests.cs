@@ -95,7 +95,7 @@ public sealed class WorkbenchRenderBoundaryTests
     }
 
     [Fact]
-    public void SyncLaunchUsesProductionToolGroups()
+    public void ProductionSurfaceUsesCleanupOnlyToolGroups()
     {
         var workbench = FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs");
         var source = File.ReadAllText(workbench);
@@ -106,7 +106,8 @@ public sealed class WorkbenchRenderBoundaryTests
         allGroupsStart.Should().BeGreaterThan(productionStart);
         var productionGroups = source[productionStart..allGroupsStart];
 
-        source.Should().Contain("private IReadOnlyList<WorkbenchToolGroup> ToolGroups => IsSyncLaunch ? ProductionToolGroups : AllToolGroups;");
+        source.Should().Contain("private IReadOnlyList<WorkbenchToolGroup> ToolGroups => ProductionToolGroups;");
+        source.Should().NotContain("private IReadOnlyList<WorkbenchToolGroup> ToolGroups => IsSyncLaunch ? ProductionToolGroups : AllToolGroups;");
         productionGroups.Should().Contain("private IReadOnlyList<WorkbenchToolGroup> ProductionToolGroups => new[]");
         productionGroups.Should().Contain("new WorkbenchToolGroup(\"Cleanup\", SyncCleanupCommands, \"Prep\"");
         productionGroups.Should().Contain("private IReadOnlyList<WorkbenchToolCommand> SyncCleanupCommands => new[]");
@@ -130,27 +131,22 @@ public sealed class WorkbenchRenderBoundaryTests
     }
 
     [Fact]
-    public void MainLayoutUsesCleanupOnlyMenuForSyncLaunch()
+    public void MainLayoutUsesCleanupOnlyMenuInProduction()
     {
         var layout = FindRepositoryFile("src", "DXFER.Web", "Components", "Layout", "MainLayout.razor");
         var source = File.ReadAllText(layout);
-        var syncMenuStart = source.IndexOf("@if (IsSyncLaunch)", StringComparison.Ordinal);
-        var nonSyncMenuStart = source.IndexOf("@if (!IsSyncLaunch)", StringComparison.Ordinal);
 
-        syncMenuStart.Should().BeGreaterThanOrEqualTo(0);
-        nonSyncMenuStart.Should().BeGreaterThan(syncMenuStart);
-        var syncMenu = source[syncMenuStart..nonSyncMenuStart];
-
-        source.Should().Contain("SyncLaunchOptionsParser");
-        source.Should().Contain("ParseQueryString");
-        source.Should().Contain("@if (!IsSyncLaunch)");
+        source.Should().NotContain("SyncLaunchOptionsParser");
+        source.Should().NotContain("@if (IsSyncLaunch)");
+        source.Should().NotContain("@if (!IsSyncLaunch)");
         source.Should().NotContain("Canvas prototype");
-        syncMenu.Should().Contain("@if (IsSyncLaunch)");
-        syncMenu.Should().Contain("WorkbenchCommandId.SaveDxf");
-        syncMenu.Should().Contain("WorkbenchCommandId.BoundsToOrigin");
-        syncMenu.Should().Contain("WorkbenchCommandId.VectorToX");
-        syncMenu.Should().NotContain("WorkbenchCommandId.LoadSample");
-        syncMenu.Should().NotContain("WorkbenchCommandId.RemoveDuplicates");
+        source.Should().Contain("WorkbenchCommandId.SaveDxf");
+        source.Should().Contain("WorkbenchCommandId.BoundsToOrigin");
+        source.Should().Contain("WorkbenchCommandId.VectorToX");
+        source.Should().NotContain("WorkbenchCommandId.LoadSample");
+        source.Should().NotContain("WorkbenchCommandId.ExportDxfText");
+        source.Should().NotContain("WorkbenchCommandId.Line");
+        source.Should().NotContain("WorkbenchCommandId.RemoveDuplicates");
     }
 
     private static string FindRepositoryFile(params string[] segments)

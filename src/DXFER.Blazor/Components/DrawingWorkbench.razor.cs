@@ -213,7 +213,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private Bounds2 Bounds => _document.GetBounds();
 
-    private IReadOnlyList<WorkbenchToolGroup> ToolGroups => IsSyncLaunch ? ProductionToolGroups : AllToolGroups;
+    private IReadOnlyList<WorkbenchToolGroup> ToolGroups => ProductionToolGroups;
 
     private IReadOnlyList<WorkbenchToolGroup> ProductionToolGroups => new[]
     {
