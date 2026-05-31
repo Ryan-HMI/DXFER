@@ -2,6 +2,35 @@ namespace DXFER.Core.Sync;
 
 public static class SyncLaunchOptionsParser
 {
+    public static SyncEditLaunchOptions ParseQueryString(string? queryString)
+    {
+        if (string.IsNullOrWhiteSpace(queryString))
+        {
+            return SyncEditLaunchOptions.Empty;
+        }
+
+        var query = queryString.StartsWith("?", StringComparison.Ordinal)
+            ? queryString[1..]
+            : queryString;
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return SyncEditLaunchOptions.Empty;
+        }
+
+        var values = query.Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part =>
+            {
+                var separator = part.IndexOf('=', StringComparison.Ordinal);
+                var key = separator >= 0 ? part[..separator] : part;
+                var value = separator >= 0 ? part[(separator + 1)..] : string.Empty;
+                return new KeyValuePair<string, string?>(
+                    Uri.UnescapeDataString(key.Replace("+", " ", StringComparison.Ordinal)),
+                    Uri.UnescapeDataString(value.Replace("+", " ", StringComparison.Ordinal)));
+            });
+
+        return Parse(values);
+    }
+
     public static SyncEditLaunchOptions Parse(IEnumerable<KeyValuePair<string, string?>> values)
     {
         ArgumentNullException.ThrowIfNull(values);

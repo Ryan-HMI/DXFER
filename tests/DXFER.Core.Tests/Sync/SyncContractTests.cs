@@ -45,6 +45,18 @@ public sealed class SyncContractTests
     }
 
     [Fact]
+    public void LaunchParserReadsEncodedQueryString()
+    {
+        var options = SyncLaunchOptionsParser.ParseQueryString(
+            "?syncBaseUrl=https%3A%2F%2Fsync.local&artifactId=a+1&jobId=j1&editToken=t1&downloadUrl=https%3A%2F%2Fsync.local%2Ffile.dxf");
+
+        options.SyncBaseUrl.Should().Be("https://sync.local");
+        options.ArtifactId.Should().Be("a 1");
+        options.DownloadUrl.Should().Be("https://sync.local/file.dxf");
+        options.IsCallbackConfigured.Should().BeTrue();
+    }
+
+    [Fact]
     public void SavePackageKeepsSyncAsSourceOfTruth()
     {
         var package = CreatePackage(manualOverride: true);

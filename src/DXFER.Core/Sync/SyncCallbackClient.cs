@@ -6,18 +6,13 @@ namespace DXFER.Core.Sync;
 
 public sealed class SyncCallbackClient
 {
+    private const string DefaultCallbackPath = "/api/dxfer/edit-callback";
+
     private readonly HttpClient _httpClient;
-    private readonly SyncCallbackOptions _options;
 
     public SyncCallbackClient(HttpClient httpClient)
-        : this(httpClient, new SyncCallbackOptions())
-    {
-    }
-
-    public SyncCallbackClient(HttpClient httpClient, SyncCallbackOptions options)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-        _options = options ?? throw new ArgumentNullException(nameof(options));
     }
 
     public async Task PostSaveAsync(
@@ -70,7 +65,7 @@ public sealed class SyncCallbackClient
         var baseText = syncBaseUrl.EndsWith("/", StringComparison.Ordinal)
             ? syncBaseUrl
             : $"{syncBaseUrl}/";
-        var path = _options.CallbackPath.TrimStart('/');
+        var path = DefaultCallbackPath.TrimStart('/');
         return new Uri(new Uri(baseText, UriKind.Absolute), path);
     }
 
