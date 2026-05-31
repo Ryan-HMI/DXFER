@@ -19,7 +19,7 @@ public static class DrawingNormalizationService
 
         var originalBounds = document.GetBounds();
         var samplePoints = GetDocumentSamplePoints(document).ToArray();
-        var rotation = ChooseBestRotation(samplePoints, originalBounds);
+        var rotation = ChooseMinimumAreaRotation(samplePoints, originalBounds);
         var center = GetBoundsCenter(originalBounds);
         var rotatedDocument = DrawingPrepService.Transform(
             document,
@@ -45,7 +45,7 @@ public static class DrawingNormalizationService
             manualOverride);
     }
 
-    private static double ChooseBestRotation(
+    private static double ChooseMinimumAreaRotation(
         IReadOnlyList<Point2> points,
         Bounds2 originalBounds)
     {
@@ -91,14 +91,20 @@ public static class DrawingNormalizationService
             }
 
             var angle = Math.Atan2(deltaY, deltaX) * 180.0 / Math.PI;
-            var rotation = NormalizeHalfTurnDegrees(-angle);
-            if (seen.Any(value => Math.Abs(value - rotation) <= GeometryTolerance))
+            foreach (var rotation in new[]
             {
-                continue;
-            }
+                NormalizeHalfTurnDegrees(-angle),
+                NormalizeHalfTurnDegrees(90 - angle)
+            })
+            {
+                if (seen.Any(value => Math.Abs(value - rotation) <= GeometryTolerance))
+                {
+                    continue;
+                }
 
-            seen.Add(rotation);
-            yield return rotation;
+                seen.Add(rotation);
+                yield return rotation;
+            }
         }
     }
 
@@ -111,8 +117,8 @@ public static class DrawingNormalizationService
         var bounds = Bounds2.FromPoints(points.Select(point => point.Transform(transform)));
         return new CandidateRotation(
             rotationDegrees,
-            bounds,
             Math.Abs(bounds.Width * bounds.Height),
+            bounds.Width >= bounds.Height - ComparisonTolerance,
             Math.Max(Math.Abs(bounds.Width), Math.Abs(bounds.Height)));
     }
 
@@ -126,6 +132,11 @@ public static class DrawingNormalizationService
         if (candidate.Area > current.Area + ComparisonTolerance)
         {
             return false;
+        }
+
+        if (candidate.LongSideOnX != current.LongSideOnX)
+        {
+            return candidate.LongSideOnX;
         }
 
         if (candidate.MaxDimension < current.MaxDimension - ComparisonTolerance)
@@ -245,9 +256,9 @@ public static class DrawingNormalizationService
     private static double CleanNearZero(double value) =>
         Math.Abs(value) <= GeometryTolerance ? 0 : value;
 
-    private sealed record CandidateRotation(
+    private readonly record struct CandidateRotation(
         double RotationDegrees,
-        Bounds2 Bounds,
         double Area,
+        bool LongSideOnX,
         double MaxDimension);
 }

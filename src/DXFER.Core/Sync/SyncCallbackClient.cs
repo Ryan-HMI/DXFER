@@ -53,10 +53,6 @@ public sealed class SyncCallbackClient
         var dxfContent = new StringContent(package.NormalizedDxfContent, Encoding.UTF8);
         dxfContent.Headers.ContentType = new MediaTypeHeaderValue("application/dxf");
         content.Add(dxfContent, "normalizedDxf", package.NormalizedDxfFileName);
-
-        var metadataContent = new StringContent(package.MetadataJson, Encoding.UTF8);
-        metadataContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-        content.Add(metadataContent, "metadataJson", "dxfer.json");
         return content;
     }
 

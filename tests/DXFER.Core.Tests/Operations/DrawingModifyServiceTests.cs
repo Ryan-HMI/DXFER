@@ -28,6 +28,29 @@ public sealed class DrawingModifyServiceTests
     }
 
     [Fact]
+    public void RotateSelectedByDegreesAcceptsSignedAngle()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("selected"), new Point2(1, 0), new Point2(3, 0)),
+            new LineEntity(EntityId.Create("other"), new Point2(10, 0), new Point2(12, 0))
+        });
+
+        var next = DrawingModifyService.RotateSelectedByDegrees(
+            document,
+            new[] { "selected" },
+            new Point2(0, 0),
+            -90);
+
+        var selected = next.Entities[0].Should().BeOfType<LineEntity>().Subject;
+        selected.Start.X.Should().BeApproximately(0, 0.000001);
+        selected.Start.Y.Should().BeApproximately(-1, 0.000001);
+        selected.End.X.Should().BeApproximately(0, 0.000001);
+        selected.End.Y.Should().BeApproximately(-3, 0.000001);
+        next.Entities[1].Should().Be(document.Entities[1]);
+    }
+
+    [Fact]
     public void OffsetSelectedLineCreatesParallelCopyThroughPickedSide()
     {
         var document = new DrawingDocument(new DrawingEntity[]

@@ -66,11 +66,16 @@ public enum CadIconName
     Fix,
     Curvature,
     Fit,
+    AutoCleanup,
     BoundsToOrigin,
     PointToOrigin,
     OriginAxes,
     ShowConstraints,
     VectorToX,
     VectorToY,
+    GrainNone,
+    GrainX,
+    GrainY,
+    GrainVector,
     RemoveDuplicates
 }

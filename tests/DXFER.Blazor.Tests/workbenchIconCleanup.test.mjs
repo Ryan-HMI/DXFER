@@ -45,6 +45,9 @@ test("toolbar icons are enlarged inside the fixed-size button without changing b
 });
 
 test("requested cleanup icons use the specified SVG motifs", () => {
+  assert.match(iconCase("AutoCleanup"), /dxfer-auto-cleanup-icon/);
+  assert.match(iconCase("AutoCleanup"), /M4 17 9 6l5 11/);
+
   assert.match(iconCase("Construction"), /<path d="M5 19 19 5" stroke-dasharray="2 3" \/>/);
   assert.doesNotMatch(iconCase("Construction"), /M5 12h14|M12 5v14/);
 
@@ -68,8 +71,11 @@ test("requested cleanup icons use the specified SVG motifs", () => {
 });
 
 test("rotate icons use standard circular arrow motifs", () => {
-  assert.match(iconCase("Rotate"), /A7 7 0 1 1/);
-  assert.match(iconCase("Rotate"), /m18 5 1 5-5-1/);
+  assert.match(iconCase("Rotate"), /dxfer-rotate-free-icon/);
+  assert.match(iconCase("Rotate"), /M5 12a7 7 0 0 1 14 0/);
+  assert.match(iconCase("Rotate"), /M5 12l2\.4-2\.4/);
+  assert.match(iconCase("Rotate"), /M19 12l-2\.4 2\.4/);
+  assert.doesNotMatch(iconCase("Rotate"), /m18 5 1 5-5-1/);
   assert.match(iconCase("Rotate90Clockwise"), /dxfer-rotate-90-cw-icon/);
   assert.match(iconCase("Rotate90Clockwise"), /<path fill="currentColor" stroke="none"/);
   assert.match(iconCase("Rotate90Clockwise"), /M17\.65 6\.35/);
@@ -82,6 +88,24 @@ test("rotate icons use standard circular arrow motifs", () => {
   assert.match(iconCase("Rotate90CounterClockwise"), /L11 11H4V4l2\.35 2\.35z/);
   assert.equal(iconCase("Rotate90CounterClockwise").match(/<path /g)?.length, 1);
   assert.doesNotMatch(iconCase("Rotate90CounterClockwise"), /<circle|<polygon|16\.5|M15 13|v4h|m6 6/);
+});
+
+test("grain marking icons use G with axis subscripts", () => {
+  for (const name of ["GrainX", "GrainY", "GrainVector"]) {
+    assert.match(iconCase(name), /dxfer-grain-icon/);
+    assert.match(iconCase(name), />G</);
+  }
+
+  assert.match(iconCase("GrainX"), />X</);
+  assert.match(iconCase("GrainY"), />Y</);
+  assert.match(iconCase("GrainVector"), />V</);
+});
+
+test("grain none icon uses a clear symbol instead of a grain flag", () => {
+  assert.match(iconCase("GrainNone"), /dxfer-grain-none-icon/);
+  assert.match(iconCase("GrainNone"), /M6 6l12 12/);
+  assert.doesNotMatch(iconCase("GrainNone"), />G</);
+  assert.doesNotMatch(iconCase("GrainNone"), />0</);
 });
 
 test("confirmed-good green icon styling remains absent from toolbar files", () => {

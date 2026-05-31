@@ -37,6 +37,33 @@ public sealed class DrawingNormalizationServiceTests
     }
 
     [Fact]
+    public void AutoNormalizeChoosesMinimumBoundingAreaOverLongestLinearVector()
+    {
+        var document = new DrawingDocument(new DrawingEntity[]
+        {
+            new PolylineEntity(
+                EntityId.Create("bounds"),
+                new[]
+                {
+                    new Point2(0, 0),
+                    new Point2(100, 0),
+                    new Point2(100, 10),
+                    new Point2(0, 10),
+                    new Point2(0, 0)
+                }),
+            new LineEntity(EntityId.Create("longest"), new Point2(0, 0), new Point2(100, 10))
+        });
+
+        var result = DrawingNormalizationService.AutoNormalize(document);
+
+        result.RotationDegrees.Should().BeApproximately(0, 0.0001);
+        result.NormalizedDocument.GetBounds().MinX.Should().BeApproximately(0, 0.0001);
+        result.NormalizedDocument.GetBounds().MinY.Should().BeApproximately(0, 0.0001);
+        result.NormalizedDocument.GetBounds().Width.Should().BeApproximately(100, 0.0001);
+        result.NormalizedDocument.GetBounds().Height.Should().BeApproximately(10, 0.0001);
+    }
+
+    [Fact]
     public void AutoNormalizePrefersSmallerMaxDimensionBeforeSmallerAbsoluteRotation()
     {
         var document = RectangleDocument(width: 12, height: 30, degrees: -75, offsetX: 2, offsetY: 3);

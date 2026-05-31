@@ -180,6 +180,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     constraintGroupOffsets: new Map(),
     constraintGroupDrag: null,
     grainDirection: "none",
+    grainAngleDegrees: null,
     constructionMode: false,
     polarSnapIncrementDegrees: 15,
     activeTool: "select",
@@ -269,8 +270,9 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
       draw(state);
     },
 
-    setGrainDirection(direction) {
+    setGrainDirection(direction, angleDegrees = null) {
       state.grainDirection = normalizeGrainDirection(direction);
+      state.grainAngleDegrees = normalizeOptionalDegrees(angleDegrees);
       updateDebugAttributes(state);
       draw(state);
     },
@@ -666,7 +668,9 @@ function draw(state) {
       lineWidth: affectedByDiagnostics ? 2.15 : entity.isConstruction ? 1.1 : 1.5,
       lineDash: entity.isConstruction ? [8, 5] : []
     });
-    drawPersistentSplineTangentHandles(state, entity);
+    if (shouldShowPersistentSplineHandles(state, entity)) {
+      drawPersistentSplineTangentHandles(state, entity);
+    }
   }
 
   for (const selectedKey of state.selectedKeys) {
@@ -816,16 +820,28 @@ function drawOriginAxes(state, size) {
 
 function drawGrainDirection(state, size) {
   const direction = normalizeGrainDirection(state.grainDirection);
-  if (direction === "none") {
+  const angleDegrees = direction === "globaly"
+    ? 90
+    : direction === "globalx"
+      ? 0
+      : normalizeOptionalDegrees(state.grainAngleDegrees);
+  if (angleDegrees === null) {
     return;
   }
 
   const { context } = state;
   const origin = { x: 20, y: size.height - 28 };
-  const end = direction === "globaly"
-    ? { x: origin.x, y: origin.y - 48 }
-    : { x: origin.x + 58, y: origin.y };
-  const label = direction === "globaly" ? "GRAIN Y" : "GRAIN X";
+  const length = 58;
+  const screenAngle = degreesToRadians(-angleDegrees);
+  const end = {
+    x: origin.x + Math.cos(screenAngle) * length,
+    y: origin.y + Math.sin(screenAngle) * length
+  };
+  const label = direction === "globaly"
+    ? "GRAIN Y"
+    : direction === "globalx"
+      ? "GRAIN X"
+      : `GRAIN V ${formatDimensionValue(angleDegrees)} deg`;
 
   context.save();
   context.lineWidth = 2.5;
@@ -842,7 +858,8 @@ function drawGrainDirection(state, size) {
 
   context.font = "600 12px Segoe UI, system-ui, sans-serif";
   context.textBaseline = "middle";
-  context.fillText(label, end.x + 10, end.y);
+  const labelOffsetX = end.x >= origin.x ? 10 : -10 - context.measureText(label).width;
+  context.fillText(label, end.x + labelOffsetX, end.y);
   context.restore();
 }
 
@@ -1465,6 +1482,9 @@ function drawModifyToolPreview(state, tool) {
         context.stroke();
       }
     }
+    if (tool === "rotate" && points.length >= 2) {
+      addRotatePreviewDimension(dimensions, state, points[0], points[1], points.length >= 3 ? points[2] : null);
+    }
   } else if (tool === "offset") {
     drawOffsetModifyPreview(state, state.toolDraft.previewPoint || points[0], dimensions);
   }
@@ -1755,6 +1775,26 @@ function drawPersistentSplineTangentHandles(state, entity) {
   drawSplineTangentHandleSet(state, getPersistentSplineTangentHandlesForEntity(entity));
 }
 
+export function shouldShowPersistentSplineHandles(state, entity) {
+  const entityId = getEntityId(entity);
+  if (!state || !entityId || getEntityKind(entity) !== "spline" || !state.selectedKeys) {
+    return false;
+  }
+
+  if (state.selectedKeys.has(entityId)) {
+    return true;
+  }
+
+  const pointKeyPrefix = `${entityId}${POINT_KEY_SEPARATOR}`;
+  for (const selectedKey of state.selectedKeys) {
+    if (String(selectedKey).startsWith(pointKeyPrefix)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function drawPersistentSplineEditPoints(state, entity) {
   const points = getSplineEditableSnapPoints(entity);
   if (points.length === 0) {
@@ -1917,6 +1957,27 @@ function addRadiusPreviewDimension(dimensions, state, center, edge) {
     point: {
       x: midpointScreen.x + normal.x * 18,
       y: midpointScreen.y + normal.y * 18
+    }
+  });
+}
+
+function addRotatePreviewDimension(dimensions, state, center, reference, target) {
+  const radius = distanceBetweenWorldPoints(center, reference);
+  if (radius <= WORLD_GEOMETRY_TOLERANCE) {
+    return;
+  }
+
+  const value = target ? getSignedAngleDeltaDegrees(center, reference, target) : 0;
+  const referenceScreen = worldToScreen(state, reference);
+  const targetScreen = worldToScreen(state, target || reference);
+  const midpointScreen = midpointScreenPoint(referenceScreen, targetScreen);
+  dimensions.push({
+    key: "angle",
+    label: "Angle",
+    value,
+    point: {
+      x: midpointScreen.x,
+      y: midpointScreen.y - 30
     }
   });
 }
@@ -4507,13 +4568,16 @@ function handlePointerMove(state, event) {
       draw(state);
     } else if (modifyTool === "offset") {
       state.toolDraft = state.toolDraft || createEmptyToolDraft();
-      state.toolDraft.previewPoint = getSketchWorldPoint(state, screenPoint, nearestTarget, event);
+      state.toolDraft.previewPoint = getSketchWorldPoint(state, screenPoint, nearestTarget, event, modifyTool);
       applyLockedDraftDimensions(state);
       updateDebugAttributes(state);
       draw(state);
     } else if (state.toolDraft && state.toolDraft.points.length > 0) {
-      state.toolDraft.previewPoint = getSketchWorldPoint(state, screenPoint, nearestTarget, event);
+      state.toolDraft.previewPoint = getSketchWorldPoint(state, screenPoint, nearestTarget, event, sketchTool || modifyTool);
       if (sketchTool) {
+        applyLockedDraftDimensions(state);
+      }
+      if (modifyTool) {
         applyLockedDraftDimensions(state);
       }
       updateDebugAttributes(state);
@@ -5126,7 +5190,7 @@ function handleModifyToolClick(state, screenPoint, event) {
 
   const worldPoint = tool === "addsplinepoint"
     ? getAddSplinePointPickPoint(clickTarget)
-    : getSketchWorldPoint(state, screenPoint, clickTarget, event);
+    : getSketchWorldPoint(state, screenPoint, clickTarget, event, tool);
   if (!worldPoint) {
     return false;
   }
@@ -5175,6 +5239,7 @@ function commitModifyToolPoints(state, tool, points) {
     return false;
   }
 
+  const dimensionLocks = getModifyToolDimensionLocks(state.toolDraft);
   if (tool !== "addsplinepoint") {
     state.activeTool = "select";
     if (state.canvas && state.canvas.dataset) {
@@ -5185,7 +5250,13 @@ function commitModifyToolPoints(state, tool, points) {
   state.toolDraft = createEmptyToolDraft();
   clearTransientDimensionInputs(state);
   setHoveredTarget(state, null);
-  invokeDotNet(state, "OnModifyToolCommitted", tool, flattenPointCoordinates(points));
+  invokeDotNet(
+    state,
+    "OnModifyToolCommitted",
+    tool,
+    flattenPointCoordinates(points),
+    dimensionLocks.keys,
+    dimensionLocks.values);
   return true;
 }
 
@@ -5802,8 +5873,8 @@ function getScreenNormal(first, second) {
   };
 }
 
-function getSketchWorldPoint(state, screenPoint, target = state.hoveredTarget, event = null) {
-  const tool = getSketchCreationTool(state);
+function getSketchWorldPoint(state, screenPoint, target = state.hoveredTarget, event = null, toolOverride = null) {
+  const tool = toolOverride || getSketchCreationTool(state);
   if (target && target.kind === "point" && target.point) {
     return applyPolarSnapIfRequested(state, target.point, tool, event);
   }
@@ -6072,7 +6143,7 @@ function getEntityPointHit(state, entity, screenPoint) {
   let nearestHit = null;
   const entities = getDocumentEntities(state.document);
 
-  for (const snapPoint of getSnapPoints(entity, entities)) {
+  for (const snapPoint of getSnapPoints(state, entity, entities)) {
     const screenSnapPoint = worldToScreen(state, snapPoint.point);
     const distance = distanceBetweenScreenPoints(screenPoint, screenSnapPoint);
     const priority = Number(snapPoint.priority || 0);
@@ -7019,7 +7090,7 @@ function getEntityScreenSamplePoints(state, entity) {
   return [];
 }
 
-function getSnapPoints(entity, entities) {
+function getSnapPoints(state, entity, entities) {
   const kind = getEntityKind(entity);
 
   switch (kind) {
@@ -7032,7 +7103,7 @@ function getSnapPoints(entity, entities) {
     case "polygon":
       return getPolygonSnapPoints(entity, entities);
     case "spline":
-      return getSplineSnapPoints(entity, entities);
+      return getSplineSnapPoints(state, entity, entities);
     case "circle":
       return getCircleSnapPoints(entity, entities);
     case "arc":
@@ -7108,12 +7179,14 @@ function getPolygonSnapPoints(entity, entities) {
   return snapPoints;
 }
 
-function getSplineSnapPoints(entity, entities) {
+function getSplineSnapPoints(state, entity, entities) {
   const points = getEntityPoints(entity);
-  const snapPoints = [
-    ...getSplineEditableSnapPoints(entity),
-    ...getSplineTangentHandleSnapPoints(entity)
-  ];
+  const snapPoints = shouldShowPersistentSplineHandles(state, entity)
+    ? [
+      ...getSplineEditableSnapPoints(entity),
+      ...getSplineTangentHandleSnapPoints(entity)
+    ]
+    : [];
 
   if (points.length < 2) {
     addIntersectionSnapPoints(snapPoints, entity, entities);
@@ -11181,12 +11254,20 @@ export function syncActiveSelectionWithSelectedKeys(state) {
 export function applyDraftDimensionValue(state, dimensionKey, value) {
   const dimension = String(dimensionKey || "").toLowerCase();
   const numericValue = Number(value);
-  if (!Number.isFinite(numericValue) || numericValue <= WORLD_GEOMETRY_TOLERANCE) {
+  if (!Number.isFinite(numericValue)) {
     return false;
   }
 
   const tool = getSketchCreationTool(state);
   const modifyTool = getModifyTool(state);
+  if (modifyTool === "rotate" && dimension === "angle") {
+    return applyRotateDraftDimensionValue(state, numericValue);
+  }
+
+  if (numericValue <= WORLD_GEOMETRY_TOLERANCE) {
+    return false;
+  }
+
   if (modifyTool === "offset" && dimension === "offset") {
     return applyOffsetDraftDimensionValue(state, numericValue);
   }
@@ -11306,6 +11387,24 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
   state.toolDraft.dimensionValues = {
     ...(state.toolDraft.dimensionValues || {}),
     [dimension]: numericValue
+  };
+  return true;
+}
+
+function applyRotateDraftDimensionValue(state, angleDegrees) {
+  if (!state || !state.toolDraft || !Array.isArray(state.toolDraft.points) || state.toolDraft.points.length < 2) {
+    return false;
+  }
+
+  const nextPreviewPoint = pointFromAngleDelta(state.toolDraft.points[0], state.toolDraft.points[1], angleDegrees);
+  if (!nextPreviewPoint) {
+    return false;
+  }
+
+  state.toolDraft.previewPoint = nextPreviewPoint;
+  state.toolDraft.dimensionValues = {
+    ...(state.toolDraft.dimensionValues || {}),
+    angle: angleDegrees
   };
   return true;
 }
@@ -11436,6 +11535,36 @@ export function getSketchToolDimensionLocks(toolDraft) {
 
     keys.push(normalizedKey);
     values.push(normalizedKey === "sides" ? clamp(Math.round(numericValue), 3, 64) : numericValue);
+  }
+
+  return { keys, values };
+}
+
+export function getModifyToolDimensionLocks(toolDraft) {
+  const keys = [];
+  const values = [];
+  const dimensionValues = toolDraft && toolDraft.dimensionValues
+    ? toolDraft.dimensionValues
+    : {};
+
+  for (const [key, value] of Object.entries(dimensionValues)) {
+    const normalizedKey = String(key || "").trim().toLowerCase();
+    const numericValue = Number(value);
+    if (!normalizedKey || !Number.isFinite(numericValue)) {
+      continue;
+    }
+
+    if (normalizedKey === "angle") {
+      if (Math.abs(numericValue) <= WORLD_GEOMETRY_TOLERANCE) {
+        continue;
+      }
+
+      keys.push(normalizedKey);
+      values.push(numericValue);
+    } else if (numericValue > WORLD_GEOMETRY_TOLERANCE) {
+      keys.push(normalizedKey);
+      values.push(numericValue);
+    }
   }
 
   return { keys, values };
@@ -12045,6 +12174,9 @@ function updateDebugAttributes(state) {
   state.canvas.dataset.visibleConstraintGroupCount = String(getVisibleConstraintGlyphGroups(state).length);
   state.canvas.dataset.constraintGroupDragging = state.constraintGroupDrag ? state.constraintGroupDrag.groupKey : "";
   state.canvas.dataset.grainDirection = normalizeGrainDirection(state.grainDirection);
+  state.canvas.dataset.grainAngleDegrees = normalizeOptionalDegrees(state.grainAngleDegrees) === null
+    ? ""
+    : String(normalizeOptionalDegrees(state.grainAngleDegrees));
   state.canvas.dataset.constructionMode = state.constructionMode ? "true" : "false";
   state.canvas.dataset.activeTool = normalizeToolName(state.activeTool);
   state.canvas.dataset.polarSnapIncrement = String(normalizePolarSnapIncrement(state.polarSnapIncrementDegrees));
@@ -12215,6 +12347,15 @@ function normalizeWheelDelta(event) {
 function normalizeGrainDirection(direction) {
   const normalized = String(direction || "none").toLowerCase();
   return normalized === "globalx" || normalized === "globaly" ? normalized : "none";
+}
+
+function normalizeOptionalDegrees(degrees) {
+  if (degrees === null || degrees === undefined || (typeof degrees === "string" && degrees.trim() === "")) {
+    return null;
+  }
+
+  const value = Number(degrees);
+  return Number.isFinite(value) ? value : null;
 }
 
 function normalizePolarSnapIncrement(incrementDegrees) {
@@ -13419,7 +13560,8 @@ function supportsPolarSnap(tool) {
     || tool === "ellipticalarc"
     || tool === "midpointline"
     || tool === "inscribedpolygon"
-    || tool === "circumscribedpolygon";
+    || tool === "circumscribedpolygon"
+    || tool === "rotate";
 }
 
 function getPolarSnapAnchor(state, tool) {
@@ -13439,6 +13581,34 @@ function pointOnCircle(center, radius, angleDegrees) {
     x: center.x + Math.cos(radians) * radius,
     y: center.y + Math.sin(radians) * radius
   };
+}
+
+function pointFromAngleDelta(center, reference, angleDegrees) {
+  const radius = distanceBetweenWorldPoints(center, reference);
+  if (radius <= WORLD_GEOMETRY_TOLERANCE) {
+    return null;
+  }
+
+  const referenceAngle = radiansToDegrees(Math.atan2(reference.y - center.y, reference.x - center.x));
+  return pointOnCircle(center, radius, referenceAngle + angleDegrees);
+}
+
+function getSignedAngleDeltaDegrees(center, reference, target) {
+  if (!center || !reference || !target) {
+    return 0;
+  }
+
+  const first = subtractPoints(reference, center);
+  const second = subtractPoints(target, center);
+  const firstLength = Math.hypot(first.x, first.y);
+  const secondLength = Math.hypot(second.x, second.y);
+  if (firstLength <= WORLD_GEOMETRY_TOLERANCE || secondLength <= WORLD_GEOMETRY_TOLERANCE) {
+    return 0;
+  }
+
+  return radiansToDegrees(Math.atan2(
+    crossPoints(first, second),
+    dotPoints(first, second)));
 }
 
 export function getEllipseFromPoints(center, majorPoint, minorPoint, endParameterPoint = null) {

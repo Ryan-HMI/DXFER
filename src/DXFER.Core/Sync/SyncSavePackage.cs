@@ -6,7 +6,6 @@ public sealed record SyncSavePackage(
     string EditToken,
     string NormalizedDxfFileName,
     string NormalizedDxfContent,
-    string MetadataJson,
     double BoundingWidth,
     double BoundingHeight,
     double RotationDegrees,

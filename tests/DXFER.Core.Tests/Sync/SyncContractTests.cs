@@ -90,7 +90,8 @@ public sealed class SyncContractTests
         handler.Body.Should().Contain("artifact-1");
         handler.Body.Should().Contain("name=normalizedDxf");
         handler.Body.Should().Contain("normalized.dxf");
-        handler.Body.Should().Contain("name=metadataJson");
+        handler.Body.Should().NotContain("name=metadataJson");
+        handler.Body.Should().NotContain("dxfer.json");
         handler.Body.Should().Contain("name=boundingWidth");
         handler.Body.Should().Contain("20");
         handler.Body.Should().Contain("name=grainDirection");
@@ -106,7 +107,6 @@ public sealed class SyncContractTests
             EditToken: "token",
             NormalizedDxfFileName: "normalized.dxf",
             NormalizedDxfContent: "0\nEOF\n",
-            MetadataJson: "{}",
             BoundingWidth: 20,
             BoundingHeight: 10,
             RotationDegrees: -30,

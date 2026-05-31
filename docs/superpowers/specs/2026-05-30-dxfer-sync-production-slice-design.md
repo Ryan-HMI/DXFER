@@ -49,7 +49,6 @@ On Save, DXFER posts multipart form data to Sync:
 - `jobId`
 - `editToken`
 - `normalizedDxf`: normalized DXF file.
-- `metadataJson`: DXFER metadata JSON.
 - `boundingWidth`
 - `boundingHeight`
 - `rotationDegrees`
@@ -77,7 +76,7 @@ For empty or degenerate documents, DXFER leaves rotation at `0` and applies no m
 - Missing or invalid launch parameters keep DXFER in local file-open mode and disable callback save.
 - Failed download or unreadable input path shows an error and leaves the document unchanged.
 - Failed callback save keeps the normalized result in memory and offers job-folder export when configured.
-- Job-folder export writes `normalized.dxf` and `dxfer.json`; Sync must explicitly import this recovery package.
+- Job-folder export writes `normalized.dxf` only; Sync must explicitly import this recovery DXF and derive/store any metadata itself.
 
 ## Testing
 
@@ -86,7 +85,7 @@ Focused coverage should include:
 - Normalization chooses a rotation that improves a rotated rectangle's axis-aligned bounds.
 - Normalization relocates final `MinX` and `MinY` to zero.
 - Tie-breaking prefers smaller max dimension and then smaller absolute rotation.
-- Sync callback payload includes normalized DXF, metadata JSON, dimensions, rotation, origin shift, grain direction, and manual override.
+- Sync callback payload includes normalized DXF, dimensions, rotation, origin shift, grain direction, and manual override.
 - Production launch parameters parse without depending on direct Sync storage or DB access.
 
 ## Self Review

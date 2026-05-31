@@ -25,12 +25,12 @@
                         </button>
                         <div class="app-submenu" role="menu">
                             <label class="app-menu-command app-menu-file-command">
-                                <span>Open DXF/DWG...</span>
+                                <span>Open local DXF/DWG...</span>
                                 <InputFile OnChange="OpenHeaderFileAsync"
                                            accept=".dxf,.dwg"
                                            class="app-menu-file-input" />
                             </label>
-                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SaveDxf)">Save DXF</button>
+                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SaveDxf)">Download DXF</button>
                         </div>
                     </div>
                     <div class="app-menu-group">
@@ -59,13 +59,17 @@
                             <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.NewBlankDocument)">New File</button>
                             <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.LoadSample)">Open sample</button>
                             <label class="app-menu-command app-menu-file-command">
-                                <span>Open DXF/DWG...</span>
+                                <span>Open local DXF/DWG...</span>
                                 <InputFile OnChange="OpenHeaderFileAsync"
                                            accept=".dxf,.dwg"
                                            class="app-menu-file-input" />
                             </label>
-                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SaveDxf)">Save DXF</button>
-                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.ExportDxfText)">Export DXF text</button>
+                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SaveDxf)">Download DXF</button>
+                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SendToSync)">Send to Sync</button>
+                            @if (CanReturnToSync)
+                            {
+                                <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.ReturnToSync)">Return to Sync</button>
+                            }
                         </div>
                     </div>
                     <div class="app-menu-group">
@@ -162,16 +166,17 @@
 @code {
     private bool _isAppMenuOpen;
     private bool _isHotkeyOptionsOpen;
+    private SyncEditLaunchOptions _syncLaunchOptions = SyncEditLaunchOptions.Empty;
 
     private string AppMenuClass => _isAppMenuOpen ? "app-menu app-menu-open" : "app-menu";
 
-    private bool IsSyncLaunch =>
-        SyncLaunchOptionsParser
-            .ParseQueryString(Navigation.ToAbsoluteUri(Navigation.Uri).Query)
-            .IsCallbackConfigured;
+    private bool IsSyncLaunch => _syncLaunchOptions.IsCallbackConfigured || _syncLaunchOptions.HasInput;
+
+    private bool CanReturnToSync => !string.IsNullOrWhiteSpace(_syncLaunchOptions.ReturnUrl);
 
     protected override void OnInitialized()
     {
+        _syncLaunchOptions = SyncLaunchOptionsParser.ParseQueryString(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
         MenuCommands.HotkeyOptionsRequested += OpenHotkeyOptions;
     }
 

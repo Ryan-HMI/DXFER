@@ -15,6 +15,7 @@
                        ShowOriginAxes="_showOriginAxes"
                        ShowAllConstraints="_showAllConstraints"
                        GrainDirection="_grainDirection"
+                       GrainAngleDegrees="_grainAngleDegrees"
                        ConstructionMode="_constructionMode"
                        SelectionResetToken="_selectionResetToken"
                        HoveredEntityChanged="OnHoveredEntityChanged"
@@ -36,111 +37,10 @@
                        DeleteSelectionRequested="DeleteSelectedGeometry" />
     </main>
 
-    @if (_isInspectorCollapsed)
-    {
-        <button type="button"
-                class="dxfer-dock-tab dxfer-dock-tab-right"
-                title="Show inspector"
-                aria-label="Show inspector"
-                @onclick="ToggleInspector">
-            <CadIcon Name="@CadIconName.CollapseLeft" />
-        </button>
-    }
-    else
-    {
-    <aside class="dxfer-inspector" aria-label="Drawing inspector">
-        <div class="dxfer-dock-header">
-            <div>
-                <div class="dxfer-section-title">Inspector</div>
-                <div class="dxfer-dock-subtitle">Debug and Sync detail</div>
-            </div>
-            <CadIconButton Icon="@CadIconName.CollapseRight"
-                           Label="Collapse inspector"
-                           OnClick="ToggleInspector" />
-        </div>
-        <section class="dxfer-inspector-section">
-            <div class="dxfer-section-title">Status</div>
-            <div class="dxfer-file-name">@_fileName</div>
-            <div class="dxfer-status">@_status</div>
-        </section>
-
-        <section class="dxfer-inspector-section">
-            <div class="dxfer-section-title">Selection</div>
-            <dl class="dxfer-metrics">
-                <dt>Hover</dt>
-                <dd>@HoverText</dd>
-                <dt>Selected</dt>
-                <dd>@_selectedEntityIds.Count</dd>
-                <dt>Measure</dt>
-                <dd>@MeasurementText</dd>
-            </dl>
-        </section>
-
-        <section class="dxfer-inspector-section">
-            <div class="dxfer-section-title">Bounds</div>
-            <dl class="dxfer-metrics">
-                <dt>X</dt>
-                <dd>@FormatRange(Bounds.MinX, Bounds.MaxX)</dd>
-                <dt>Y</dt>
-                <dd>@FormatRange(Bounds.MinY, Bounds.MaxY)</dd>
-                <dt>Size</dt>
-                <dd>@FormatSize(Bounds.Width, Bounds.Height)</dd>
-            </dl>
-        </section>
-
-        <section class="dxfer-inspector-section dxfer-metadata-section">
-            <div class="dxfer-section-title">Sync Metadata</div>
-            <pre class="dxfer-metadata">@MetadataJson</pre>
-        </section>
-
-        @if (!string.IsNullOrWhiteSpace(_exportText))
-        {
-            <section class="dxfer-inspector-section dxfer-export-section">
-                <div class="dxfer-section-title">DXF Export</div>
-                <textarea class="dxfer-export-text" readonly>@_exportText</textarea>
-            </section>
-        }
-    </aside>
-    }
-
-    @if (!_isInspectorCollapsed)
-    {
-        <button type="button"
-                class="dxfer-panel-resizer dxfer-panel-resizer-right"
-                title="Resize inspector"
-                aria-label="Resize inspector"
-                @onpointerdown="BeginInspectorResize"
-                @onpointerdown:preventDefault="true" />
-    }
-
     @if (IsSyncLaunch)
     {
-        <section class="dxfer-sync-control-bar" aria-label="Sync save controls">
-            <div class="dxfer-sync-control-main">
-                <span class="@SyncCallbackStateClass">@SyncCallbackStateText</span>
-                <span class="dxfer-sync-control-id">@SyncArtifactText</span>
-                <span class="dxfer-sync-control-id">@SyncJobText</span>
-                <span class="dxfer-sync-control-mode">@SyncNormalizationStateText</span>
-            </div>
-            <div class="dxfer-sync-control-actions">
-                <button type="button"
-                        class="dxfer-sync-action dxfer-sync-save-action"
-                        aria-label="Save back to Sync"
-                        title="@SyncSaveButtonTitle"
-                        disabled="@(!CanSaveBackToSync)"
-                        @onclick="SaveBackToSyncAsync">
-                    @SyncSaveButtonText
-                </button>
-                @if (CanReturnToSync)
-                {
-                    <button type="button"
-                            class="dxfer-sync-action"
-                            title="Return to Sync"
-                            @onclick="ReturnToSync">
-                        Return to Sync
-                    </button>
-                }
-            </div>
+        <section class="dxfer-sync-control-bar" aria-label="Sync connection status">
+            <span class="@SyncCallbackStateClass">@SyncCallbackStateText</span>
         </section>
     }
 
@@ -168,12 +68,4 @@
         </div>
     </footer>
 
-    @if (_resizeTarget is not DockResizeTarget.None)
-    {
-        <div class="dxfer-resize-capture"
-             @onpointermove="OnWorkbenchPointerMove"
-             @onpointerup="EndDockPanelResize"
-             @onpointercancel="EndDockPanelResize"
-             @onpointerleave="EndDockPanelResize"></div>
-    }
 </div>
