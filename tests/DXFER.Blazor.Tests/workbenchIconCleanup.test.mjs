@@ -73,9 +73,10 @@ test("requested cleanup icons use the specified SVG motifs", () => {
 test("rotate icons use standard circular arrow motifs", () => {
   assert.match(iconCase("Rotate"), /dxfer-rotate-free-icon/);
   assert.match(iconCase("Rotate"), /M5 12a7 7 0 0 1 14 0/);
-  assert.match(iconCase("Rotate"), /M5 12l2\.4-2\.4/);
-  assert.match(iconCase("Rotate"), /M19 12l-2\.4 2\.4/);
-  assert.doesNotMatch(iconCase("Rotate"), /m18 5 1 5-5-1/);
+  assert.match(iconCase("Rotate"), /fill="currentColor" stroke="none" d="M5 12 3\.55 9\.15 6\.45 9\.15Z"/);
+  assert.match(iconCase("Rotate"), /fill="currentColor" stroke="none" d="M19 12 17\.55 9\.15 20\.45 9\.15Z"/);
+  assert.equal(iconCase("Rotate").match(/fill="currentColor" stroke="none"/g)?.length, 2);
+  assert.doesNotMatch(iconCase("Rotate"), /M5 12l2\.4|M19 12l-2\.4|m18 5 1 5-5-1/);
   assert.match(iconCase("Rotate90Clockwise"), /dxfer-rotate-90-cw-icon/);
   assert.match(iconCase("Rotate90Clockwise"), /<path fill="currentColor" stroke="none"/);
   assert.match(iconCase("Rotate90Clockwise"), /M17\.65 6\.35/);
