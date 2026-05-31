@@ -217,13 +217,17 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private IReadOnlyList<WorkbenchToolGroup> ProductionToolGroups => new[]
     {
-        new WorkbenchToolGroup("View", new[]
-        {
-            Command(WorkbenchCommandId.Measure, WorkbenchTool.Measure, CadIconName.Measure, "Measure"),
-            Command(WorkbenchCommandId.FitExtents, null, CadIconName.Fit, "Fit extents", !HasDocument),
-            Command(WorkbenchCommandId.OriginAxes, null, CadIconName.OriginAxes, "Origin axes", pressed: _showOriginAxes)
-        }, "Display"),
-        new WorkbenchToolGroup("Cleanup", CleanupCommands, "Prep")
+        new WorkbenchToolGroup("Cleanup", SyncCleanupCommands, "Prep")
+    };
+
+    private IReadOnlyList<WorkbenchToolCommand> SyncCleanupCommands => new[]
+    {
+        Command(WorkbenchCommandId.Rotate90Clockwise, null, CadIconName.Rotate90Clockwise, "Rotate 90 CW", !HasDocument),
+        Command(WorkbenchCommandId.Rotate90CounterClockwise, null, CadIconName.Rotate90CounterClockwise, "Rotate 90 CCW", !HasDocument),
+        Command(WorkbenchCommandId.BoundsToOrigin, null, CadIconName.BoundsToOrigin, "Bounds to origin", !HasDocument, tooltip: "Move drawing bounds minimum to global origin."),
+        Command(WorkbenchCommandId.PointToOrigin, null, CadIconName.PointToOrigin, "Point to origin", !CanMoveSelectedPointToOrigin, tooltip: "Move the selected point to global origin."),
+        Command(WorkbenchCommandId.VectorToX, null, CadIconName.VectorToX, "Vector to X", !CanAlignSelectedVector, tooltip: "Align the selected line, segment, or two selected points to global X."),
+        Command(WorkbenchCommandId.VectorToY, null, CadIconName.VectorToY, "Vector to Y", !CanAlignSelectedVector, tooltip: "Align the selected line, segment, or two selected points to global Y.")
     };
 
     private IReadOnlyList<WorkbenchToolGroup> AllToolGroups => new[]

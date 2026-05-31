@@ -90,7 +90,8 @@ public sealed class WorkbenchRenderBoundaryTests
         source.Should().Contain("SyncCallbackClient");
         source.Should().Contain("manualOverride");
         source.Should().Contain("ExportJobFolderFallbackAsync");
-        source.Should().Contain("SyncLaunchOptionsParser.ParseQueryString");
+        source.Should().Contain("SyncLaunchOptionsParser");
+        source.Should().Contain("ParseQueryString");
     }
 
     [Fact]
@@ -98,10 +99,21 @@ public sealed class WorkbenchRenderBoundaryTests
     {
         var workbench = FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs");
         var source = File.ReadAllText(workbench);
+        var productionStart = source.IndexOf("private IReadOnlyList<WorkbenchToolGroup> ProductionToolGroups", StringComparison.Ordinal);
+        var allGroupsStart = source.IndexOf("    private IReadOnlyList<WorkbenchToolGroup> AllToolGroups", StringComparison.Ordinal);
+
+        productionStart.Should().BeGreaterThanOrEqualTo(0);
+        allGroupsStart.Should().BeGreaterThan(productionStart);
+        var productionGroups = source[productionStart..allGroupsStart];
 
         source.Should().Contain("private IReadOnlyList<WorkbenchToolGroup> ToolGroups => IsSyncLaunch ? ProductionToolGroups : AllToolGroups;");
-        source.Should().Contain("private IReadOnlyList<WorkbenchToolGroup> ProductionToolGroups => new[]");
-        source.Should().Contain("new WorkbenchToolGroup(\"Cleanup\", CleanupCommands, \"Prep\"");
+        productionGroups.Should().Contain("private IReadOnlyList<WorkbenchToolGroup> ProductionToolGroups => new[]");
+        productionGroups.Should().Contain("new WorkbenchToolGroup(\"Cleanup\", SyncCleanupCommands, \"Prep\"");
+        productionGroups.Should().Contain("private IReadOnlyList<WorkbenchToolCommand> SyncCleanupCommands => new[]");
+        productionGroups.Should().Contain("Command(WorkbenchCommandId.BoundsToOrigin");
+        productionGroups.Should().Contain("Command(WorkbenchCommandId.VectorToX");
+        productionGroups.Should().NotContain("new WorkbenchToolGroup(\"View\", new[]");
+        productionGroups.Should().NotContain("WorkbenchCommandId.RemoveDuplicates");
     }
 
     [Fact]
@@ -115,6 +127,30 @@ public sealed class WorkbenchRenderBoundaryTests
         source.Should().Contain("DrawingNormalizationService.AutoNormalize");
         source.Should().Contain("DxfDocumentReader.Read");
         source.Should().Contain("DxfDocumentWriter.Write");
+    }
+
+    [Fact]
+    public void MainLayoutUsesCleanupOnlyMenuForSyncLaunch()
+    {
+        var layout = FindRepositoryFile("src", "DXFER.Web", "Components", "Layout", "MainLayout.razor");
+        var source = File.ReadAllText(layout);
+        var syncMenuStart = source.IndexOf("@if (IsSyncLaunch)", StringComparison.Ordinal);
+        var nonSyncMenuStart = source.IndexOf("@if (!IsSyncLaunch)", StringComparison.Ordinal);
+
+        syncMenuStart.Should().BeGreaterThanOrEqualTo(0);
+        nonSyncMenuStart.Should().BeGreaterThan(syncMenuStart);
+        var syncMenu = source[syncMenuStart..nonSyncMenuStart];
+
+        source.Should().Contain("SyncLaunchOptionsParser");
+        source.Should().Contain("ParseQueryString");
+        source.Should().Contain("@if (!IsSyncLaunch)");
+        source.Should().NotContain("Canvas prototype");
+        syncMenu.Should().Contain("@if (IsSyncLaunch)");
+        syncMenu.Should().Contain("WorkbenchCommandId.SaveDxf");
+        syncMenu.Should().Contain("WorkbenchCommandId.BoundsToOrigin");
+        syncMenu.Should().Contain("WorkbenchCommandId.VectorToX");
+        syncMenu.Should().NotContain("WorkbenchCommandId.LoadSample");
+        syncMenu.Should().NotContain("WorkbenchCommandId.RemoveDuplicates");
     }
 
     private static string FindRepositoryFile(params string[] segments)
