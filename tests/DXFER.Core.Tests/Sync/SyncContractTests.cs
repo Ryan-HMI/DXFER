@@ -18,7 +18,8 @@ public sealed class SyncContractTests
             ["editToken"] = "token",
             ["inputPath"] = "C:/temp/input.dxf",
             ["returnUrl"] = "https://sync.local/return",
-            ["jobFolder"] = "C:/temp/job"
+            ["jobFolder"] = "C:/temp/job",
+            ["autoNormalize"] = "false"
         };
 
         var options = SyncLaunchOptionsParser.Parse(query);
@@ -29,6 +30,7 @@ public sealed class SyncContractTests
         options.EditToken.Should().Be("token");
         options.InputPath.Should().Be("C:/temp/input.dxf");
         options.JobFolder.Should().Be("C:/temp/job");
+        options.AutoNormalize.Should().BeFalse();
         options.IsCallbackConfigured.Should().BeTrue();
     }
 
@@ -53,6 +55,7 @@ public sealed class SyncContractTests
         options.SyncBaseUrl.Should().Be("https://sync.local");
         options.ArtifactId.Should().Be("a 1");
         options.DownloadUrl.Should().Be("https://sync.local/file.dxf");
+        options.AutoNormalize.Should().BeTrue();
         options.IsCallbackConfigured.Should().BeTrue();
     }
 

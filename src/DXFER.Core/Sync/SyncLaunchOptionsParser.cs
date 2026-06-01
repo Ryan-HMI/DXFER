@@ -50,11 +50,27 @@ public static class SyncLaunchOptionsParser
             Read(lookup, "inputPath"),
             Read(lookup, "downloadUrl"),
             Read(lookup, "returnUrl"),
-            Read(lookup, "jobFolder"));
+            Read(lookup, "jobFolder"),
+            ReadBool(lookup, "autoNormalize", defaultValue: true));
     }
 
     private static string? Read(IReadOnlyDictionary<string, string?> values, string key) =>
         values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
             ? value
             : null;
+
+    private static bool ReadBool(IReadOnlyDictionary<string, string?> values, string key, bool defaultValue)
+    {
+        if (!values.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+        {
+            return defaultValue;
+        }
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "true" or "1" or "yes" or "y" => true,
+            "false" or "0" or "no" or "n" => false,
+            _ => defaultValue
+        };
+    }
 }

@@ -530,7 +530,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         try
         {
             var (fileName, text) = await ReadSyncLaunchDxfAsync();
-            LoadDxfText(fileName, text, trustedSource: true, autoNormalize: true);
+            LoadDxfText(fileName, text, trustedSource: true, autoNormalize: _syncLaunchOptions.AutoNormalize);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or HttpRequestException or InvalidOperationException)
         {
@@ -553,8 +553,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         if (!string.IsNullOrWhiteSpace(_syncLaunchOptions.DownloadUrl))
         {
-            var text = await SyncDownloadClient.GetStringAsync(_syncLaunchOptions.DownloadUrl);
-            return (GetFileNameFromUrl(_syncLaunchOptions.DownloadUrl), text);
+            using var response = await SyncDownloadClient.GetAsync(_syncLaunchOptions.DownloadUrl);
+            response.EnsureSuccessStatusCode();
+            var text = await response.Content.ReadAsStringAsync();
+            var fileName = GetFileNameFromContentDisposition(response.Content.Headers.ContentDisposition)
+                ?? GetFileNameFromUrl(_syncLaunchOptions.DownloadUrl);
+            return (fileName, text);
         }
 
         throw new InvalidOperationException("Sync launch did not include inputPath or downloadUrl.");
@@ -635,6 +639,23 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         return "sync-artifact.dxf";
+    }
+
+    private static string? GetFileNameFromContentDisposition(System.Net.Http.Headers.ContentDispositionHeaderValue? contentDisposition)
+    {
+        var raw = contentDisposition?.FileNameStar;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            raw = contentDisposition?.FileName;
+        }
+
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        var fileName = Path.GetFileName(raw.Trim().Trim('"'));
+        return string.IsNullOrWhiteSpace(fileName) ? null : fileName;
     }
 
     private void LoadSample()

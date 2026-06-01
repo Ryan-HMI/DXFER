@@ -8,7 +8,8 @@ public sealed record SyncEditLaunchOptions(
     string? InputPath,
     string? DownloadUrl,
     string? ReturnUrl,
-    string? JobFolder)
+    string? JobFolder,
+    bool AutoNormalize = true)
 {
     public static SyncEditLaunchOptions Empty { get; } = new(
         SyncBaseUrl: null,
@@ -18,7 +19,8 @@ public sealed record SyncEditLaunchOptions(
         InputPath: null,
         DownloadUrl: null,
         ReturnUrl: null,
-        JobFolder: null);
+        JobFolder: null,
+        AutoNormalize: true);
 
     public bool IsCallbackConfigured =>
         !string.IsNullOrWhiteSpace(SyncBaseUrl)
