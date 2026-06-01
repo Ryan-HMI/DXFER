@@ -858,8 +858,16 @@ function drawGrainDirection(state, size) {
 
   context.font = "600 12px Segoe UI, system-ui, sans-serif";
   context.textBaseline = "middle";
-  const labelOffsetX = end.x >= origin.x ? 10 : -10 - context.measureText(label).width;
-  context.fillText(label, end.x + labelOffsetX, end.y);
+  const labelX = 20;
+  const labelY = Math.max(18, size.height - 64);
+  const metrics = context.measureText(label);
+  context.fillStyle = "rgba(15, 23, 42, 0.82)";
+  context.strokeStyle = "rgba(250, 204, 21, 0.65)";
+  context.lineWidth = 1;
+  context.fillRect(labelX - 6, labelY - 11, metrics.width + 12, 22);
+  context.strokeRect(labelX - 6, labelY - 11, metrics.width + 12, 22);
+  context.fillStyle = "#facc15";
+  context.fillText(label, labelX, labelY);
   context.restore();
 }
 

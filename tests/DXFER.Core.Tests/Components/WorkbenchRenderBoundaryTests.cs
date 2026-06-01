@@ -129,7 +129,7 @@ public sealed class WorkbenchRenderBoundaryTests
     }
 
     [Fact]
-    public void WorkbenchShowsCompactSyncStatusOnly()
+    public void WorkbenchShowsCompactSyncStatusAndSingleSaveAction()
     {
         var markup = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor"));
         var source = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs"));
@@ -138,6 +138,9 @@ public sealed class WorkbenchRenderBoundaryTests
         markup.Should().Contain("dxfer-sync-control-bar");
         markup.Should().Contain("aria-label=\"Sync connection status\"");
         markup.Should().Contain("@SyncCallbackStateText");
+        markup.Should().Contain("dxfer-sync-send-button");
+        markup.Should().Contain("@SyncSaveButtonText");
+        markup.Should().Contain("WorkbenchCommandId.SendToSync");
         markup.Should().NotContain("Open local DXF/DWG");
         markup.Should().NotContain("Download DXF");
         markup.Should().NotContain("Send to Sync");
@@ -150,7 +153,8 @@ public sealed class WorkbenchRenderBoundaryTests
         source.Should().Contain("_isSyncSaveInFlight");
         source.Should().Contain("private async Task SaveBackToSyncAsync()");
         source.Should().Contain("await SaveToSyncCallbackAsync();");
-        source.Should().Contain("private void ReturnToSync()");
+        source.Should().NotContain("private void ReturnToSync()");
+        source.Should().NotContain("Navigation.NavigateTo(_syncLaunchOptions.ReturnUrl");
     }
 
     [Fact]
@@ -247,7 +251,9 @@ public sealed class WorkbenchRenderBoundaryTests
         source.Should().Contain("Open local DXF/DWG...");
         source.Should().Contain("Download DXF");
         source.Should().Contain("WorkbenchCommandId.SendToSync");
-        source.Should().Contain("WorkbenchCommandId.ReturnToSync");
+        source.Should().Contain("Save to Sync");
+        source.Should().NotContain("WorkbenchCommandId.ReturnToSync");
+        source.Should().NotContain("Return to Sync");
         source.Should().Contain("WorkbenchCommandId.SaveDxf");
         source.Should().Contain("WorkbenchCommandId.BoundsToOrigin");
         source.Should().Contain("WorkbenchCommandId.VectorToX");

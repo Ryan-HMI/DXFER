@@ -33,11 +33,7 @@
                         <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SaveDxf)">Download DXF</button>
                         @if (IsSyncLaunch)
                         {
-                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SendToSync)">Send to Sync</button>
-                        }
-                        @if (CanReturnToSync)
-                        {
-                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.ReturnToSync)">Return to Sync</button>
+                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SendToSync)">Save to Sync</button>
                         }
                     </div>
                 </div>
@@ -118,8 +114,6 @@
     private string AppMenuClass => _isAppMenuOpen ? "app-menu app-menu-open" : "app-menu";
 
     private bool IsSyncLaunch => _syncLaunchOptions.IsCallbackConfigured || _syncLaunchOptions.HasInput;
-
-    private bool CanReturnToSync => !string.IsNullOrWhiteSpace(_syncLaunchOptions.ReturnUrl);
 
     protected override void OnInitialized()
     {
