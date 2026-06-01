@@ -41,6 +41,13 @@
     {
         <section class="dxfer-sync-control-bar" aria-label="Sync connection status">
             <span class="@SyncCallbackStateClass">@SyncCallbackStateText</span>
+            <button type="button"
+                    class="dxfer-sync-send-button"
+                    title="@SyncSaveButtonTitle"
+                    disabled="@(!CanSaveBackToSync)"
+                    @onclick="() => InvokeWorkbenchCommand(WorkbenchCommandId.SendToSync)">
+                @SyncSaveButtonText
+            </button>
         </section>
     }
 

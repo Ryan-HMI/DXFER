@@ -45,12 +45,13 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
+    gap: 0.45rem;
     padding: 0;
     color: #dce7ed;
     background: transparent;
     border: 0;
     box-sizing: border-box;
-    pointer-events: none;
+    pointer-events: auto;
 }
 
 .dxfer-sync-state,
@@ -75,6 +76,35 @@
 .dxfer-sync-state {
     font-weight: 700;
     text-transform: uppercase;
+}
+
+.dxfer-sync-send-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.75rem;
+    padding: 0 0.7rem;
+    color: #f8fafc;
+    background: #a11b21;
+    border: 1px solid #e03a42;
+    border-radius: 4px;
+    font-size: 0.76rem;
+    font-weight: 700;
+    line-height: 1;
+    text-transform: uppercase;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+    cursor: pointer;
+}
+
+.dxfer-sync-send-button:hover:not(:disabled) {
+    background: #cc2229;
+}
+
+.dxfer-sync-send-button:disabled {
+    color: #8794a0;
+    background: #1d252d;
+    border-color: #34414b;
+    cursor: not-allowed;
 }
 
 .dxfer-sync-state-ready {

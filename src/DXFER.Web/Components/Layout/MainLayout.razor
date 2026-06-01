@@ -4,6 +4,7 @@
 @using DXFER.Core.Sync
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Web
 @inject NavigationManager Navigation
 @inject WorkbenchMenuCommandService MenuCommands
 
@@ -28,9 +29,11 @@
                                 <span>Open local DXF/DWG...</span>
                                 <InputFile OnChange="OpenHeaderFileAsync"
                                            accept=".dxf,.dwg"
-                                           class="app-menu-file-input" />
-                            </label>
-                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SaveDxf)">Download DXF</button>
+	                                           class="app-menu-file-input" />
+	                            </label>
+	                            <button type="button" class="app-menu-command" @onclick="OpenSyncConnectDialog">Connect to Sync...</button>
+	                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SaveDxf)">Download DXF</button>
+	                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SendToSync)">Save to Sync</button>
                         </div>
                     </div>
                     <div class="app-menu-group">
@@ -62,14 +65,10 @@
                                 <span>Open local DXF/DWG...</span>
                                 <InputFile OnChange="OpenHeaderFileAsync"
                                            accept=".dxf,.dwg"
-                                           class="app-menu-file-input" />
-                            </label>
-                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SaveDxf)">Download DXF</button>
-                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SendToSync)">Send to Sync</button>
-                            @if (CanReturnToSync)
-                            {
-                                <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.ReturnToSync)">Return to Sync</button>
-                            }
+	                                           class="app-menu-file-input" />
+	                            </label>
+	                            <button type="button" class="app-menu-command" @onclick="OpenSyncConnectDialog">Connect to Sync...</button>
+	                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SaveDxf)">Download DXF</button>
                         </div>
                     </div>
                     <div class="app-menu-group">
@@ -155,6 +154,36 @@
     </main>
 </div>
 
+@if (_isSyncConnectOpen)
+{
+    <div class="app-modal-backdrop" @onclick="CloseSyncConnectDialog">
+        <section class="app-modal-card" role="dialog" aria-modal="true" aria-labelledby="sync-connect-title" @onclick:stopPropagation="true">
+            <header class="app-modal-header">
+                <h2 id="sync-connect-title">Connect to Sync</h2>
+                <button type="button" class="app-modal-close" aria-label="Close" @onclick="CloseSyncConnectDialog">x</button>
+            </header>
+            <div class="app-modal-body">
+                <label class="app-field">
+                    <span>Sync DXFER launch link</span>
+                    <input type="url"
+                           value="@_syncConnectUrl"
+                           @oninput="OnSyncConnectUrlInput"
+                           @onkeydown="HandleSyncConnectKeyDown"
+                           placeholder="https://sync.harrisonmetals.com/api/engineering/artifact/123/dxfer-launch" />
+                </label>
+                @if (!string.IsNullOrWhiteSpace(_syncConnectError))
+                {
+                    <div class="app-field-error">@_syncConnectError</div>
+                }
+            </div>
+            <footer class="app-modal-actions">
+                <button type="button" class="app-secondary-action" @onclick="CloseSyncConnectDialog">Cancel</button>
+                <button type="button" class="app-primary-action" @onclick="ConnectToSyncAsync">Connect</button>
+            </footer>
+        </section>
+    </div>
+}
+
 <div id="blazor-error-ui">
     An unhandled error has occurred.
     <a href="" class="reload">Reload</a>
@@ -166,13 +195,14 @@
 @code {
     private bool _isAppMenuOpen;
     private bool _isHotkeyOptionsOpen;
+    private bool _isSyncConnectOpen;
+    private string _syncConnectUrl = string.Empty;
+    private string? _syncConnectError;
     private SyncEditLaunchOptions _syncLaunchOptions = SyncEditLaunchOptions.Empty;
 
     private string AppMenuClass => _isAppMenuOpen ? "app-menu app-menu-open" : "app-menu";
 
     private bool IsSyncLaunch => _syncLaunchOptions.IsCallbackConfigured || _syncLaunchOptions.HasInput;
-
-    private bool CanReturnToSync => !string.IsNullOrWhiteSpace(_syncLaunchOptions.ReturnUrl);
 
     protected override void OnInitialized()
     {
@@ -196,6 +226,65 @@
     }
 
     private void CloseHotkeyOptions() => _isHotkeyOptionsOpen = false;
+
+    private void OpenSyncConnectDialog()
+    {
+        _isAppMenuOpen = false;
+        _syncConnectError = null;
+        _isSyncConnectOpen = true;
+    }
+
+    private void CloseSyncConnectDialog()
+    {
+        _isSyncConnectOpen = false;
+        _syncConnectError = null;
+    }
+
+    private void OnSyncConnectUrlInput(ChangeEventArgs args)
+    {
+        _syncConnectUrl = args.Value?.ToString() ?? string.Empty;
+        _syncConnectError = null;
+    }
+
+    private async Task HandleSyncConnectKeyDown(KeyboardEventArgs args)
+    {
+        if (string.Equals(args.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            await ConnectToSyncAsync();
+        }
+        else if (string.Equals(args.Key, "Escape", StringComparison.OrdinalIgnoreCase))
+        {
+            CloseSyncConnectDialog();
+        }
+    }
+
+    private Task ConnectToSyncAsync()
+    {
+        var value = _syncConnectUrl.Trim();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            _syncConnectError = "Paste the launch link generated from Sync.";
+            return Task.CompletedTask;
+        }
+
+        string target;
+        if (Uri.TryCreate(value, UriKind.Absolute, out var absoluteUri))
+        {
+            target = absoluteUri.ToString();
+        }
+        else if (value.StartsWith("/", StringComparison.Ordinal))
+        {
+            target = Navigation.ToAbsoluteUri(value).ToString();
+        }
+        else
+        {
+            _syncConnectError = "Use the full Sync DXFER launch link.";
+            return Task.CompletedTask;
+        }
+
+        Navigation.NavigateTo(target, forceLoad: true);
+        return Task.CompletedTask;
+    }
 
     private async Task InvokeMenuCommand(WorkbenchCommandId commandId)
     {

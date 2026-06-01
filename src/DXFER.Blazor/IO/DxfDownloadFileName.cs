@@ -4,7 +4,8 @@ public static class DxfDownloadFileName
 {
     public static string FromSourceName(string? sourceName)
     {
-        var fileName = Path.GetFileName(sourceName);
+        var normalizedSourceName = sourceName?.Replace('\\', '/');
+        var fileName = Path.GetFileName(normalizedSourceName);
         if (string.IsNullOrWhiteSpace(fileName))
         {
             return "drawing.dxf";

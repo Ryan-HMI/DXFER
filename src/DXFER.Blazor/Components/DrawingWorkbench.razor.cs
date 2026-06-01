@@ -178,9 +178,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         && _syncLaunchOptions.IsCallbackConfigured
         && !_isSyncSaveInFlight;
 
-    private bool CanReturnToSync =>
-        !string.IsNullOrWhiteSpace(_syncLaunchOptions.ReturnUrl);
-
     private string SyncCallbackStateText =>
         _syncLaunchOptions.IsCallbackConfigured ? "Sync connection ready" : "Sync connection missing";
 
@@ -205,13 +202,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             : _lastAutoNormalization is null ? "Manual edit" : "Auto-normalized";
 
     private string SyncSaveButtonText =>
-        _isSyncSaveInFlight ? "Sending..." : "Send to Sync";
+        _isSyncSaveInFlight ? "Saving..." : "Save to Sync";
 
     private string SyncSaveButtonTitle =>
         CanSaveBackToSync
-            ? "Send normalized DXF and geometry metadata to Sync."
+            ? "Save the normalized DXF and geometry metadata back to Sync."
             : _syncLaunchOptions.IsCallbackConfigured
-                ? "Open a DXF before sending to Sync."
+                ? "Open a DXF before saving back to Sync."
                 : "Sync launch fields are missing.";
 
     private bool CanAddSplinePoint =>
@@ -246,8 +243,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private IReadOnlyList<WorkbenchToolGroup> ProductionToolGroups => new[]
     {
+        new WorkbenchToolGroup("Edit", EditCommands, "History"),
         new WorkbenchToolGroup("Cleanup", SyncCleanupCommands, "Prep"),
         new WorkbenchToolGroup("Grain", GrainCommands, "Mark")
+    };
+
+    private IReadOnlyList<WorkbenchToolCommand> EditCommands => new[]
+    {
+        Command(WorkbenchCommandId.Undo, null, CadIconName.Undo, "Undo", !CanUndo),
+        Command(WorkbenchCommandId.Redo, null, CadIconName.Redo, "Redo", !CanRedo)
     };
 
     private IReadOnlyList<WorkbenchToolCommand> SyncCleanupCommands => new[]
@@ -681,9 +685,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 break;
             case WorkbenchCommandId.SendToSync:
                 await SaveBackToSyncAsync();
-                break;
-            case WorkbenchCommandId.ReturnToSync:
-                ReturnToSync();
                 break;
             case WorkbenchCommandId.Measure:
                 ActivateTool(WorkbenchTool.Measure, "Measure command active. Press Esc to return to selection.");
@@ -2133,16 +2134,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         await SaveToSyncCallbackAsync();
     }
 
-    private void ReturnToSync()
-    {
-        if (!CanReturnToSync)
-        {
-            return;
-        }
-
-        Navigation.NavigateTo(_syncLaunchOptions.ReturnUrl!, forceLoad: true);
-    }
-
     private async Task DownloadDxfFilesAsync()
     {
         var exportText = DxfDocumentWriter.Write(_document, CreateDxfWriteOptions());
@@ -2202,10 +2193,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
             await SyncCallbackClient.PostSaveAsync(_syncLaunchOptions, package);
             _status = $"Sent normalized DXF to Sync job {_syncLaunchOptions.JobId}.";
-            if (!string.IsNullOrWhiteSpace(_syncLaunchOptions.ReturnUrl))
-            {
-                Navigation.NavigateTo(_syncLaunchOptions.ReturnUrl, forceLoad: true);
-            }
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
         {
@@ -3297,7 +3284,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchCommandId.SplitAtPoint => "Split at point",
         WorkbenchCommandId.AddSplinePoint => "Add spline point",
         WorkbenchCommandId.SaveDxf => "Save DXF",
-        WorkbenchCommandId.SendToSync => "Send to Sync",
+        WorkbenchCommandId.SendToSync => "Save to Sync",
         WorkbenchCommandId.ReturnToSync => "Return to Sync",
         WorkbenchCommandId.LinearPattern => "Linear pattern",
         WorkbenchCommandId.CircularPattern => "Circular pattern",
@@ -3445,4 +3432,3 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private readonly record struct PendingCircleSplit(string CircleEntityId, Point2 FirstPoint);
 }
-
