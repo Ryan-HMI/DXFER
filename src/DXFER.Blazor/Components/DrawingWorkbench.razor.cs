@@ -24,10 +24,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 {
     private const string HotkeyModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js?v=20260506-all-hotkey-keys";
     private const string DownloadModulePath = "./_content/DXFER.Blazor/downloadFile.js?v=20260504-save";
+    private const string SyncWindowModulePath = "./_content/DXFER.Blazor/syncWindow.js?v=20260601-close-after-save";
     private const long MaxDxfFileSize = 25 * 1024 * 1024;
     private const string SegmentKeySeparator = "|segment|";
     private const string PointKeySeparator = "|point|";
     private const int DefaultPatternInstanceCount = 3;
+    private const int SyncCloseDelayMilliseconds = 250;
 
     private DrawingCanvas? _canvas;
     private DrawingDocument _document = CreateBlankDocument();
@@ -61,6 +63,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private IJSObjectReference? _hotkeyModule;
     private IJSObjectReference? _hotkeyListener;
     private IJSObjectReference? _downloadModule;
+    private IJSObjectReference? _syncWindowModule;
     private DotNetObjectReference<DrawingWorkbench>? _hotkeyDotNetReference;
 
     [Inject]
@@ -142,6 +145,17 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             try
             {
                 await _downloadModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+
+        if (_syncWindowModule is not null)
+        {
+            try
+            {
+                await _syncWindowModule.DisposeAsync();
             }
             catch (JSDisconnectedException)
             {
@@ -2191,6 +2205,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _status = "Sending normalized DXF to Sync.";
         await InvokeAsync(StateHasChanged);
 
+        var shouldCloseAfterSuccessfulSave = false;
+
         try
         {
             var exportText = DxfDocumentWriter.Write(_document, CreateDxfWriteOptions());
@@ -2214,6 +2230,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
             await SyncCallbackClient.PostSaveAsync(_syncLaunchOptions, package);
             _status = $"Sent normalized DXF to Sync job {_syncLaunchOptions.JobId}.";
+            shouldCloseAfterSuccessfulSave = true;
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
         {
@@ -2226,6 +2243,31 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         finally
         {
             _isSyncSaveInFlight = false;
+            await InvokeAsync(StateHasChanged);
+        }
+
+        if (shouldCloseAfterSuccessfulSave)
+        {
+            await TryCloseAfterSuccessfulSyncSaveAsync();
+        }
+    }
+
+    private async Task TryCloseAfterSuccessfulSyncSaveAsync()
+    {
+        try
+        {
+            await Task.Delay(SyncCloseDelayMilliseconds);
+            _syncWindowModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", SyncWindowModulePath);
+            var closed = await _syncWindowModule.InvokeAsync<bool>("closeLaunchedSyncTab");
+            if (!closed)
+            {
+                _status = $"Sent normalized DXF to Sync job {_syncLaunchOptions.JobId}. Close this DXFER tab when done.";
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            _status = $"Sent normalized DXF to Sync job {_syncLaunchOptions.JobId}. Close this DXFER tab when done.";
             await InvokeAsync(StateHasChanged);
         }
     }

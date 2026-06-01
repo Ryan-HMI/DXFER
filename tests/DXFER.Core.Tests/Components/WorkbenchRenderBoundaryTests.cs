@@ -153,6 +153,8 @@ public sealed class WorkbenchRenderBoundaryTests
         source.Should().Contain("_isSyncSaveInFlight");
         source.Should().Contain("private async Task SaveBackToSyncAsync()");
         source.Should().Contain("await SaveToSyncCallbackAsync();");
+        source.Should().Contain("TryCloseAfterSuccessfulSyncSaveAsync");
+        source.Should().Contain("closeLaunchedSyncTab");
         source.Should().NotContain("private void ReturnToSync()");
         source.Should().NotContain("Navigation.NavigateTo(_syncLaunchOptions.ReturnUrl");
     }
