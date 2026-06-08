@@ -13,6 +13,8 @@ public static class DxfDocumentReader
 
         var pairs = ReadPairs(dxfText).ToArray();
         var entities = new List<DrawingEntity>();
+        var entityStyles = new Dictionary<string, DxfEntityStyle>(StringComparer.Ordinal);
+        var layerStyles = ReadLayerStyles(pairs);
         var unsupportedEntityCounts = new SortedDictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var generatedId = 1;
 
@@ -31,6 +33,7 @@ public static class DxfDocumentReader
                         && TryCreateLine(linePairs, CreateId(linePairs, "line", ref generatedId), out var line))
                     {
                         entities.Add(line);
+                        AddEntityStyle(entityStyles, line.Id, linePairs, layerStyles);
                         index = nextLineIndex - 1;
                     }
 
@@ -41,6 +44,7 @@ public static class DxfDocumentReader
                         && TryCreateCircle(circlePairs, CreateId(circlePairs, "circle", ref generatedId), out var circle))
                     {
                         entities.Add(circle);
+                        AddEntityStyle(entityStyles, circle.Id, circlePairs, layerStyles);
                         index = nextCircleIndex - 1;
                     }
 
@@ -51,6 +55,7 @@ public static class DxfDocumentReader
                         && TryCreateArc(arcPairs, CreateId(arcPairs, "arc", ref generatedId), out var arc))
                     {
                         entities.Add(arc);
+                        AddEntityStyle(entityStyles, arc.Id, arcPairs, layerStyles);
                         index = nextArcIndex - 1;
                     }
 
@@ -61,6 +66,7 @@ public static class DxfDocumentReader
                         && TryCreateEllipse(ellipsePairs, CreateId(ellipsePairs, "ellipse", ref generatedId), out var ellipse))
                     {
                         entities.Add(ellipse);
+                        AddEntityStyle(entityStyles, ellipse.Id, ellipsePairs, layerStyles);
                         index = nextEllipseIndex - 1;
                     }
 
@@ -71,6 +77,7 @@ public static class DxfDocumentReader
                         && TryCreatePoint(pointPairs, CreateId(pointPairs, "point", ref generatedId), out var point))
                     {
                         entities.Add(point);
+                        AddEntityStyle(entityStyles, point.Id, pointPairs, layerStyles);
                         index = nextPointIndex - 1;
                     }
 
@@ -81,6 +88,7 @@ public static class DxfDocumentReader
                         && TryCreateLightweightPolyline(polylinePairs, CreateId(polylinePairs, "polyline", ref generatedId), out var polyline))
                     {
                         entities.Add(polyline);
+                        AddEntityStyle(entityStyles, polyline.Id, polylinePairs, layerStyles);
                         index = nextPolylineIndex - 1;
                     }
 
@@ -100,6 +108,7 @@ public static class DxfDocumentReader
                         && TryCreateSpline(splinePairs, CreateId(splinePairs, "spline", ref generatedId), out var spline))
                     {
                         entities.Add(spline);
+                        AddEntityStyle(entityStyles, spline.Id, splinePairs, layerStyles);
                         index = nextSplineIndex - 1;
                     }
 
@@ -123,7 +132,8 @@ public static class DxfDocumentReader
         var metadata = DrawingDocumentMetadata.Empty with
         {
             Warnings = CreateImportWarnings(unsupportedEntityCounts),
-            UnsupportedEntityCounts = unsupportedEntityCounts
+            UnsupportedEntityCounts = unsupportedEntityCounts,
+            EntityStyles = entityStyles
         };
 
         return new DrawingDocument(
@@ -167,6 +177,70 @@ public static class DxfDocumentReader
                 or "ENTITIES" or "OBJECTS" or "CLASSES" or "VERTEX" or "SEQEND" => false,
             _ => true
         };
+
+    private static IReadOnlyDictionary<string, DxfEntityStyle> ReadLayerStyles(IReadOnlyList<DxfPair> pairs)
+    {
+        var styles = new Dictionary<string, DxfEntityStyle>(StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < pairs.Count; index++)
+        {
+            if (pairs[index].Code != 0 ||
+                !pairs[index].Value.Trim().Equals("LAYER", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!TryReadEntityPairs(pairs, index + 1, out var layerPairs, out var nextIndex))
+            {
+                continue;
+            }
+
+            var layerName = ReadString(layerPairs, 2);
+            if (string.IsNullOrWhiteSpace(layerName))
+            {
+                index = nextIndex - 1;
+                continue;
+            }
+
+            styles[layerName] = new DxfEntityStyle(
+                layerName,
+                NormalizeLineTypeName(ReadString(layerPairs, 6), layerName),
+                TryReadInt(layerPairs, 62, out var colorNumber) ? colorNumber : null);
+            index = nextIndex - 1;
+        }
+
+        return styles;
+    }
+
+    private static void AddEntityStyle(
+        IDictionary<string, DxfEntityStyle> entityStyles,
+        EntityId entityId,
+        IReadOnlyList<DxfPair> entityPairs,
+        IReadOnlyDictionary<string, DxfEntityStyle> layerStyles)
+    {
+        var layerName = ReadString(entityPairs, 8);
+        var lineTypeName = ReadString(entityPairs, 6);
+        var colorNumber = TryReadInt(entityPairs, 62, out var entityColorNumber) ? entityColorNumber : (int?)null;
+
+        DxfEntityStyle? layerStyle = null;
+        if (!string.IsNullOrWhiteSpace(layerName))
+        {
+            layerStyles.TryGetValue(layerName, out layerStyle);
+        }
+
+        var resolvedLineType = ResolveLineTypeName(layerName, lineTypeName, layerStyle?.LineTypeName);
+        var resolvedColorNumber = colorNumber ?? layerStyle?.ColorNumber;
+        if (string.IsNullOrWhiteSpace(layerName) &&
+            string.IsNullOrWhiteSpace(resolvedLineType) &&
+            resolvedColorNumber is null)
+        {
+            return;
+        }
+
+        entityStyles[entityId.Value] = new DxfEntityStyle(
+            string.IsNullOrWhiteSpace(layerName) ? null : layerName.Trim(),
+            resolvedLineType,
+            resolvedColorNumber);
+    }
 
     private static bool TryReadEntityPairs(
         IReadOnlyList<DxfPair> pairs,
@@ -440,6 +514,44 @@ public static class DxfDocumentReader
 
         value = default;
         return false;
+    }
+
+    private static string? ReadString(IReadOnlyList<DxfPair> pairs, int code)
+    {
+        var value = pairs.FirstOrDefault(item => item.Code == code)?.Value;
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static bool TryReadInt(IReadOnlyList<DxfPair> pairs, int code, out int value)
+    {
+        var rawValue = pairs.FirstOrDefault(item => item.Code == code)?.Value;
+        return int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+    }
+
+    private static string? ResolveLineTypeName(string? layerName, string? entityLineTypeName, string? layerLineTypeName)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(entityLineTypeName) ? null : entityLineTypeName.Trim();
+        if (trimmed is not null &&
+            !trimmed.Equals("BYLAYER", StringComparison.OrdinalIgnoreCase) &&
+            !trimmed.Equals("BYBLOCK", StringComparison.OrdinalIgnoreCase))
+        {
+            return NormalizeLineTypeName(trimmed, layerName);
+        }
+
+        return NormalizeLineTypeName(layerLineTypeName, layerName);
+    }
+
+    private static string? NormalizeLineTypeName(string? lineTypeName, string? layerName)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(lineTypeName) ? null : lineTypeName.Trim();
+        if (!string.IsNullOrWhiteSpace(layerName) &&
+            layerName.Contains("BEND", StringComparison.OrdinalIgnoreCase) &&
+            (trimmed is null || trimmed.Equals("CONTINUOUS", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "DASHED";
+        }
+
+        return trimmed;
     }
 
     private static bool TryReadDouble(string value, out double result) =>

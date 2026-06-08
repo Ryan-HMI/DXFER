@@ -22,6 +22,9 @@ public sealed record DrawingDocumentMetadata
 
     public IReadOnlyDictionary<string, int> UnsupportedEntityCounts { get; init; } =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyDictionary<string, DxfEntityStyle> EntityStyles { get; init; } =
+        new Dictionary<string, DxfEntityStyle>(StringComparer.Ordinal);
 }
 
 public enum DrawingUnits

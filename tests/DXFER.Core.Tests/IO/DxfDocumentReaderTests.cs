@@ -1,6 +1,7 @@
 using DXFER.CadIO;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
+using DXFER.Core.Operations;
 using FluentAssertions;
 
 namespace DXFER.Core.Tests.IO;
@@ -305,6 +306,87 @@ EOF
         {
             spline.GetSamplePoints().Should().Contain(point);
         }
+    }
+
+    [Fact]
+    public void PreservesBendLayerDashedLineTypeThroughNormalizeAndWrite()
+    {
+        const string dxf = """
+0
+SECTION
+2
+TABLES
+0
+TABLE
+2
+LAYER
+70
+1
+0
+LAYER
+2
+BEND
+70
+0
+62
+2
+6
+DASHED
+0
+ENDTAB
+0
+ENDSEC
+0
+SECTION
+2
+ENTITIES
+0
+LINE
+5
+AA1
+8
+BEND
+10
+0
+20
+0
+11
+10
+21
+0
+0
+LINE
+5
+AA2
+8
+CUT
+10
+0
+20
+1
+11
+10
+21
+1
+0
+ENDSEC
+0
+EOF
+""";
+
+        var document = DxfDocumentReader.Read(dxf);
+        var normalized = DrawingNormalizationService.AutoNormalize(document).NormalizedDocument;
+        var output = DxfDocumentWriter.Write(normalized).Replace("\r\n", "\n", StringComparison.Ordinal);
+        var roundTripped = DxfDocumentReader.Read(output);
+        var roundTrippedBendStyle = roundTripped.Metadata.EntityStyles.Values
+            .Single(style => string.Equals(style.LayerName, "BEND", StringComparison.OrdinalIgnoreCase));
+
+        document.Metadata.EntityStyles["line-AA1"].LayerName.Should().Be("BEND");
+        document.Metadata.EntityStyles["line-AA1"].LineTypeName.Should().Be("DASHED");
+        output.Should().Contain("2\nDASHED");
+        output.Should().Contain("8\nBEND");
+        output.Should().Contain("6\nDASHED");
+        roundTrippedBendStyle.LineTypeName.Should().Be("DASHED");
     }
 
     [Fact]
