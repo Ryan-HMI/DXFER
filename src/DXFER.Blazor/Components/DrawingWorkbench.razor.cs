@@ -188,8 +188,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         GetWholeEntityIdsForOperations().Any();
 
     private bool CanSaveBackToSync =>
-        HasDocument
-        && _syncLaunchOptions.IsCallbackConfigured
+        _syncLaunchOptions.IsCallbackConfigured
         && !_isSyncSaveInFlight;
 
     private string SyncCallbackStateText =>
@@ -220,10 +219,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private string SyncSaveButtonTitle =>
         CanSaveBackToSync
-            ? "Save the normalized DXF and geometry metadata back to Sync."
-            : _syncLaunchOptions.IsCallbackConfigured
-                ? "Open a DXF before saving back to Sync."
-                : "Sync launch fields are missing.";
+            ? HasDocument
+                ? "Save the normalized DXF and geometry metadata back to Sync."
+                : "Sync connection is ready, but no DXF is loaded. Click to show the current load status."
+            : "Sync launch fields are missing.";
 
     private bool CanAddSplinePoint =>
         GetSelectedWholeEntities()
@@ -270,6 +269,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private IReadOnlyList<WorkbenchToolCommand> SyncCleanupCommands => new[]
     {
+        Command(WorkbenchCommandId.FitExtents, null, CadIconName.Fit, "Fit", !HasDocument, tooltip: "Fit all loaded geometry in the viewport."),
         Command(WorkbenchCommandId.AutoCleanup, null, CadIconName.AutoCleanup, "Auto", !HasDocument, tooltip: "Find the minimum-area rotation with the long side on X, then move bounds minimum to origin."),
         Command(WorkbenchCommandId.Rotate, WorkbenchTool.Rotate, CadIconName.Rotate, "Free rotate", !CanModifySelectedGeometry, tooltip: "Free-rotate selected geometry around a picked center."),
         Command(WorkbenchCommandId.Rotate90Clockwise, null, CadIconName.Rotate90Clockwise, "Rotate 90 CW", !HasDocument),
@@ -1205,8 +1205,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _undoStack.Push(_document);
         _redoStack.Clear();
         _document = normalization.NormalizedDocument;
+        _documentFitToken++;
         _lastAutoNormalization = normalization;
         _manualOverride = false;
+        ResetSelection();
         _status = $"Auto cleanup applied: minimum-area rotation, long side on X, bounds min to origin. "
             + $"Rotation {FormatNumber(normalization.RotationDegrees)} deg, "
             + $"bounds {FormatSize(normalization.NormalizedBounds.Width, normalization.NormalizedBounds.Height)}.";

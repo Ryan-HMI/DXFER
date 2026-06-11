@@ -178,6 +178,48 @@ public sealed class WorkbenchRenderBoundaryTests
     }
 
     [Fact]
+    public void WorkbenchSyncSaveButtonStaysClickableWhenCallbackIsReady()
+    {
+        var workbench = FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs");
+        var source = File.ReadAllText(workbench);
+        var propertyStart = source.IndexOf("private bool CanSaveBackToSync =>", StringComparison.Ordinal);
+        var propertyEnd = source.IndexOf("    private string SyncCallbackStateText", StringComparison.Ordinal);
+        var saveStart = source.IndexOf("private async Task SaveToSyncCallbackAsync()", StringComparison.Ordinal);
+        var saveEnd = source.IndexOf("    private async Task TryCloseAfterSuccessfulSyncSaveAsync()", StringComparison.Ordinal);
+
+        propertyStart.Should().BeGreaterThanOrEqualTo(0);
+        propertyEnd.Should().BeGreaterThan(propertyStart);
+        saveStart.Should().BeGreaterThanOrEqualTo(0);
+        saveEnd.Should().BeGreaterThan(saveStart);
+
+        var propertyBody = source[propertyStart..propertyEnd];
+        var saveBody = source[saveStart..saveEnd];
+
+        propertyBody.Should().Contain("_syncLaunchOptions.IsCallbackConfigured");
+        propertyBody.Should().Contain("!_isSyncSaveInFlight");
+        propertyBody.Should().NotContain("HasDocument",
+            "the button should remain clickable for ready Sync launches so a failed/missing document can report a status instead of looking inert");
+        saveBody.Should().Contain("if (!HasDocument)");
+    }
+
+    [Fact]
+    public void WorkbenchAutoCleanupRefitsCanvasAfterNormalization()
+    {
+        var workbench = FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs");
+        var source = File.ReadAllText(workbench);
+        var methodStart = source.IndexOf("private void ApplyAutoCleanup()", StringComparison.Ordinal);
+        var methodEnd = source.IndexOf("    private void DeleteSelectedGeometry()", StringComparison.Ordinal);
+
+        methodStart.Should().BeGreaterThanOrEqualTo(0);
+        methodEnd.Should().BeGreaterThan(methodStart);
+        var methodBody = source[methodStart..methodEnd];
+
+        methodBody.Should().Contain("DrawingNormalizationService.AutoNormalize(_document)");
+        methodBody.Should().Contain("_documentFitToken++;",
+            "auto-normalize can move distant geometry to origin and must refit the canvas immediately");
+    }
+
+    [Fact]
     public void WorkbenchSyncSaveControlsDoNotOverlapCommandBar()
     {
         var css = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.css"));
@@ -209,7 +251,10 @@ public sealed class WorkbenchRenderBoundaryTests
         productionGroups.Should().Contain("new WorkbenchToolGroup(\"Grain\", GrainCommands, \"Mark\"");
         productionGroups.Should().Contain("private IReadOnlyList<WorkbenchToolCommand> SyncCleanupCommands => new[]");
         productionGroups.Should().Contain("private IReadOnlyList<WorkbenchToolCommand> GrainCommands => new[]");
+        productionGroups.Should().Contain("Command(WorkbenchCommandId.FitExtents");
         productionGroups.Should().Contain("Command(WorkbenchCommandId.AutoCleanup");
+        productionGroups.Should().Contain("Command(WorkbenchCommandId.AutoCleanup, null, CadIconName.AutoCleanup, \"Auto\", !HasDocument");
+        productionGroups.Should().NotContain("Command(WorkbenchCommandId.AutoCleanup, null, CadIconName.AutoCleanup, \"Auto\", !CanModifySelectedGeometry");
         productionGroups.Should().Contain("CadIconName.AutoCleanup");
         productionGroups.Should().Contain("Command(WorkbenchCommandId.Rotate, WorkbenchTool.Rotate");
         productionGroups.Should().Contain("Command(WorkbenchCommandId.BoundsToOrigin");
