@@ -20,17 +20,19 @@ public sealed record CanvasDocumentDto(
     public static CanvasDocumentDto FromDocument(DrawingDocument document)
     {
         var bounds = document.GetBounds();
-        var entities = document.Entities.Select(FromEntity).ToArray();
+        var entities = document.Entities.Select(entity => FromEntity(entity, document.Metadata)).ToArray();
         var dimensions = document.Dimensions.Select(dimension => FromDimension(document, dimension)).ToArray();
         var constraints = document.Constraints.Select(FromConstraint).ToArray();
 
         return new CanvasDocumentDto(entities, FromBounds(bounds), dimensions, constraints);
     }
 
-    private static CanvasEntityDto FromEntity(DrawingEntity entity)
+    private static CanvasEntityDto FromEntity(DrawingEntity entity, DrawingDocumentMetadata metadata)
     {
         var id = entity.Id.Value;
         var kind = entity.Kind.ToLowerInvariant();
+        metadata.EntityStyles.TryGetValue(id, out var style);
+        var lineTypeName = style?.LineTypeName;
 
         return entity switch
         {
@@ -42,7 +44,8 @@ public sealed record CanvasDocumentDto(
                 null,
                 null,
                 null,
-                line.IsConstruction),
+                line.IsConstruction,
+                LineTypeName: lineTypeName),
             CircleEntity circle => new CanvasEntityDto(
                 id,
                 kind,
@@ -51,7 +54,8 @@ public sealed record CanvasDocumentDto(
                 circle.Radius,
                 null,
                 null,
-                circle.IsConstruction),
+                circle.IsConstruction,
+                LineTypeName: lineTypeName),
             ArcEntity arc => new CanvasEntityDto(
                 id,
                 kind,
@@ -60,7 +64,8 @@ public sealed record CanvasDocumentDto(
                 arc.Radius,
                 arc.StartAngleDegrees,
                 arc.EndAngleDegrees,
-                arc.IsConstruction),
+                arc.IsConstruction,
+                LineTypeName: lineTypeName),
             EllipseEntity ellipse => new CanvasEntityDto(
                 id,
                 kind,
@@ -71,7 +76,8 @@ public sealed record CanvasDocumentDto(
                 ellipse.EndParameterDegrees,
                 ellipse.IsConstruction,
                 FromPoint(ellipse.MajorAxisEndPoint),
-                ellipse.MinorRadiusRatio),
+                ellipse.MinorRadiusRatio,
+                LineTypeName: lineTypeName),
             PointEntity point => new CanvasEntityDto(
                 id,
                 kind,
@@ -80,7 +86,8 @@ public sealed record CanvasDocumentDto(
                 null,
                 null,
                 null,
-                point.IsConstruction),
+                point.IsConstruction,
+                LineTypeName: lineTypeName),
             PolylineEntity polyline => new CanvasEntityDto(
                 id,
                 kind,
@@ -89,7 +96,8 @@ public sealed record CanvasDocumentDto(
                 null,
                 null,
                 null,
-                polyline.IsConstruction),
+                polyline.IsConstruction,
+                LineTypeName: lineTypeName),
             PolygonEntity polygon => new CanvasEntityDto(
                 id,
                 kind,
@@ -103,7 +111,8 @@ public sealed record CanvasDocumentDto(
                 null,
                 polygon.RotationAngleDegrees,
                 polygon.NormalizedSideCount,
-                polygon.Circumscribed),
+                polygon.Circumscribed,
+                LineTypeName: lineTypeName),
             SplineEntity spline => new CanvasEntityDto(
                 id,
                 kind,
@@ -118,7 +127,8 @@ public sealed record CanvasDocumentDto(
                     ? spline.FitPoints.Select(FromPoint).ToArray()
                     : null,
                 StartTangentHandle: spline.StartTangentHandle is { } startTangentHandle ? FromPoint(startTangentHandle) : null,
-                EndTangentHandle: spline.EndTangentHandle is { } endTangentHandle ? FromPoint(endTangentHandle) : null),
+                EndTangentHandle: spline.EndTangentHandle is { } endTangentHandle ? FromPoint(endTangentHandle) : null,
+                LineTypeName: lineTypeName),
             _ => new CanvasEntityDto(
                 id,
                 kind,
@@ -127,7 +137,8 @@ public sealed record CanvasDocumentDto(
                 null,
                 null,
                 null,
-                entity.IsConstruction)
+                entity.IsConstruction,
+                LineTypeName: lineTypeName)
         };
     }
 
@@ -192,7 +203,8 @@ public sealed record CanvasEntityDto(
     [property: JsonPropertyName("controlPoints")] IReadOnlyList<CanvasPointDto>? ControlPoints = null,
     [property: JsonPropertyName("fitPoints")] IReadOnlyList<CanvasPointDto>? FitPoints = null,
     [property: JsonPropertyName("startTangentHandle")] CanvasPointDto? StartTangentHandle = null,
-    [property: JsonPropertyName("endTangentHandle")] CanvasPointDto? EndTangentHandle = null);
+    [property: JsonPropertyName("endTangentHandle")] CanvasPointDto? EndTangentHandle = null,
+    [property: JsonPropertyName("lineTypeName")] string? LineTypeName = null);
 
 public sealed record CanvasPointDto(
     [property: JsonPropertyName("x")] double X,

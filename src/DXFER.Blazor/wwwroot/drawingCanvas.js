@@ -666,7 +666,7 @@ function draw(state) {
     drawEntity(state, entity, {
       strokeStyle: affectedByDiagnostics ? "#f87171" : entity.isConstruction ? "#64748b" : "#94a3b8",
       lineWidth: affectedByDiagnostics ? 2.15 : entity.isConstruction ? 1.1 : 1.5,
-      lineDash: entity.isConstruction ? [8, 5] : []
+      lineDash: getEntityRenderLineDash(entity, entity.isConstruction ? [8, 5] : [])
     });
     if (shouldShowPersistentSplineHandles(state, entity)) {
       drawPersistentSplineTangentHandles(state, entity);
@@ -769,6 +769,51 @@ function drawEntity(state, entity, style) {
   }
 
   context.restore();
+}
+
+export function getEntityRenderLineDash(entity, fallbackDash = []) {
+  const lineTypeName = getEntityLineTypeName(entity);
+  if (!lineTypeName) {
+    return fallbackDash;
+  }
+
+  const normalized = lineTypeName
+    .trim()
+    .replaceAll("_", "")
+    .replaceAll("-", "")
+    .toUpperCase();
+  if (!normalized
+    || normalized === "CONTINUOUS"
+    || normalized === "BYLAYER"
+    || normalized === "BYBLOCK") {
+    return fallbackDash;
+  }
+
+  if (normalized.includes("PHANTOM")) {
+    return [18, 5, 4, 5, 4, 5];
+  }
+
+  if (normalized.includes("CENTER")) {
+    return [16, 4, 4, 4];
+  }
+
+  if (normalized.includes("DASHDOT")) {
+    return [10, 4, 2, 4];
+  }
+
+  if (normalized.includes("BORDER")) {
+    return [10, 4, 10, 4, 2, 4];
+  }
+
+  if (normalized.includes("HIDDEN")) {
+    return [6, 4];
+  }
+
+  if (normalized.includes("DASH")) {
+    return [9, 5];
+  }
+
+  return fallbackDash;
 }
 
 function drawPolygonControlCircle(state, entity, style) {
@@ -13061,6 +13106,11 @@ function getEntityId(entity) {
 function getEntityKind(entity) {
   const kind = readProperty(entity, "kind", "Kind");
   return kind === null || kind === undefined ? "" : String(kind).toLowerCase();
+}
+
+function getEntityLineTypeName(entity) {
+  const lineTypeName = readProperty(entity, "lineTypeName", "LineTypeName");
+  return lineTypeName === null || lineTypeName === undefined ? "" : String(lineTypeName);
 }
 
 function getEntityPoints(entity) {

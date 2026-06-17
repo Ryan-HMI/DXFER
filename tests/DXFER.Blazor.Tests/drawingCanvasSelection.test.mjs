@@ -21,6 +21,7 @@ import {
   getConstraintGlyphLeader,
   getVisibleConstraintGlyphGroups,
   getDefaultActiveDimensionKey,
+  getEntityRenderLineDash,
   getVisibleDimensionDescriptors,
   getConstructionToggleRequest,
   getDynamicSketchSnapHit,
@@ -155,6 +156,20 @@ function withCanvasRuntime(callback) {
     }
   }
 }
+
+test("DXF dashed linetype renders with a canvas dash pattern", () => {
+  assert.deepEqual(
+    getEntityRenderLineDash({ lineTypeName: "DASHED", isConstruction: false }, []),
+    [9, 5]);
+
+  assert.deepEqual(
+    getEntityRenderLineDash({ lineTypeName: "CONTINUOUS", isConstruction: false }, []),
+    []);
+
+  assert.deepEqual(
+    getEntityRenderLineDash({ lineTypeName: "DASHDOT", isConstruction: false }, []),
+    [10, 4, 2, 4]);
+});
 
 test("blank document fit uses a sane default sketch scale", () => {
   const view = getFitViewForDocument(

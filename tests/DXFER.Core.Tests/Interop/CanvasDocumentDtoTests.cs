@@ -26,6 +26,31 @@ public sealed class CanvasDocumentDtoTests
     }
 
     [Fact]
+    public void ExposesDxfLineTypeForCanvasRendering()
+    {
+        var line = new LineEntity(
+            EntityId.Create("bend-line"),
+            new Point2(0, 0),
+            new Point2(1, 0));
+        var document = new DrawingDocument(
+            new DrawingEntity[] { line },
+            Array.Empty<SketchDimension>(),
+            Array.Empty<SketchConstraint>(),
+            DrawingDocumentMetadata.Empty with
+            {
+                EntityStyles = new Dictionary<string, DxfEntityStyle>(StringComparer.Ordinal)
+                {
+                    [line.Id.Value] = new("BEND", "DASHED", 2)
+                }
+            });
+
+        var dto = CanvasDocumentDto.FromDocument(document);
+
+        dto.Entities.Should().ContainSingle()
+            .Which.LineTypeName.Should().Be("DASHED");
+    }
+
+    [Fact]
     public void ExposesSketchDimensionsAndConstraintsForRendering()
     {
         var document = new DrawingDocument(
