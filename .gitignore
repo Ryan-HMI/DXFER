@@ -1,6 +1,8 @@
 .superpowers/
 .worktrees/
 .codex-run/
+.env
+.env.*
 artifacts/
 bin/
 obj/

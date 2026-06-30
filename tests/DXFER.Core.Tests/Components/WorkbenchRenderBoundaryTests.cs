@@ -281,6 +281,16 @@ public sealed class WorkbenchRenderBoundaryTests
         source.Should().Contain("DrawingNormalizationService.AutoNormalize");
         source.Should().Contain("DxfDocumentReader.Read");
         source.Should().Contain("DxfDocumentWriter.Write");
+        source.Should().Contain("AddAuthentication");
+        source.Should().Contain("AddGoogle");
+        source.Should().Contain("UseAuthentication");
+        source.Should().Contain("UseForwardedHeaders",
+            "Google redirects must honor Caddy's X-Forwarded-Proto header so redirect_uri stays https://dxfer.sync.harrisonmetals.com/signin-google");
+        source.Should().Contain("RequireDxferAccessAsync");
+        source.Should().Contain("IsSyncLaunchRequest");
+        source.Should().Contain("X-DXFER-API-Key");
+        source.Should().Contain("SignInSyncLaunchSessionAsync");
+        source.Should().Contain("harrisonmetals.com");
         source.Should().NotContain("metadataJson");
     }
 
