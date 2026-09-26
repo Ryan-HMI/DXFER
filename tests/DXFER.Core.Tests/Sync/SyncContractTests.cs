@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http;
 using DXFER.Core.Sync;
+using DXFER.Core.Documents;
 using FluentAssertions;
 
 namespace DXFER.Core.Tests.Sync;
@@ -85,7 +86,7 @@ public sealed class SyncContractTests
             ReturnUrl: "https://sync.local/return",
             JobFolder: null);
 
-        await client.PostSaveAsync(launch, CreatePackage(manualOverride: false));
+        await client.PostSaveAsync(launch, CreatePackage(manualOverride: false) with { CutLengthInches = 42.125m, Units = DrawingUnits.Inches });
 
         handler.RequestUri.Should().Be(new Uri("https://sync.local/app/api/dxfer/edit-callback"));
         handler.ContentType.Should().StartWith("multipart/form-data");
@@ -101,6 +102,23 @@ public sealed class SyncContractTests
         handler.Body.Should().Contain("X");
         handler.Body.Should().Contain("name=manualOverride");
         handler.Body.Should().Contain("false");
+        handler.Body.Should().Contain("name=cutLengthInches");
+        handler.Body.Should().Contain("42.125");
+        handler.Body.Should().Contain("name=cutLengthReviewReason");
+        handler.Body.Should().Contain("name=units").And.Contain("Inches");
+    }
+
+    [Fact]
+    public async Task CallbackOmitsUnsafeTotalInsteadOfSendingZero()
+    {
+        using var handler = new CapturingHandler();
+        using var httpClient = new HttpClient(handler);
+        var launch = SyncLaunchOptionsParser.ParseQueryString(
+            "?syncBaseUrl=https%3A%2F%2Fsync.local&artifactId=a&jobId=j&editToken=t");
+        await new SyncCallbackClient(httpClient).PostSaveAsync(launch,
+            CreatePackage(false) with { CutLengthReviewReason = "Unknown units" });
+        handler.Body.Should().NotContain("name=cutLengthInches");
+        handler.Body.Should().Contain("name=cutLengthReviewReason").And.Contain("Unknown units");
     }
 
     private static SyncSavePackage CreatePackage(bool manualOverride) =>

@@ -49,6 +49,10 @@ public sealed class SyncCallbackClient
         AddString(content, "originShiftY", Format(package.OriginShiftY));
         AddString(content, "grainDirection", package.GrainDirection.ToString());
         AddString(content, "manualOverride", package.ManualOverride ? "true" : "false");
+        if (package.CutLengthInches.HasValue)
+            AddString(content, "cutLengthInches", package.CutLengthInches.Value.ToString(CultureInfo.InvariantCulture));
+        AddString(content, "cutLengthReviewReason", package.CutLengthReviewReason ?? "");
+        AddString(content, "units", package.Units.ToString());
 
         var dxfContent = new StringContent(package.NormalizedDxfContent, Encoding.UTF8);
         dxfContent.Headers.ContentType = new MediaTypeHeaderValue("application/dxf");

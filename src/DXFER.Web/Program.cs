@@ -101,6 +101,7 @@ app.MapPost("/api/dxfer/normalize", async (HttpRequest request) =>
     var normalizedDocument = WithNormalizedFileName(normalization.NormalizedDocument, normalizedFileName);
     var normalizedDxf = DxfDocumentWriter.Write(normalizedDocument);
     var bounds = normalizedDocument.GetBounds();
+    var cutLength = CutPathLengthService.Calculate(normalizedDocument);
 
     return Results.Json(new
     {
@@ -108,6 +109,9 @@ app.MapPost("/api/dxfer/normalize", async (HttpRequest request) =>
         normalizedDxf,
         boundingWidth = bounds.Width,
         boundingHeight = bounds.Height,
+        cutLengthInches = cutLength.CutLengthInches,
+        cutLengthReviewReason = cutLength.CutLengthReviewReason,
+        units = normalizedDocument.Metadata.Units.ToString(),
         rotationDegrees = normalization.RotationDegrees,
         originShiftX = normalization.OriginShiftX,
         originShiftY = normalization.OriginShiftY,
