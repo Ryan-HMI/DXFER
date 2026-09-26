@@ -72,6 +72,11 @@
                     <span class="dxfer-live-readout-label">Cut total</span>
                     <span class="dxfer-live-readout-value">@CutLengthText</span>
                 </div>
+                <div class="dxfer-live-readout-item" title="@CurrentContours.ContourReviewReason"
+                     aria-label="@($"Contours: {ContourCountText}. {CurrentContours.ContourReviewReason}")">
+                    <span class="dxfer-live-readout-label">Contours</span>
+                    <span class="dxfer-live-readout-value">@ContourCountText</span>
+                </div>
             }
             @foreach (var item in LiveMeasurementReadouts)
             {

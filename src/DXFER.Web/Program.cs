@@ -225,6 +225,7 @@ app.MapPost("/api/dxfer/normalize", async (HttpRequest request) =>
     var normalizedDxf = DxfDocumentWriter.Write(normalizedDocument);
     var bounds = normalizedDocument.GetBounds();
     var cutLength = CutPathLengthService.Calculate(normalizedDocument);
+    var contours = ClosedContourService.Calculate(normalizedDocument);
 
     return Results.Json(new
     {
@@ -235,6 +236,8 @@ app.MapPost("/api/dxfer/normalize", async (HttpRequest request) =>
         cutLengthInches = cutLength.CutLengthInches,
         cutLengthReviewReason = cutLength.CutLengthReviewReason,
         units = normalizedDocument.Metadata.Units.ToString(),
+        closedContourCount = contours.ClosedContourCount,
+        contourReviewReason = contours.ContourReviewReason,
         rotationDegrees = normalization.RotationDegrees,
         originShiftX = normalization.OriginShiftX,
         originShiftY = normalization.OriginShiftY,

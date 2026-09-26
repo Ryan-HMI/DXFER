@@ -16,6 +16,10 @@ public static class CutPathLengthService
     public static bool IsAnnotation(string type) =>
         type is "POINT" or "DIMENSION" or "TEXT" or "MTEXT" or "LEADER" or "MLEADER";
 
+    public static bool IsExcluded(DrawingDocument document, DrawingEntity entity) =>
+        entity.IsConstruction || entity is PointEntity
+        || (document.Metadata.EntityStyles.TryGetValue(entity.Id.Value, out var style) && IsNonCutLayer(style.LayerName));
+
     public static CutPathLengthResult Calculate(DrawingDocument document)
     {
         var scale = document.Metadata.Units switch
@@ -38,7 +42,7 @@ public static class CutPathLengthService
         foreach (var entity in document.Entities)
         {
             document.Metadata.EntityStyles.TryGetValue(entity.Id.Value, out var style);
-            if (entity.IsConstruction || entity is PointEntity || IsNonCutLayer(style?.LayerName))
+            if (IsExcluded(document, entity))
                 continue;
             if (style?.LayerName?.Contains("BEND", StringComparison.OrdinalIgnoreCase) == true
                 || style?.LayerName?.Contains("ETCH", StringComparison.OrdinalIgnoreCase) == true)
