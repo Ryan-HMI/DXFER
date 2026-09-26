@@ -25,7 +25,7 @@ public static class ClosedContourService
         if (perimeter.CutLengthInches is null)
             return Review(perimeter.CutLengthReviewReason ?? "Cut geometry requires review.");
 
-        var scale = document.Metadata.Units == DrawingUnits.Millimeters ? 1 / 25.4 : 1;
+        const double scale = 1; // Same inch-coordinate contract as cut length and bounds.
         var paths = new List<Coordinate[]>();
         var vertexCount = 0;
         foreach (var entity in entities)

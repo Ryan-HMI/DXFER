@@ -43,7 +43,8 @@ public sealed class ClosedContourServiceTests
 
     [Theory]
     [InlineData(1, DrawingUnits.Inches)]
-    [InlineData(25.4, DrawingUnits.Millimeters)]
+    [InlineData(1, DrawingUnits.Millimeters)]
+    [InlineData(1, DrawingUnits.Unspecified)]
     public void JoinToleranceIsPhysicalAndDoesNotInventClosureAcrossLargerGaps(double scale, DrawingUnits units)
     {
         var tolerance = ClosedContourService.JoinToleranceInches;
@@ -137,13 +138,13 @@ public sealed class ClosedContourServiceTests
     }
 
     [Fact]
-    public void SplinePartialEllipseUnknownUnitsAndLimitsRequireReview()
+    public void InchDefaultPreservesSplinePartialEllipseAndWorkLimitGuards()
     {
         ClosedContourService.Calculate(Doc([SplineEntity.FromFitPoints(Id("s"), [new(0, 0), new(1, 2), new(0, 0)])]))
             .ClosedContourCount.Should().BeNull();
         ClosedContourService.Calculate(Doc([new EllipseEntity(Id("e"), new(0, 0), new(2, 0), 0.5, 0, 180)]))
             .ClosedContourCount.Should().BeNull();
-        ClosedContourService.Calculate(Doc(Rectangle(), DrawingUnits.Unspecified)).ClosedContourCount.Should().BeNull();
+        ClosedContourService.Calculate(Doc(Rectangle(), DrawingUnits.Unspecified)).ClosedContourCount.Should().Be(1);
         ClosedContourService.Calculate(Doc(Enumerable.Range(0, 513)
             .Select(i => (DrawingEntity)new CircleEntity(Id(i.ToString()), new(i * 3, 0), 1)).ToArray()))
             .ContourReviewReason.Should().Contain("limit");

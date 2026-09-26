@@ -30,8 +30,9 @@ public sealed class WorkbenchCutLengthTests
         property.GetValue(workbench).Should().Be(first);
         ((ClosedContourResult)contours.GetValue(workbench)!).ClosedContourCount.Should().Be(1);
         field.SetValue(workbench, Document(2, DrawingUnits.Unspecified));
-        ((CutPathLengthResult)property.GetValue(workbench)!).CutLengthInches.Should().BeNull();
-        ((ClosedContourResult)contours.GetValue(workbench)!).ClosedContourCount.Should().BeNull();
+        ((CutPathLengthResult)property.GetValue(workbench)!).CutLengthInches.Should()
+            .BeApproximately(first.CutLengthInches!.Value * 2, 0.000001m);
+        ((ClosedContourResult)contours.GetValue(workbench)!).ClosedContourCount.Should().Be(1);
     }
 
     private static DrawingDocument Document(double radius, DrawingUnits units) => new(

@@ -213,7 +213,7 @@ app.MapPost("/api/dxfer/normalize", async (HttpRequest request) =>
     await using var stream = file.OpenReadStream();
     using var reader = new StreamReader(stream);
     var sourceText = await reader.ReadToEndAsync();
-    var sourceDocument = WithApiMetadata(DxfDocumentReader.Read(sourceText), file.FileName, sourceText);
+    var sourceDocument = ManufacturingUnits.AssumeInches(WithApiMetadata(DxfDocumentReader.Read(sourceText), file.FileName, sourceText));
     if (sourceDocument.Entities.Count == 0)
     {
         return Results.BadRequest(new { error = "No supported DXF entities were found." });

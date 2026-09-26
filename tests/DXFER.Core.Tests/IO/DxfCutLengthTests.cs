@@ -11,25 +11,40 @@ public sealed class DxfCutLengthTests
 
     [Theory]
     [InlineData(1, 25.4)]
-    [InlineData(4, 1)]
-    public void InsunitsSurviveNormalizeAndExport(int units, double inches)
+    [InlineData(4, 25.4)]
+    [InlineData(0, 25.4)]
+    public void ManufacturingExportsStampInchesWithoutScalingCoordinates(int units, double inches)
     {
         var document = DxfDocumentReader.Read(Dxf(Line, units));
-        var normalized = DrawingNormalizationService.AutoNormalize(document).NormalizedDocument;
-        var result = CutPathLengthService.Calculate(DxfDocumentReader.Read(DxfDocumentWriter.Write(normalized)));
+        var normalized = DrawingNormalizationService.AutoNormalize(ManufacturingUnits.AssumeInches(document)).NormalizedDocument;
+        normalized.Metadata.Units.Should().Be(DrawingUnits.Inches);
+        var exported = DxfDocumentReader.Read(DxfDocumentWriter.Write(normalized));
+        exported.Metadata.Units.Should().Be(DrawingUnits.Inches);
+        exported.GetBounds().Width.Should().BeApproximately(25.4, 0.000001);
+        var result = CutPathLengthService.Calculate(exported);
         result.CutLengthInches.Should().BeApproximately((decimal)inches, 0.000001m);
         result.CutLengthReviewReason.Should().BeNull();
+    }
+
+    [Fact]
+    public void MissingHeaderStillMeasuresAndExportsInches()
+    {
+        var document = DxfDocumentReader.Read($"0\nSECTION\n2\nENTITIES\n{Line}0\nENDSEC\n0\nEOF\n");
+        CutPathLengthService.Calculate(document).CutLengthInches.Should().Be(25.4m);
+        var exported = DxfDocumentReader.Read(DxfDocumentWriter.Write(ManufacturingUnits.AssumeInches(document)));
+        exported.Metadata.Units.Should().Be(DrawingUnits.Inches);
+        exported.GetBounds().Width.Should().BeApproximately(25.4, 0.000001);
     }
 
     [Theory]
     [InlineData(0)]
     [InlineData(2)]
     [InlineData(99)]
-    public void UnitlessOrUnsupportedUnitsRequireReview(int units)
+    public void UnitlessOrUnsupportedHeadersDoNotBlockInchManufacturing(int units)
     {
         var result = CutPathLengthService.Calculate(DxfDocumentReader.Read(Dxf(Line, units)));
-        result.CutLengthInches.Should().BeNull();
-        result.CutLengthReviewReason.Should().Contain("units");
+        result.CutLengthInches.Should().Be(25.4m);
+        result.CutLengthReviewReason.Should().BeNull();
     }
 
     [Theory]

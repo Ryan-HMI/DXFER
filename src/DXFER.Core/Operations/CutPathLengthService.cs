@@ -22,14 +22,7 @@ public static class CutPathLengthService
 
     public static CutPathLengthResult Calculate(DrawingDocument document)
     {
-        var scale = document.Metadata.Units switch
-        {
-            DrawingUnits.Inches => 1d,
-            DrawingUnits.Millimeters => 1d / 25.4,
-            _ => 0d
-        };
-        if (scale == 0)
-            return Review("Drawing units must be explicit inches or millimeters.");
+        const double scale = 1; // HMI cut geometry is always interpreted in inches.
         var unsafeImport = document.Metadata.Warnings.FirstOrDefault(w => w.Code == UnsafeImportCode);
         if (unsafeImport is not null)
             return Review(unsafeImport.Message);

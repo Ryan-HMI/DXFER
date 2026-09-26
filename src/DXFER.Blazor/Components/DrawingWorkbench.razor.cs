@@ -2211,7 +2211,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         try
         {
-            var exportText = DxfDocumentWriter.Write(_document, CreateDxfWriteOptions());
+            var exportDocument = ManufacturingUnits.AssumeInches(_document);
+            var exportText = DxfDocumentWriter.Write(exportDocument, CreateDxfWriteOptions());
             var normalizedName = DxfDownloadFileName.FromSourceName(_fileName);
             var bounds = _document.GetBounds();
             var normalization = _lastAutoNormalization;
@@ -2233,7 +2234,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 manualOverride,
                 cutLength.CutLengthInches,
                 cutLength.CutLengthReviewReason,
-                _document.Metadata.Units,
+                exportDocument.Metadata.Units,
                 contours.ClosedContourCount,
                 contours.ContourReviewReason);
 
@@ -2243,7 +2244,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
         {
-            var exportText = DxfDocumentWriter.Write(_document, CreateDxfWriteOptions());
+            var exportText = DxfDocumentWriter.Write(ManufacturingUnits.AssumeInches(_document), CreateDxfWriteOptions());
             var wroteFallback = await ExportJobFolderFallbackAsync(exportText);
             _status = wroteFallback
                 ? $"Sync callback failed: {ex.Message} Wrote normalized.dxf fallback for explicit Sync import."
