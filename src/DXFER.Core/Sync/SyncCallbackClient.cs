@@ -53,6 +53,9 @@ public sealed class SyncCallbackClient
             AddString(content, "cutLengthInches", package.CutLengthInches.Value.ToString(CultureInfo.InvariantCulture));
         AddString(content, "cutLengthReviewReason", package.CutLengthReviewReason ?? "");
         AddString(content, "units", package.Units.ToString());
+        if (package.ClosedContourCount.HasValue)
+            AddString(content, "closedContourCount", package.ClosedContourCount.Value.ToString(CultureInfo.InvariantCulture));
+        AddString(content, "contourReviewReason", package.ContourReviewReason ?? "");
 
         var dxfContent = new StringContent(package.NormalizedDxfContent, Encoding.UTF8);
         dxfContent.Headers.ContentType = new MediaTypeHeaderValue("application/dxf");

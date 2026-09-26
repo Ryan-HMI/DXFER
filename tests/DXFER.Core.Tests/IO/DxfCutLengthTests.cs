@@ -39,6 +39,8 @@ public sealed class DxfCutLengthTests
     {
         CutPathLengthService.Calculate(DxfDocumentReader.Read(Dxf(geometry)))
             .CutLengthInches.Should().Be(12m);
+        ClosedContourService.Calculate(DxfDocumentReader.Read(Dxf(geometry)))
+            .ClosedContourCount.Should().Be(1);
     }
 
     [Theory]
@@ -55,6 +57,7 @@ public sealed class DxfCutLengthTests
         var result = CutPathLengthService.Calculate(document);
         result.CutLengthInches.Should().BeNull();
         result.CutLengthReviewReason.Should().NotBeNullOrWhiteSpace();
+        ClosedContourService.Calculate(document).ClosedContourCount.Should().BeNull();
         // Invalid coordinates need not be exported to check safety persistence.
         var partial = new DrawingDocument(document.Entities.Take(1), [], [], document.Metadata);
         CutPathLengthService.Calculate(DxfDocumentReader.Read(DxfDocumentWriter.Write(partial)))

@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using DXFER.Core.Sync;
 using DXFER.Core.Documents;
 using FluentAssertions;
@@ -68,6 +70,19 @@ public sealed class SyncContractTests
         package.GrainDirection.Should().Be(GrainDirectionOption.X);
         package.ManualOverride.Should().BeTrue();
         package.NormalizedDxfContent.Should().Contain("EOF");
+        package.ClosedContourCount.Should().BeNull("old callers do not supply a count");
+        package.ContourReviewReason.Should().BeNull();
+    }
+
+    [Fact]
+    public void OldSavePayloadWithoutContourFieldsDeserializesAsUnknown()
+    {
+        var json = JsonSerializer.SerializeToNode(CreatePackage(false))!.AsObject();
+        json.Remove(nameof(SyncSavePackage.ClosedContourCount));
+        json.Remove(nameof(SyncSavePackage.ContourReviewReason));
+        var restored = json.Deserialize<SyncSavePackage>()!;
+        restored.ClosedContourCount.Should().BeNull();
+        restored.ContourReviewReason.Should().BeNull();
     }
 
     [Fact]
@@ -86,7 +101,8 @@ public sealed class SyncContractTests
             ReturnUrl: "https://sync.local/return",
             JobFolder: null);
 
-        await client.PostSaveAsync(launch, CreatePackage(manualOverride: false) with { CutLengthInches = 42.125m, Units = DrawingUnits.Inches });
+        await client.PostSaveAsync(launch, CreatePackage(manualOverride: false) with {
+            CutLengthInches = 42.125m, Units = DrawingUnits.Inches, ClosedContourCount = 2 });
 
         handler.RequestUri.Should().Be(new Uri("https://sync.local/app/api/dxfer/edit-callback"));
         handler.ContentType.Should().StartWith("multipart/form-data");
@@ -106,6 +122,7 @@ public sealed class SyncContractTests
         handler.Body.Should().Contain("42.125");
         handler.Body.Should().Contain("name=cutLengthReviewReason");
         handler.Body.Should().Contain("name=units").And.Contain("Inches");
+        handler.Body.Should().Contain("name=closedContourCount").And.Contain("name=contourReviewReason");
     }
 
     [Fact]
@@ -116,9 +133,11 @@ public sealed class SyncContractTests
         var launch = SyncLaunchOptionsParser.ParseQueryString(
             "?syncBaseUrl=https%3A%2F%2Fsync.local&artifactId=a&jobId=j&editToken=t");
         await new SyncCallbackClient(httpClient).PostSaveAsync(launch,
-            CreatePackage(false) with { CutLengthReviewReason = "Unknown units" });
+            CreatePackage(false) with { CutLengthReviewReason = "Unknown units", ContourReviewReason = "Unknown topology" });
         handler.Body.Should().NotContain("name=cutLengthInches");
         handler.Body.Should().Contain("name=cutLengthReviewReason").And.Contain("Unknown units");
+        handler.Body.Should().NotContain("name=closedContourCount");
+        handler.Body.Should().Contain("name=contourReviewReason").And.Contain("Unknown topology");
     }
 
     private static SyncSavePackage CreatePackage(bool manualOverride) =>

@@ -17,4 +17,6 @@ public sealed record SyncSavePackage(
     bool ManualOverride,
     decimal? CutLengthInches = null,
     string? CutLengthReviewReason = null,
-    DrawingUnits Units = DrawingUnits.Unspecified);
+    DrawingUnits Units = DrawingUnits.Unspecified,
+    int? ClosedContourCount = null,
+    string? ContourReviewReason = null);
