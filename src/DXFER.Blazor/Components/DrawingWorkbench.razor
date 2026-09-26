@@ -65,6 +65,14 @@
             </label>
         }
         <div class="dxfer-command-chips" aria-label="Live measurement readout">
+            @if (HasDocument)
+            {
+                <div class="dxfer-live-readout-item" title="@CurrentCutLength.CutLengthReviewReason"
+                     aria-label="@($"Cut total: {CutLengthText}. {CurrentCutLength.CutLengthReviewReason}")">
+                    <span class="dxfer-live-readout-label">Cut total</span>
+                    <span class="dxfer-live-readout-value">@CutLengthText</span>
+                </div>
+            }
             @foreach (var item in LiveMeasurementReadouts)
             {
                 <div class="dxfer-live-readout-item">

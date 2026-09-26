@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
+using DXFER.Core.Operations;
 
 namespace DXFER.CadIO;
 
@@ -17,6 +18,22 @@ public static class DxfDocumentWriter
         options ??= new DxfWriteOptions();
 
         var builder = new StringBuilder();
+        WritePair(builder, 0, "SECTION");
+        WritePair(builder, 2, "HEADER");
+        WritePair(builder, 9, "$INSUNITS");
+        WritePair(builder, 70, document.Metadata.Units switch
+        {
+            DrawingUnits.Inches => "1",
+            DrawingUnits.Millimeters => "4",
+            _ => "0"
+        });
+        var importReasons = document.Metadata.Warnings.Where(w => w.Code == CutPathLengthService.UnsafeImportCode)
+            .Select(w => w.Message).ToList();
+        if (document.Metadata.UnsupportedEntityCounts.Any(pair => pair.Value > 0 && !CutPathLengthService.IsAnnotation(pair.Key.ToUpperInvariant())))
+            importReasons.Add("Unsupported source entities were omitted from this DXF.");
+        foreach (var reason in importReasons.Distinct())
+            WritePair(builder, 999, "DXFER_CUT_LENGTH_REVIEW:" + reason.Replace('\r', ' ').Replace('\n', ' '));
+        WritePair(builder, 0, "ENDSEC");
         var layerStyles = GetWritableLayerStyles(document).ToArray();
         if (layerStyles.Length > 0 || options.GrainAnnotation is not null)
         {

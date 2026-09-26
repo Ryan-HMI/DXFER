@@ -1,3 +1,5 @@
+using DXFER.Core.Documents;
+
 namespace DXFER.Core.Sync;
 
 public sealed record SyncSavePackage(
@@ -12,4 +14,7 @@ public sealed record SyncSavePackage(
     double OriginShiftX,
     double OriginShiftY,
     GrainDirectionOption GrainDirection,
-    bool ManualOverride);
+    bool ManualOverride,
+    decimal? CutLengthInches = null,
+    string? CutLengthReviewReason = null,
+    DrawingUnits Units = DrawingUnits.Unspecified);

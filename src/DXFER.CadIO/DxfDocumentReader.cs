@@ -1,6 +1,7 @@
 using System.Globalization;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
+using DXFER.Core.Operations;
 using DXFER.Core.Sketching;
 
 namespace DXFER.CadIO;
@@ -11,12 +12,17 @@ public static class DxfDocumentReader
     {
         ArgumentNullException.ThrowIfNull(dxfText);
 
-        var pairs = ReadPairs(dxfText).ToArray();
+        var cutWarnings = new List<DrawingDocumentWarning>();
+        var pairs = ReadPairs(dxfText, cutWarnings).ToArray();
         var entities = new List<DrawingEntity>();
         var entityStyles = new Dictionary<string, DxfEntityStyle>(StringComparer.Ordinal);
         var layerStyles = ReadLayerStyles(pairs);
         var unsupportedEntityCounts = new SortedDictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var generatedId = 1;
+        var section = "ENTITIES";
+        var units = ReadUnits(pairs);
+        foreach (var marker in pairs.Where(pair => pair.Code == 999 && pair.Value.StartsWith("DXFER_CUT_LENGTH_REVIEW:", StringComparison.Ordinal)))
+            AddCutWarning(cutWarnings, marker.Value[24..].Trim());
 
         for (var index = 0; index < pairs.Length; index++)
         {
@@ -26,6 +32,18 @@ public static class DxfDocumentReader
             }
 
             var entityType = pairs[index].Value.Trim().ToUpperInvariant();
+            if (entityType == "SECTION")
+            {
+                section = index + 1 < pairs.Length && pairs[index + 1].Code == 2 ? pairs[index + 1].Value : "";
+                continue;
+            }
+            if (entityType == "ENDSEC") { section = ""; continue; }
+            if (!section.Equals("ENTITIES", StringComparison.OrdinalIgnoreCase) || entityType == "EOF") continue;
+            TryReadEntityPairs(pairs, index + 1, out var rawPairs, out _);
+            var nonCut = CutPathLengthService.IsAnnotation(entityType)
+                || CutPathLengthService.IsNonCutLayer(ReadString(rawPairs, 8));
+            if (!nonCut) CheckCutGeometry(entityType, rawPairs, cutWarnings);
+            var previousEntityCount = entities.Count;
             switch (entityType)
             {
                 case "LINE":
@@ -98,6 +116,9 @@ public static class DxfDocumentReader
                     if (TryReadPolyline(pairs, index + 1, CreateId(Array.Empty<DxfPair>(), "polyline", ref generatedId), out var classicPolyline, out var nextIndex))
                     {
                         entities.Add(classicPolyline);
+                        AddEntityStyle(entityStyles, classicPolyline.Id, rawPairs, layerStyles);
+                        if (!nonCut)
+                            CheckCutGeometry("POLYLINE", pairs.Skip(index + 1).Take(nextIndex - index - 1).ToArray(), cutWarnings);
                         index = nextIndex - 1;
                     }
 
@@ -115,7 +136,7 @@ public static class DxfDocumentReader
                     break;
 
                 default:
-                    if (ShouldCountUnsupportedEntity(entityType))
+                    if (ShouldCountUnsupportedEntity(entityType) && !nonCut)
                     {
                         unsupportedEntityCounts[entityType] =
                             unsupportedEntityCounts.GetValueOrDefault(entityType) + 1;
@@ -127,11 +148,17 @@ public static class DxfDocumentReader
 
                     break;
             }
+            if (!nonCut && entities.Count == previousEntityCount
+                && entityType is "LINE" or "CIRCLE" or "ARC" or "ELLIPSE" or "LWPOLYLINE" or "POLYLINE" or "SPLINE")
+                AddCutWarning(cutWarnings, $"Malformed {entityType} geometry was not imported.");
         }
 
         var metadata = DrawingDocumentMetadata.Empty with
         {
-            Warnings = CreateImportWarnings(unsupportedEntityCounts),
+            Units = units,
+            Warnings = CreateImportWarnings(unsupportedEntityCounts)
+                .Where(warning => units == DrawingUnits.Unspecified || warning.Code != "missing-units")
+                .Concat(cutWarnings).ToArray(),
             UnsupportedEntityCounts = unsupportedEntityCounts,
             EntityStyles = entityStyles
         };
@@ -141,6 +168,54 @@ public static class DxfDocumentReader
             Array.Empty<SketchDimension>(),
             Array.Empty<SketchConstraint>(),
             metadata);
+    }
+
+    private static DrawingUnits ReadUnits(IReadOnlyList<DxfPair> pairs)
+    {
+        var declarations = pairs.Select((pair, index) => (pair, index))
+            .Where(item => item.pair.Code == 9 && item.pair.Value == "$INSUNITS").ToArray();
+        if (declarations.Length != 1) return DrawingUnits.Unspecified;
+        var index = declarations[0].index + 1;
+        if (index >= pairs.Count || pairs[index].Code != 70) return DrawingUnits.Unspecified;
+        return pairs[index].Value switch { "1" => DrawingUnits.Inches, "4" => DrawingUnits.Millimeters, _ => DrawingUnits.Unspecified };
+    }
+
+    private static void AddCutWarning(ICollection<DrawingDocumentWarning> warnings, string message) =>
+        warnings.Add(new(CutPathLengthService.UnsafeImportCode, DrawingDocumentWarningSeverity.Warning, message));
+
+    private static void CheckCutGeometry(string type, IReadOnlyList<DxfPair> pairs, ICollection<DrawingDocumentWarning> warnings)
+    {
+        foreach (var pair in pairs)
+        {
+            if (pair.Code is >= 10 and <= 59 or >= 210 and <= 239)
+            {
+                if (!TryReadDouble(pair.Value, out var value) || !double.IsFinite(value))
+                { AddCutWarning(warnings, $"Invalid numeric data in {type}."); return; }
+                if ((pair.Code is >= 30 and <= 39 && value != 0)
+                    || (pair.Code is 210 or 220 && value != 0) || (pair.Code == 230 && value != 1))
+                { AddCutWarning(warnings, $"Nonplanar or extruded {type} geometry requires review."); return; }
+                if (type is "POLYLINE" or "LWPOLYLINE" && pair.Code is 40 or 41 or 42 or 43 && value != 0)
+                { AddCutWarning(warnings, "Polyline bulges or widths are not preserved; cut length requires review."); return; }
+            }
+        }
+        if (type == "POLYLINE" && TryReadInt(pairs, 70, out var flags) && (flags & ~1) != 0)
+            AddCutWarning(warnings, "Fitted, mesh, or 3D polylines require review.");
+        if (type == "LWPOLYLINE" && (pairs.Count(p => p.Code == 10) != pairs.Count(p => p.Code == 20)
+            || (TryReadInt(pairs, 90, out var count) && count != pairs.Count(p => p.Code == 10))))
+            AddCutWarning(warnings, "Incomplete polyline vertices require review.");
+        if (type == "POLYLINE")
+        {
+            for (var index = 0; index < pairs.Count; index++)
+            {
+                if (pairs[index].Code != 0 || pairs[index].Value != "VERTEX") continue;
+                TryReadEntityPairs(pairs, index + 1, out var vertex, out _);
+                if (!TryReadPoint(vertex, 10, 20, out _)
+                    || (TryReadInt(vertex, 70, out var vertexFlags) && vertexFlags != 0))
+                    AddCutWarning(warnings, "Incomplete or unsupported polyline vertex requires review.");
+            }
+        }
+        if (TryReadInt(pairs, 67, out var space) && space != 0)
+            AddCutWarning(warnings, "Paper-space geometry requires review.");
     }
 
     private static IReadOnlyList<DrawingDocumentWarning> CreateImportWarnings(
@@ -275,8 +350,10 @@ public static class DxfDocumentReader
     {
         var points = new List<Point2>();
         var currentVertex = new Dictionary<int, double>();
+        TryReadEntityPairs(pairs, startIndex, out var headerPairs, out var verticesStart);
+        var closed = TryReadInt(headerPairs, 70, out var flags) && (flags & 1) != 0;
 
-        for (var index = startIndex; index < pairs.Count; index++)
+        for (var index = verticesStart; index < pairs.Count; index++)
         {
             var pair = pairs[index];
             if (pair.Code == 0)
@@ -293,12 +370,12 @@ public static class DxfDocumentReader
                 {
                     FlushVertex(currentVertex, points);
                     nextIndex = index + 1;
-                    return TryCreatePolyline(points, false, id, out polyline);
+                    return TryCreatePolyline(points, closed, id, out polyline);
                 }
 
                 FlushVertex(currentVertex, points);
                 nextIndex = index;
-                return TryCreatePolyline(points, false, id, out polyline);
+                return TryCreatePolyline(points, closed, id, out polyline);
             }
 
             if ((pair.Code == 10 || pair.Code == 20) && TryReadDouble(pair.Value, out var value))
@@ -309,7 +386,7 @@ public static class DxfDocumentReader
 
         FlushVertex(currentVertex, points);
         nextIndex = pairs.Count;
-        return TryCreatePolyline(points, false, id, out polyline);
+        return TryCreatePolyline(points, closed, id, out polyline);
     }
 
     private static bool TryCreateLine(IReadOnlyList<DxfPair> pairs, EntityId id, out LineEntity line)
@@ -344,6 +421,7 @@ public static class DxfDocumentReader
             && TryReadDouble(pairs, 40, out var radius)
             && TryReadDouble(pairs, 50, out var startAngle)
             && TryReadDouble(pairs, 51, out var endAngle)
+            && Math.Abs(endAngle - startAngle) <= 360
             && radius > 0)
         {
             arc = new ArcEntity(id, center, radius, startAngle, endAngle);
@@ -367,6 +445,12 @@ public static class DxfDocumentReader
             var endParameterDegrees = TryReadDouble(pairs, 42, out var endRadians)
                 ? RadiansToDegrees(endRadians)
                 : 360;
+            if (!double.IsFinite(startParameterDegrees) || !double.IsFinite(endParameterDegrees)
+                || Math.Abs(endParameterDegrees - startParameterDegrees) > 360.000001)
+            {
+                ellipse = default!;
+                return false;
+            }
             ellipse = new EllipseEntity(id, center, majorAxisEndPoint, minorRatio, startParameterDegrees, endParameterDegrees);
             return true;
         }
@@ -555,7 +639,7 @@ public static class DxfDocumentReader
     }
 
     private static bool TryReadDouble(string value, out double result) =>
-        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
+        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result) && double.IsFinite(result);
 
     private static EntityId CreateId(IReadOnlyList<DxfPair> pairs, string prefix, ref int generatedId)
     {
@@ -568,7 +652,7 @@ public static class DxfDocumentReader
         return EntityId.Create($"{prefix}-{generatedId++}");
     }
 
-    private static IEnumerable<DxfPair> ReadPairs(string text)
+    private static IEnumerable<DxfPair> ReadPairs(string text, ICollection<DrawingDocumentWarning> warnings)
     {
         using var reader = new StringReader(text);
         while (reader.ReadLine() is { } rawCode)
@@ -576,6 +660,7 @@ public static class DxfDocumentReader
             var rawValue = reader.ReadLine();
             if (rawValue is null)
             {
+                AddCutWarning(warnings, "Truncated DXF group-code record requires review.");
                 yield break;
             }
 
@@ -583,6 +668,8 @@ public static class DxfDocumentReader
             {
                 yield return new DxfPair(code, rawValue.Trim());
             }
+            else
+                AddCutWarning(warnings, "Invalid DXF group-code record requires review.");
         }
     }
 

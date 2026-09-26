@@ -12,6 +12,12 @@ Use this file to separate what the user has actually tested from what is only au
 - `APP-VERIFIED` - Codex verified the behavior in the running app/canvas.
 - `OPEN` - not fixed yet.
 
+## TEST Cut Perimeter - 2026-09-26
+
+| ID | Behavior | User Status | Automated Status | App Status | Scope |
+|---|---|---|---|---|---|
+| UT-CUT-001 | Total cut inches, import safety guards, normalize/callback, compact readout | USER-REQUESTED | AUTO-PASSED | APP-VERIFIED | Isolated localhost 5206 only; `cut-perimeter-contract.md` records entity limits and evidence. HMI acceptance remains with main. |
+
 ## Active Lane: Trim And Extend
 
 | ID | Behavior | User Status | Automated Status | App Status | Current Stage |

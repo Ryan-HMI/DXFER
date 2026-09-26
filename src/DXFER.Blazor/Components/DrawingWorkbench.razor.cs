@@ -2216,6 +2216,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             var bounds = _document.GetBounds();
             var normalization = _lastAutoNormalization;
             var manualOverride = _manualOverride;
+            var cutLength = CutPathLengthService.Calculate(_document);
             var package = new SyncSavePackage(
                 _syncLaunchOptions.ArtifactId!,
                 _syncLaunchOptions.JobId!,
@@ -2228,7 +2229,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 normalization?.OriginShiftX ?? CleanNearZero(-bounds.MinX),
                 normalization?.OriginShiftY ?? CleanNearZero(-bounds.MinY),
                 ToSyncGrainDirection(_grainDirection),
-                manualOverride);
+                manualOverride,
+                cutLength.CutLengthInches,
+                cutLength.CutLengthReviewReason,
+                _document.Metadata.Units);
 
             await SyncCallbackClient.PostSaveAsync(_syncLaunchOptions, package);
             _status = $"Sent normalized DXF to Sync job {_syncLaunchOptions.JobId}.";
