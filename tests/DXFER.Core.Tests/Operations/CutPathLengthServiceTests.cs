@@ -10,7 +10,8 @@ public sealed class CutPathLengthServiceTests
 {
     [Theory]
     [InlineData(DrawingUnits.Inches, 1)]
-    [InlineData(DrawingUnits.Millimeters, 25.4)]
+    [InlineData(DrawingUnits.Millimeters, 1)]
+    [InlineData(DrawingUnits.Unspecified, 1)]
     public void RectangleAndHolesIncludeEveryCutPath(DrawingUnits units, double scale)
     {
         var document = Document(units,
@@ -64,10 +65,10 @@ public sealed class CutPathLengthServiceTests
     }
 
     [Fact]
-    public void UnknownUnitsEmptyAndInvalidGeometryAreNotQuotableZeroes()
+    public void InchDefaultDoesNotAllowEmptyOrInvalidGeometry()
     {
         CutPathLengthService.Calculate(Document(DrawingUnits.Unspecified,
-            new LineEntity(Id("cut"), P(0, 0), P(10, 0)))).CutLengthInches.Should().BeNull();
+            new LineEntity(Id("cut"), P(0, 0), P(10, 0)))).CutLengthInches.Should().Be(10);
         CutPathLengthService.Calculate(Document(DrawingUnits.Inches)).CutLengthInches.Should().BeNull();
         CutPathLengthService.Calculate(Document(DrawingUnits.Inches,
             new CircleEntity(Id("bad"), P(0, 0), double.NaN))).CutLengthInches.Should().BeNull();
