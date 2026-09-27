@@ -43,6 +43,7 @@
                         <span class="app-menu-arrow" aria-hidden="true">></span>
                     </button>
                     <div class="app-submenu" role="menu">
+                        <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.RemoveDuplicates)">Remove duplicates</button>
                         <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.Rotate90Clockwise)">Rotate 90 CW</button>
                         <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.Rotate90CounterClockwise)">Rotate 90 CCW</button>
                         <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.BoundsToOrigin)">Bounds to origin</button>

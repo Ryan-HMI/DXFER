@@ -35,6 +35,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private DrawingDocument _document = CreateBlankDocument();
     private string _fileName = "Untitled.dxf";
     private string _status = "Blank drawing ready. Sketch geometry or open a DXF.";
+    private string? _duplicateCleanupStatus;
     private string? _hoveredEntityId;
     private string? _activeSelectionKey;
     private GrainDirection _grainDirection = GrainDirection.None;
@@ -269,6 +270,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private IReadOnlyList<WorkbenchToolCommand> SyncCleanupCommands => new[]
     {
+        Command(WorkbenchCommandId.RemoveDuplicates, null, CadIconName.RemoveDuplicates, "Remove duplicates", disabled: !HasDocument || _document.Metadata.Mode == DrawingDocumentMode.ReferenceOnly, tooltip: "Remove exact duplicate cut entities. Different layers and referenced sketch geometry are preserved."),
         Command(WorkbenchCommandId.FitExtents, null, CadIconName.Fit, "Fit", !HasDocument, tooltip: "Fit all loaded geometry in the viewport."),
         Command(WorkbenchCommandId.AutoCleanup, null, CadIconName.AutoCleanup, "Auto", !HasDocument, tooltip: "Find the minimum-area rotation with the long side on X, then move bounds minimum to origin."),
         Command(WorkbenchCommandId.Rotate, WorkbenchTool.Rotate, CadIconName.Rotate, "Free rotate", !CanModifySelectedGeometry, tooltip: "Free-rotate selected geometry around a picked center."),
@@ -386,7 +388,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         Command(WorkbenchCommandId.PointToOrigin, null, CadIconName.PointToOrigin, "Point to origin", !CanMoveSelectedPointToOrigin, tooltip: "Move the selected point to global origin."),
         Command(WorkbenchCommandId.VectorToX, null, CadIconName.VectorToX, "Vector to X", !CanAlignSelectedVector, tooltip: "Align the selected line, segment, or two selected points to global X."),
         Command(WorkbenchCommandId.VectorToY, null, CadIconName.VectorToY, "Vector to Y", !CanAlignSelectedVector, tooltip: "Align the selected line, segment, or two selected points to global Y."),
-        Command(WorkbenchCommandId.RemoveDuplicates, null, CadIconName.RemoveDuplicates, "Remove duplicates", disabled: true, isFuture: true, tooltip: "Remove duplicate geometry. Planned cleanup command; not implemented yet.")
+        Command(WorkbenchCommandId.RemoveDuplicates, null, CadIconName.RemoveDuplicates, "Remove duplicates", disabled: !HasDocument || _document.Metadata.Mode == DrawingDocumentMode.ReferenceOnly, tooltip: "Remove exact duplicate cut entities. Different layers and referenced sketch geometry are preserved.")
     };
 
     private string WorkbenchCssClass
@@ -453,7 +455,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private string CornerModifyDistanceValue =>
         FormatNumber(GetCornerModifyDistance());
 
-    private string CommandPromptText => _activeTool switch
+    private string CommandPromptText => _duplicateCleanupStatus ?? (_activeTool switch
     {
         WorkbenchTool.Measure => "Measure: select points or geometry for live deltas. Esc: exit measure.",
         WorkbenchTool.Line => "Line: click start point, then end point. Shift: polar snap. Double-click: start a fresh line. Esc: cancel.",
@@ -494,7 +496,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         null => _constructionMode
             ? "Selection: construction creation is enabled. Click Construction to disable, or select whole geometry and click it to convert. Box select adds; Ctrl-box deselects."
             : "Selection: click to select and make active. Click active again to deselect. Box select adds; Ctrl-box deselects."
-    };
+    });
 
     private string MeasurementText
     {
@@ -588,6 +590,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _grainDirection = GrainDirection.None;
         _grainAngleDegrees = null;
         var document = WithOpenFileMetadata(DxfDocumentReader.Read(text), fileName, text, trustedSource);
+        var cleanup = ExactDuplicateGeometryService.Remove(document);
+        document = cleanup.Document;
+        _duplicateCleanupStatus = cleanup.RemovedCount > 0 || cleanup.ProtectedCount > 0 ? DuplicateCleanupStatus(cleanup) : null;
 
         if (document.Entities.Count == 0)
         {
@@ -704,6 +709,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private async Task InvokeWorkbenchCommand(WorkbenchCommandId commandId)
     {
+        _duplicateCleanupStatus = null;
         switch (commandId)
         {
             case WorkbenchCommandId.NewBlankDocument:
@@ -866,7 +872,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 MenuCommandService.OpenHotkeyOptions();
                 break;
             case WorkbenchCommandId.RemoveDuplicates:
-                _status = "Remove duplicates is planned for cleanup and is not implemented yet.";
+                RemoveExactDuplicates();
                 break;
             default:
                 if (TryGetImplementedSketchTool(commandId, out var tool))
@@ -1150,6 +1156,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void UndoLastDocumentChange()
     {
+        _duplicateCleanupStatus = null;
         if (!_undoStack.TryPop(out var previousDocument))
         {
             return;
@@ -1164,6 +1171,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void RedoLastDocumentChange()
     {
+        _duplicateCleanupStatus = null;
         if (!_redoStack.TryPop(out var nextDocument))
         {
             return;
@@ -1211,8 +1219,27 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         ResetSelection();
         _status = $"Auto cleanup applied: minimum-area rotation, long side on X, bounds min to origin. "
             + $"Rotation {FormatNumber(normalization.RotationDegrees)} deg, "
-            + $"bounds {FormatSize(normalization.NormalizedBounds.Width, normalization.NormalizedBounds.Height)}.";
+            + $"bounds {FormatSize(normalization.NormalizedBounds.Width, normalization.NormalizedBounds.Height)}."
+            + FormatWarningSummary(_document.Metadata.Warnings);
     }
+
+    private void RemoveExactDuplicates()
+    {
+        if (_document.Metadata.Mode == DrawingDocumentMode.ReferenceOnly) return;
+        var result = ExactDuplicateGeometryService.Remove(_document);
+        var status = DuplicateCleanupStatus(result);
+        _duplicateCleanupStatus = status;
+        if (result.RemovedCount > 0)
+        {
+            ApplyDocumentChange(result.Document, status);
+            ResetSelection();
+        }
+        else _status = status;
+    }
+
+    private static string DuplicateCleanupStatus(DuplicateGeometryResult result) =>
+        $"Removed {result.RemovedCount} exact duplicate cut entities."
+        + (result.ProtectedCount > 0 ? $" {result.ProtectedCount} referenced duplicates retained for review." : "");
 
     private void DeleteSelectedGeometry()
     {
@@ -2211,6 +2238,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         try
         {
+            RemoveExactDuplicates();
             var exportDocument = ManufacturingUnits.AssumeInches(_document);
             var exportText = DxfDocumentWriter.Write(exportDocument, CreateDxfWriteOptions());
             var normalizedName = DxfDownloadFileName.FromSourceName(_fileName);
