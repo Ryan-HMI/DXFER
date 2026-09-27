@@ -19,6 +19,7 @@ Use this file to separate what the user has actually tested from what is only au
 | UT-CUT-001 | Total cut inches, import safety guards, normalize/callback, compact readout | USER-REQUESTED | AUTO-PASSED | APP-VERIFIED | Isolated localhost 5206 only; `cut-perimeter-contract.md` records entity limits and evidence. HMI acceptance remains with main. |
 | UT-CONTOUR-001 | Closed loops as conservative estimated pierce count; invalid topology keeps perimeter but requires review | USER-REQUESTED | AUTO-PASSED | APP-VERIFIED | Full suite 558 passed; real 5206 normalize/callback and desktop/mobile readout verified. HMI acceptance remains with main. No production/DEV changes. |
 | UT-CUT-INCH-001 | Inch-only cut geometry and real access-plate save-back | RETEST-PENDING | 562 PASS | APP-VERIFIED | TEST only; real unitless access plate stores 24.347964 in and unchanged bounds. Duplicate holes remain topology review. |
+| UT-DEDUP-001 | Exact coincident geometry cleanup | RETEST-PENDING | 570 PASS | APP-VERIFIED | TEST only; real access plate22.959380in/3contours and checksum-matched save-back. Undo/redo/idempotence pass. Original live artifacts need re-save. |
 
 ## Active Lane: Trim And Extend
 

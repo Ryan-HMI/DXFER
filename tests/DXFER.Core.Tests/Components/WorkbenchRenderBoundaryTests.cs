@@ -266,7 +266,7 @@ public sealed class WorkbenchRenderBoundaryTests
         productionGroups.Should().Contain("CadIconName.GrainY");
         productionGroups.Should().Contain("CadIconName.GrainVector");
         productionGroups.Should().NotContain("new WorkbenchToolGroup(\"View\", new[]");
-        productionGroups.Should().NotContain("WorkbenchCommandId.RemoveDuplicates");
+        productionGroups.Should().Contain("WorkbenchCommandId.RemoveDuplicates");
     }
 
     [Fact]
@@ -310,7 +310,7 @@ public sealed class WorkbenchRenderBoundaryTests
         source.Should().NotContain("WorkbenchCommandId.LoadSample");
         source.Should().NotContain("WorkbenchCommandId.ExportDxfText");
         source.Should().NotContain("WorkbenchCommandId.Line");
-        source.Should().NotContain("WorkbenchCommandId.RemoveDuplicates");
+        source.Should().Contain("WorkbenchCommandId.RemoveDuplicates");
     }
 
     private static string FindRepositoryFile(params string[] segments)

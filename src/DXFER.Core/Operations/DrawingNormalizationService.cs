@@ -17,6 +17,9 @@ public static class DrawingNormalizationService
     {
         ArgumentNullException.ThrowIfNull(document);
 
+        var originalDocument = document;
+        document = ExactDuplicateGeometryService.Remove(document).Document;
+
         var originalBounds = document.GetBounds();
         var samplePoints = GetDocumentSamplePoints(document).ToArray();
         var rotation = ChooseMinimumAreaRotation(samplePoints, originalBounds);
@@ -33,7 +36,7 @@ public static class DrawingNormalizationService
         var normalizedBounds = normalizedDocument.GetBounds();
 
         return new DrawingNormalizationResult(
-            document,
+            originalDocument,
             rotatedDocument,
             normalizedDocument,
             originalBounds,
