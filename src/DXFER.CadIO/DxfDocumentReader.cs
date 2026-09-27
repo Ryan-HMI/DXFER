@@ -655,25 +655,73 @@ public static class DxfDocumentReader
     private static IEnumerable<DxfPair> ReadPairs(string text, ICollection<DrawingDocumentWarning> warnings)
     {
         using var reader = new StringReader(text);
+        var offset = 0;
         while (reader.ReadLine() is { } rawCode)
         {
+            var start = offset;
+            if (string.IsNullOrWhiteSpace(rawCode) && string.IsNullOrWhiteSpace(text[start..])) yield break;
+            var newline = text.IndexOf('\n', offset);
+            offset = newline < 0 ? text.Length : newline + 1;
             var rawValue = reader.ReadLine();
             if (rawValue is null)
             {
                 AddCutWarning(warnings, "Truncated DXF group-code record requires review.");
                 yield break;
             }
+            newline = text.IndexOf('\n', offset);
+            offset = newline < 0 ? text.Length : newline + 1;
 
             if (int.TryParse(rawCode.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var code))
             {
-                yield return new DxfPair(code, rawValue.Trim());
+                yield return new DxfPair(code, rawValue.Trim(), start);
             }
             else
                 AddCutWarning(warnings, "Invalid DXF group-code record requires review.");
         }
     }
 
-    private sealed record DxfPair(int Code, string Value);
+    // Keep source spans so batch cleanup can remove exact records without
+    // re-exporting (and losing) annotations, tables or other original data.
+    internal static string RemoveEntitiesByHandle(string text, IReadOnlySet<string> handles)
+    {
+        var warnings = new List<DrawingDocumentWarning>();
+        var pairs = ReadPairs(text, warnings).ToArray();
+        if (warnings.Count > 0 || text.Contains('\r') && !text.Contains("\r\n", StringComparison.Ordinal))
+            throw new InvalidOperationException("Malformed DXF records require manual cleanup.");
+        if (pairs.Any(p => ((p.Code >= 320 && p.Code <= 369) || (p.Code >= 390 && p.Code <= 399) || p.Code == 1005)
+            && handles.Contains(p.Value)))
+            throw new InvalidOperationException("A duplicate is referenced by another DXF record; review it in DXFER.");
+        var ranges = new List<(int Start, int Length)>();
+        var found = new HashSet<string>(StringComparer.Ordinal);
+        var section = "";
+        for (var i = 0; i < pairs.Length; i++)
+        {
+            if (pairs[i].Code != 0) continue;
+            if (pairs[i].Value.Equals("SECTION", StringComparison.OrdinalIgnoreCase))
+            {
+                section = i + 1 < pairs.Length && pairs[i + 1].Code == 2 ? pairs[i + 1].Value : "";
+                continue;
+            }
+            if (pairs[i].Value.Equals("ENDSEC", StringComparison.OrdinalIgnoreCase)) { section = ""; continue; }
+            if (!section.Equals("ENTITIES", StringComparison.OrdinalIgnoreCase)) continue;
+            var end = i + 1;
+            while (end < pairs.Length && pairs[end].Code != 0) end++;
+            var ids = pairs.Skip(i + 1).Take(end - i - 1).Where(p => p.Code == 5).ToArray();
+            if (ids.Length == 1 && handles.Contains(ids[0].Value))
+            {
+                if (!found.Add(ids[0].Value) || pairs.Count(p => p.Code == 5 && p.Value == ids[0].Value) != 1)
+                    throw new InvalidOperationException("Duplicate DXF handles require manual cleanup.");
+                ranges.Add((pairs[i].Start, (end < pairs.Length ? pairs[end].Start : text.Length) - pairs[i].Start));
+            }
+            i = end - 1;
+        }
+        if (!found.SetEquals(handles))
+            throw new InvalidOperationException("Duplicate geometry lacks unique source handles; review it in DXFER.");
+        foreach (var range in ranges.OrderByDescending(r => r.Start)) text = text.Remove(range.Start, range.Length);
+        return text;
+    }
+
+    private sealed record DxfPair(int Code, string Value, int Start = 0);
 
     private static double RadiansToDegrees(double radians) => radians * 180.0 / Math.PI;
 }

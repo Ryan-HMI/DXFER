@@ -213,6 +213,8 @@ app.MapPost("/api/dxfer/normalize", async (HttpRequest request) =>
     await using var stream = file.OpenReadStream();
     using var reader = new StreamReader(stream);
     var sourceText = await reader.ReadToEndAsync();
+    if (bool.TryParse(form["cleanupOnly"], out var cleanupOnly) && cleanupOnly)
+        return Results.Json(DxfCleanupAnalysis.Analyze(sourceText));
     var sourceDocument = ManufacturingUnits.AssumeInches(WithApiMetadata(DxfDocumentReader.Read(sourceText), file.FileName, sourceText));
     if (sourceDocument.Entities.Count == 0)
     {
