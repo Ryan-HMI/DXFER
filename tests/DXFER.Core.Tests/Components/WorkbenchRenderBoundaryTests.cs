@@ -5,6 +5,16 @@ namespace DXFER.Core.Tests.Components;
 public sealed class WorkbenchRenderBoundaryTests
 {
     [Fact]
+    public void NarrowDockGroupsFitTheirContainerIncludingCollapsedHeaders()
+    {
+        var css = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "WorkbenchToolPalette.razor.css"));
+        var responsive = css[css.IndexOf("@media (max-width: 980px)", StringComparison.Ordinal)..];
+        responsive.Should().Contain(".dxfer-tool-group-side-collapsed");
+        responsive.Should().Contain("min-width: 0;");
+        responsive.Should().Contain("width: min(15.8rem, 100%);");
+    }
+
+    [Fact]
     public void HomePageDoesNotCreateNestedInteractiveServerBoundary()
     {
         var homePage = FindRepositoryFile("src", "DXFER.Web", "Components", "Pages", "Home.razor");
@@ -244,7 +254,10 @@ public sealed class WorkbenchRenderBoundaryTests
         allGroupsStart.Should().BeGreaterThan(productionStart);
         var productionGroups = source[productionStart..allGroupsStart];
 
-        source.Should().Contain("private IReadOnlyList<WorkbenchToolGroup> ToolGroups => ProductionToolGroups;");
+        source.Should().Contain("private IReadOnlyList<WorkbenchToolGroup> ToolGroups => EnableFullEditing ? AllToolGroups : ProductionToolGroups;");
+        source.Should().Contain("public bool EnableFullEditing { get; set; }");
+        var home = File.ReadAllText(FindRepositoryFile("src", "DXFER.Web", "Components", "Pages", "Home.razor"));
+        home.Should().Contain("Configuration.GetValue<bool>(\"Dxfer:EnableFullEditing\")");
         source.Should().NotContain("private IReadOnlyList<WorkbenchToolGroup> ToolGroups => IsSyncLaunch ? ProductionToolGroups : AllToolGroups;");
         productionGroups.Should().Contain("private IReadOnlyList<WorkbenchToolGroup> ProductionToolGroups => new[]");
         productionGroups.Should().Contain("new WorkbenchToolGroup(\"Cleanup\", SyncCleanupCommands, \"Prep\"");

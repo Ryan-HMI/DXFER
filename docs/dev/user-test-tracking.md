@@ -12,6 +12,17 @@ Use this file to separate what the user has actually tested from what is only au
 - `APP-VERIFIED` - Codex verified the behavior in the running app/canvas.
 - `OPEN` - not fixed yet.
 
+## Full Workspace Restart - 2026-10-12
+
+| ID | Behavior | User Status | Automated Status | App Status | Scope |
+|---|---|---|---|---|---|
+| UT-EDITOR-RESTART-001 | Explicit full palette without replacing current cleanup/analysis | USER-REQUESTED | 578 .NET / 256 JS PASS | APP-VERIFIED | Local5036: inch fixture import, circle creation, undo/redo, DXF download/reopen and analysis verified. Public deployments unchanged. Dev callback/user sign-in acceptance not yet verified. |
+| UT-EDITOR-DOCK-001 | Narrow side-dock groups and collapse controls fit actual panel | USER-REQUESTED | AUTO-PASSED | APP-VERIFIED | Shared minimum-width fix; desktop/tablet/390/320 screenshots and collapse/expand checks pass. No data repair needed. |
+
+Full editor completion remains OPEN: retained trim/corner/solver failures,
+document lifecycle, unobscured viewport fit and Dev integration. These are not
+being marked user-passed merely because the palette is restored.
+
 ## TEST Cut Perimeter - 2026-09-26
 
 | ID | Behavior | User Status | Automated Status | App Status | Scope |

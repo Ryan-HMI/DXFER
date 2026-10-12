@@ -1,6 +1,7 @@
 @page "/"
 @using DXFER.Blazor.Components
+@inject IConfiguration Configuration
 
 <PageTitle>DXFER Workbench</PageTitle>
 
-<DrawingWorkbench />
+<DrawingWorkbench EnableFullEditing="@(Configuration.GetValue<bool>("Dxfer:EnableFullEditing"))" />

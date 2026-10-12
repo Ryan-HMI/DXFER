@@ -303,7 +303,9 @@
 
     .dxfer-tool-group-expanded,
     .dxfer-tool-group-left.dxfer-tool-group-expanded,
-    .dxfer-tool-group-right.dxfer-tool-group-expanded {
-        width: min(15.8rem, calc(100vw - 1rem));
+    .dxfer-tool-group-right.dxfer-tool-group-expanded,
+    .dxfer-tool-group-side-collapsed {
+        min-width: 0;
+        width: min(15.8rem, 100%);
     }
 }
