@@ -1,0 +1,2847 @@
+{
+  "SourceRef": "7e9368692f0d77a371b44ac5f11e8d1f9b2267d8",
+  "Scope": "All command/icon enum members and both live palette definitions, plus audited non-palette chrome. Presence is not implementation or user-acceptance certification.",
+  "Sources": [
+    "WorkbenchCommandId.cs",
+    "CadIconName.cs",
+    "DrawingWorkbench.razor.cs",
+    "WorkbenchToolPalette.razor",
+    "MainLayout.razor",
+    "ToolHotkeyOptions.razor"
+  ],
+  "Counts": {
+    "Commands": 75,
+    "EnumIcons": 76,
+    "PaletteCommands": 65,
+    "PaletteIcons": 64,
+    "ExtraChromeAssets": 4
+  },
+  "Commands": [
+    {
+      "Id": "NewBlankDocument",
+      "Name": "NewBlankDocument",
+      "PaletteAppearances": []
+    },
+    {
+      "Id": "LoadSample",
+      "Name": "LoadSample",
+      "PaletteAppearances": []
+    },
+    {
+      "Id": "ExportDxfText",
+      "Name": "ExportDxfText",
+      "PaletteAppearances": []
+    },
+    {
+      "Id": "SaveDxf",
+      "Name": "SaveDxf",
+      "PaletteAppearances": []
+    },
+    {
+      "Id": "SendToSync",
+      "Name": "SendToSync",
+      "PaletteAppearances": []
+    },
+    {
+      "Id": "ReturnToSync",
+      "Name": "ReturnToSync",
+      "PaletteAppearances": []
+    },
+    {
+      "Id": "Measure",
+      "Name": "Measure",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "View",
+          "Command": "Measure",
+          "Label": "Measure",
+          "Icon": "Measure",
+          "Tool": "Measure",
+          "Tooltip": "Measure. Hotkey: Q. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Measure: select points or geometry for live deltas. Esc: exit measure.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Undo",
+      "Name": "Undo",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "Undo",
+          "Label": "Undo",
+          "Icon": "Undo",
+          "Tool": null,
+          "Tooltip": "Undo. Hotkey: Ctrl\u002BZ.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Edit",
+          "Command": "Undo",
+          "Label": "Undo",
+          "Icon": "Undo",
+          "Tool": null,
+          "Tooltip": "Undo. Hotkey: Ctrl\u002BZ.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Redo",
+      "Name": "Redo",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "Redo",
+          "Label": "Redo",
+          "Icon": "Redo",
+          "Tool": null,
+          "Tooltip": "Redo. Hotkey: Ctrl\u002BShift\u002BZ.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Edit",
+          "Command": "Redo",
+          "Label": "Redo",
+          "Icon": "Redo",
+          "Tool": null,
+          "Tooltip": "Redo. Hotkey: Ctrl\u002BShift\u002BZ.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Line",
+      "Name": "Line",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "Line",
+          "Label": "Line",
+          "Icon": "Line",
+          "Tool": "Line",
+          "Tooltip": "Line. Hotkey: Shift\u002BA. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Line: click start point, then end point. Shift: polar snap. Double-click: start a fresh line. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "MidpointLine",
+      "Name": "Midpoint line",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "MidpointLine",
+          "Label": "Midpoint line",
+          "Icon": "MidpointLine",
+          "Tool": "MidpointLine",
+          "Tooltip": "Midpoint line. Hotkey: M. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Midpoint line: click midpoint, then endpoint. Shift: polar snap. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "TwoPointRectangle",
+      "Name": "Two-point rectangle",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "TwoPointRectangle",
+          "Label": "Two-point rectangle",
+          "Icon": "Rectangle",
+          "Tool": "TwoPointRectangle",
+          "Tooltip": "Two-point rectangle. Hotkey: R. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Corner rectangle: click first corner, then opposite corner. Shift: polar snap. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "CenterRectangle",
+      "Name": "Center rectangle",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "CenterRectangle",
+          "Label": "Center rectangle",
+          "Icon": "CenterRectangle",
+          "Tool": "CenterRectangle",
+          "Tooltip": "Center rectangle. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Center rectangle: click center, then corner. Shift: polar snap. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "AlignedRectangle",
+      "Name": "Aligned rectangle",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "AlignedRectangle",
+          "Label": "Aligned rectangle",
+          "Icon": "AlignedRectangle",
+          "Tool": "AlignedRectangle",
+          "Tooltip": "Aligned rectangle. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Aligned rectangle: click baseline start, baseline end, then depth. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "CenterCircle",
+      "Name": "Center circle",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "CenterCircle",
+          "Label": "Center circle",
+          "Icon": "Circle",
+          "Tool": "CenterCircle",
+          "Tooltip": "Center circle. Hotkey: C. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Center circle: click center, then radius point. Shift: polar snap. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "ThreePointCircle",
+      "Name": "Three-point circle",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "ThreePointCircle",
+          "Label": "Three-point circle",
+          "Icon": "ThreePointCircle",
+          "Tool": "ThreePointCircle",
+          "Tooltip": "Three-point circle. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Three-point circle: click three points on the circumference. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Ellipse",
+      "Name": "Ellipse",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "Ellipse",
+          "Label": "Ellipse",
+          "Icon": "Ellipse",
+          "Tool": "Ellipse",
+          "Tooltip": "Ellipse. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Ellipse: click center, major radius point, then minor radius point. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "ThreePointArc",
+      "Name": "Three-point arc",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "ThreePointArc",
+          "Label": "Three-point arc",
+          "Icon": "Arc",
+          "Tool": "ThreePointArc",
+          "Tooltip": "Three-point arc. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Three-point arc: click start point, through point, then end point. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "TangentArc",
+      "Name": "Tangent arc",
+      "PaletteAppearances": []
+    },
+    {
+      "Id": "CenterPointArc",
+      "Name": "Center point arc",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "CenterPointArc",
+          "Label": "Center point arc",
+          "Icon": "CenterPointArc",
+          "Tool": "CenterPointArc",
+          "Tooltip": "Center point arc. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Center point arc: click center, start radius point, then end angle point. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "EllipticalArc",
+      "Name": "EllipticalArc",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "EllipticalArc",
+          "Label": "Elliptical arc",
+          "Icon": "EllipticalArc",
+          "Tool": "EllipticalArc",
+          "Tooltip": "Elliptical arc. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Elliptical arc: click center, major radius point, minor radius point, then end parameter point. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Conic",
+      "Name": "Conic",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "Conic",
+          "Label": "Conic",
+          "Icon": "Conic",
+          "Tool": "Conic",
+          "Tooltip": "Conic. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Conic: click start, control point, then end point. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "InscribedPolygon",
+      "Name": "InscribedPolygon",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "InscribedPolygon",
+          "Label": "Inscribed polygon",
+          "Icon": "InscribedPolygon",
+          "Tool": "InscribedPolygon",
+          "Tooltip": "Inscribed polygon. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Inscribed polygon: click center, scroll for sides, then vertex radius. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "CircumscribedPolygon",
+      "Name": "CircumscribedPolygon",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "CircumscribedPolygon",
+          "Label": "Circumscribed polygon",
+          "Icon": "CircumscribedPolygon",
+          "Tool": "CircumscribedPolygon",
+          "Tooltip": "Circumscribed polygon. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Circumscribed polygon: click center, scroll for sides, then side apothem. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Spline",
+      "Name": "Spline",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "Spline",
+          "Label": "Spline",
+          "Icon": "Spline",
+          "Tool": "Spline",
+          "Tooltip": "Spline. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Spline: click fit points, double-click to finish. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Bezier",
+      "Name": "Bezier",
+      "PaletteAppearances": []
+    },
+    {
+      "Id": "SplineControlPoint",
+      "Name": "SplineControlPoint",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "SplineControlPoint",
+          "Label": "Add spline point",
+          "Icon": "SplineControlPoint",
+          "Tool": "SplineControlPoint",
+          "Tooltip": "Add spline point. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Add spline point: click a fit-point spline where the new fit point belongs. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Point",
+      "Name": "Point",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "Point",
+          "Label": "Point",
+          "Icon": "Point",
+          "Tool": "Point",
+          "Tooltip": "Point. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Point: click to place a persistent sketch point. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Text",
+      "Name": "Text",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "Text",
+          "Label": "Text",
+          "Icon": "Text",
+          "Tool": "Text",
+          "Tooltip": "Text. Not implemented yet.",
+          "Prompt": null,
+          "Future": true
+        }
+      ]
+    },
+    {
+      "Id": "Construction",
+      "Name": "Construction",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "Construction",
+          "Label": "Construction",
+          "Icon": "Construction",
+          "Tool": "Construction",
+          "Tooltip": "Construction. Converts preselected geometry once; with no selection, enters a modal convert tool until Esc.",
+          "Prompt": "Construction: click geometry to toggle construction state. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "DeleteSelection",
+      "Name": "Delete selected geometry",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "DeleteSelection",
+          "Label": "Delete selected geometry",
+          "Icon": "Delete",
+          "Tool": null,
+          "Tooltip": "Delete selected geometry.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Slot",
+      "Name": "Slot",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "Slot",
+          "Label": "Slot",
+          "Icon": "Slot",
+          "Tool": "Slot",
+          "Tooltip": "Slot. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Slot: click first center, second center, then radius point. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "PowerTrim",
+      "Name": "Power trim/extend",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "PowerTrim",
+          "Label": "Power trim/extend",
+          "Icon": "PowerTrim",
+          "Tool": "PowerTrim",
+          "Tooltip": "Power trim/extend. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Power trim/extend: click a line, polyline, polygon, circle, arc, ellipse, spline, or point section to trim, or click past a line endpoint to extend. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "SplitAtPoint",
+      "Name": "Split at point",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "SplitAtPoint",
+          "Label": "Split at point",
+          "Icon": "Split",
+          "Tool": "SplitAtPoint",
+          "Tooltip": "Split at point. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Split at point: click a line or arc, or pick two points on a circle. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "AddSplinePoint",
+      "Name": "Add spline point",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "AddSplinePoint",
+          "Label": "Add spline point",
+          "Icon": "SplineControlPoint",
+          "Tool": "AddSplinePoint",
+          "Tooltip": "Add spline point. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Add spline point: select one fit-point spline, then click the spline where the new fit point belongs. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Offset",
+      "Name": "Offset",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "Offset",
+          "Label": "Offset",
+          "Icon": "Offset",
+          "Tool": "Offset",
+          "Tooltip": "Offset. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Offset: select whole geometry, then click the through side or radius point. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Fillet",
+      "Name": "Fillet",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "Fillet",
+          "Label": "Fillet",
+          "Icon": "Fillet",
+          "Tool": "Fillet",
+          "Tooltip": "Fillet. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Fillet: select two converging edges, or one vertex with exactly two adjacent edges. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Chamfer",
+      "Name": "Chamfer",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "Chamfer",
+          "Label": "Chamfer",
+          "Icon": "Chamfer",
+          "Tool": "Chamfer",
+          "Tooltip": "Chamfer. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Chamfer: select two converging edges, or one vertex with exactly two adjacent edges. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Dimension",
+      "Name": "Dimension",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "Dimension",
+          "Label": "Dimension",
+          "Icon": "Dimension",
+          "Tool": "Dimension",
+          "Tooltip": "Dimension. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Dimension: click geometry or points, move to place, then click to set. Shift: diameter for arcs. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Translate",
+      "Name": "Translate",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Transform",
+          "Command": "Translate",
+          "Label": "Translate",
+          "Icon": "Move",
+          "Tool": "Translate",
+          "Tooltip": "Translate. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Translate: select whole geometry, click from point, then to point. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Rotate",
+      "Name": "Rotate",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Transform",
+          "Command": "Rotate",
+          "Label": "Rotate",
+          "Icon": "Rotate",
+          "Tool": "Rotate",
+          "Tooltip": "Rotate. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Rotate: select whole geometry, click center, reference point, then target point. Esc: cancel.",
+          "Future": false
+        },
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "Rotate",
+          "Label": "Free rotate",
+          "Icon": "Rotate",
+          "Tool": "Rotate",
+          "Tooltip": "Free-rotate selected geometry around a picked center.",
+          "Prompt": "Rotate: select whole geometry, click center, reference point, then target point. Esc: cancel.",
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "Rotate",
+          "Label": "Free rotate",
+          "Icon": "Rotate",
+          "Tool": "Rotate",
+          "Tooltip": "Free-rotate selected geometry around a picked center.",
+          "Prompt": "Rotate: select whole geometry, click center, reference point, then target point. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Rotate90Clockwise",
+      "Name": "Rotate 90 CW",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "Rotate90Clockwise",
+          "Label": "Rotate 90 CW",
+          "Icon": "Rotate90Clockwise",
+          "Tool": null,
+          "Tooltip": "Rotate 90 CW.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "Rotate90Clockwise",
+          "Label": "Rotate 90 CW",
+          "Icon": "Rotate90Clockwise",
+          "Tool": null,
+          "Tooltip": "Rotate 90 CW.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Rotate90CounterClockwise",
+      "Name": "Rotate 90 CCW",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "Rotate90CounterClockwise",
+          "Label": "Rotate 90 CCW",
+          "Icon": "Rotate90CounterClockwise",
+          "Tool": null,
+          "Tooltip": "Rotate 90 CCW.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "Rotate90CounterClockwise",
+          "Label": "Rotate 90 CCW",
+          "Icon": "Rotate90CounterClockwise",
+          "Tool": null,
+          "Tooltip": "Rotate 90 CCW.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Scale",
+      "Name": "Scale",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Transform",
+          "Command": "Scale",
+          "Label": "Scale",
+          "Icon": "Scale",
+          "Tool": "Scale",
+          "Tooltip": "Scale. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Scale: select whole geometry, click center, reference radius, then target radius. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Mirror",
+      "Name": "Mirror",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Transform",
+          "Command": "Mirror",
+          "Label": "Mirror",
+          "Icon": "Mirror",
+          "Tool": "Mirror",
+          "Tooltip": "Mirror. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Mirror: select whole geometry, click two points for the mirror axis. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "LinearPattern",
+      "Name": "Linear pattern",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Pattern",
+          "Command": "LinearPattern",
+          "Label": "Linear pattern",
+          "Icon": "LinearPattern",
+          "Tool": "LinearPattern",
+          "Tooltip": "Linear pattern. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Linear pattern: select whole geometry, click from point, then spacing point. Creates three instances. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "CircularPattern",
+      "Name": "Circular pattern",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Pattern",
+          "Command": "CircularPattern",
+          "Label": "Circular pattern",
+          "Icon": "CircularPattern",
+          "Tool": "CircularPattern",
+          "Tooltip": "Circular pattern. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Circular pattern: select whole geometry, click center, reference point, then angle point. Creates three instances. Esc: cancel.",
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Coincident",
+      "Name": "Coincident",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Coincident",
+          "Label": "Coincident",
+          "Icon": "Coincident",
+          "Tool": "Coincident",
+          "Tooltip": "Coincident. Select two editable points. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Concentric",
+      "Name": "Concentric",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Concentric",
+          "Label": "Concentric",
+          "Icon": "Concentric",
+          "Tool": "Concentric",
+          "Tooltip": "Concentric. Select two circles or arcs. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Parallel",
+      "Name": "Parallel",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Parallel",
+          "Label": "Parallel",
+          "Icon": "Parallel",
+          "Tool": "Parallel",
+          "Tooltip": "Parallel. Select two lines or polyline segments. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Tangent",
+      "Name": "Tangent",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Tangent",
+          "Label": "Tangent",
+          "Icon": "Tangent",
+          "Tool": "Tangent",
+          "Tooltip": "Tangent. Select a line/circle/arc plus another circle/arc or line. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Horizontal",
+      "Name": "Horizontal",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Horizontal",
+          "Label": "Horizontal",
+          "Icon": "Horizontal",
+          "Tool": "Horizontal",
+          "Tooltip": "Horizontal. Select one line or two editable points. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Vertical",
+      "Name": "Vertical",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Vertical",
+          "Label": "Vertical",
+          "Icon": "Vertical",
+          "Tool": "Vertical",
+          "Tooltip": "Vertical. Select one line or two editable points. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Perpendicular",
+      "Name": "Perpendicular",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Perpendicular",
+          "Label": "Perpendicular",
+          "Icon": "Perpendicular",
+          "Tool": "Perpendicular",
+          "Tooltip": "Perpendicular. Select two lines or polyline segments. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Equal",
+      "Name": "Equal",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Equal",
+          "Label": "Equal",
+          "Icon": "Equal",
+          "Tool": "Equal",
+          "Tooltip": "Equal. Select two lines or two circle/arc radii. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Midpoint",
+      "Name": "Midpoint",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Midpoint",
+          "Label": "Midpoint",
+          "Icon": "Midpoint",
+          "Tool": "Midpoint",
+          "Tooltip": "Midpoint. Select one line and one editable point. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Normal",
+      "Name": "Normal",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Normal",
+          "Label": "Normal",
+          "Icon": "Normal",
+          "Tool": "Normal",
+          "Tooltip": "Normal. Not implemented yet.",
+          "Prompt": null,
+          "Future": true
+        }
+      ]
+    },
+    {
+      "Id": "Pierce",
+      "Name": "Pierce",
+      "PaletteAppearances": []
+    },
+    {
+      "Id": "Symmetric",
+      "Name": "Symmetric",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Symmetric",
+          "Label": "Symmetric",
+          "Icon": "Symmetric",
+          "Tool": "Symmetric",
+          "Tooltip": "Symmetric. Not implemented yet.",
+          "Prompt": null,
+          "Future": true
+        }
+      ]
+    },
+    {
+      "Id": "Fix",
+      "Name": "Fix",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Fix",
+          "Label": "Fix",
+          "Icon": "Fix",
+          "Tool": "Fix",
+          "Tooltip": "Fix. Select geometry or editable points to fix. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "Curvature",
+      "Name": "Curvature",
+      "PaletteAppearances": []
+    },
+    {
+      "Id": "FitExtents",
+      "Name": "Fit extents",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "View",
+          "Command": "FitExtents",
+          "Label": "Fit extents",
+          "Icon": "Fit",
+          "Tool": null,
+          "Tooltip": "Fit extents.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "FitExtents",
+          "Label": "Fit",
+          "Icon": "Fit",
+          "Tool": null,
+          "Tooltip": "Fit all loaded geometry in the viewport.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "AutoCleanup",
+      "Name": "Auto",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "AutoCleanup",
+          "Label": "Auto",
+          "Icon": "AutoCleanup",
+          "Tool": null,
+          "Tooltip": "Find the minimum-area rotation with the long side on X, then move bounds minimum to origin.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "AutoCleanup",
+          "Label": "Auto",
+          "Icon": "AutoCleanup",
+          "Tool": null,
+          "Tooltip": "Find the minimum-area rotation with the long side on X, then move bounds minimum to origin.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "BoundsToOrigin",
+      "Name": "Bounds to origin",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "BoundsToOrigin",
+          "Label": "Bounds to origin",
+          "Icon": "BoundsToOrigin",
+          "Tool": null,
+          "Tooltip": "Move drawing bounds minimum to global origin.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "BoundsToOrigin",
+          "Label": "Bounds to origin",
+          "Icon": "BoundsToOrigin",
+          "Tool": null,
+          "Tooltip": "Move drawing bounds minimum to global origin.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "PointToOrigin",
+      "Name": "Point to origin",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "PointToOrigin",
+          "Label": "Point to origin",
+          "Icon": "PointToOrigin",
+          "Tool": null,
+          "Tooltip": "Move the selected point to global origin.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "PointToOrigin",
+          "Label": "Point to origin",
+          "Icon": "PointToOrigin",
+          "Tool": null,
+          "Tooltip": "Move the selected point to global origin.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "OriginAxes",
+      "Name": "Origin axes",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "View",
+          "Command": "OriginAxes",
+          "Label": "Origin axes",
+          "Icon": "OriginAxes",
+          "Tool": null,
+          "Tooltip": "Origin axes.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "ShowConstraints",
+      "Name": "ShowConstraints",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "View",
+          "Command": "ShowConstraints",
+          "Label": "Show constraints",
+          "Icon": "ShowConstraints",
+          "Tool": null,
+          "Tooltip": "Show constraints. When off, constraints appear only while hovering referenced geometry.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "VectorToX",
+      "Name": "Vector to X",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "VectorToX",
+          "Label": "Vector to X",
+          "Icon": "VectorToX",
+          "Tool": null,
+          "Tooltip": "Align the selected line, segment, or two selected points to global X.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "VectorToX",
+          "Label": "Vector to X",
+          "Icon": "VectorToX",
+          "Tool": null,
+          "Tooltip": "Align the selected line, segment, or two selected points to global X.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "VectorToY",
+      "Name": "Vector to Y",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "VectorToY",
+          "Label": "Vector to Y",
+          "Icon": "VectorToY",
+          "Tool": null,
+          "Tooltip": "Align the selected line, segment, or two selected points to global Y.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "VectorToY",
+          "Label": "Vector to Y",
+          "Icon": "VectorToY",
+          "Tool": null,
+          "Tooltip": "Align the selected line, segment, or two selected points to global Y.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "GrainNone",
+      "Name": "GrainNone",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Grain",
+          "Command": "GrainNone",
+          "Label": "Grain none",
+          "Icon": "GrainNone",
+          "Tool": null,
+          "Tooltip": "Clear the grain annotation.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Grain",
+          "Command": "GrainNone",
+          "Label": "Grain none",
+          "Icon": "GrainNone",
+          "Tool": null,
+          "Tooltip": "Clear the grain annotation.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "GrainX",
+      "Name": "GrainX",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Grain",
+          "Command": "GrainX",
+          "Label": "Grain X",
+          "Icon": "GrainX",
+          "Tool": null,
+          "Tooltip": "Mark grain along global X on the GRAIN layer.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Grain",
+          "Command": "GrainX",
+          "Label": "Grain X",
+          "Icon": "GrainX",
+          "Tool": null,
+          "Tooltip": "Mark grain along global X on the GRAIN layer.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "GrainY",
+      "Name": "GrainY",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Grain",
+          "Command": "GrainY",
+          "Label": "Grain Y",
+          "Icon": "GrainY",
+          "Tool": null,
+          "Tooltip": "Mark grain along global Y on the GRAIN layer.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Grain",
+          "Command": "GrainY",
+          "Label": "Grain Y",
+          "Icon": "GrainY",
+          "Tool": null,
+          "Tooltip": "Mark grain along global Y on the GRAIN layer.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "GrainFromVector",
+      "Name": "GrainFromVector",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Grain",
+          "Command": "GrainFromVector",
+          "Label": "Grain vector",
+          "Icon": "GrainVector",
+          "Tool": null,
+          "Tooltip": "Mark grain along the selected line, segment, or two selected points on the GRAIN layer.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Grain",
+          "Command": "GrainFromVector",
+          "Label": "Grain vector",
+          "Icon": "GrainVector",
+          "Tool": null,
+          "Tooltip": "Mark grain along the selected line, segment, or two selected points on the GRAIN layer.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "RemoveDuplicates",
+      "Name": "RemoveDuplicates",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "RemoveDuplicates",
+          "Label": "Remove duplicates",
+          "Icon": "RemoveDuplicates",
+          "Tool": null,
+          "Tooltip": "Remove exact duplicate cut entities. Different layers and referenced sketch geometry are preserved.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "RemoveDuplicates",
+          "Label": "Remove duplicates",
+          "Icon": "RemoveDuplicates",
+          "Tool": null,
+          "Tooltip": "Remove exact duplicate cut entities. Different layers and referenced sketch geometry are preserved.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    },
+    {
+      "Id": "ToolHotkeys",
+      "Name": "ToolHotkeys",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "View",
+          "Command": "ToolHotkeys",
+          "Label": "Tool hotkeys",
+          "Icon": "Hotkeys",
+          "Tool": null,
+          "Tooltip": "Tool hotkeys.",
+          "Prompt": null,
+          "Future": false
+        }
+      ]
+    }
+  ],
+  "Icons": [
+    {
+      "Id": "NewFile",
+      "Filename": "new-file.png",
+      "PaletteAppearances": [],
+      "ChromeUses": []
+    },
+    {
+      "Id": "FolderOpen",
+      "Filename": "folder-open.png",
+      "PaletteAppearances": [],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Sample",
+      "Filename": "sample.png",
+      "PaletteAppearances": [],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Export",
+      "Filename": "export.png",
+      "PaletteAppearances": [],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Hotkeys",
+      "Filename": "hotkeys.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "View",
+          "Command": "ToolHotkeys",
+          "Label": "Tool hotkeys",
+          "Icon": "Hotkeys",
+          "Tool": null,
+          "Tooltip": "Tool hotkeys.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "CollapseLeft",
+      "Filename": "collapse-left.png",
+      "PaletteAppearances": [],
+      "ChromeUses": []
+    },
+    {
+      "Id": "CollapseRight",
+      "Filename": "collapse-right.png",
+      "PaletteAppearances": [],
+      "ChromeUses": []
+    },
+    {
+      "Id": "ChevronUp",
+      "Filename": "chevron-up.png",
+      "PaletteAppearances": [],
+      "ChromeUses": [
+        {
+          "Id": "ChevronUp",
+          "Label": "Collapse docked tool group",
+          "Source": "WorkbenchToolPalette.razor",
+          "Purpose": "Upward chevron; collapse the group\u0027s commands, retaining its header.",
+          "IsEnumIcon": true
+        }
+      ]
+    },
+    {
+      "Id": "ChevronDown",
+      "Filename": "chevron-down.png",
+      "PaletteAppearances": [],
+      "ChromeUses": [
+        {
+          "Id": "ChevronDown",
+          "Label": "Expand docked tool group",
+          "Source": "WorkbenchToolPalette.razor",
+          "Purpose": "Downward chevron; show the group\u0027s commands.",
+          "IsEnumIcon": true
+        }
+      ]
+    },
+    {
+      "Id": "Measure",
+      "Filename": "measure.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "View",
+          "Command": "Measure",
+          "Label": "Measure",
+          "Icon": "Measure",
+          "Tool": "Measure",
+          "Tooltip": "Measure. Hotkey: Q. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Measure: select points or geometry for live deltas. Esc: exit measure.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Undo",
+      "Filename": "undo.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "Undo",
+          "Label": "Undo",
+          "Icon": "Undo",
+          "Tool": null,
+          "Tooltip": "Undo. Hotkey: Ctrl\u002BZ.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Edit",
+          "Command": "Undo",
+          "Label": "Undo",
+          "Icon": "Undo",
+          "Tool": null,
+          "Tooltip": "Undo. Hotkey: Ctrl\u002BZ.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Redo",
+      "Filename": "redo.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "Redo",
+          "Label": "Redo",
+          "Icon": "Redo",
+          "Tool": null,
+          "Tooltip": "Redo. Hotkey: Ctrl\u002BShift\u002BZ.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Edit",
+          "Command": "Redo",
+          "Label": "Redo",
+          "Icon": "Redo",
+          "Tool": null,
+          "Tooltip": "Redo. Hotkey: Ctrl\u002BShift\u002BZ.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Line",
+      "Filename": "line.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "Line",
+          "Label": "Line",
+          "Icon": "Line",
+          "Tool": "Line",
+          "Tooltip": "Line. Hotkey: Shift\u002BA. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Line: click start point, then end point. Shift: polar snap. Double-click: start a fresh line. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "MidpointLine",
+      "Filename": "midpoint-line.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "MidpointLine",
+          "Label": "Midpoint line",
+          "Icon": "MidpointLine",
+          "Tool": "MidpointLine",
+          "Tooltip": "Midpoint line. Hotkey: M. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Midpoint line: click midpoint, then endpoint. Shift: polar snap. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Rectangle",
+      "Filename": "rectangle.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "TwoPointRectangle",
+          "Label": "Two-point rectangle",
+          "Icon": "Rectangle",
+          "Tool": "TwoPointRectangle",
+          "Tooltip": "Two-point rectangle. Hotkey: R. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Corner rectangle: click first corner, then opposite corner. Shift: polar snap. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "CenterRectangle",
+      "Filename": "center-rectangle.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "CenterRectangle",
+          "Label": "Center rectangle",
+          "Icon": "CenterRectangle",
+          "Tool": "CenterRectangle",
+          "Tooltip": "Center rectangle. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Center rectangle: click center, then corner. Shift: polar snap. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "AlignedRectangle",
+      "Filename": "aligned-rectangle.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "AlignedRectangle",
+          "Label": "Aligned rectangle",
+          "Icon": "AlignedRectangle",
+          "Tool": "AlignedRectangle",
+          "Tooltip": "Aligned rectangle. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Aligned rectangle: click baseline start, baseline end, then depth. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Circle",
+      "Filename": "circle.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "CenterCircle",
+          "Label": "Center circle",
+          "Icon": "Circle",
+          "Tool": "CenterCircle",
+          "Tooltip": "Center circle. Hotkey: C. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Center circle: click center, then radius point. Shift: polar snap. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "ThreePointCircle",
+      "Filename": "three-point-circle.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "ThreePointCircle",
+          "Label": "Three-point circle",
+          "Icon": "ThreePointCircle",
+          "Tool": "ThreePointCircle",
+          "Tooltip": "Three-point circle. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Three-point circle: click three points on the circumference. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Ellipse",
+      "Filename": "ellipse.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "Ellipse",
+          "Label": "Ellipse",
+          "Icon": "Ellipse",
+          "Tool": "Ellipse",
+          "Tooltip": "Ellipse. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Ellipse: click center, major radius point, then minor radius point. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Arc",
+      "Filename": "arc.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "ThreePointArc",
+          "Label": "Three-point arc",
+          "Icon": "Arc",
+          "Tool": "ThreePointArc",
+          "Tooltip": "Three-point arc. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Three-point arc: click start point, through point, then end point. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "TangentArc",
+      "Filename": "tangent-arc.png",
+      "PaletteAppearances": [],
+      "ChromeUses": []
+    },
+    {
+      "Id": "CenterPointArc",
+      "Filename": "center-point-arc.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "CenterPointArc",
+          "Label": "Center point arc",
+          "Icon": "CenterPointArc",
+          "Tool": "CenterPointArc",
+          "Tooltip": "Center point arc. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Center point arc: click center, start radius point, then end angle point. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "EllipticalArc",
+      "Filename": "elliptical-arc.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "EllipticalArc",
+          "Label": "Elliptical arc",
+          "Icon": "EllipticalArc",
+          "Tool": "EllipticalArc",
+          "Tooltip": "Elliptical arc. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Elliptical arc: click center, major radius point, minor radius point, then end parameter point. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Conic",
+      "Filename": "conic.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "Conic",
+          "Label": "Conic",
+          "Icon": "Conic",
+          "Tool": "Conic",
+          "Tooltip": "Conic. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Conic: click start, control point, then end point. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "InscribedPolygon",
+      "Filename": "inscribed-polygon.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "InscribedPolygon",
+          "Label": "Inscribed polygon",
+          "Icon": "InscribedPolygon",
+          "Tool": "InscribedPolygon",
+          "Tooltip": "Inscribed polygon. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Inscribed polygon: click center, scroll for sides, then vertex radius. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "CircumscribedPolygon",
+      "Filename": "circumscribed-polygon.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "CircumscribedPolygon",
+          "Label": "Circumscribed polygon",
+          "Icon": "CircumscribedPolygon",
+          "Tool": "CircumscribedPolygon",
+          "Tooltip": "Circumscribed polygon. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Circumscribed polygon: click center, scroll for sides, then side apothem. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Spline",
+      "Filename": "spline.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "Spline",
+          "Label": "Spline",
+          "Icon": "Spline",
+          "Tool": "Spline",
+          "Tooltip": "Spline. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Spline: click fit points, double-click to finish. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Bezier",
+      "Filename": "bezier.png",
+      "PaletteAppearances": [],
+      "ChromeUses": []
+    },
+    {
+      "Id": "SplineControlPoint",
+      "Filename": "spline-control-point.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "SplineControlPoint",
+          "Label": "Add spline point",
+          "Icon": "SplineControlPoint",
+          "Tool": "SplineControlPoint",
+          "Tooltip": "Add spline point. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Add spline point: click a fit-point spline where the new fit point belongs. Esc: cancel.",
+          "Future": false
+        },
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "AddSplinePoint",
+          "Label": "Add spline point",
+          "Icon": "SplineControlPoint",
+          "Tool": "AddSplinePoint",
+          "Tooltip": "Add spline point. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Add spline point: select one fit-point spline, then click the spline where the new fit point belongs. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Point",
+      "Filename": "point.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "Point",
+          "Label": "Point",
+          "Icon": "Point",
+          "Tool": "Point",
+          "Tooltip": "Point. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Point: click to place a persistent sketch point. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Text",
+      "Filename": "text.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "Text",
+          "Label": "Text",
+          "Icon": "Text",
+          "Tool": "Text",
+          "Tooltip": "Text. Not implemented yet.",
+          "Prompt": null,
+          "Future": true
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Construction",
+      "Filename": "construction.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "Construction",
+          "Label": "Construction",
+          "Icon": "Construction",
+          "Tool": "Construction",
+          "Tooltip": "Construction. Converts preselected geometry once; with no selection, enters a modal convert tool until Esc.",
+          "Prompt": "Construction: click geometry to toggle construction state. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Delete",
+      "Filename": "delete.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "DeleteSelection",
+          "Label": "Delete selected geometry",
+          "Icon": "Delete",
+          "Tool": null,
+          "Tooltip": "Delete selected geometry.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Slot",
+      "Filename": "slot.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Sketch",
+          "Command": "Slot",
+          "Label": "Slot",
+          "Icon": "Slot",
+          "Tool": "Slot",
+          "Tooltip": "Slot. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Slot: click first center, second center, then radius point. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "PowerTrim",
+      "Filename": "power-trim.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "PowerTrim",
+          "Label": "Power trim/extend",
+          "Icon": "PowerTrim",
+          "Tool": "PowerTrim",
+          "Tooltip": "Power trim/extend. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Power trim/extend: click a line, polyline, polygon, circle, arc, ellipse, spline, or point section to trim, or click past a line endpoint to extend. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Split",
+      "Filename": "split.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "SplitAtPoint",
+          "Label": "Split at point",
+          "Icon": "Split",
+          "Tool": "SplitAtPoint",
+          "Tooltip": "Split at point. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Split at point: click a line or arc, or pick two points on a circle. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Offset",
+      "Filename": "offset.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "Offset",
+          "Label": "Offset",
+          "Icon": "Offset",
+          "Tool": "Offset",
+          "Tooltip": "Offset. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Offset: select whole geometry, then click the through side or radius point. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Fillet",
+      "Filename": "fillet.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "Fillet",
+          "Label": "Fillet",
+          "Icon": "Fillet",
+          "Tool": "Fillet",
+          "Tooltip": "Fillet. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Fillet: select two converging edges, or one vertex with exactly two adjacent edges. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Chamfer",
+      "Filename": "chamfer.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "Chamfer",
+          "Label": "Chamfer",
+          "Icon": "Chamfer",
+          "Tool": "Chamfer",
+          "Tooltip": "Chamfer. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Chamfer: select two converging edges, or one vertex with exactly two adjacent edges. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Dimension",
+      "Filename": "dimension.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Modify",
+          "Command": "Dimension",
+          "Label": "Dimension",
+          "Icon": "Dimension",
+          "Tool": "Dimension",
+          "Tooltip": "Dimension. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Dimension: click geometry or points, move to place, then click to set. Shift: diameter for arcs. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Move",
+      "Filename": "move.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Transform",
+          "Command": "Translate",
+          "Label": "Translate",
+          "Icon": "Move",
+          "Tool": "Translate",
+          "Tooltip": "Translate. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Translate: select whole geometry, click from point, then to point. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Rotate",
+      "Filename": "rotate.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Transform",
+          "Command": "Rotate",
+          "Label": "Rotate",
+          "Icon": "Rotate",
+          "Tool": "Rotate",
+          "Tooltip": "Rotate. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Rotate: select whole geometry, click center, reference point, then target point. Esc: cancel.",
+          "Future": false
+        },
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "Rotate",
+          "Label": "Free rotate",
+          "Icon": "Rotate",
+          "Tool": "Rotate",
+          "Tooltip": "Free-rotate selected geometry around a picked center.",
+          "Prompt": "Rotate: select whole geometry, click center, reference point, then target point. Esc: cancel.",
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "Rotate",
+          "Label": "Free rotate",
+          "Icon": "Rotate",
+          "Tool": "Rotate",
+          "Tooltip": "Free-rotate selected geometry around a picked center.",
+          "Prompt": "Rotate: select whole geometry, click center, reference point, then target point. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Rotate90Clockwise",
+      "Filename": "rotate90-clockwise.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "Rotate90Clockwise",
+          "Label": "Rotate 90 CW",
+          "Icon": "Rotate90Clockwise",
+          "Tool": null,
+          "Tooltip": "Rotate 90 CW.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "Rotate90Clockwise",
+          "Label": "Rotate 90 CW",
+          "Icon": "Rotate90Clockwise",
+          "Tool": null,
+          "Tooltip": "Rotate 90 CW.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Rotate90CounterClockwise",
+      "Filename": "rotate90-counter-clockwise.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "Rotate90CounterClockwise",
+          "Label": "Rotate 90 CCW",
+          "Icon": "Rotate90CounterClockwise",
+          "Tool": null,
+          "Tooltip": "Rotate 90 CCW.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "Rotate90CounterClockwise",
+          "Label": "Rotate 90 CCW",
+          "Icon": "Rotate90CounterClockwise",
+          "Tool": null,
+          "Tooltip": "Rotate 90 CCW.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Scale",
+      "Filename": "scale.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Transform",
+          "Command": "Scale",
+          "Label": "Scale",
+          "Icon": "Scale",
+          "Tool": "Scale",
+          "Tooltip": "Scale. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Scale: select whole geometry, click center, reference radius, then target radius. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Mirror",
+      "Filename": "mirror.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Transform",
+          "Command": "Mirror",
+          "Label": "Mirror",
+          "Icon": "Mirror",
+          "Tool": "Mirror",
+          "Tooltip": "Mirror. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Mirror: select whole geometry, click two points for the mirror axis. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "LinearPattern",
+      "Filename": "linear-pattern.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Pattern",
+          "Command": "LinearPattern",
+          "Label": "Linear pattern",
+          "Icon": "LinearPattern",
+          "Tool": "LinearPattern",
+          "Tooltip": "Linear pattern. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Linear pattern: select whole geometry, click from point, then spacing point. Creates three instances. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "CircularPattern",
+      "Filename": "circular-pattern.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Pattern",
+          "Command": "CircularPattern",
+          "Label": "Circular pattern",
+          "Icon": "CircularPattern",
+          "Tool": "CircularPattern",
+          "Tooltip": "Circular pattern. Enters a modal tool; press Esc to return to selection.",
+          "Prompt": "Circular pattern: select whole geometry, click center, reference point, then angle point. Creates three instances. Esc: cancel.",
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Coincident",
+      "Filename": "coincident.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Coincident",
+          "Label": "Coincident",
+          "Icon": "Coincident",
+          "Tool": "Coincident",
+          "Tooltip": "Coincident. Select two editable points. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Concentric",
+      "Filename": "concentric.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Concentric",
+          "Label": "Concentric",
+          "Icon": "Concentric",
+          "Tool": "Concentric",
+          "Tooltip": "Concentric. Select two circles or arcs. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Parallel",
+      "Filename": "parallel.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Parallel",
+          "Label": "Parallel",
+          "Icon": "Parallel",
+          "Tool": "Parallel",
+          "Tooltip": "Parallel. Select two lines or polyline segments. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Tangent",
+      "Filename": "tangent.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Tangent",
+          "Label": "Tangent",
+          "Icon": "Tangent",
+          "Tool": "Tangent",
+          "Tooltip": "Tangent. Select a line/circle/arc plus another circle/arc or line. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Horizontal",
+      "Filename": "horizontal.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Horizontal",
+          "Label": "Horizontal",
+          "Icon": "Horizontal",
+          "Tool": "Horizontal",
+          "Tooltip": "Horizontal. Select one line or two editable points. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Vertical",
+      "Filename": "vertical.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Vertical",
+          "Label": "Vertical",
+          "Icon": "Vertical",
+          "Tool": "Vertical",
+          "Tooltip": "Vertical. Select one line or two editable points. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Perpendicular",
+      "Filename": "perpendicular.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Perpendicular",
+          "Label": "Perpendicular",
+          "Icon": "Perpendicular",
+          "Tool": "Perpendicular",
+          "Tooltip": "Perpendicular. Select two lines or polyline segments. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Equal",
+      "Filename": "equal.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Equal",
+          "Label": "Equal",
+          "Icon": "Equal",
+          "Tool": "Equal",
+          "Tooltip": "Equal. Select two lines or two circle/arc radii. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Midpoint",
+      "Filename": "midpoint.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Midpoint",
+          "Label": "Midpoint",
+          "Icon": "Midpoint",
+          "Tool": "Midpoint",
+          "Tooltip": "Midpoint. Select one line and one editable point. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Normal",
+      "Filename": "normal.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Normal",
+          "Label": "Normal",
+          "Icon": "Normal",
+          "Tool": "Normal",
+          "Tooltip": "Normal. Not implemented yet.",
+          "Prompt": null,
+          "Future": true
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Pierce",
+      "Filename": "pierce.png",
+      "PaletteAppearances": [],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Symmetric",
+      "Filename": "symmetric.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Symmetric",
+          "Label": "Symmetric",
+          "Icon": "Symmetric",
+          "Tool": "Symmetric",
+          "Tooltip": "Symmetric. Not implemented yet.",
+          "Prompt": null,
+          "Future": true
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Fix",
+      "Filename": "fix.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Constraints",
+          "Command": "Fix",
+          "Label": "Fix",
+          "Icon": "Fix",
+          "Tool": "Fix",
+          "Tooltip": "Fix. Select geometry or editable points to fix. Works with preselection or post-selection; Esc cancels.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Curvature",
+      "Filename": "curvature.png",
+      "PaletteAppearances": [],
+      "ChromeUses": []
+    },
+    {
+      "Id": "Fit",
+      "Filename": "fit.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "View",
+          "Command": "FitExtents",
+          "Label": "Fit extents",
+          "Icon": "Fit",
+          "Tool": null,
+          "Tooltip": "Fit extents.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "FitExtents",
+          "Label": "Fit",
+          "Icon": "Fit",
+          "Tool": null,
+          "Tooltip": "Fit all loaded geometry in the viewport.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "AutoCleanup",
+      "Filename": "auto-cleanup.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "AutoCleanup",
+          "Label": "Auto",
+          "Icon": "AutoCleanup",
+          "Tool": null,
+          "Tooltip": "Find the minimum-area rotation with the long side on X, then move bounds minimum to origin.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "AutoCleanup",
+          "Label": "Auto",
+          "Icon": "AutoCleanup",
+          "Tool": null,
+          "Tooltip": "Find the minimum-area rotation with the long side on X, then move bounds minimum to origin.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "BoundsToOrigin",
+      "Filename": "bounds-to-origin.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "BoundsToOrigin",
+          "Label": "Bounds to origin",
+          "Icon": "BoundsToOrigin",
+          "Tool": null,
+          "Tooltip": "Move drawing bounds minimum to global origin.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "BoundsToOrigin",
+          "Label": "Bounds to origin",
+          "Icon": "BoundsToOrigin",
+          "Tool": null,
+          "Tooltip": "Move drawing bounds minimum to global origin.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "PointToOrigin",
+      "Filename": "point-to-origin.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "PointToOrigin",
+          "Label": "Point to origin",
+          "Icon": "PointToOrigin",
+          "Tool": null,
+          "Tooltip": "Move the selected point to global origin.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "PointToOrigin",
+          "Label": "Point to origin",
+          "Icon": "PointToOrigin",
+          "Tool": null,
+          "Tooltip": "Move the selected point to global origin.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "OriginAxes",
+      "Filename": "origin-axes.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "View",
+          "Command": "OriginAxes",
+          "Label": "Origin axes",
+          "Icon": "OriginAxes",
+          "Tool": null,
+          "Tooltip": "Origin axes.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "ShowConstraints",
+      "Filename": "show-constraints.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "View",
+          "Command": "ShowConstraints",
+          "Label": "Show constraints",
+          "Icon": "ShowConstraints",
+          "Tool": null,
+          "Tooltip": "Show constraints. When off, constraints appear only while hovering referenced geometry.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "VectorToX",
+      "Filename": "vector-to-x.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "VectorToX",
+          "Label": "Vector to X",
+          "Icon": "VectorToX",
+          "Tool": null,
+          "Tooltip": "Align the selected line, segment, or two selected points to global X.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "VectorToX",
+          "Label": "Vector to X",
+          "Icon": "VectorToX",
+          "Tool": null,
+          "Tooltip": "Align the selected line, segment, or two selected points to global X.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "VectorToY",
+      "Filename": "vector-to-y.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "VectorToY",
+          "Label": "Vector to Y",
+          "Icon": "VectorToY",
+          "Tool": null,
+          "Tooltip": "Align the selected line, segment, or two selected points to global Y.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "VectorToY",
+          "Label": "Vector to Y",
+          "Icon": "VectorToY",
+          "Tool": null,
+          "Tooltip": "Align the selected line, segment, or two selected points to global Y.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "GrainNone",
+      "Filename": "grain-none.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Grain",
+          "Command": "GrainNone",
+          "Label": "Grain none",
+          "Icon": "GrainNone",
+          "Tool": null,
+          "Tooltip": "Clear the grain annotation.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Grain",
+          "Command": "GrainNone",
+          "Label": "Grain none",
+          "Icon": "GrainNone",
+          "Tool": null,
+          "Tooltip": "Clear the grain annotation.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "GrainX",
+      "Filename": "grain-x.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Grain",
+          "Command": "GrainX",
+          "Label": "Grain X",
+          "Icon": "GrainX",
+          "Tool": null,
+          "Tooltip": "Mark grain along global X on the GRAIN layer.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Grain",
+          "Command": "GrainX",
+          "Label": "Grain X",
+          "Icon": "GrainX",
+          "Tool": null,
+          "Tooltip": "Mark grain along global X on the GRAIN layer.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "GrainY",
+      "Filename": "grain-y.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Grain",
+          "Command": "GrainY",
+          "Label": "Grain Y",
+          "Icon": "GrainY",
+          "Tool": null,
+          "Tooltip": "Mark grain along global Y on the GRAIN layer.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Grain",
+          "Command": "GrainY",
+          "Label": "Grain Y",
+          "Icon": "GrainY",
+          "Tool": null,
+          "Tooltip": "Mark grain along global Y on the GRAIN layer.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "GrainVector",
+      "Filename": "grain-vector.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Grain",
+          "Command": "GrainFromVector",
+          "Label": "Grain vector",
+          "Icon": "GrainVector",
+          "Tool": null,
+          "Tooltip": "Mark grain along the selected line, segment, or two selected points on the GRAIN layer.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Grain",
+          "Command": "GrainFromVector",
+          "Label": "Grain vector",
+          "Icon": "GrainVector",
+          "Tool": null,
+          "Tooltip": "Mark grain along the selected line, segment, or two selected points on the GRAIN layer.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    },
+    {
+      "Id": "RemoveDuplicates",
+      "Filename": "remove-duplicates.png",
+      "PaletteAppearances": [
+        {
+          "Mode": "Full editor",
+          "Group": "Cleanup",
+          "Command": "RemoveDuplicates",
+          "Label": "Remove duplicates",
+          "Icon": "RemoveDuplicates",
+          "Tool": null,
+          "Tooltip": "Remove exact duplicate cut entities. Different layers and referenced sketch geometry are preserved.",
+          "Prompt": null,
+          "Future": false
+        },
+        {
+          "Mode": "Cleanup-only",
+          "Group": "Cleanup",
+          "Command": "RemoveDuplicates",
+          "Label": "Remove duplicates",
+          "Icon": "RemoveDuplicates",
+          "Tool": null,
+          "Tooltip": "Remove exact duplicate cut entities. Different layers and referenced sketch geometry are preserved.",
+          "Prompt": null,
+          "Future": false
+        }
+      ],
+      "ChromeUses": []
+    }
+  ],
+  "Chrome": [
+    {
+      "Id": "ChevronUp",
+      "Label": "Collapse docked tool group",
+      "Source": "WorkbenchToolPalette.razor",
+      "Purpose": "Upward chevron; collapse the group\u0027s commands, retaining its header.",
+      "IsEnumIcon": true
+    },
+    {
+      "Id": "ChevronDown",
+      "Label": "Expand docked tool group",
+      "Source": "WorkbenchToolPalette.razor",
+      "Purpose": "Downward chevron; show the group\u0027s commands.",
+      "IsEnumIcon": true
+    },
+    {
+      "Id": "ApplicationMenu",
+      "Label": "Open application menu",
+      "Source": "MainLayout.razor",
+      "Purpose": "Three horizontal menu bars; currently CSS, not CadIconName.",
+      "IsEnumIcon": false
+    },
+    {
+      "Id": "SubmenuRight",
+      "Label": "Open File/Cleanup submenu",
+      "Source": "MainLayout.razor",
+      "Purpose": "Right chevron; currently a text greater-than symbol.",
+      "IsEnumIcon": false
+    },
+    {
+      "Id": "Close",
+      "Label": "Close dialog / dismiss error",
+      "Source": "MainLayout.razor; ToolHotkeyOptions.razor",
+      "Purpose": "Simple X; shared asset across dismiss/close controls. Currently text.",
+      "IsEnumIcon": false
+    },
+    {
+      "Id": "DragGrip",
+      "Label": "Move or dock tool group",
+      "Source": "WorkbenchToolPalette.razor.css",
+      "Purpose": "Compact grip marks; currently CSS, not a command enum.",
+      "IsEnumIcon": false
+    }
+  ]
+}
