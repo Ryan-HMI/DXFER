@@ -24,3 +24,13 @@ field. The corresponding 23 Sync exports also pass. Diagnostics:
 
 Native CypNest validation remains Ryan's manual check. Dev-only rollout;
 Production/Test are not updated and may still create legacy files.
+
+Deployed0cbf4fa to `dxferdev.sync.harrisonmetals.com` on2026-10-13.
+591 .NET tests pass. Installed browser imported the real back source, displayed
+the drawing and downloaded81 entities with both original splines. Independent
+audit of that download has zero errors/repairs. Screenshot inspected; no browser
+errors. Published CadIO assembly matches the Release build. Public auth/status
+remains unauthenticated with Google configured; no auth settings changed.
+Evidence: `/tmp/codex-dxf-interop/browser.cjs`, `browser-back.dxf`,
+`back-in-editor.png`. Rollback publish retained at
+`/home/ryan/dxfer-runtime/dev-publish-before-interop-20261013`.
