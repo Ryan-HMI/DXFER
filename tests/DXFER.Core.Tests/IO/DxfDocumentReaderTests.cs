@@ -254,16 +254,26 @@ EOF
                 EntityId.Create("spline-a"),
                 3,
                 new[] { new Point2(0, 0), new Point2(1, 2), new Point2(3, 2), new Point2(4, 0) },
-                new[] { 0d, 0d, 0d, 0d, 1d, 1d, 1d, 1d })
+                new[] { 0d, 0d, 0d, 0d, 1d, 1d, 1d, 1d }),
+            new PolygonEntity(EntityId.Create("polygon-a"), new Point2(5, 5), 1, 0, 6)
         });
 
         var dxf = DxfDocumentWriter.Write(document);
         var roundTripped = DxfDocumentReader.Read(dxf);
 
+        var lines = dxf.Replace("\r\n", "\n").Split('\n');
+        var pairs = Enumerable.Range(0, (lines.Length - 1) / 2).Select(i => (Code: lines[2 * i], Value: lines[2 * i + 1])).ToArray();
+        pairs.Should().Contain(("9", "$ACADVER")).And.Contain(("1", "AC1015"));
+        var handles = pairs.Where(p => p.Code == "5").Select(p => p.Value).ToArray();
+        handles.Should().HaveCount(8).And.OnlyHaveUniqueItems();
+        handles.Should().OnlyContain(h => h.Length > 0 && h.All(char.IsAsciiHexDigit));
+        pairs.Count(p => p == ("100", "AcDbEntity")).Should().Be(8);
+        foreach (var subclass in new[] { "AcDbLine", "AcDbCircle", "AcDbArc", "AcDbPoint", "AcDbEllipse", "AcDbPolyline", "AcDbSpline" })
+            pairs.Should().Contain(("100", subclass));
         dxf.Should().Contain("SPLINE");
         dxf.Should().Contain("ELLIPSE");
         dxf.Should().Contain("POINT");
-        roundTripped.Entities.Should().HaveCount(7);
+        roundTripped.Entities.Should().HaveCount(8);
         roundTripped.Entities[3].Should().BeOfType<PointEntity>()
             .Which.Location.Should().Be(new Point2(3, 4));
         roundTripped.Entities[4].Should().BeOfType<EllipseEntity>()
@@ -404,8 +414,10 @@ EOF
 
         var dxf = DxfDocumentWriter.Write(document);
 
-        dxf.Should().Contain("cut-line");
-        dxf.Should().NotContain("construction-line");
+        var exported = DxfDocumentReader.Read(dxf).Entities.Should().ContainSingle().Subject;
+        var line = exported.Should().BeOfType<LineEntity>().Subject;
+        line.Start.Should().Be(new Point2(0, 0));
+        line.End.Should().Be(new Point2(10, 0));
     }
 
     [Fact]
