@@ -7,6 +7,16 @@ public sealed class WorkbenchMenuCommandService
     public event Func<WorkbenchCommandId, Task>? CommandRequested;
     public event Func<IBrowserFile, Task>? FileOpenRequested;
     public event Action? HotkeyOptionsRequested;
+    public event Action? SyncDocumentChanged;
+
+    public bool HasSyncDocument { get; private set; }
+
+    public void SetSyncDocument(bool connected)
+    {
+        if (HasSyncDocument == connected) return;
+        HasSyncDocument = connected;
+        SyncDocumentChanged?.Invoke();
+    }
 
     public async Task InvokeAsync(WorkbenchCommandId commandId)
     {

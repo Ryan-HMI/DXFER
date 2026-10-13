@@ -173,8 +173,9 @@
 
 .dxfer-command-prompt {
     min-width: 0;
-    max-height: 2.7rem;
-    overflow: hidden;
+    max-height: 4.5rem;
+    overflow: auto;
+    overflow-wrap: anywhere;
     color: #cfe2ee;
     font-size: 0.78rem;
     line-height: 1.35;

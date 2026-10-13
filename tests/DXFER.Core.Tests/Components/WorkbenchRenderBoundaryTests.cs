@@ -5,6 +5,19 @@ namespace DXFER.Core.Tests.Components;
 public sealed class WorkbenchRenderBoundaryTests
 {
     [Fact]
+    public void PhoneFileMenuAndOperationErrorsStayReachable()
+    {
+        var css = File.ReadAllText(FindRepositoryFile("src", "DXFER.Web", "wwwroot", "app.css"));
+        var mobile = css[css.IndexOf("@media (max-width: 480px)", StringComparison.Ordinal)..];
+        mobile.Should().Contain("position: static;");
+        mobile.Should().Contain("width: min(300px, calc(100vw - 36px));");
+        mobile.Should().Contain("overflow-y: auto;");
+        var markup = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor"));
+        markup.Should().Contain("<NavigationLock ConfirmExternalNavigation=\"HasUnsavedChanges\"");
+        markup.Should().Contain("role=\"status\"");
+    }
+
+    [Fact]
     public void NarrowDockGroupsFitTheirContainerIncludingCollapsedHeaders()
     {
         var css = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "WorkbenchToolPalette.razor.css"));
@@ -313,12 +326,17 @@ public sealed class WorkbenchRenderBoundaryTests
         var layout = FindRepositoryFile("src", "DXFER.Web", "Components", "Layout", "MainLayout.razor");
         var source = File.ReadAllText(layout);
 
-        source.Should().Contain("SyncLaunchOptionsParser");
+        source.Should().Contain("MenuCommands.HasSyncDocument");
+        source.Should().Contain("MenuCommands.SyncDocumentChanged += OnSyncDocumentChanged");
+        source.Should().Contain("@if (Configuration.GetValue<bool>(\"Dxfer:EnableFullEditing\"))");
+        source.Should().Contain("WorkbenchCommandId.NewBlankDocument");
         source.Should().Contain("@if (IsSyncLaunch)");
         source.Should().NotContain("@if (!IsSyncLaunch)");
         source.Should().NotContain("Canvas prototype");
         source.Should().NotContain("Sync cleanup");
         source.Should().Contain("Open local DXF/DWG...");
+        source.Should().Contain("<InputFile @key=\"_fileInputKey\"");
+        source.Should().Contain("_fileInputKey++;");
         source.Should().Contain("Download DXF");
         source.Should().Contain("WorkbenchCommandId.SendToSync");
         source.Should().Contain("Save to Sync");

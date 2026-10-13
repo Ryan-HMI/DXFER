@@ -15,6 +15,7 @@ using DXFER.Core.Sketching;
 using DXFER.Core.Sync;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Components.Routing;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 
@@ -30,7 +31,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private const string HotkeyModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js?v=20260506-all-hotkey-keys";
     private const string DownloadModulePath = "./_content/DXFER.Blazor/downloadFile.js?v=20260504-save";
-    private const string SyncWindowModulePath = "./_content/DXFER.Blazor/syncWindow.js?v=20260601-close-after-save";
+    private const string SyncWindowModulePath = "./_content/DXFER.Blazor/syncWindow.js?v=20261013-document-lifecycle";
     private const long MaxDxfFileSize = 25 * 1024 * 1024;
     private const string SegmentKeySeparator = "|segment|";
     private const string PointKeySeparator = "|point|";
@@ -39,6 +40,17 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private DrawingCanvas? _canvas;
     private DrawingDocument _document = CreateBlankDocument();
+    private DrawingDocument _savedDocument;
+    private GrainDirection _savedGrainDirection;
+    private double? _savedGrainAngleDegrees;
+    private bool _clearSyncLaunchUrl;
+    private bool _isReplacingDocument;
+    private bool _isConfirmingReplacement;
+
+    public DrawingWorkbench() => _savedDocument = _document;
+
+    private bool HasUnsavedChanges => !ReferenceEquals(_document, _savedDocument)
+        || _grainDirection != _savedGrainDirection || _grainAngleDegrees != _savedGrainAngleDegrees;
     private string _fileName = "Untitled.dxf";
     private string _status = "Blank drawing ready. Sketch geometry or open a DXF.";
     private string? _duplicateCleanupStatus;
@@ -96,6 +108,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _syncLaunchOptions = EnableSyncIntegration
             ? SyncLaunchOptionsParser.ParseQueryString(Navigation.ToAbsoluteUri(Navigation.Uri).Query)
             : SyncEditLaunchOptions.Empty;
+        MenuCommandService.SetSyncDocument(IsSyncLaunch);
         MenuCommandService.CommandRequested += InvokeWorkbenchCommand;
         MenuCommandService.FileOpenRequested += OpenFileAsync;
         ToolHotkeys.BindingsChanged += OnToolHotkeysChanged;
@@ -103,6 +116,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_clearSyncLaunchUrl)
+        {
+            _clearSyncLaunchUrl = false;
+            _syncWindowModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", SyncWindowModulePath);
+            await _syncWindowModule.InvokeVoidAsync("clearSyncLaunchQuery");
+        }
+
         if (!firstRender)
         {
             return;
@@ -501,9 +521,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.CircularPattern => "Circular pattern: select whole geometry, click center, reference point, then angle point. Creates three instances. Esc: cancel.",
         WorkbenchTool.Dimension => "Dimension: click geometry or points, move to place, then click to set. Shift: diameter for arcs. Esc: cancel.",
         not null => $"{ActiveToolLabel}: follow canvas prompts. Esc: cancel.",
-        null => _constructionMode
-            ? "Selection: construction creation is enabled. Click Construction to disable, or select whole geometry and click it to convert. Box select adds; Ctrl-box deselects."
-            : "Selection: click to select and make active. Click active again to deselect. Box select adds; Ctrl-box deselects."
+        null => _status
     });
 
     private string MeasurementText
@@ -523,11 +541,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private async Task OpenFileAsync(IBrowserFile file)
     {
+        if (_isReplacingDocument || _isSyncSaveInFlight) return;
+        _isReplacingDocument = true;
+        _duplicateCleanupStatus = null;
         try
         {
             if (file.Name.EndsWith(".dwg", StringComparison.OrdinalIgnoreCase))
             {
-                _fileName = file.Name;
                 _status = "DWG selected. V1 keeps DWG as an external viewer handoff; DXFER editing stays DXF-only.";
                 return;
             }
@@ -535,10 +555,16 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             await using var stream = file.OpenReadStream(MaxDxfFileSize);
             using var reader = new StreamReader(stream);
             var text = await reader.ReadToEndAsync();
+            if (!await ConfirmDocumentReplacementAsync()) return;
             LoadDxfText(file.Name, text, trustedSource: false, autoNormalize: false);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or FormatException or ArgumentException)
+        {
+            _status = $"Could not open DXF: {ex.Message}";
         }
         finally
         {
+            _isReplacingDocument = false;
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -551,6 +577,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         _syncLaunchLoadAttempted = true;
+        _isReplacingDocument = true;
         try
         {
             var (fileName, text) = await ReadSyncLaunchDxfAsync();
@@ -562,6 +589,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
         finally
         {
+            _isReplacingDocument = false;
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -594,13 +622,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         bool trustedSource,
         bool autoNormalize)
     {
-        _fileName = fileName;
-        _grainDirection = GrainDirection.None;
-        _grainAngleDegrees = null;
         var document = WithOpenFileMetadata(DxfDocumentReader.Read(text), fileName, text, trustedSource);
+        var sourceDocument = document;
         var cleanup = ExactDuplicateGeometryService.Remove(document);
         document = cleanup.Document;
-        _duplicateCleanupStatus = cleanup.RemovedCount > 0 || cleanup.ProtectedCount > 0 ? DuplicateCleanupStatus(cleanup) : null;
 
         if (document.Entities.Count == 0)
         {
@@ -609,9 +634,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        if (autoNormalize)
+        var normalization = autoNormalize ? DrawingNormalizationService.AutoNormalize(document) : null;
+        if (!trustedSource) DetachSyncDocument();
+        _fileName = fileName;
+        _grainDirection = GrainDirection.None;
+        _grainAngleDegrees = null;
+        _duplicateCleanupStatus = cleanup.RemovedCount > 0 || cleanup.ProtectedCount > 0 ? DuplicateCleanupStatus(cleanup) : null;
+
+        if (normalization is not null)
         {
-            var normalization = DrawingNormalizationService.AutoNormalize(document);
             _lastAutoNormalization = normalization;
             _manualOverride = false;
             document = normalization.NormalizedDocument;
@@ -629,6 +660,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         _document = document;
+        MarkDocumentSaved(sourceDocument, GrainDirection.None, null);
+        _activeTool = null;
+        _pendingCircleSplit = null;
+        ResetCornerModifyEqualChain();
         _documentFitToken++;
         ClearHistory();
         ResetSelection();
@@ -687,6 +722,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void LoadSample()
     {
+        DetachSyncDocument();
         _document = SampleDrawingFactory.CreateCanvasPrototype();
         _documentFitToken++;
         _fileName = "Sample flat pattern";
@@ -695,12 +731,16 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _grainAngleDegrees = null;
         _lastAutoNormalization = null;
         _manualOverride = false;
+        _activeTool = null;
+        _pendingCircleSplit = null;
+        ResetCornerModifyEqualChain();
         ClearHistory();
         ResetSelection();
     }
 
     private void NewBlankDocument()
     {
+        DetachSyncDocument();
         _document = CreateBlankDocument();
         _documentFitToken++;
         _fileName = "Untitled.dxf";
@@ -711,20 +751,28 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _manualOverride = false;
         _activeTool = null;
         _constructionMode = false;
+        _pendingCircleSplit = null;
+        ResetCornerModifyEqualChain();
+        MarkDocumentSaved(_document, _grainDirection, _grainAngleDegrees);
         ClearHistory();
         ResetSelection();
     }
 
     private async Task InvokeWorkbenchCommand(WorkbenchCommandId commandId)
     {
+        if (_isReplacingDocument)
+        {
+            return;
+        }
+
         _duplicateCleanupStatus = null;
         switch (commandId)
         {
             case WorkbenchCommandId.NewBlankDocument:
-                NewBlankDocument();
+                if (await ConfirmDocumentReplacementAsync()) NewBlankDocument();
                 break;
             case WorkbenchCommandId.LoadSample:
-                LoadSample();
+                if (await ConfirmDocumentReplacementAsync()) LoadSample();
                 break;
             case WorkbenchCommandId.ExportDxfText:
                 GenerateDxfExport();
@@ -2146,6 +2194,54 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _redoStack.Clear();
     }
 
+    private void MarkDocumentSaved(DrawingDocument document, GrainDirection grain, double? angle)
+    {
+        _savedDocument = document;
+        _savedGrainDirection = grain;
+        _savedGrainAngleDegrees = angle;
+    }
+
+    private void DetachSyncDocument()
+    {
+        _clearSyncLaunchUrl |= IsSyncLaunch;
+        _syncLaunchOptions = SyncEditLaunchOptions.Empty;
+        _syncLaunchLoadAttempted = true;
+        MenuCommandService.SetSyncDocument(false);
+    }
+
+    private async Task<bool> ConfirmDocumentReplacementAsync()
+    {
+        if (_isSyncSaveInFlight || _isConfirmingReplacement)
+        {
+            _status = "Finish the current save or confirmation before replacing this drawing.";
+            return false;
+        }
+
+        if (!HasUnsavedChanges && !IsSyncLaunch) return true;
+        _isConfirmingReplacement = true;
+        try
+        {
+            var message = HasUnsavedChanges
+                ? "Discard unsaved changes and replace this drawing?"
+                : "Replace this Sync drawing?";
+            if (IsSyncLaunch) message += " The new drawing will not be linked to the current Sync artifact.";
+            return await JsRuntime.InvokeAsync<bool>("confirm", message);
+        }
+        finally
+        {
+            _isConfirmingReplacement = false;
+        }
+    }
+
+    private async Task ConfirmNavigationAsync(LocationChangingContext context)
+    {
+        if (_isSyncSaveInFlight || (HasUnsavedChanges
+            && !await JsRuntime.InvokeAsync<bool>("confirm", "Leave without saving this drawing?")))
+        {
+            context.PreventNavigation();
+        }
+    }
+
     private void SetGrainDirection(GrainDirection grainDirection)
     {
         _grainDirection = grainDirection;
@@ -2208,6 +2304,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private async Task DownloadDxfFilesAsync()
     {
+        var savedDocument = _document;
+        var savedGrain = _grainDirection;
+        var savedAngle = _grainAngleDegrees;
         var exportText = DxfDocumentWriter.Write(_document, CreateDxfWriteOptions());
         var downloadName = DxfDownloadFileName.FromSourceName(_fileName);
         _downloadModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", DownloadModulePath);
@@ -2216,7 +2315,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             downloadName,
             exportText,
             "application/dxf;charset=utf-8");
-        _status = $"Saved {downloadName}.";
+        if (!IsSyncLaunch) MarkDocumentSaved(savedDocument, savedGrain, savedAngle);
+        _status = IsSyncLaunch ? $"Downloaded {downloadName}; Sync has not been updated." : $"Downloaded {downloadName}.";
     }
 
     private async Task SaveToSyncCallbackAsync()
@@ -2247,6 +2347,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         try
         {
             RemoveExactDuplicates();
+            _duplicateCleanupStatus = null;
+            var savedDocument = _document;
+            var savedGrain = _grainDirection;
+            var savedAngle = _grainAngleDegrees;
             var exportDocument = ManufacturingUnits.AssumeInches(_document);
             var exportText = DxfDocumentWriter.Write(exportDocument, CreateDxfWriteOptions());
             var normalizedName = DxfDownloadFileName.FromSourceName(_fileName);
@@ -2275,8 +2379,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 contours.ContourReviewReason);
 
             await SyncCallbackClient.PostSaveAsync(_syncLaunchOptions, package);
-            _status = $"Sent normalized DXF to Sync job {_syncLaunchOptions.JobId}.";
-            shouldCloseAfterSuccessfulSave = true;
+            MarkDocumentSaved(savedDocument, savedGrain, savedAngle);
+            _status = HasUnsavedChanges
+                ? $"Sent normalized DXF to Sync job {_syncLaunchOptions.JobId}; newer edits remain unsaved."
+                : $"Sent normalized DXF to Sync job {_syncLaunchOptions.JobId}.";
+            shouldCloseAfterSuccessfulSave = !HasUnsavedChanges;
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
         {
@@ -2303,6 +2410,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         try
         {
             await Task.Delay(SyncCloseDelayMilliseconds);
+            if (HasUnsavedChanges) return;
             _syncWindowModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", SyncWindowModulePath);
             var closed = await _syncWindowModule.InvokeAsync<bool>("closeLaunchedSyncTab");
             if (!closed)

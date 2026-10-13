@@ -24,9 +24,13 @@
                         <span class="app-menu-arrow" aria-hidden="true">></span>
                     </button>
                     <div class="app-submenu" role="menu">
+                        @if (Configuration.GetValue<bool>("Dxfer:EnableFullEditing"))
+                        {
+                            <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.NewBlankDocument)">New drawing</button>
+                        }
                         <label class="app-menu-command app-menu-file-command">
                             <span>Open local DXF/DWG...</span>
-                            <InputFile OnChange="OpenHeaderFileAsync"
+                            <InputFile @key="_fileInputKey" OnChange="OpenHeaderFileAsync"
                                        accept=".dxf,.dwg"
                                        class="app-menu-file-input" />
                         </label>
@@ -110,29 +114,30 @@
 
 @code {
     private bool _isAppMenuOpen;
+    private int _fileInputKey;
     private bool _isHotkeyOptionsOpen;
     private bool _isSyncConnectOpen;
     private string _syncConnectUrl = string.Empty;
     private string? _syncConnectError;
-    private SyncEditLaunchOptions _syncLaunchOptions = SyncEditLaunchOptions.Empty;
 
     private string AppMenuClass => _isAppMenuOpen ? "app-menu app-menu-open" : "app-menu";
 
-    private bool IsSyncLaunch => _syncLaunchOptions.IsCallbackConfigured || _syncLaunchOptions.HasInput;
+    private bool IsSyncLaunch => MenuCommands.HasSyncDocument;
     private bool EnableSyncIntegration => Configuration.GetValue("Dxfer:EnableSyncIntegration", true);
 
     protected override void OnInitialized()
     {
-        _syncLaunchOptions = EnableSyncIntegration
-            ? SyncLaunchOptionsParser.ParseQueryString(Navigation.ToAbsoluteUri(Navigation.Uri).Query)
-            : SyncEditLaunchOptions.Empty;
         MenuCommands.HotkeyOptionsRequested += OpenHotkeyOptions;
+        MenuCommands.SyncDocumentChanged += OnSyncDocumentChanged;
     }
 
     public void Dispose()
     {
         MenuCommands.HotkeyOptionsRequested -= OpenHotkeyOptions;
+        MenuCommands.SyncDocumentChanged -= OnSyncDocumentChanged;
     }
+
+    private void OnSyncDocumentChanged() => _ = InvokeAsync(StateHasChanged);
 
     private void ToggleAppMenu() => _isAppMenuOpen = !_isAppMenuOpen;
 
@@ -214,6 +219,13 @@
     private async Task OpenHeaderFileAsync(InputFileChangeEventArgs args)
     {
         _isAppMenuOpen = false;
-        await MenuCommands.OpenFileAsync(args.File);
+        try
+        {
+            if (args.FileCount > 0) await MenuCommands.OpenFileAsync(args.File);
+        }
+        finally
+        {
+            _fileInputKey++;
+        }
     }
 }

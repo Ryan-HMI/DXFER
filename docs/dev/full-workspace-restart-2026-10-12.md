@@ -33,6 +33,11 @@ the collapse control remains reachable, with vertical panel scrolling only.
 
 ## Next stages
 
+2026-10-13: document replacement/unsaved-state portion of stage3 is implemented
+and isolated-browser verified; see document-lifecycle-2026-10-13.md. Real Dev
+Sync integration remains separate. Unobscured viewport fit is the next active
+shared editor fix; the historical geometry matrix is not marked accepted.
+
 1. Verify local import, sketch editing, undo/redo, download/reopen and analysis
    consistency in the browser with the restored palette.
 2. Reproduce and fix the logged trim, fillet/chamfer and constrained-drag bugs.

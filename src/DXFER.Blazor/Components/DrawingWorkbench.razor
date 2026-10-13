@@ -1,4 +1,8 @@
 @namespace DXFER.Blazor.Components
+@using Microsoft.AspNetCore.Components.Routing
+
+<NavigationLock ConfirmExternalNavigation="HasUnsavedChanges"
+                OnBeforeInternalNavigation="ConfirmNavigationAsync" />
 
 <div class="@WorkbenchCssClass" style="@WorkbenchGridStyle">
     <div class="dxfer-tool-palette-host" aria-label="Dockable tool groups">
@@ -52,7 +56,7 @@
     }
 
     <footer class="dxfer-command-bar" aria-label="Command and measurement readout">
-        <div class="dxfer-command-prompt">@CommandPromptText</div>
+        <div class="dxfer-command-prompt" role="status">@CommandPromptText</div>
         @if (IsCornerModifyToolActive)
         {
             <label class="dxfer-corner-size-control">
