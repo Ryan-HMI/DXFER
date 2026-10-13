@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.DataProtection;
 
 LoadDotEnvFromCurrentDirectory();
 var builder = WebApplication.CreateBuilder(args);
@@ -23,6 +24,14 @@ var googleCallbackPath = ResolveGoogleSetting(builder.Configuration, "CallbackPa
 var hasGoogleAuth = !string.IsNullOrWhiteSpace(googleClientId) && !string.IsNullOrWhiteSpace(googleClientSecret);
 var allowedGoogleDomains = ResolveAllowedGoogleDomains(builder.Configuration);
 var dxferApiKey = ResolveDxferApiKey(builder.Configuration);
+var enableSyncIntegration = builder.Configuration.GetValue("Dxfer:EnableSyncIntegration", true);
+var keyDirectory = builder.Configuration["Dxfer:DataProtectionDirectory"];
+if (!string.IsNullOrWhiteSpace(keyDirectory))
+{
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(keyDirectory))
+        .SetApplicationName(builder.Configuration["Dxfer:ApplicationName"] ?? "DXFER");
+}
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
@@ -34,7 +43,8 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<WorkbenchMenuCommandService>();
 builder.Services.AddScoped<ToolHotkeyService>();
 builder.Services.AddScoped<HttpClient>();
-builder.Services.AddHttpClient<SyncCallbackClient>();
+builder.Services.AddHttpClient<SyncCallbackClient>()
+    .AddTypedClient(http => new SyncCallbackClient(http, enableSyncIntegration));
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor |
@@ -120,6 +130,17 @@ app.UseHttpsRedirection();
 
 app.UseStaticFiles();
 app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    if (!enableSyncIntegration && context.Request.Path == "/" && context.Request.Query.Count > 0)
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await context.Response.WriteAsync("This standalone playground accepts local file uploads only; Sync launch links are disabled.");
+        return;
+    }
+
+    await next();
+});
 app.Use(async (context, next) => await RequireDxferAccessAsync(context, next, hasGoogleAuth, dxferApiKey));
 app.UseAuthorization();
 app.UseAntiforgery();
@@ -166,6 +187,7 @@ app.MapGet("/auth/status", (HttpContext context) => Results.Json(new
 app.MapGet("/api/dxfer/capabilities", () => Results.Json(new
 {
     contractVersion = 1,
+    syncIntegrationEnabled = enableSyncIntegration,
     launchParameters = new[]
     {
         "syncBaseUrl",

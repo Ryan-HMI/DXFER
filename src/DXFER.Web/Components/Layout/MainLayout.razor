@@ -7,6 +7,7 @@
 @using Microsoft.AspNetCore.Components.Web
 @inject NavigationManager Navigation
 @inject WorkbenchMenuCommandService MenuCommands
+@inject IConfiguration Configuration
 
 <div class="page">
     <header class="app-header">
@@ -29,7 +30,10 @@
                                        accept=".dxf,.dwg"
                                        class="app-menu-file-input" />
                         </label>
-                        <button type="button" class="app-menu-command" @onclick="OpenSyncConnectDialog">Connect to Sync...</button>
+                        @if (EnableSyncIntegration)
+                        {
+                            <button type="button" class="app-menu-command" @onclick="OpenSyncConnectDialog">Connect to Sync...</button>
+                        }
                         <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SaveDxf)">Download DXF</button>
                         @if (IsSyncLaunch)
                         {
@@ -115,10 +119,13 @@
     private string AppMenuClass => _isAppMenuOpen ? "app-menu app-menu-open" : "app-menu";
 
     private bool IsSyncLaunch => _syncLaunchOptions.IsCallbackConfigured || _syncLaunchOptions.HasInput;
+    private bool EnableSyncIntegration => Configuration.GetValue("Dxfer:EnableSyncIntegration", true);
 
     protected override void OnInitialized()
     {
-        _syncLaunchOptions = SyncLaunchOptionsParser.ParseQueryString(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
+        _syncLaunchOptions = EnableSyncIntegration
+            ? SyncLaunchOptionsParser.ParseQueryString(Navigation.ToAbsoluteUri(Navigation.Uri).Query)
+            : SyncEditLaunchOptions.Empty;
         MenuCommands.HotkeyOptionsRequested += OpenHotkeyOptions;
     }
 

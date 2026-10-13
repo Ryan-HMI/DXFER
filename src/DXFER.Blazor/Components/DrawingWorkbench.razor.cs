@@ -25,6 +25,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     [Parameter]
     public bool EnableFullEditing { get; set; }
 
+    [Parameter]
+    public bool EnableSyncIntegration { get; set; } = true;
+
     private const string HotkeyModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js?v=20260506-all-hotkey-keys";
     private const string DownloadModulePath = "./_content/DXFER.Blazor/downloadFile.js?v=20260504-save";
     private const string SyncWindowModulePath = "./_content/DXFER.Blazor/syncWindow.js?v=20260601-close-after-save";
@@ -90,7 +93,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     protected override void OnInitialized()
     {
-        _syncLaunchOptions = SyncLaunchOptionsParser.ParseQueryString(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
+        _syncLaunchOptions = EnableSyncIntegration
+            ? SyncLaunchOptionsParser.ParseQueryString(Navigation.ToAbsoluteUri(Navigation.Uri).Query)
+            : SyncEditLaunchOptions.Empty;
         MenuCommandService.CommandRequested += InvokeWorkbenchCommand;
         MenuCommandService.FileOpenRequested += OpenFileAsync;
         ToolHotkeys.BindingsChanged += OnToolHotkeysChanged;

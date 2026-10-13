@@ -4,4 +4,5 @@
 
 <PageTitle>DXFER Workbench</PageTitle>
 
-<DrawingWorkbench EnableFullEditing="@(Configuration.GetValue<bool>("Dxfer:EnableFullEditing"))" />
+<DrawingWorkbench EnableFullEditing="@(Configuration.GetValue<bool>("Dxfer:EnableFullEditing"))"
+                  EnableSyncIntegration="@(Configuration.GetValue("Dxfer:EnableSyncIntegration", true))" />

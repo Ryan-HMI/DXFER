@@ -9,10 +9,12 @@ public sealed class SyncCallbackClient
     private const string DefaultCallbackPath = "/api/dxfer/edit-callback";
 
     private readonly HttpClient _httpClient;
+    private readonly bool _enabled;
 
-    public SyncCallbackClient(HttpClient httpClient)
+    public SyncCallbackClient(HttpClient httpClient, bool enabled = true)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _enabled = enabled;
     }
 
     public async Task PostSaveAsync(
@@ -22,6 +24,11 @@ public sealed class SyncCallbackClient
     {
         ArgumentNullException.ThrowIfNull(launchOptions);
         ArgumentNullException.ThrowIfNull(package);
+
+        if (!_enabled)
+        {
+            throw new InvalidOperationException("Sync save-back is disabled for this standalone playground.");
+        }
 
         if (!launchOptions.IsCallbackConfigured)
         {

@@ -14,6 +14,12 @@ Use this file to separate what the user has actually tested from what is only au
 
 ## Full Workspace Restart - 2026-10-12
 
+Dev hosting follow-up: full editor staged on port 5175 for
+`dxfer.dev.harrisonmetals.com`; public DNS/TLS and OAuth registration/login are
+still pending. 579 .NET / 256 JS pass; deployed browser import/edit/undo/redo/
+download/reopen verified. Sync integration disabled in this standalone instance.
+No user acceptance yet. See `dev-playground-deployment-2026-10-13.md`.
+
 | ID | Behavior | User Status | Automated Status | App Status | Scope |
 |---|---|---|---|---|---|
 | UT-EDITOR-RESTART-001 | Explicit full palette without replacing current cleanup/analysis | USER-REQUESTED | 578 .NET / 256 JS PASS | APP-VERIFIED | Local5036: inch fixture import, circle creation, undo/redo, DXF download/reopen and analysis verified. Public deployments unchanged. Dev callback/user sign-in acceptance not yet verified. |

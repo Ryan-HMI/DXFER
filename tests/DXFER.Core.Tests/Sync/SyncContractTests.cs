@@ -140,6 +140,22 @@ public sealed class SyncContractTests
         handler.Body.Should().Contain("name=contourReviewReason").And.Contain("Unknown topology");
     }
 
+    [Fact]
+    public async Task StandalonePlaygroundRejectsCallbackWithoutSendingAnyRequest()
+    {
+        using var handler = new CapturingHandler();
+        using var httpClient = new HttpClient(handler);
+        var launch = SyncLaunchOptionsParser.ParseQueryString(
+            "?syncBaseUrl=https%3A%2F%2Fsync.local&artifactId=a&jobId=j&editToken=t");
+        var client = new SyncCallbackClient(httpClient, enabled: false);
+
+        var save = () => client.PostSaveAsync(launch, CreatePackage(false));
+
+        await save.Should().ThrowAsync<InvalidOperationException>().WithMessage("*disabled*");
+        handler.RequestUri.Should().BeNull();
+        handler.Body.Should().BeEmpty();
+    }
+
     private static SyncSavePackage CreatePackage(bool manualOverride) =>
         new(
             ArtifactId: "artifact-1",
