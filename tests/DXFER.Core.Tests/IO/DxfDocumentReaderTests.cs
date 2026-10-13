@@ -265,9 +265,15 @@ EOF
         var pairs = Enumerable.Range(0, (lines.Length - 1) / 2).Select(i => (Code: lines[2 * i], Value: lines[2 * i + 1])).ToArray();
         pairs.Should().Contain(("9", "$ACADVER")).And.Contain(("1", "AC1015"));
         var handles = pairs.Where(p => p.Code == "5").Select(p => p.Value).ToArray();
-        handles.Should().HaveCount(8).And.OnlyHaveUniqueItems();
+        handles.Should().OnlyHaveUniqueItems();
         handles.Should().OnlyContain(h => h.Length > 0 && h.All(char.IsAsciiHexDigit));
-        pairs.Count(p => p == ("100", "AcDbEntity")).Should().Be(8);
+        var entityPairs = pairs.SkipWhile(p => p != ("2", "ENTITIES")).Skip(1).TakeWhile(p => p != ("0", "ENDSEC")).ToArray();
+        entityPairs.Count(p => p == ("100", "AcDbEntity")).Should().Be(8);
+        entityPairs.Count(p => p == ("330", "2")).Should().Be(8);
+        pairs.Count(p => p == ("0", "BLOCK_RECORD")).Should().Be(2);
+        pairs.Count(p => p == ("0", "BLOCK")).Should().Be(2);
+        pairs.Count(p => p == ("0", "ENDBLK")).Should().Be(2);
+        pairs.Where(p => p.Code == "330" && p.Value != "0").Should().OnlyContain(p => handles.Contains(p.Value));
         foreach (var subclass in new[] { "AcDbLine", "AcDbCircle", "AcDbArc", "AcDbPoint", "AcDbEllipse", "AcDbPolyline", "AcDbSpline" })
             pairs.Should().Contain(("100", subclass));
         dxf.Should().Contain("SPLINE");

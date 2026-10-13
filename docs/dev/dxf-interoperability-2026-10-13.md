@@ -34,3 +34,21 @@ remains unauthenticated with Google configured; no auth settings changed.
 Evidence: `/tmp/codex-dxf-interop/browser.cjs`, `browser-back.dxf`,
 `back-in-editor.png`. Rollback publish retained at
 `/home/ryan/dxfer-runtime/dev-publish-before-interop-20261013`.
+
+## QCAD Retest Correction
+
+The earlier output still failed Ryan's Windows QCAD 3.33.1. This was reproduced
+with the same version's Linux ODA importer: `Null object Id`. Missing model and
+paper-space block records caused the failure; adding that framing alone made the
+back import without changing geometry. The writer now always emits the space
+table/blocks with unique handles and valid entity ownership, explicit planar Z
+fields, and standard linetypes. Sync's export adapter also repairs earlier
+unreferenced AC1015 files with absent space records.
+
+All 46 real BRCAB outputs (writer and export paths) pass native QCAD import with
+every entity-type count matching, including 64 splines per path. Independent
+ezdxf audits require zero errors AND zero repairs and verify original numeric
+geometry fields. 591 .NET tests pass. No runtime CAD dependency was added.
+Native evidence: `/tmp/codex-dxf-qcad/verify-native.cjs` and `all-qcad.json`.
+Source artifacts remain unchanged; regenerate previous downloads. Dev-only;
+Windows QCAD/CypNest user retest remains pending.

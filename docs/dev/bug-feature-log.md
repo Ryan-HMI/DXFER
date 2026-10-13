@@ -4,6 +4,8 @@ Use this log for bugs and feature requests that arrive while another task is act
 
 ## Open
 
+- [x] DXF-QCAD-20261013: Fixed shared writer and legacy-export document framing after reproducing Ryan's failed QCAD3.33.1 retest (`Null object Id`). Added missing model/paper-space records, ownership and explicit planar Z fields; generated slots have collision-free handles. Native QCAD3.33.1 imports all46 BRCAB outputs with exact entity counts and64 splines per path;591 .NET tests and independent audits pass. Dev deployment/user retest tracked in UT-DXF-INTEROP-001. Prior ezdxf-only verification was insufficient; no source geometry/data repair.
+
 - [x] DXF-INTEROP-20261013: Shared writer fixed in0cbf4fa and deployed to DXFer Dev.591 tests pass; installed browser imports BRCAB back and downloads81 entities/two splines, independent ezdxf audit has zero errors/repairs. All23 BRCAB writer outputs retain64 splines and original numeric geometry. Line, polyline/polygon, circle, arc, ellipse, spline and point covered; dimensions/constraint glyphs remain editor-only, grain annotation retained. Sync export-only compatibility handles existing old DXFer files. Native CypNest acceptance pending; Production/Test and original Engineering files untouched. See dxf-interoperability-2026-10-13.md.
 
 - [x] EDITOR-FIT-20261013: Imported drawings and Fit Extents now frame geometry in a clear rectangle outside docked/floating panels. No CAD geometry changes.265 JS tests pass; actual browser bounds/pixel checks at1440/820/390/320, collapsed and floating palettes, download/reopen verified. User acceptance pending. See viewport-fit-2026-10-13.md.
