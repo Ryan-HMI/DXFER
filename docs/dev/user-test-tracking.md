@@ -14,9 +14,9 @@ Use this file to separate what the user has actually tested from what is only au
 
 ## Full Workspace Restart - 2026-10-12
 
-Dev hosting follow-up: full editor staged on port 5175 for
-`dxfer.dev.harrisonmetals.com`; public DNS/TLS and OAuth registration/login are
-still pending. 579 .NET / 256 JS pass; deployed browser import/edit/undo/redo/
+Dev hosting follow-up: full editor hosted on port 5175 at
+`https://dxferdev.sync.harrisonmetals.com`; public DNS/trusted HTTPS verified,
+OAuth registration/login still pending. 579 .NET / 256 JS pass; deployed browser import/edit/undo/redo/
 download/reopen verified. Sync integration disabled in this standalone instance.
 No user acceptance yet. See `dev-playground-deployment-2026-10-13.md`.
 

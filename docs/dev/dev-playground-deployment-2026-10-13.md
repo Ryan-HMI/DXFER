@@ -1,7 +1,8 @@
 # DXFer Dev playground
 
-Ryan requested `dxfer.dev.harrisonmetals.com` in Slack delivery
-`7b44f225ba846a44ff2e6cf7`. Scope is the full editor playground, not a claim that
+Ryan approved `dxferdev.sync.harrisonmetals.com` in Slack delivery
+`84250bfd09f300892bdf59f7`, replacing the originally requested hostname that
+lacked public DNS. Scope is the full editor playground, not a claim that
 historical geometry defects are resolved or that Dev Sync save-back is ready.
 
 ## Runtime
@@ -20,24 +21,24 @@ historical geometry defects are resolved or that Dev Sync save-back is ready.
 - Normal Google Workspace sign-in is retained. No automatic login enabled.
 - Caddy has the new HTTPS host pointed at 5175. Existing upstreams unchanged.
   Prior config: `/etc/caddy/Caddyfile.before-dxfer-dev-20261013`.
-- LAN DNS maps the hostname to 192.168.1.247 through
-  `/etc/dnsmasq.d/dxfer-dev.conf`.
+- Existing LAN DNS for `sync.harrisonmetals.com` maps the new hostname to
+  192.168.1.247. The old standalone DNS override was removed; backup is
+  `/etc/dxfer-dev-dns.before-host-switch-20261013`.
 
 ## Remaining public activation gates
 
-Public resolver 1.1.1.1 returned no record on deployment. Caddy certificate
-issuance reports NXDOMAIN. Ryan clarified that the managed DNS provider does
-not support his requested CNAME workflow. Use a direct A record instead:
-`dxfer.dev.harrisonmetals.com` -> `97.71.230.14`, matching the verified current
-public A record for `sync.harrisonmetals.com`. In a zone-relative DNS editor
-the name is `dxfer.dev`. No wildcard is required. The earlier CNAME suggestion
-was an alternative, not a requirement.
+Public resolver 1.1.1.1 confirms the approved hostname resolves to
+`97.71.230.14` through existing wildcard coverage under `sync.harrisonmetals.com`.
+No public DNS edits are required. Caddy obtained a trusted certificate at
+2026-10-13T02:52:43Z. HTTPS `/auth/status` returns 200 via both LAN DNS and an
+explicit connection to the public IP, without skipping certificate validation.
+Host-switch backup: `/etc/caddy/Caddyfile.before-dxferdev-host-20261013`.
 
 The Google OAuth client also needs the exact redirect URI:
-`https://dxfer.dev.harrisonmetals.com/signin-google`.
-Registration and an interactive user login have not been verified. After DNS
-propagates, confirm Caddy obtains a trusted certificate and Ryan can sign in.
-Do not advertise the public URL as ready before those checks.
+`https://dxferdev.sync.harrisonmetals.com/signin-google`.
+The app's root and login endpoints both redirect to Google with this exact URI.
+Registration and an interactive user login have not been verified. The HTTPS
+host is live; authenticated user testing remains pending those checks.
 
 ## Isolation and layout contract
 
@@ -77,6 +78,6 @@ only unavailable Sync commands are omitted in standalone mode.
 ## Rollback
 
 Stop and disable only `dxfer-dev.service`. Remove only the Dev host block from
-the current Caddyfile, validate and reload Caddy. Remove only
-`/etc/dnsmasq.d/dxfer-dev.conf`, validate and restart dnsmasq. Preserve any unrelated
-configuration changes made since deployment. Production/Test require no rollback.
+the current Caddyfile, validate and reload Caddy. Do not remove the shared LAN
+DNS entry for `sync.harrisonmetals.com`. Preserve any unrelated configuration
+changes made since deployment. Production/Test require no rollback.

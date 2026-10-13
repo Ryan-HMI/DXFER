@@ -1,8 +1,9 @@
 # Full editing workspace restart
 
-Update: the full editor is now staged as a standalone Dev service on port 5175
-for `dxfer.dev.harrisonmetals.com`. Public DNS/TLS and interactive Google login
-remain pending. See [Dev deployment](dev-playground-deployment-2026-10-13.md).
+Update: the full editor is hosted as a standalone Dev service on port 5175
+at `https://dxferdev.sync.harrisonmetals.com`. Public DNS and trusted HTTPS are
+verified; Google redirect registration and interactive login remain pending.
+See [Dev deployment](dev-playground-deployment-2026-10-13.md).
 Production/Test and live Sync launch destinations remain unchanged.
 
 Ryan requested resuming the full DXFer editor on 2026-10-12. Work is isolated on

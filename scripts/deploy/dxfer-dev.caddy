@@ -1,4 +1,4 @@
-dxfer.dev.harrisonmetals.com {
+dxferdev.sync.harrisonmetals.com {
     bind 192.168.1.247
     reverse_proxy 127.0.0.1:5175
 }
