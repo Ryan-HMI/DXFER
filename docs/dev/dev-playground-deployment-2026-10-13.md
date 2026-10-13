@@ -26,9 +26,12 @@ historical geometry defects are resolved or that Dev Sync save-back is ready.
 ## Remaining public activation gates
 
 Public resolver 1.1.1.1 returned no record on deployment. Caddy certificate
-issuance reports NXDOMAIN. Ryan was asked to create a DNS-only CNAME:
-`dxfer.dev.harrisonmetals.com` -> `sync.harrisonmetals.com`.
-The target currently resolves publicly to 97.71.230.14.
+issuance reports NXDOMAIN. Ryan clarified that the managed DNS provider does
+not support his requested CNAME workflow. Use a direct A record instead:
+`dxfer.dev.harrisonmetals.com` -> `97.71.230.14`, matching the verified current
+public A record for `sync.harrisonmetals.com`. In a zone-relative DNS editor
+the name is `dxfer.dev`. No wildcard is required. The earlier CNAME suggestion
+was an alternative, not a requirement.
 
 The Google OAuth client also needs the exact redirect URI:
 `https://dxfer.dev.harrisonmetals.com/signin-google`.
