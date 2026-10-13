@@ -85,6 +85,7 @@ import {
   getPowerTrimAlternateEdgeHit,
   resolveNearestTargetHit
 } from "./canvas/targetResolution.js";
+import { getUnobscuredViewport } from "./canvas/viewportFit.js";
 
 export {
   getLinearDimensionScreenGeometry,
@@ -5852,7 +5853,16 @@ function handleDoubleClick(state, event) {
 
 function fitToExtents(state) {
   const size = getCanvasCssSize(state);
-  const view = getFitViewForDocument(state.document, size);
+  const canvasRect = state.canvas.getBoundingClientRect();
+  const workbench = state.canvas.closest?.(".dxfer-workbench");
+  const panels = workbench?.querySelectorAll(".dxfer-tool-group, .dxfer-sync-control-bar") ?? [];
+  const occlusions = Array.from(panels, panel => {
+    const r = panel.getBoundingClientRect();
+    return { x: r.left - canvasRect.left, y: r.top - canvasRect.top, width: r.width, height: r.height };
+  });
+  const viewport = getUnobscuredViewport(size, occlusions);
+  if (!viewport) return;
+  const view = getFitViewForDocument(state.document, size, viewport);
 
   state.view.scale = view.scale;
   state.view.offsetX = view.offsetX;
@@ -5860,16 +5870,18 @@ function fitToExtents(state) {
   updateDebugAttributes(state);
 }
 
-export function getFitViewForDocument(document, size) {
-  const width = Math.max(1, Number(size && size.width) || 1);
-  const height = Math.max(1, Number(size && size.height) || 1);
+export function getFitViewForDocument(document, size, viewport = null) {
+  const width = Math.max(1, Number(viewport?.width ?? size?.width) || 1);
+  const height = Math.max(1, Number(viewport?.height ?? size?.height) || 1);
+  const x = viewport?.x ?? 0;
+  const y = viewport?.y ?? 0;
   const bounds = getDocumentBounds(document);
 
   if (!bounds) {
     return {
       scale: DEFAULT_BLANK_VIEW_SCALE,
-      offsetX: width / 2,
-      offsetY: height / 2
+      offsetX: x + width / 2,
+      offsetY: y + height / 2
     };
   }
 
@@ -5886,8 +5898,8 @@ export function getFitViewForDocument(document, size) {
 
   return {
     scale,
-    offsetX: width / 2 - centerX * scale,
-    offsetY: height / 2 + centerY * scale
+    offsetX: x + width / 2 - centerX * scale,
+    offsetY: y + height / 2 + centerY * scale
   };
 }
 
