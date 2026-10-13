@@ -24,11 +24,14 @@ See `dev-playground-deployment-2026-10-13.md`.
 
 | ID | Behavior | User Status | Automated Status | App Status | Scope |
 |---|---|---|---|---|---|
+| UT-EDITOR-LIFECYCLE-001 | New/Open discard guard, failed import preservation, same-file reselection, Sync detachment and save-point tracking | USER-REQUESTED | 591 .NET / 265 JS PASS | APP-VERIFIED | Dev2571107 included in4d7e7c9. Isolated browser with mock callbacks verifies failure/concurrent edit safety; Dev remains standalone, no live Sync writes. Manual acceptance pending. |
+| UT-EDITOR-FIT-001 | Import/Fit Extents uses clear canvas space around docked and floating tools | USER-REQUESTED | AUTO-PASSED | APP-VERIFIED | Dev4d7e7c9 at2026-10-13T11:40:29Z. Installed-service bounds/pixel/screenshot checks at1440/820/390/320, collapse/floating drag, unchanged36.283185in/two-contour download/reopen. Manual acceptance pending. |
 | UT-EDITOR-RESTART-001 | Explicit full palette without replacing current cleanup/analysis | USER-REQUESTED | 578 .NET / 256 JS PASS | APP-VERIFIED | Local5036: inch fixture import, circle creation, undo/redo, DXF download/reopen and analysis verified. Public deployments unchanged. Dev callback/user sign-in acceptance not yet verified. |
 | UT-EDITOR-DOCK-001 | Narrow side-dock groups and collapse controls fit actual panel | USER-REQUESTED | AUTO-PASSED | APP-VERIFIED | Shared minimum-width fix; desktop/tablet/390/320 screenshots and collapse/expand checks pass. No data repair needed. |
 
 Full editor completion remains OPEN: retained trim/corner/solver failures,
-document lifecycle, unobscured viewport fit and Dev integration. These are not
+Dev integration, selection/inspector/dimension ergonomics. Document replacement
+and viewport-fit slices above are ready for testing. These are not
 being marked user-passed merely because the palette is restored.
 
 ## TEST Cut Perimeter - 2026-09-26

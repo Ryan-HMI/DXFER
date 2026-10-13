@@ -1,5 +1,19 @@
 # DXFer Dev playground
 
+## Current Deployment Follow-up
+
+2026-10-13T11:40:29Z: code4d7e7c9 deployed, including document-lifecycle fix
+2571107.591 .NET and265 JS tests pass. Installed-service browser validates
+initial/explicit Fit at1440/820/390/320, collapse and floating palettes,
+download/reopen and unchanged cut totals, with no browser errors.
+Details: document-lifecycle-2026-10-13.md and viewport-fit-2026-10-13.md.
+Evidence /tmp/dxfer-fit-qa/live-evidence.json. Public auth/status200 and normal
+Google302; published assembly hash matches Release output. Standalone Sync
+integration remains disabled. Production PID1503 and Test PID637712 unchanged;
+both public auth/status endpoints return200. No live drawings or records changed.
+Rollback publishes retained at dev-publish-before-lifecycle-20261013 and
+dev-publish-before-fit-20261013 under /home/ryan/dxfer-runtime.
+
 Ryan approved `dxferdev.sync.harrisonmetals.com` in Slack delivery
 `84250bfd09f300892bdf59f7`, replacing the originally requested hostname that
 lacked public DNS. Scope is the full editor playground, not a claim that
