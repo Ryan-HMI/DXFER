@@ -16,9 +16,11 @@ Use this file to separate what the user has actually tested from what is only au
 
 Dev hosting follow-up: full editor hosted on port 5175 at
 `https://dxferdev.sync.harrisonmetals.com`; public DNS/trusted HTTPS verified,
-OAuth registration/login still pending. 579 .NET / 256 JS pass; deployed browser import/edit/undo/redo/
+interactive Google login confirmed by Ryan (delivery `dfd418ab82ec7f9a005f19f0`).
+579 .NET / 256 JS pass; deployed browser import/edit/undo/redo/
 download/reopen verified. Sync integration disabled in this standalone instance.
-No user acceptance yet. See `dev-playground-deployment-2026-10-13.md`.
+Access is USER-PASSED; editor behavior acceptance remains pending.
+See `dev-playground-deployment-2026-10-13.md`.
 
 | ID | Behavior | User Status | Automated Status | App Status | Scope |
 |---|---|---|---|---|---|

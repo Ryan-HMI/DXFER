@@ -2,7 +2,7 @@
 
 Update: the full editor is hosted as a standalone Dev service on port 5175
 at `https://dxferdev.sync.harrisonmetals.com`. Public DNS and trusted HTTPS are
-verified; Google redirect registration and interactive login remain pending.
+verified; Ryan confirmed interactive Google login (delivery `dfd418ab82ec7f9a005f19f0`).
 See [Dev deployment](dev-playground-deployment-2026-10-13.md).
 Production/Test and live Sync launch destinations remain unchanged.
 
