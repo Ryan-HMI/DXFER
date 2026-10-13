@@ -52,3 +52,10 @@ geometry fields. 591 .NET tests pass. No runtime CAD dependency was added.
 Native evidence: `/tmp/codex-dxf-qcad/verify-native.cjs` and `all-qcad.json`.
 Source artifacts remain unchanged; regenerate previous downloads. Dev-only;
 Windows QCAD/CypNest user retest remains pending.
+
+Deployed writer858da3e on2026-10-13. Installed Dev browser import/download passed
+with81 back entities and two splines; this downloaded file also passes native
+QCAD3.33.1 import with exact counts and independent zero-error/zero-repair audit.
+Screenshot inspected; no browser errors. Published CadIO hash matches Release,
+public auth remains normal Google sign-in, and Production/Test PIDs are unchanged.
+Rollback: `/home/ryan/dxfer-runtime/dev-publish-before-qcad-20261013`.
