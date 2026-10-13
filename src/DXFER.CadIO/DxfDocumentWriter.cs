@@ -10,6 +10,8 @@ public static class DxfDocumentWriter
     private const string GrainLayerName = "GRAIN";
     private const string ContinuousLineTypeName = "CONTINUOUS";
     private const string DashedLineTypeName = "DASHED";
+    // Handles 1..7 belong to the model/paper-space records; drawing handles start at 100 hex.
+    private const string ModelSpaceHandle = "2";
 
     public static string Write(DrawingDocument document, DxfWriteOptions? options = null)
     {
@@ -17,11 +19,22 @@ public static class DxfDocumentWriter
         options ??= new DxfWriteOptions();
 
         var builder = new StringBuilder();
-        var layerStyles = GetWritableLayerStyles(document).ToArray();
-        if (layerStyles.Length > 0 || options.GrainAnnotation is not null)
+        WritePair(builder, 0, "SECTION");
+        WritePair(builder, 2, "HEADER");
+        WritePair(builder, 9, "$ACADVER");
+        WritePair(builder, 1, "AC1015");
+        WritePair(builder, 9, "$INSUNITS");
+        WritePair(builder, 70, document.Metadata.Units switch
         {
-            WriteTables(builder, layerStyles, options.GrainAnnotation is not null);
-        }
+            DrawingUnits.Inches => "1",
+            DrawingUnits.Millimeters => "4",
+            _ => "0"
+        });
+        WritePair(builder, 0, "ENDSEC");
+        var handle = 256;
+        var layerStyles = GetWritableLayerStyles(document).ToArray();
+        WriteTables(builder, layerStyles, options.GrainAnnotation is not null, ref handle);
+        WriteSpaceBlocks(builder);
 
         WritePair(builder, 0, "SECTION");
         WritePair(builder, 2, "ENTITIES");
@@ -33,6 +46,18 @@ public static class DxfDocumentWriter
                 continue;
             }
 
+            // Domain IDs are not DXF handles. Use unique hexadecimal file-local identifiers.
+            var type = entity switch
+            {
+                LineEntity => "LINE", CircleEntity => "CIRCLE", ArcEntity => "ARC",
+                EllipseEntity => "ELLIPSE", PointEntity => "POINT",
+                PolylineEntity or PolygonEntity => "LWPOLYLINE", SplineEntity => "SPLINE",
+                _ => null
+            };
+            if (type is null) continue;
+            WritePair(builder, 0, type);
+            WritePair(builder, 5, (handle++).ToString("X", CultureInfo.InvariantCulture));
+            WritePair(builder, 330, ModelSpaceHandle);
             switch (entity)
             {
                 case LineEntity line:
@@ -64,7 +89,7 @@ public static class DxfDocumentWriter
 
         if (options.GrainAnnotation is { } grainAnnotation)
         {
-            WriteGrainAnnotation(builder, document, grainAnnotation);
+            WriteGrainAnnotation(builder, document, grainAnnotation, handle);
         }
 
         WritePair(builder, 0, "ENDSEC");
@@ -75,12 +100,13 @@ public static class DxfDocumentWriter
     private static void WriteTables(
         StringBuilder builder,
         IReadOnlyList<DxfEntityStyle> layerStyles,
-        bool includeGrainLayer)
+        bool includeGrainLayer,
+        ref int handle)
     {
         var lineTypes = layerStyles
             .Select(style => ResolveWritableLineTypeName(style))
-            .Where(lineType => !string.IsNullOrWhiteSpace(lineType) &&
-                               !lineType.Equals(ContinuousLineTypeName, StringComparison.OrdinalIgnoreCase))
+            .Concat(new[] { ContinuousLineTypeName, "BYLAYER", "BYBLOCK" })
+            .Where(lineType => !string.IsNullOrWhiteSpace(lineType))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -90,16 +116,20 @@ public static class DxfDocumentWriter
         {
             WritePair(builder, 0, "TABLE");
             WritePair(builder, 2, "LTYPE");
+            WritePair(builder, 5, (handle++).ToString("X", CultureInfo.InvariantCulture));
+            WritePair(builder, 100, "AcDbSymbolTable");
             WritePair(builder, 70, lineTypes.Length.ToString(CultureInfo.InvariantCulture));
             foreach (var lineType in lineTypes)
             {
-                WriteLineType(builder, lineType);
+                WriteLineType(builder, lineType, handle++);
             }
             WritePair(builder, 0, "ENDTAB");
         }
 
         WritePair(builder, 0, "TABLE");
         WritePair(builder, 2, "LAYER");
+        WritePair(builder, 5, (handle++).ToString("X", CultureInfo.InvariantCulture));
+        WritePair(builder, 100, "AcDbSymbolTable");
         WritePair(builder, 70, (layerStyles.Count + (includeGrainLayer ? 1 : 0)).ToString(CultureInfo.InvariantCulture));
         foreach (var style in layerStyles)
         {
@@ -110,6 +140,9 @@ public static class DxfDocumentWriter
             }
 
             WritePair(builder, 0, "LAYER");
+            WritePair(builder, 5, (handle++).ToString("X", CultureInfo.InvariantCulture));
+            WritePair(builder, 100, "AcDbSymbolTableRecord");
+            WritePair(builder, 100, "AcDbLayerTableRecord");
             WritePair(builder, 2, layerName);
             WritePair(builder, 70, "0");
             WritePair(builder, 62, (style.ColorNumber ?? 7).ToString(CultureInfo.InvariantCulture));
@@ -119,6 +152,9 @@ public static class DxfDocumentWriter
         if (includeGrainLayer)
         {
             WritePair(builder, 0, "LAYER");
+            WritePair(builder, 5, (handle++).ToString("X", CultureInfo.InvariantCulture));
+            WritePair(builder, 100, "AcDbSymbolTableRecord");
+            WritePair(builder, 100, "AcDbLayerTableRecord");
             WritePair(builder, 2, GrainLayerName);
             WritePair(builder, 70, "0");
             WritePair(builder, 62, "3");
@@ -126,15 +162,49 @@ public static class DxfDocumentWriter
         }
 
         WritePair(builder, 0, "ENDTAB");
+        WriteSpaceTable(builder);
         WritePair(builder, 0, "ENDSEC");
     }
 
-    private static void WriteLineType(StringBuilder builder, string lineType)
+    private static void WriteSpaceTable(StringBuilder builder)
+    {
+        WritePair(builder, 0, "TABLE"); WritePair(builder, 2, "BLOCK_RECORD");
+        WritePair(builder, 5, "1"); WritePair(builder, 330, "0");
+        WritePair(builder, 100, "AcDbSymbolTable"); WritePair(builder, 70, "2");
+        foreach (var (name, handle) in new[] { ("*Model_Space", "2"), ("*Paper_Space", "3") })
+        {
+            WritePair(builder, 0, "BLOCK_RECORD"); WritePair(builder, 5, handle);
+            WritePair(builder, 330, "1"); WritePair(builder, 100, "AcDbSymbolTableRecord");
+            WritePair(builder, 100, "AcDbBlockTableRecord"); WritePair(builder, 2, name);
+        }
+        WritePair(builder, 0, "ENDTAB");
+    }
+
+    private static void WriteSpaceBlocks(StringBuilder builder)
+    {
+        WritePair(builder, 0, "SECTION"); WritePair(builder, 2, "BLOCKS");
+        foreach (var (name, owner, begin, end) in new[] { ("*Model_Space", "2", "4", "5"), ("*Paper_Space", "3", "6", "7") })
+        {
+            WritePair(builder, 0, "BLOCK"); WritePair(builder, 5, begin); WritePair(builder, 330, owner);
+            WritePair(builder, 100, "AcDbEntity"); WritePair(builder, 8, "0"); WritePair(builder, 100, "AcDbBlockBegin");
+            WritePair(builder, 2, name); WritePair(builder, 70, "0");
+            WritePair(builder, 10, "0"); WritePair(builder, 20, "0"); WritePair(builder, 30, "0");
+            WritePair(builder, 3, name); WritePair(builder, 1, "");
+            WritePair(builder, 0, "ENDBLK"); WritePair(builder, 5, end); WritePair(builder, 330, owner);
+            WritePair(builder, 100, "AcDbEntity"); WritePair(builder, 8, "0"); WritePair(builder, 100, "AcDbBlockEnd");
+        }
+        WritePair(builder, 0, "ENDSEC");
+    }
+
+    private static void WriteLineType(StringBuilder builder, string lineType, int handle)
     {
         var name = SanitizeSymbolName(lineType);
         if (name.Equals(DashedLineTypeName, StringComparison.OrdinalIgnoreCase))
         {
             WritePair(builder, 0, "LTYPE");
+            WritePair(builder, 5, handle.ToString("X", CultureInfo.InvariantCulture));
+            WritePair(builder, 100, "AcDbSymbolTableRecord");
+            WritePair(builder, 100, "AcDbLinetypeTableRecord");
             WritePair(builder, 2, DashedLineTypeName);
             WritePair(builder, 70, "0");
             WritePair(builder, 3, "Dashed");
@@ -149,6 +219,9 @@ public static class DxfDocumentWriter
         }
 
         WritePair(builder, 0, "LTYPE");
+        WritePair(builder, 5, handle.ToString("X", CultureInfo.InvariantCulture));
+        WritePair(builder, 100, "AcDbSymbolTableRecord");
+        WritePair(builder, 100, "AcDbLinetypeTableRecord");
         WritePair(builder, 2, name);
         WritePair(builder, 70, "0");
         WritePair(builder, 3, name);
@@ -215,6 +288,7 @@ public static class DxfDocumentWriter
 
     private static void WriteEntityStyle(StringBuilder builder, DrawingDocument document, DrawingEntity entity)
     {
+        WritePair(builder, 100, "AcDbEntity");
         var style = ResolveEntityStyle(document, entity);
         if (style is null)
         {
@@ -253,7 +327,8 @@ public static class DxfDocumentWriter
     private static void WriteGrainAnnotation(
         StringBuilder builder,
         DrawingDocument document,
-        GrainAnnotation annotation)
+        GrainAnnotation annotation,
+        int handle)
     {
         if (!TryGetWritableEntityBounds(document, out var bounds))
         {
@@ -267,12 +342,18 @@ public static class DxfDocumentWriter
         var y = bounds.MinY - margin;
 
         WritePair(builder, 0, "TEXT");
+        WritePair(builder, 5, handle.ToString("X", CultureInfo.InvariantCulture));
+        WritePair(builder, 330, ModelSpaceHandle);
+        WritePair(builder, 100, "AcDbEntity");
         WritePair(builder, 8, GrainLayerName);
+        WritePair(builder, 100, "AcDbText");
         WritePair(builder, 10, Format(x));
         WritePair(builder, 20, Format(y));
+        WritePair(builder, 30, "0");
         WritePair(builder, 40, Format(textHeight));
         WritePair(builder, 1, SanitizeTextValue(annotation.Label));
         WritePair(builder, 50, "0");
+        WritePair(builder, 100, "AcDbText");
     }
 
     private static bool TryGetWritableEntityBounds(DrawingDocument document, out Bounds2 bounds)
@@ -296,38 +377,35 @@ public static class DxfDocumentWriter
 
     private static void WriteLine(StringBuilder builder, DrawingDocument document, LineEntity line)
     {
-        WritePair(builder, 0, "LINE");
-        WritePair(builder, 5, line.Id.Value);
         WriteEntityStyle(builder, document, line);
+        WritePair(builder, 100, "AcDbLine");
         WritePoint(builder, line.Start, 10, 20);
         WritePoint(builder, line.End, 11, 21);
     }
 
     private static void WriteCircle(StringBuilder builder, DrawingDocument document, CircleEntity circle)
     {
-        WritePair(builder, 0, "CIRCLE");
-        WritePair(builder, 5, circle.Id.Value);
         WriteEntityStyle(builder, document, circle);
+        WritePair(builder, 100, "AcDbCircle");
         WritePoint(builder, circle.Center, 10, 20);
         WritePair(builder, 40, Format(circle.Radius));
     }
 
     private static void WriteArc(StringBuilder builder, DrawingDocument document, ArcEntity arc)
     {
-        WritePair(builder, 0, "ARC");
-        WritePair(builder, 5, arc.Id.Value);
         WriteEntityStyle(builder, document, arc);
+        WritePair(builder, 100, "AcDbCircle");
         WritePoint(builder, arc.Center, 10, 20);
         WritePair(builder, 40, Format(arc.Radius));
+        WritePair(builder, 100, "AcDbArc");
         WritePair(builder, 50, Format(arc.StartAngleDegrees));
         WritePair(builder, 51, Format(arc.EndAngleDegrees));
     }
 
     private static void WriteEllipse(StringBuilder builder, DrawingDocument document, EllipseEntity ellipse)
     {
-        WritePair(builder, 0, "ELLIPSE");
-        WritePair(builder, 5, ellipse.Id.Value);
         WriteEntityStyle(builder, document, ellipse);
+        WritePair(builder, 100, "AcDbEllipse");
         WritePoint(builder, ellipse.Center, 10, 20);
         WritePoint(builder, ellipse.MajorAxisEndPoint, 11, 21);
         WritePair(builder, 40, Format(ellipse.MinorRadiusRatio));
@@ -337,46 +415,42 @@ public static class DxfDocumentWriter
 
     private static void WritePointEntity(StringBuilder builder, DrawingDocument document, PointEntity point)
     {
-        WritePair(builder, 0, "POINT");
-        WritePair(builder, 5, point.Id.Value);
         WriteEntityStyle(builder, document, point);
+        WritePair(builder, 100, "AcDbPoint");
         WritePoint(builder, point.Location, 10, 20);
     }
 
     private static void WritePolyline(StringBuilder builder, DrawingDocument document, PolylineEntity polyline)
     {
-        WritePair(builder, 0, "LWPOLYLINE");
-        WritePair(builder, 5, polyline.Id.Value);
         WriteEntityStyle(builder, document, polyline);
+        WritePair(builder, 100, "AcDbPolyline");
         WritePair(builder, 90, polyline.Vertices.Count.ToString(CultureInfo.InvariantCulture));
         WritePair(builder, 70, "0");
 
         foreach (var vertex in polyline.Vertices)
         {
-            WritePoint(builder, vertex, 10, 20);
+            WritePoint(builder, vertex, 10, 20, planar: true);
         }
     }
 
     private static void WritePolygon(StringBuilder builder, DrawingDocument document, PolygonEntity polygon)
     {
         var vertices = polygon.GetVertices();
-        WritePair(builder, 0, "LWPOLYLINE");
-        WritePair(builder, 5, polygon.Id.Value);
         WriteEntityStyle(builder, document, polygon);
+        WritePair(builder, 100, "AcDbPolyline");
         WritePair(builder, 90, vertices.Count.ToString(CultureInfo.InvariantCulture));
         WritePair(builder, 70, "1");
 
         foreach (var vertex in vertices)
         {
-            WritePoint(builder, vertex, 10, 20);
+            WritePoint(builder, vertex, 10, 20, planar: true);
         }
     }
 
     private static void WriteSpline(StringBuilder builder, DrawingDocument document, SplineEntity spline)
     {
-        WritePair(builder, 0, "SPLINE");
-        WritePair(builder, 5, spline.Id.Value);
         WriteEntityStyle(builder, document, spline);
+        WritePair(builder, 100, "AcDbSpline");
         WritePair(builder, 70, spline.Weights.Any(weight => Math.Abs(weight - 1d) > 0.000001) ? "12" : "8");
         WritePair(builder, 71, spline.Degree.ToString(CultureInfo.InvariantCulture));
         WritePair(builder, 72, spline.Knots.Count.ToString(CultureInfo.InvariantCulture));
@@ -407,10 +481,11 @@ public static class DxfDocumentWriter
         }
     }
 
-    private static void WritePoint(StringBuilder builder, Point2 point, int xCode, int yCode)
+    private static void WritePoint(StringBuilder builder, Point2 point, int xCode, int yCode, bool planar = false)
     {
         WritePair(builder, xCode, Format(point.X));
         WritePair(builder, yCode, Format(point.Y));
+        if (!planar) WritePair(builder, yCode + 10, "0");
     }
 
     private static void WritePair(StringBuilder builder, int code, string value)
