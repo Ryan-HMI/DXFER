@@ -2,6 +2,14 @@
 
 ## Current Deployment Follow-up
 
+2026-10-14 approximately19:25Z:20b645c deployed Dev only. Exact retained spline
+geometry replaces the old sampled-degree-one trim result.807 .NET tests pass;
+two installed-browser cubic fixtures pass trim/Undo/Redo/DXF reopen and exact
+control checks. Independent ezdxf audits report zero errors/fixes. Includes the
+palette persistence and trim feedback changes below. Authentication, callbacks,
+runtime isolation and Production/Test PIDs unchanged. See
+`spline-trim-fidelity-2026-10-14.md` for limitations and recovery requirements.
+
 2026-10-14 approximately19:18Z: ba2a661 deployed Dev only. Independent palette
 layout persists across reload, including dock, order, compaction and preferred
 floating coordinates. Integrated tests:783 .NET and273 JS pass. Installed real
