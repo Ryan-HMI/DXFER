@@ -1,0 +1,82 @@
+asset_id,visible_label,decision,minimum_display_px,integration_note
+select,Select,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+line,Line,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+midpoint-line,Midpoint line,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+point,Point,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+rectangle,Rectangle,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+center-rectangle,Center rectangle,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+aligned-rectangle,Aligned rectangle,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+circle,Circle,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+circle-three-point,Circle three point,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+arc,Arc,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+center-arc,Center arc,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+ellipse,Ellipse,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+elliptical-arc,Elliptical arc,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+spline,Spline,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+conic,Conic,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+slot,Slot,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+polygon,Polygon,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+inscribed-polygon,Inscribed polygon,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+circumscribed-polygon,Circumscribed polygon,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+text,Text,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+spline-point,Spline point,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+construction,Construction,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+undo,Undo,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+redo,Redo,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+delete,Delete,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+trim,Trim,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+extend,Extend,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+split,Split,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+offset,Offset,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+fillet,Fillet,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+chamfer,Chamfer,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+dimension,Dimension,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+dimension-angle,Dimension angle,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+dimension-radius,Dimension radius,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+dimension-diameter,Dimension diameter,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+move,Move,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+rotate,Rotate,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+scale,Scale,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+mirror,Mirror,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+linear-pattern,Linear pattern,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+circular-pattern,Circular pattern,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+coincident,Coincident,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+concentric,Concentric,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+parallel,Parallel,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+perpendicular,Perpendicular,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+horizontal,Horizontal,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+vertical,Vertical,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+equal,Equal,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+tangent,Tangent,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+midpoint,Midpoint,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+symmetric,Symmetric,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+normal,Normal,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+fix,Fix,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+fit,Fit,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+pan,Pan,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+zoom,Zoom,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+axes,Axes,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+constraints,Constraints,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+measure,Measure,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+keyboard,Keyboard,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+grid,Grid,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+layers,Layers,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+grain,Grain,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+origin,Origin,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+rotate-90,Rotate 90,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+remove-duplicates,Remove duplicates,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+auto-orient,Auto orient,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+align-x,Align x,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+align-y,Align y,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+open,Open,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+new,New,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+download,Download,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+search,Search,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+help,Help,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+check,Check,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+close,Close,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+warning,Warning,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+conflict,Conflict,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+return-to-tools,Return to tools,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+chevron-down,Chevron down,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants
+menu,Menu,Replace from coherent original vector set; keep label,20,Map to existing semantic action; label essential for modeling-specific variants

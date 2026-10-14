@@ -1,0 +1,39 @@
+/* Scoped DXFer design tokens. Apply to workspace root, not the host shell. */
+.dxfer-workspace {
+ --dx-app:#07090D; --dx-chrome:#0A0D12; --dx-panel:#10141B;
+ --dx-raised:#151B24; --dx-hover:#1A222D; --dx-input:#0A0D12;
+ --dx-border:#242D39; --dx-border-strong:#687B90;
+ --dx-text:#F4F7FB; --dx-secondary:#BBC5D1; --dx-muted:#97A5B6;
+ --dx-disabled:#56616F; --dx-accent:#66D9FF; --dx-accent-strong:#B7EFFF;
+ --dx-selected:rgba(102,217,255,.14); --dx-protected:#FFC56C;
+ --dx-success:#79E1AB; --dx-danger:#FF6C7C; --dx-danger-soft:rgba(255,108,124,.14);
+ --dx-viewport:#0B1016; --dx-viewport-foreground:#D3E1ED; --dx-viewport-depth:#16232D; --dx-grid:rgba(138,158,178,.055);
+ --dx-space-1:4px; --dx-space-2:8px; --dx-space-3:12px; --dx-space-4:16px; --dx-space-6:24px;
+ --dx-radius:6px; --dx-group-radius:8px; --dx-panel-radius:9px;
+ --dx-control:34px; --dx-icon:20px; --dx-shelf:200px; --dx-inspector:296px;
+ --dx-font:Inter,"Segoe UI",system-ui,sans-serif;
+ color:var(--dx-text); font-family:var(--dx-font); font-size:13px; line-height:1.4;
+ font-variant-numeric:tabular-nums; color-scheme:dark;
+}
+.dxfer-workspace[data-density="comfortable"] { --dx-control:44px; --dx-icon:22px; }
+.dxfer-workspace[data-theme="light"] {
+ color-scheme:light; --dx-viewport:#EDF2F6; --dx-viewport-foreground:#263A4B; --dx-viewport-depth:#D7E3EC; --dx-grid:rgba(38,58,75,.10);
+ --dx-app:#DCE2E8; --dx-chrome:#EEF2F5; --dx-panel:#E6EBEF; --dx-raised:#F7F9FB;
+ --dx-hover:#DCE3E9; --dx-input:#F7F9FB; --dx-border:#C8D0D8; --dx-border-strong:#6B7D8E;
+ --dx-text:#17202A; --dx-secondary:#465461; --dx-muted:#526373; --dx-disabled:#88939D;
+ --dx-accent:#006486; --dx-accent-strong:#00506B; --dx-selected:rgba(0,100,134,.12);
+ --dx-protected:#895700; --dx-success:#18774A; --dx-danger:#B52A3D; --dx-danger-soft:rgba(181,42,61,.10);
+}
+.dxfer-workspace .dx-icon { width:var(--dx-icon); height:var(--dx-icon); flex:none; display:block; }
+.dxfer-workspace .dx-action { min-height:var(--dx-control); border:1px solid transparent; border-radius:var(--dx-radius); background:transparent; color:var(--dx-secondary); font:inherit; display:inline-flex; gap:8px; align-items:center; padding:6px 9px; cursor:pointer; }
+.dxfer-workspace .dx-action:hover { background:var(--dx-hover); color:var(--dx-text); }
+.dxfer-workspace .dx-action:active { background:var(--dx-raised); border-color:var(--dx-border-strong); }
+.dxfer-workspace .dx-action[aria-pressed="true"] { background:var(--dx-selected); color:var(--dx-accent); border-color:var(--dx-border-strong); box-shadow:inset 2px 0 var(--dx-accent); }
+.dxfer-workspace :focus-visible { outline:2px solid var(--dx-accent); outline-offset:2px; }
+.dxfer-workspace .dx-action:disabled { color:var(--dx-disabled); cursor:not-allowed; background:transparent; }
+.dxfer-workspace .dx-primary { background:var(--dx-text); color:var(--dx-input); font-weight:600; }
+.dxfer-workspace .dx-primary:hover { background:var(--dx-accent-strong); color:var(--dx-input); }
+.dxfer-workspace .dx-danger { color:var(--dx-danger); border-color:var(--dx-danger); }
+.dxfer-workspace .dx-danger:hover { background:var(--dx-danger-soft); color:var(--dx-danger); }
+.dxfer-workspace .dx-field { min-height:var(--dx-control); box-sizing:border-box; border:1px solid var(--dx-border-strong); border-radius:var(--dx-radius); background:var(--dx-input); color:var(--dx-text); font:inherit; font-variant-numeric:tabular-nums; padding:7px 9px; }
+@media(prefers-reduced-motion:no-preference) { .dxfer-workspace .dx-action { transition:background-color 120ms,border-color 120ms,color 120ms; } }
