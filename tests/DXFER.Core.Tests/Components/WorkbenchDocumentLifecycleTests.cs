@@ -44,7 +44,8 @@ public sealed class WorkbenchDocumentLifecycleTests
     [Theory]
     [InlineData(WorkbenchTool.Fillet)]
     [InlineData(WorkbenchTool.Chamfer)]
-    public void CornerToolDoesNotHideOperationResultsBehindGenericPrompt(WorkbenchTool tool)
+    [InlineData(WorkbenchTool.PowerTrim)]
+    public void ModifyToolDoesNotHideOperationResultsBehindGenericPrompt(WorkbenchTool tool)
     {
         var workbench = Create();
         Set(workbench, "_activeTool", tool);

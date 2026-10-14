@@ -510,7 +510,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.Point => "Point: click to place a persistent sketch point. Esc: cancel.",
         WorkbenchTool.Slot => "Slot: click first center, second center, then radius point. Esc: cancel.",
         WorkbenchTool.Construction => "Construction: click geometry to toggle construction state. Esc: cancel.",
-        WorkbenchTool.PowerTrim => "Power trim/extend: click a line, polyline, polygon, circle, arc, ellipse, spline, or point section to trim, or click past a line endpoint to extend. Esc: cancel.",
+        WorkbenchTool.PowerTrim => _status,
         WorkbenchTool.SplitAtPoint => "Split at point: click a line or arc, or pick two points on a circle. Esc: cancel.",
         WorkbenchTool.AddSplinePoint => "Add spline point: select one fit-point spline, then click the spline where the new fit point belongs. Esc: cancel.",
         WorkbenchTool.Offset => "Offset: select whole geometry, then click the through side or radius point. Esc: cancel.",
@@ -1143,7 +1143,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 CreateEntityId,
                 out var nextDocument))
         {
-            _status = "Power trim/extend needs a crossed geometry section or an extendable line target.";
+            _status = "Power trim/extend could not apply this edit. Geometry unchanged. Choose a crossed section or a supported extension.";
             _ = InvokeAsync(StateHasChanged);
             return;
         }
@@ -1182,7 +1182,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         {
             _status = unsupportedTargets > 0
                 ? "Power trim drag currently supports crossed line, polyline, polygon, circle, arc, ellipse, spline, and point sections only."
-                : "Power trim drag needs one or more geometry sections crossed by the cursor path.";
+                : "Power trim drag could not apply these edits. Geometry unchanged. Cross a supported geometry section.";
             _ = InvokeAsync(StateHasChanged);
             return;
         }
