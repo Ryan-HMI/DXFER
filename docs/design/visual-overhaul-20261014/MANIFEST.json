@@ -1,0 +1,485 @@
+{
+  "target_directory": "docs/design/visual-overhaul-20261014",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 3615,
+      "sha256": "9c3e160022d8ec212eeaf0375e3c48db312f48885fdd8af8d23f4b16dd806154"
+    },
+    {
+      "path": "IMPLEMENTATION.md",
+      "bytes": 9342,
+      "sha256": "43226842e892bf350ad132c16eae836f0bffef264c4f2bb1021dbfd6e8841fcf"
+    },
+    {
+      "path": "VALIDATION.md",
+      "bytes": 2367,
+      "sha256": "90d865941acce060a70aba4eff5f1643a121351790bad7ea405db4ed2cf365f6"
+    },
+    {
+      "path": "ICON-DECISIONS.csv",
+      "bytes": 12735,
+      "sha256": "2b74464ebb062931af9fc9efa2489cae61f83479b0fc37b01129e6485cdb2051"
+    },
+    {
+      "path": "tokens.css",
+      "bytes": 3569,
+      "sha256": "515dd03c437172f20949ef91f8130480dc5a219185a0d0b02fbbc0931e6d6019"
+    },
+    {
+      "path": "icons.json",
+      "bytes": 9810,
+      "sha256": "f3edb9921cd69a7fb928767e37875c52279abea4ca5ee0ee2c89004d14a91503"
+    },
+    {
+      "path": "dxfer-icons.svg",
+      "bytes": 20335,
+      "sha256": "717e9e4cc5156336da2ad6091e4e9bdc6b41f10c5e0437a7a7ce1b23579ba980"
+    },
+    {
+      "path": "icon-contact-sheet.svg",
+      "bytes": 110246,
+      "sha256": "67857401d839de6a9fc55fddd65e46d2960c770c0ea1a96f59f7a85f0d7b2556"
+    },
+    {
+      "path": "workspace-target.svg",
+      "bytes": 19902,
+      "sha256": "9c574a8c5534a4f259b7e1f1c93ed99e0ea3daa41142e3f6cf23b2ac4a28144d"
+    },
+    {
+      "path": "workspace-target.html",
+      "bytes": 22156,
+      "sha256": "068a6daf622b18cd482e118ed91989860bb36c192b47e64ea278ec13033c07af"
+    },
+    {
+      "path": "component-states.html",
+      "bytes": 11587,
+      "sha256": "3b7f74404fc1e6b439549b4c01407d3ddea0a2550fa1e80ca3c142afcdbaf2c1"
+    },
+    {
+      "path": "build_assets.py",
+      "bytes": 7255,
+      "sha256": "47489cd257fafdb9eb2f95fd3edfb7d129b6588b37c9cd6d2a3f70c770be9d6f"
+    },
+    {
+      "path": "build_preview.py",
+      "bytes": 11801,
+      "sha256": "18f7c9f41e4ea8e032fe7e648d78b57593ab726dfc796d4f383397773f5b8f0a"
+    },
+    {
+      "path": "build_workspace_svg.py",
+      "bytes": 5566,
+      "sha256": "a6d964662d3c5fba5e75cba81e6193101816ac71caa630b9979077345b8ffb8f"
+    },
+    {
+      "path": "validate_assets.py",
+      "bytes": 893,
+      "sha256": "f4aa5a10124eb1311ac43758cc6a2d461c42e072429434d1cf4b2f0ee00568b1"
+    },
+    {
+      "path": "icons/align-x.svg",
+      "bytes": 223,
+      "sha256": "788e925a019778ecf0186c9d80f472e19b33145a33bb7e78e9a24f5a72b18331"
+    },
+    {
+      "path": "icons/align-y.svg",
+      "bytes": 222,
+      "sha256": "42eeb82dbf36c39de431a403a8ee2c1d48180c0f336392f9903b3573e7753e9b"
+    },
+    {
+      "path": "icons/aligned-rectangle.svg",
+      "bytes": 331,
+      "sha256": "aef253f22fc451b512b0f22b60cc04a7dfbf5029a38fb773d5249d2f452a0712"
+    },
+    {
+      "path": "icons/arc.svg",
+      "bytes": 399,
+      "sha256": "c1f0da61a30872e0f69456cd4fa847950ab5199426439e65c176868d7b038e14"
+    },
+    {
+      "path": "icons/auto-orient.svg",
+      "bytes": 227,
+      "sha256": "3ceac00fc61817e912d5a2602a933a7da44209355aefb7cf639531fcc0cf2c50"
+    },
+    {
+      "path": "icons/axes.svg",
+      "bytes": 218,
+      "sha256": "73103831224640cdebff76a8720b0543a806c79fb27d99c87aeaed9dcd3e1c09"
+    },
+    {
+      "path": "icons/center-arc.svg",
+      "bytes": 279,
+      "sha256": "0edcf29e1461d829ac22f2c5c9f53c5ddec78a24785b34272806213d9840d67d"
+    },
+    {
+      "path": "icons/center-rectangle.svg",
+      "bytes": 242,
+      "sha256": "a839768cc5dafff8a21ccbac2637f23533f4a57d45843053e74cb0233ba65d04"
+    },
+    {
+      "path": "icons/chamfer.svg",
+      "bytes": 213,
+      "sha256": "a8bcd32654698b2f10304d68bb8767162ba8268a3fddb0ddb8e86f2eae310f16"
+    },
+    {
+      "path": "icons/check.svg",
+      "bytes": 193,
+      "sha256": "1c80d14e7bbcd7fd3ce3027c7c72d4fc07192ff3fb9b96e86b26d1ab3d7b314e"
+    },
+    {
+      "path": "icons/chevron-down.svg",
+      "bytes": 191,
+      "sha256": "1d2065b24da0cf4b3936203004eb8ef7b15a985a0658426517ad0113c29d0fc8"
+    },
+    {
+      "path": "icons/circle-three-point.svg",
+      "bytes": 401,
+      "sha256": "592988f697c599d8481fa2cd0d2fba003f143760226cef16dc1883f03c7e0130"
+    },
+    {
+      "path": "icons/circle.svg",
+      "bytes": 291,
+      "sha256": "fd6698f7e1f4198ccd396a1ba36a76c76812e603c3c97190927e9be4d036e68a"
+    },
+    {
+      "path": "icons/circular-pattern.svg",
+      "bytes": 395,
+      "sha256": "57aea687fc89fc72b62e5fe18ed5521be787ebbbff5da7d922fca18a53548d14"
+    },
+    {
+      "path": "icons/circumscribed-polygon.svg",
+      "bytes": 247,
+      "sha256": "0d57c6bcee7b8be304ec9415a16c0e68c27719cfeeff0cb83b154a668ade587c"
+    },
+    {
+      "path": "icons/close.svg",
+      "bytes": 199,
+      "sha256": "f196c9f4ec3552df036d00efaf89fa73b50e30c41e599223552ddf77f91785c0"
+    },
+    {
+      "path": "icons/coincident.svg",
+      "bytes": 229,
+      "sha256": "b1f85c218a01522f0995e36098b1c283f2ce88de141b0f7a78c34c0ac58d04b0"
+    },
+    {
+      "path": "icons/concentric.svg",
+      "bytes": 296,
+      "sha256": "27437466e6ac1f9c7bab2b2eb90bbf62000a8cf3d6919779fa4e4ea204afa939"
+    },
+    {
+      "path": "icons/conflict.svg",
+      "bytes": 224,
+      "sha256": "f0997be084a172dff2414024cd5944d69c37e829a85a75351f0c278b3b5259ca"
+    },
+    {
+      "path": "icons/conic.svg",
+      "bytes": 394,
+      "sha256": "7a924d4c2bc7cd8a13c8626aa1e0ebbd987fbeeec39d68acdf22589d2dcf2c6d"
+    },
+    {
+      "path": "icons/constraints.svg",
+      "bytes": 268,
+      "sha256": "c691b9e6e9b5e2fc2a3d1291467f4d71f685619e79908ef90479ba17d33848be"
+    },
+    {
+      "path": "icons/construction.svg",
+      "bytes": 205,
+      "sha256": "045e45367d8e59aaa5b13978b6f3018ebeea06a6c90020070099359cf5975ed4"
+    },
+    {
+      "path": "icons/delete.svg",
+      "bytes": 227,
+      "sha256": "c2ee8ba43e3c4ae0b3e7eaaf517b6101ca1d9db337588b199a609f678e3481a4"
+    },
+    {
+      "path": "icons/dimension-angle.svg",
+      "bytes": 213,
+      "sha256": "47056ef07d431cbfc8120cf762a2d3d5cd52c16d135983d44502033167d23a12"
+    },
+    {
+      "path": "icons/dimension-diameter.svg",
+      "bytes": 238,
+      "sha256": "5dcc7501788d76046f463cec8ab6c5081e571ff75c838ddac3dd432f86bd12c4"
+    },
+    {
+      "path": "icons/dimension-radius.svg",
+      "bytes": 230,
+      "sha256": "e740e70cdc6db9af78defb5daa7d7c4225a7236d663f20581048e808f1bf4276"
+    },
+    {
+      "path": "icons/dimension.svg",
+      "bytes": 229,
+      "sha256": "b1889e95f343fe729af6b22b631b5df5d8a9aba63ec864ed1858d50a86c6dc96"
+    },
+    {
+      "path": "icons/download.svg",
+      "bytes": 213,
+      "sha256": "65e48dae20583da147bdf598509e0aabf22ac85be857d1817c02e681ddb66016"
+    },
+    {
+      "path": "icons/ellipse.svg",
+      "bytes": 274,
+      "sha256": "c00833c042aa1fe3711d3a80b0519ca7c7afc50ae640a5734824f765fc992b81"
+    },
+    {
+      "path": "icons/elliptical-arc.svg",
+      "bytes": 332,
+      "sha256": "a9f8b3727f98d84cbcb28c8daeb00d30713eb0a7f3400618e9a8028be7dc2fef"
+    },
+    {
+      "path": "icons/equal.svg",
+      "bytes": 194,
+      "sha256": "458350362ccf4cfcd4f4e81e1534e7c285b0407cf19f6a7695ff436af59ea26b"
+    },
+    {
+      "path": "icons/extend.svg",
+      "bytes": 216,
+      "sha256": "0416a57b6578dcab7de3311dfc7f279d238bd9b8694f8a53bff0f683964f532d"
+    },
+    {
+      "path": "icons/fillet.svg",
+      "bytes": 223,
+      "sha256": "9848b7a6ea3e1237e1d6ca7322c42b722acdc37d160ec0a03f0560596d79d81d"
+    },
+    {
+      "path": "icons/fit.svg",
+      "bytes": 260,
+      "sha256": "3292140bf502b8064868adc16eb7b9f00d58cba2b17406d29a18416640ce9c9e"
+    },
+    {
+      "path": "icons/fix.svg",
+      "bytes": 283,
+      "sha256": "b32832d4a96f5bc51f56fbf7baf47097686eb5eec01f89d2d8e26908120b96d9"
+    },
+    {
+      "path": "icons/grain.svg",
+      "bytes": 218,
+      "sha256": "8ae8f7f4ecfaae20cc8380bf30912d2c7f1cc6619bffb021aaf1975a1870ce13"
+    },
+    {
+      "path": "icons/grid.svg",
+      "bytes": 258,
+      "sha256": "28b99f4dae1efbf0eb822fe904bcdf8ffdf170cfb2470c770719828ce9a6166c"
+    },
+    {
+      "path": "icons/help.svg",
+      "bytes": 310,
+      "sha256": "5e0480ed2dad3c636636f33e173b201a473bda9fadeae2d8ca64ad35de1ddd5d"
+    },
+    {
+      "path": "icons/horizontal.svg",
+      "bytes": 320,
+      "sha256": "249118eaa373f515ac044f94bc5bdd4ac2e4674a81089a9c4c085d276c11146f"
+    },
+    {
+      "path": "icons/inscribed-polygon.svg",
+      "bytes": 245,
+      "sha256": "2c92c9af0f917b1f5c1867b742b1152051556597d5f2ef6279d921032609ef85"
+    },
+    {
+      "path": "icons/keyboard.svg",
+      "bytes": 273,
+      "sha256": "c79c24ce06a548f1833c5db760e51491a6219faad9812513d408586efc118499"
+    },
+    {
+      "path": "icons/layers.svg",
+      "bytes": 223,
+      "sha256": "4acd402e7386d22e4f2c1e666300e8f9634ef8be476bbda125de121482a216be"
+    },
+    {
+      "path": "icons/line.svg",
+      "bytes": 321,
+      "sha256": "96451c722c42cfb5c30b3cab6066ccccb33325c988efa8b11668774f66164fe2"
+    },
+    {
+      "path": "icons/linear-pattern.svg",
+      "bytes": 401,
+      "sha256": "d43bee3defe3e2c9a5d87ea96b8861a75f733aa503648fd6db1636bb06b79283"
+    },
+    {
+      "path": "icons/measure.svg",
+      "bytes": 225,
+      "sha256": "1b2f3a67b6a2edc94b9202eaf2f70d2db2507cce29b1889df16becdbe5d88913"
+    },
+    {
+      "path": "icons/menu.svg",
+      "bytes": 202,
+      "sha256": "360647fa044fb086ce7bd53deed3db3fab645c87c27efbe7875136e452da5e5e"
+    },
+    {
+      "path": "icons/midpoint-line.svg",
+      "bytes": 378,
+      "sha256": "741754f42efc1ac420a26f5b9838d539c3f71e7cb93995c8257496bc155747d3"
+    },
+    {
+      "path": "icons/midpoint.svg",
+      "bytes": 332,
+      "sha256": "dc42db39fd284ffcfd3035518e9686ca0a094615f8c04c578d5675db6ecd82ac"
+    },
+    {
+      "path": "icons/mirror.svg",
+      "bytes": 224,
+      "sha256": "b27d10a4d79e57eb6463e88c46575c7cf17285017352f67d97938d3920195ff7"
+    },
+    {
+      "path": "icons/move.svg",
+      "bytes": 246,
+      "sha256": "a32c3acf989ad348b894b19fa127e28e6fcf8d68008257d8499372d514f9a560"
+    },
+    {
+      "path": "icons/new.svg",
+      "bytes": 218,
+      "sha256": "472f251d270333a62d698409759661949739fc62edc949089875e9731a0c9680"
+    },
+    {
+      "path": "icons/normal.svg",
+      "bytes": 226,
+      "sha256": "4356edec8b527f97fb24468446a962647fc0ab0ce6116e7ffc5125ce1a489d72"
+    },
+    {
+      "path": "icons/offset.svg",
+      "bytes": 221,
+      "sha256": "4c03c04ef8cfa46f943f715beb74e6d51cb8137ccc0f5db887bf8bbed79ea7d4"
+    },
+    {
+      "path": "icons/open.svg",
+      "bytes": 215,
+      "sha256": "8144bebb90c9ee7e49823c45d83053dc252845ff1c23f9e3fc15bfda9cec7c6b"
+    },
+    {
+      "path": "icons/origin.svg",
+      "bytes": 236,
+      "sha256": "76e30647f56a53432eb0e01a5885ab5297258f84e3bd82a93f722e2f88d34a86"
+    },
+    {
+      "path": "icons/pan.svg",
+      "bytes": 324,
+      "sha256": "a382ca2ae1b1ef39ccfa6970417abdb3454e528487adef4bfdeeda8edc905326"
+    },
+    {
+      "path": "icons/parallel.svg",
+      "bytes": 199,
+      "sha256": "cb1797fa23389ea71ac856bbe0c4d4427efe7e36417d8bfb6d9d068a7d029f85"
+    },
+    {
+      "path": "icons/perpendicular.svg",
+      "bytes": 198,
+      "sha256": "af2e576d180967e92d5d734da47d699a55423717dc02a10b7492ab1e36b45fa6"
+    },
+    {
+      "path": "icons/point.svg",
+      "bytes": 236,
+      "sha256": "5735f8a7bdc5923fc15426f9dc93614e6787f170584e473576e6dcd9934eeb3a"
+    },
+    {
+      "path": "icons/polygon.svg",
+      "bytes": 214,
+      "sha256": "63e477a3002408f6e3dea9ce57ada75d6a4567119ccf34a7dbb06561af5d50c0"
+    },
+    {
+      "path": "icons/rectangle.svg",
+      "bytes": 348,
+      "sha256": "48f1efc26c6d4e7b0340d643dd93c75c810260cf0c2bed2c118c9124428e5688"
+    },
+    {
+      "path": "icons/redo.svg",
+      "bytes": 216,
+      "sha256": "6884db2a693613649d275e2f309de71d6936108979c5166848e08daaa4a8c440"
+    },
+    {
+      "path": "icons/remove-duplicates.svg",
+      "bytes": 295,
+      "sha256": "966e35527510ad33e7e7a7742b6cf0c4afc3e7477bf420a8a74b4f269511494b"
+    },
+    {
+      "path": "icons/return-to-tools.svg",
+      "bytes": 254,
+      "sha256": "78d0bf2f8718ff1f178d7b16d31eca93a0d0383fd44a38ec80290d74269c5d26"
+    },
+    {
+      "path": "icons/rotate-90.svg",
+      "bytes": 212,
+      "sha256": "c0c22051e70813a9947a242fce958aafb0a7f276395a8f20e6b679a707055437"
+    },
+    {
+      "path": "icons/rotate.svg",
+      "bytes": 272,
+      "sha256": "c878540f1e07c2b1cebacbf3ec9216af3f064f6649cda16052d0a2ed25b145a0"
+    },
+    {
+      "path": "icons/scale.svg",
+      "bytes": 263,
+      "sha256": "a00dab281f2b0b1b27e6d7fdb8081ef4c7b803c8093f2deb6b0cb688aebdf333"
+    },
+    {
+      "path": "icons/search.svg",
+      "bytes": 220,
+      "sha256": "507dd1478722ed8cee4a427a0e4991eadbe5e811d0a2e5aff649d78293cf3fff"
+    },
+    {
+      "path": "icons/select.svg",
+      "bytes": 201,
+      "sha256": "4845aab1726a35fa0de57c53599f907e19f1c9a9bcfb769e3607694c05decf39"
+    },
+    {
+      "path": "icons/slot.svg",
+      "bytes": 236,
+      "sha256": "bd5b7ca80dc73c56dc65a8c993340f078f3e8605cc3aee3fe7c41062200fe4e8"
+    },
+    {
+      "path": "icons/spline-point.svg",
+      "bytes": 290,
+      "sha256": "070f008923c320a2e21818b4274e1d37717c72559b42693ebd6398f0eac1b506"
+    },
+    {
+      "path": "icons/spline.svg",
+      "bytes": 407,
+      "sha256": "8420683ecba43f905c8c491be1b2cf567d0c89e9a2ab1c73804d772e12ce5607"
+    },
+    {
+      "path": "icons/split.svg",
+      "bytes": 283,
+      "sha256": "ec5ee3b5264bbc247dcd4719031435335e2eec5b212604b45e061c65747a229e"
+    },
+    {
+      "path": "icons/symmetric.svg",
+      "bytes": 224,
+      "sha256": "47a2867967af13605da34489951e61eba8c90b0d134911a864f39e8193daea08"
+    },
+    {
+      "path": "icons/tangent.svg",
+      "bytes": 284,
+      "sha256": "3e34904262e614b9c64efb72ff03ad89ccf6b4c40bb1d89d4c131029defe55ec"
+    },
+    {
+      "path": "icons/text.svg",
+      "bytes": 201,
+      "sha256": "a2b389a96d64c60986d74442d8aef6d8217f23fc522c7685aadeeca1c50dd3e1"
+    },
+    {
+      "path": "icons/trim.svg",
+      "bytes": 277,
+      "sha256": "396e14056acd8bcdfd8ce026cf1c907a765c62c56769b015a7d244c80d5f9591"
+    },
+    {
+      "path": "icons/undo.svg",
+      "bytes": 214,
+      "sha256": "2a9568953547b7cca93d52008ce88e1343edcbac9705d211897cb0f211217dc7"
+    },
+    {
+      "path": "icons/vertical.svg",
+      "bytes": 320,
+      "sha256": "4d0a78e07b648331278ff7c40636dc08e44e75d4e4f283d72784cb3b51177a08"
+    },
+    {
+      "path": "icons/warning.svg",
+      "bytes": 268,
+      "sha256": "85e293fae519110dc4c75a143505275e83c8e91ebc30fb379257d00eb25e685a"
+    },
+    {
+      "path": "icons/zoom.svg",
+      "bytes": 234,
+      "sha256": "6e11f65972c0d650b63e64f8d65f4645dde168369dfb17798181dfaf1d47d1c0"
+    }
+  ]
+}
