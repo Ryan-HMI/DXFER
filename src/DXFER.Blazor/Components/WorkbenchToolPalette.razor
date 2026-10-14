@@ -1,6 +1,9 @@
 @namespace DXFER.Blazor.Components
+@implements IAsyncDisposable
+@inject IJSRuntime JsRuntime
 
 <div class="@PaletteCssClass"
+     @ref="_palette"
      @onpointermove="OnPalettePointerMove"
      @onpointerup="OnPalettePointerUp"
      @onpointercancel="OnPalettePointerUp">
@@ -45,6 +48,15 @@
     private readonly Dictionary<string, ToolGroupDockState> _groupDockStates = new(StringComparer.Ordinal);
     private DraggedToolGroup? _draggedGroup;
     private ToolGroupDockSide? _previewDropSide;
+    private ElementReference _palette;
+    private IJSObjectReference? _layoutModule;
+    private IJSObjectReference? _layoutObserver;
+    private readonly HashSet<string> _editedGroups = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _pendingRestoreGroups = new(StringComparer.Ordinal);
+    private bool _restoringLayout;
+    private bool _layoutLoaded;
+    private bool _savePending;
+    private bool _disposed;
 
     [Parameter, EditorRequired]
     public IReadOnlyList<WorkbenchToolGroup> Groups { get; set; } = Array.Empty<WorkbenchToolGroup>();
@@ -96,12 +108,116 @@
                 FloatingX = 24 + (index % 4) * 24,
                 FloatingY = 24 + index * 18
             };
+            _pendingRestoreGroups.Add(group.Name);
+            _layoutLoaded = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_disposed || _restoringLayout) return;
+        _restoringLayout = true;
+        var renderNeeded = false;
+        try
+        {
+            if (_layoutModule is null)
+            {
+                _layoutModule = await JsRuntime.InvokeAsync<IJSObjectReference>(
+                    "import", "./_content/DXFER.Blazor/paletteLayout.js");
+                if (_disposed)
+                {
+                    await _layoutModule.DisposeAsync();
+                    return;
+                }
+            }
+
+            if (_layoutObserver is null)
+            {
+                _layoutObserver = await _layoutModule.InvokeAsync<IJSObjectReference>("observeLayout", _palette);
+                if (_disposed)
+                {
+                    await _layoutObserver.InvokeVoidAsync("dispose");
+                    await _layoutObserver.DisposeAsync();
+                    return;
+                }
+            }
+
+            var restoredAny = false;
+            // Parameters can introduce more identities while browser interop is in flight.
+            while (_pendingRestoreGroups.Count > 0)
+            {
+                var names = _pendingRestoreGroups.ToHashSet(StringComparer.Ordinal);
+                _pendingRestoreGroups.ExceptWith(names);
+                try
+                {
+                    var restored = await _layoutModule.InvokeAsync<ToolGroupDockState[]>(
+                        "loadLayout", (object)names.Select(name => _groupDockStates[name]).ToArray());
+                    if (_disposed) return;
+                    foreach (var state in restored)
+                    {
+                        if (names.Contains(state.GroupName) && !_editedGroups.Contains(state.GroupName))
+                            _groupDockStates[state.GroupName] = state;
+                    }
+                }
+                catch (Exception exception) when (exception is JSException or JSDisconnectedException or TaskCanceledException)
+                {
+                    // A failed preference read keeps this group's defaults, not a failed workspace.
+                }
+                if (_disposed) return;
+                restoredAny = true;
+            }
+
+            _layoutLoaded = true;
+            if (_savePending) await PersistLayoutAsync();
+            await _layoutObserver.InvokeVoidAsync("refresh");
+            renderNeeded = restoredAny || _pendingRestoreGroups.Count > 0;
+        }
+        catch (Exception exception) when (exception is JSException or JSDisconnectedException or TaskCanceledException)
+        {
+            // Layout preferences are optional; tools remain usable if interop is unavailable.
+        }
+        finally
+        {
+            _restoringLayout = false;
+        }
+        if (renderNeeded && !_disposed) StateHasChanged();
+    }
+
+    private async Task PersistLayoutAsync()
+    {
+        _savePending = true;
+        if (!_layoutLoaded || _layoutModule is null || _disposed) return;
+        try
+        {
+            await _layoutModule.InvokeVoidAsync("saveLayout", (object)_groupDockStates.Values.ToArray());
+            _savePending = false;
+        }
+        catch (Exception exception) when (exception is JSException or JSDisconnectedException or TaskCanceledException)
+        {
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        try
+        {
+            if (_layoutObserver is not null)
+            {
+                await _layoutObserver.InvokeVoidAsync("dispose");
+                await _layoutObserver.DisposeAsync();
+            }
+            if (_layoutModule is not null) await _layoutModule.DisposeAsync();
+        }
+        catch (Exception exception) when (exception is JSException or JSDisconnectedException or TaskCanceledException)
+        {
         }
     }
 
     private RenderFragment RenderToolGroup(WorkbenchToolGroup group) => @<section @key="group.Name"
         class="@BuildToolGroupClass(GetDockState(group))"
-        style="@BuildToolGroupStyle(GetDockState(group))">
+        data-palette-index="@GetGroupIndex(group)"
+        style="@BuildToolGroupStyle(group)">
         @if (ShouldShowGroupHeader(GetDockState(group)))
         {
             <div class="dxfer-tool-section-summary dxfer-tool-group-drag-header"
@@ -209,14 +325,16 @@
         return string.Join(" ", classes);
     }
 
-    private string? BuildToolGroupStyle(ToolGroupDockState state)
+    private string? BuildToolGroupStyle(WorkbenchToolGroup group)
     {
+        var state = GetDockState(group);
         if (state.Side is not ToolGroupDockSide.Floating)
         {
             return $"--dxfer-group-columns:{(state.Compaction is ToolGroupCompaction.SingleColumn ? 1 : 2)};order:{state.DockOrder:0};";
         }
 
-        return $"left:{state.FloatingX:0}px;top:{state.FloatingY:0}px;--dxfer-group-columns:2;";
+        var index = GetGroupIndex(group);
+        return $"left:clamp(0px,{state.FloatingX:0}px,var(--dxfer-palette-max-x-{index},0px));top:clamp(0px,{state.FloatingY:0}px,var(--dxfer-palette-max-y-{index},0px));--dxfer-group-columns:2;";
     }
 
     private static bool ShouldShowGroupHeader(ToolGroupDockState state) =>
@@ -234,6 +352,7 @@
 
     private void BeginGroupDrag(WorkbenchToolGroup group, PointerEventArgs args)
     {
+        _editedGroups.Add(group.Name);
         var state = GetDockState(group);
         state.Side = ToolGroupDockSide.Floating;
         state.FloatingX = Math.Max(0, args.ClientX - DragGripOffset);
@@ -242,7 +361,7 @@
         _previewDropSide = GetDropSide(args);
     }
 
-    private void ToggleSideCompaction(WorkbenchToolGroup group)
+    private async Task ToggleSideCompaction(WorkbenchToolGroup group)
     {
         var state = GetDockState(group);
         if (!CanToggleSideCompaction(state))
@@ -253,6 +372,8 @@
         state.Compaction = state.Compaction is ToolGroupCompaction.Expanded
             ? ToolGroupCompaction.DoubleColumn
             : ToolGroupCompaction.Expanded;
+        _editedGroups.Add(group.Name);
+        await PersistLayoutAsync();
     }
 
     private string BuildCompactionTitle(WorkbenchToolGroup group)
@@ -280,7 +401,7 @@
         _previewDropSide = GetDropSide(args);
     }
 
-    private void OnPalettePointerUp(PointerEventArgs args)
+    private async Task OnPalettePointerUp(PointerEventArgs args)
     {
         if (_draggedGroup is null || !_groupDockStates.TryGetValue(_draggedGroup.GroupName, out var state))
         {
@@ -302,6 +423,7 @@
 
         _draggedGroup = null;
         _previewDropSide = null;
+        await PersistLayoutAsync();
     }
 
     private static ToolGroupDockSide GetDropSide(PointerEventArgs args)
@@ -347,6 +469,8 @@
 
     private sealed class ToolGroupDockState
     {
+        public ToolGroupDockState() { }
+
         public string GroupName { get; init; } = string.Empty;
 
         public ToolGroupDockSide Side { get; set; }
@@ -364,17 +488,17 @@
 
     private enum ToolGroupDockSide
     {
-        Floating,
-        Left,
-        Right,
-        Top,
-        Bottom
+        Floating = 0,
+        Left = 1,
+        Right = 2,
+        Top = 3,
+        Bottom = 4
     }
 
     private enum ToolGroupCompaction
     {
-        SingleColumn,
-        DoubleColumn,
-        Expanded
+        SingleColumn = 0,
+        DoubleColumn = 1,
+        Expanded = 2
     }
 }

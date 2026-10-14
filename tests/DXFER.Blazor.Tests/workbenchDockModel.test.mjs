@@ -119,7 +119,8 @@ test("redocking to a side restores expanded heading state", () => {
 test("floating groups are positioned and movable", () => {
   assert.match(paletteMarkup, /FloatingX/);
   assert.match(paletteMarkup, /FloatingY/);
-  assert.match(paletteMarkup, /left:\{state\.FloatingX:0\}px;top:\{state\.FloatingY:0\}px/);
+  assert.match(paletteMarkup, /left:clamp\(0px,\{state\.FloatingX:0\}px,var\(--dxfer-palette-max-x-\{index\},0px\)\)/);
+  assert.match(paletteMarkup, /top:clamp\(0px,\{state\.FloatingY:0\}px,var\(--dxfer-palette-max-y-\{index\},0px\)\)/);
   assert.match(paletteCss, /\.dxfer-tool-group-floating\s*\{[^}]*position:\s*absolute;/s);
 });
 
