@@ -2,6 +2,16 @@
 
 ## Current Deployment Follow-up
 
+2026-10-14 approx11:42Z: 7005ac1 deployed to DXFer Dev only, including
+4e85712 history conflict feedback and the first reviewed icon integration.
+648 .NET and265 JS tests pass; isolated and installed browser checks show
+unchanged geometry, restored Redo explanation and unclipped glyphs at1440,
+1280,820,390px. Published Blazor/Web DLL hashes match Release. Normal Google
+auth retained, Sync integration false, service PID3813052. Rollback publish:
+dev-publish-before-7005ac1. No Production/Test restarts or record repairs.
+Flux independent QA requested; native persistence and full workspace composition
+are not claimed complete by this deployment.
+
 2026-10-14T02:58Z: 442c395 deployed to DXFer Dev only. Shared constraint
 transaction/propagation patch: 601 .NET and 265 JS tests plus isolated canvas
 conflict/undo/redo checks pass. Installed Core DLL matches Release; public
