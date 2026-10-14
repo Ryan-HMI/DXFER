@@ -1,5 +1,21 @@
 # User Test Tracking
 
+## Continued implementation, 2026-10-14
+
+- Flux independently passed the focused442c395 solver checks; this is not Ryan
+  acceptance. His remaining Redo explanation defect is fixed by4e85712.
+- Dev885aca7 includes first visual integration7005ac1 (45 matching icons,
+  requested larger glyphs and explicit motifs retained) and native document
+  save/reopen.704 .NET/265 JS tests and installed browser roundtrips pass.
+- Native download/reopen preserves IDs, constraints, dimensions and failed
+  intent. External edits invalidate stale snapshots and retain current geometry.
+  No grain UI state, viewport or undo-history persistence is claimed. Previously
+  lost intent cannot be reconstructed; no existing records repaired.
+- Flux owns independent QA of these slices. Polyline fillet/chamfer work is
+  active; full workspace composition, other tool defects and general convergence
+  remain open. Minor icon styling is internally verified, not a recurring Ryan
+  testing reminder.
+
 ## Constraint transaction pass, 2026-10-13
 
 - Automated: 601 .NET and 265 JS tests; actual canvas conflict/undo/redo checked.

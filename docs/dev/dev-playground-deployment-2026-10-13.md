@@ -2,6 +2,14 @@
 
 ## Current Deployment Follow-up
 
+2026-10-14T11:53Z verification:885aca7 deployed Dev only. Native constraint
+download/reopen integration passes704 .NET/265 JS tests and installed browser
+roundtrip/stale-envelope checks. All four installed assemblies match Release;
+auth/status200, normal Google configured, callbacks false, PID3819916. Actual
+browser DXF audits with zero errors/fixes. Backup:dev-publish-before-885aca7.
+No Production/Test restart, Sync callback or existing drawing repair. Flux has
+independent QA; polyline corner implementation continues separately.
+
 2026-10-14 approx11:42Z: 7005ac1 deployed to DXFer Dev only, including
 4e85712 history conflict feedback and the first reviewed icon integration.
 648 .NET and265 JS tests pass; isolated and installed browser checks show
