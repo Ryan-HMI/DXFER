@@ -9,6 +9,28 @@ namespace DXFER.Core.Tests.Operations;
 public sealed class SplineTrimFidelityTests
 {
     [Fact]
+    public void FluxNegativeYCubicFixtureKeepsExactRightHalfAndOtherGeometry()
+    {
+        var target = new SplineEntity(EntityId.Create("target"), 3,
+            new[] { new Point2(0, -4), new Point2(1, -2), new Point2(3, -6), new Point2(4, -4) },
+            new[] { 0d, 0, 0, 0, 1, 1, 1, 1 });
+        var cutter = new LineEntity(EntityId.Create("cut"), new Point2(2, -6), new Point2(2, -2));
+        var line = new LineEntity(EntityId.Create("line"), new Point2(0, 0), new Point2(1, 0));
+        var circle = new CircleEntity(EntityId.Create("circle"), new Point2(4, 0), 1);
+        var document = new DrawingDocument(new DrawingEntity[] { target, cutter, line, circle });
+
+        // Canvas hit testing supplies a point on the rendered spline, not raw cursor coordinates.
+        Trim(document, target.GetSamplePoints()[5], out var next).Should().BeTrue();
+
+        var result = next.Entities.OfType<SplineEntity>().Single();
+        result.Degree.Should().Be(3);
+        result.ControlPoints.Should().Equal(new Point2(2, -4), new Point2(2.75, -4.5),
+            new Point2(3.5, -5), new Point2(4, -4));
+        AssertSameCurve(target, result);
+        next.Entities.Skip(1).Should().Equal(cutter, line, circle);
+    }
+
+    [Fact]
     public void NativeQaFixtureKeepsExpectedCubicControlPolygon()
     {
         var target = new SplineEntity(EntityId.Create("target"), 3,
