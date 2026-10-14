@@ -1232,7 +1232,7 @@ public sealed class DrawingModifyServiceTests
     }
 
     [Fact]
-    public void PowerTrimSplinePreservesSampledPathInsteadOfReinterpolatingTrimmedSpan()
+    public void PowerTrimSplinePreservesCubicSpansInsteadOfReinterpolatingFitPoints()
     {
         var document = new DrawingDocument(new DrawingEntity[]
         {
@@ -1260,9 +1260,9 @@ public sealed class DrawingModifyServiceTests
         trimmed.Should().BeTrue();
         var firstSpline = next.Entities[0].Should().BeOfType<SplineEntity>().Subject;
         var splitSpline = next.Entities[3].Should().BeOfType<SplineEntity>().Subject;
-        firstSpline.Degree.Should().Be(1);
+        firstSpline.Degree.Should().Be(3);
         firstSpline.FitPoints.Should().BeEmpty();
-        splitSpline.Degree.Should().Be(1);
+        splitSpline.Degree.Should().Be(3);
         splitSpline.FitPoints.Should().BeEmpty();
     }
 
@@ -2434,7 +2434,7 @@ public sealed class DrawingModifyServiceTests
 
     [Theory]
     [MemberData(nameof(ApplicablePolylineExtendBoundaries))]
-    public void PowerTrimExtendsSplineEndToApplicableBoundaryTypesWhenPickedPastEndpoint(
+    public void PowerTrimRejectsFitSplineExtensionToBoundaryWithoutFlattening(
         DrawingEntity boundary,
         Point2 expectedEnd)
     {
@@ -2453,14 +2453,12 @@ public sealed class DrawingModifyServiceTests
             prefix => EntityId.Create($"{prefix}-split"),
             out var next);
 
-        trimmed.Should().BeTrue(boundary.GetType().Name);
-        next.Entities.Should().HaveCount(2);
-        AssertSpline(next.Entities[0], "target", new Point2(0, 0), expectedEnd);
-        next.Entities[1].Should().Be(boundary);
+        trimmed.Should().BeFalse($"{boundary.GetType().Name} must not flatten the spline to reach {expectedEnd}");
+        next.Should().BeSameAs(document);
     }
 
     [Fact]
-    public void PowerTrimExtendsSplineStartToLineBoundaryWhenPickedPastStartpoint()
+    public void PowerTrimRejectsFitSplineStartExtensionWithoutFlattening()
     {
         var document = new DrawingDocument(new DrawingEntity[]
         {
@@ -2477,10 +2475,8 @@ public sealed class DrawingModifyServiceTests
             prefix => EntityId.Create($"{prefix}-split"),
             out var next);
 
-        trimmed.Should().BeTrue();
-        next.Entities.Should().HaveCount(2);
-        AssertSpline(next.Entities[0], "target", new Point2(-5, 0), new Point2(10, 0));
-        next.Entities[1].Should().Be(new LineEntity(EntityId.Create("boundary"), new Point2(-5, -2), new Point2(-5, 2)));
+        trimmed.Should().BeFalse();
+        next.Should().BeSameAs(document);
     }
 
     [Theory]
