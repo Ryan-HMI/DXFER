@@ -8,6 +8,29 @@ namespace DXFER.Core.Tests.Operations;
 
 public sealed class SplineTrimFidelityTests
 {
+    [Fact]
+    public void NativeQaFixtureKeepsExpectedCubicControlPolygon()
+    {
+        var target = new SplineEntity(EntityId.Create("target"), 3,
+            new[] { new Point2(0, 0), new Point2(0, 4), new Point2(4, 4), new Point2(4, 0) },
+            new[] { 0d, 0, 0, 0, 1, 1, 1, 1 });
+        var cutter = new LineEntity(EntityId.Create("cut"), new Point2(2, -1), new Point2(2, 5));
+        var document = new DrawingDocument(new DrawingEntity[] { target, cutter });
+
+        Trim(document, new Point2(0.625, 2.25), out var next).Should().BeTrue();
+
+        var result = (SplineEntity)next.Entities[0];
+        result.Degree.Should().Be(3);
+        result.ControlPoints.Should().Equal(new Point2(2, 3), new Point2(3, 3), new Point2(4, 2), new Point2(4, 0));
+        result.Knots.Should().Equal(0.5, 0.5, 0.5, 0.5, 1, 1, 1, 1);
+        next.Entities[1].Should().BeSameAs(cutter);
+        AssertSameCurve(target, result);
+        var exported = DxfDocumentReader.Read(DxfDocumentWriter.Write(next)).Entities.OfType<SplineEntity>().Single();
+        exported.Degree.Should().Be(3);
+        exported.ControlPoints.Should().Equal(result.ControlPoints);
+        exported.Knots.Should().Equal(result.Knots);
+    }
+
     [Theory]
     [InlineData(0.5, true)]
     [InlineData(0.37, true)]
