@@ -1,10 +1,10 @@
 # DXFer precision workspace design pack
 
-Status: implementation-ready design assets and target layout, **not a shipped UI or an application test result**. Original artwork; no external font, icon library, script, or network dependency is required. Additive handoff; preserve existing repository design documentation and runtime behavior.
+Status: implementation-ready design assets and target layout, **not a shipped UI or an application test result**. Original artwork; no external font, icon library, script, or network dependency is required. Additive handoff; preserve existing repository design documentation and runtime behavior. Multiple independent dockable/movable tool palettes are mandatory. A dock zone groups their positions, not their identities or movement. The operation inspector is supplementary.
 
 ## Start here
 
-1. Open `workspace-target.svg` for the layout target and `icon-contact-sheet.svg` for all 81 monochrome icons in dark, small-size, light and selected treatments.
+1. Open `workspace-target.svg` for an example mixed docked/floating palette layout and `icon-contact-sheet.svg` for all 81 monochrome icons in dark, small-size, light and selected treatments.
 2. Read `IMPLEMENTATION.md` before wiring controls. `component-states.html` illustrates semantic control states. `workspace-target.html` is a static composition, not a working CAD editor.
 3. Adopt `tokens.css` at the workspace root, then wire icons through the existing action registry. Names in this package are asset IDs, **not verified runtime command IDs**.
 4. Use either `icons/*.svg` as inline SVG masters or `dxfer-icons.svg` as an inline symbol sprite. Do not install every representation into the application bundle.
@@ -34,7 +34,7 @@ Bind enabled/selected/pressed to actual application state. Preserve existing han
 - `icon-contact-sheet.svg`: visual comparison at 24 and 18 px
 - `tokens.css`: scoped dark/light/comfortable semantic tokens and component recipes
 - `workspace-target.svg`: authoritative inspected 1440 × 900 design composition
-- `workspace-target.html`: equivalent static HTML layout sketch
+- `workspace-target.html`: static HTML multiple-palette layout sketch (drag controls illustrated, not implemented)
 - `component-states.html`: state board and readable conflict example
 - `ICON-DECISIONS.csv`: asset semantics and label requirements
 - `IMPLEMENTATION.md`: behavior-preserving rollout, layout contract, QA

@@ -3,23 +3,23 @@
   "files": [
     {
       "path": "README.md",
-      "bytes": 3615,
-      "sha256": "9c3e160022d8ec212eeaf0375e3c48db312f48885fdd8af8d23f4b16dd806154"
+      "bytes": 3875,
+      "sha256": "86e91c38be78dc6569e177065220b0be38028a133160926ec21007439732a994"
     },
     {
       "path": "IMPLEMENTATION.md",
-      "bytes": 9342,
-      "sha256": "43226842e892bf350ad132c16eae836f0bffef264c4f2bb1021dbfd6e8841fcf"
+      "bytes": 11183,
+      "sha256": "a0df53bf8fb3abe89ef2b257c80a090ba47a7f46c07924ee5562ac41497b873f"
     },
     {
       "path": "VALIDATION.md",
-      "bytes": 2367,
-      "sha256": "90d865941acce060a70aba4eff5f1643a121351790bad7ea405db4ed2cf365f6"
+      "bytes": 3534,
+      "sha256": "71e5aedd9d76cb5cbe59f52c185b56de30b5772a9e125036db4a0fa81a3668c9"
     },
     {
       "path": "ICON-DECISIONS.csv",
-      "bytes": 12735,
-      "sha256": "2b74464ebb062931af9fc9efa2489cae61f83479b0fc37b01129e6485cdb2051"
+      "bytes": 12653,
+      "sha256": "f0bbf673880d53d7e9f0691da24b13550056da7bd86eea67f2d6dc1b9f7c95d7"
     },
     {
       "path": "tokens.css",
@@ -43,18 +43,18 @@
     },
     {
       "path": "workspace-target.svg",
-      "bytes": 19902,
-      "sha256": "9c574a8c5534a4f259b7e1f1c93ed99e0ea3daa41142e3f6cf23b2ac4a28144d"
+      "bytes": 29882,
+      "sha256": "9c12a69cd57baa789970b3b03957ae2232f07b1db34916f5289237d2ea2ddce9"
     },
     {
       "path": "workspace-target.html",
-      "bytes": 22156,
-      "sha256": "068a6daf622b18cd482e118ed91989860bb36c192b47e64ea278ec13033c07af"
+      "bytes": 30698,
+      "sha256": "fb763648563133ad0cec4f6c21ba5a62301e1a3e494aafb1428aded70cee327f"
     },
     {
       "path": "component-states.html",
-      "bytes": 11587,
-      "sha256": "3b7f74404fc1e6b439549b4c01407d3ddea0a2550fa1e80ca3c142afcdbaf2c1"
+      "bytes": 12368,
+      "sha256": "4481da4bd3da95b214739ee575295aa54db167568a56c7dfeae77ece22be72c5"
     },
     {
       "path": "build_assets.py",
@@ -63,13 +63,13 @@
     },
     {
       "path": "build_preview.py",
-      "bytes": 11801,
-      "sha256": "18f7c9f41e4ea8e032fe7e648d78b57593ab726dfc796d4f383397773f5b8f0a"
+      "bytes": 13397,
+      "sha256": "e5c39f7cd2541f6cd9efc8a9e5a7e4dbc68455bd4486d67f4fd891fa0f4535bf"
     },
     {
       "path": "build_workspace_svg.py",
-      "bytes": 5566,
-      "sha256": "a6d964662d3c5fba5e75cba81e6193101816ac71caa630b9979077345b8ffb8f"
+      "bytes": 6354,
+      "sha256": "7b0a05d8ed0cc6ae8f7a204ce17eb0e88023db6fbb4bf8f97226ee9214636651"
     },
     {
       "path": "validate_assets.py",
