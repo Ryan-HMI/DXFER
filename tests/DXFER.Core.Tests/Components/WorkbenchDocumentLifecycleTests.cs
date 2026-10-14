@@ -7,12 +7,39 @@ using DXFER.Core.Sync;
 using DXFER.Core.Sketching;
 using FluentAssertions;
 using Microsoft.JSInterop;
+using Microsoft.AspNetCore.Components;
 
 namespace DXFER.Core.Tests.Components;
 
 public sealed class WorkbenchDocumentLifecycleTests
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("")]
+    [InlineData("abc")]
+    [InlineData("NaN")]
+    [InlineData("Infinity")]
+    public void InvalidVisibleCornerSizeNeverAppliesPreviousValue(string text)
+    {
+        foreach (var command in new[] { WorkbenchCommandId.Fillet, WorkbenchCommandId.Chamfer })
+        {
+            var workbench = Create();
+            var original = Get<DrawingDocument>(workbench, "_document");
+            Invoke(workbench, "OnCornerModifyDistanceChanged", new ChangeEventArgs { Value = "0.5" });
+            Invoke(workbench, "OnCornerModifyDistanceChanged", new ChangeEventArgs { Value = text });
+            Invoke(workbench, "TryApplyCornerModifyTool", command, true).Should().Be(false);
+            Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
+            Get<string>(workbench, "_status").Should().Contain("Geometry unchanged");
+            typeof(DrawingWorkbench).GetProperty("CornerModifyDistanceValue", Private)!.GetValue(workbench)
+                .Should().Be(text);
+            Invoke(workbench, "OnCornerModifyDistanceChanged", new ChangeEventArgs { Value = "0.0005" });
+            Get<bool>(workbench, "_cornerModifyDistanceInvalid").Should().BeFalse();
+            Invoke(workbench, "GetCornerModifyDistance").Should().Be(0.0005);
+        }
+    }
 
     [Theory]
     [InlineData(WorkbenchTool.Fillet)]

@@ -74,6 +74,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private int _createdDimensionSequence;
     private int _createdConstraintSequence;
     private double? _cornerModifyDistance;
+    private string? _cornerModifyDistanceText;
+    private bool _cornerModifyDistanceInvalid;
     private CornerModifyEqualChain? _cornerModifyEqualChain;
     private PendingCircleSplit? _pendingCircleSplit;
     private readonly HashSet<string> _selectedEntityIds = new(StringComparer.Ordinal);
@@ -482,7 +484,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _activeTool == WorkbenchTool.Fillet ? "R" : "D";
 
     private string CornerModifyDistanceValue =>
-        FormatNumber(GetCornerModifyDistance());
+        _cornerModifyDistanceText ?? FormatNumber(GetCornerModifyDistance());
 
     private string CommandPromptText => _solveFailureStatus ?? _duplicateCleanupStatus ?? (_activeTool switch
     {
@@ -1498,6 +1500,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return false;
         }
 
+        if (_cornerModifyDistanceInvalid)
+        {
+            _status = $"{FormatCommandName(commandId)} size must be a positive number. Geometry unchanged.";
+            return false;
+        }
+
         var selectedKeys = _selectedEntityIds.ToArray();
         if (selectedKeys.Length == 0)
         {
@@ -1712,20 +1720,23 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     }
 
     private double GetCornerModifyDistance() =>
-        Math.Max(0.001, _cornerModifyDistance ?? GetDefaultCornerDistance());
+        _cornerModifyDistance ?? GetDefaultCornerDistance();
 
     private void OnCornerModifyDistanceChanged(ChangeEventArgs args)
     {
         var valueText = Convert.ToString(args.Value, CultureInfo.InvariantCulture) ?? string.Empty;
+        _cornerModifyDistanceText = valueText;
         if ((!double.TryParse(valueText, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
                 && !double.TryParse(valueText, NumberStyles.Float, CultureInfo.CurrentCulture, out value))
             || !double.IsFinite(value)
             || value <= 0)
         {
+            _cornerModifyDistanceInvalid = true;
             _status = $"{ActiveToolLabel} size must be a positive number.";
             return;
         }
 
+        _cornerModifyDistanceInvalid = false;
         _cornerModifyDistance = value;
         ResetCornerModifyEqualChain();
         _status = $"{ActiveToolLabel} size set to {FormatNumber(value)}.";

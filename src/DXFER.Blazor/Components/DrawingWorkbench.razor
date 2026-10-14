@@ -62,10 +62,11 @@
             <label class="dxfer-corner-size-control">
                 <span>@CornerModifyDistanceLabel</span>
                 <input type="number"
-                       min="0.001"
+                       min="0"
                        step="0.1"
                        value="@CornerModifyDistanceValue"
-                       @onchange="OnCornerModifyDistanceChanged" />
+                       aria-invalid="@(_cornerModifyDistanceInvalid ? "true" : "false")"
+                       @oninput="OnCornerModifyDistanceChanged" />
             </label>
         }
         <div class="dxfer-command-chips" aria-label="Live measurement readout">
@@ -86,7 +87,7 @@
             {
                 <div class="dxfer-live-readout-item">
                     <span class="dxfer-live-readout-label">@item.Label</span>
-                    <span class="dxfer-live-readout-value">@item.Value</span>
+                    <span class="dxfer-live-readout-value" title="@item.Value">@item.Value</span>
                 </div>
             }
         </div>

@@ -25,7 +25,7 @@
     position: relative;
     z-index: 8;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;
     gap: 0.35rem;
     min-height: 2rem;
@@ -182,6 +182,8 @@
 }
 
 .dxfer-command-chips {
+    grid-column: 1 / -1;
+    min-width: 0;
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -221,7 +223,8 @@
     display: inline-flex;
     align-items: center;
     gap: 0.32rem;
-    min-width: max-content;
+    min-width: 0;
+    max-width: 100%;
     padding: 0.18rem 0.45rem;
     background: #1d252d;
     border: 1px solid #34414b;
@@ -241,11 +244,17 @@
 }
 
 .dxfer-live-readout-label {
+    flex-shrink: 0;
     color: #8fa4b2;
     font-weight: 650;
 }
 
 .dxfer-live-readout-value {
+    min-width: 0;
+    max-width: 18rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     color: #f2f7fa;
 }
 
