@@ -11,11 +11,34 @@ public sealed class LegacySketchSolverAdapter : ISketchSolver
         var constrained = SketchConstraintService.ApplyConstraints(
             request.Document,
             request.Constraints);
+        var propagatedEntities = constrained.Entities.ToArray();
+        SketchConstraintPropagationService.PropagateFromChanges(
+            request.Document.Entities, propagatedEntities, constrained.Constraints,
+            SketchFixedReferences.FromConstraints(constrained.Constraints));
+        constrained = new DrawingDocument(propagatedEntities, constrained.Dimensions,
+            constrained.Constraints, constrained.Metadata);
+        var dimensions = constrained.Dimensions
+            .Where(dimension => dimension.IsDriving
+                && !request.Dimensions.Any(update => update.Id == dimension.Id))
+            .Concat(request.Dimensions);
         var solved = SketchDimensionSolverService.ApplyDimensions(
             constrained,
-            request.Dimensions);
+            dimensions);
+        solved = Revalidate(solved);
         var affectedDiagnostics = SketchSolveDiagnostics.FromDocument(solved);
         var status = ClassifyStatus(solved, affectedDiagnostics);
+
+        if (status != SketchSolveStatus.Solved)
+        {
+            // Retain editable failed intent, but never commit a partially solved shape.
+            solved = Revalidate(new DrawingDocument(request.Document.Entities,
+                solved.Dimensions, solved.Constraints, request.Document.Metadata));
+            var stableDiagnostics = SketchSolveDiagnostics.FromDocument(solved);
+            if (stableDiagnostics.Count > 0)
+            {
+                affectedDiagnostics = stableDiagnostics;
+            }
+        }
 
         return new SketchSolveResult(
             status,
@@ -23,6 +46,11 @@ public sealed class LegacySketchSolverAdapter : ISketchSolver
             affectedDiagnostics.Select(diagnostic => diagnostic.Message),
             affectedDiagnostics);
     }
+
+    private static DrawingDocument Revalidate(DrawingDocument document) =>
+        new(document.Entities, document.Dimensions,
+            SketchConstraintPropagationService.ValidateConstraints(document, document.Constraints),
+            document.Metadata);
 
     private static SketchSolveStatus ClassifyStatus(
         DrawingDocument document,

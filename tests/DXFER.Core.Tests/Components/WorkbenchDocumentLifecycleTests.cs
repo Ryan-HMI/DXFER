@@ -4,6 +4,7 @@ using DXFER.CadIO;
 using DXFER.Core.Documents;
 using DXFER.Core.Operations;
 using DXFER.Core.Sync;
+using DXFER.Core.Sketching;
 using FluentAssertions;
 using Microsoft.JSInterop;
 
@@ -12,6 +13,35 @@ namespace DXFER.Core.Tests.Components;
 public sealed class WorkbenchDocumentLifecycleTests
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+
+    [Fact]
+    public void FailedSolveShowsFailureAndPreservesIntentThroughUndoRedo()
+    {
+        var workbench = Create();
+        var original = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new(0, 0), new(10, 0))
+        }, Array.Empty<SketchDimension>(), new[]
+        {
+            new SketchConstraint("horizontal", SketchConstraintKind.Horizontal, new[] { "edge" }, SketchConstraintState.Satisfied)
+        });
+        Set(workbench, "_document", original);
+        var result = new LegacySketchSolverAdapter().Solve(new SketchSolveRequest(original,
+            new[] { new SketchConstraint("vertical", SketchConstraintKind.Vertical, new[] { "edge" }) },
+            Array.Empty<SketchDimension>()));
+
+        Invoke(workbench, "ApplySketchSolveResult", result, "Successfully added constraint.");
+        Get<string>(workbench, "_status").Should().Contain("could not be satisfied").And.Contain("Geometry unchanged");
+        Set(workbench, "_activeTool", WorkbenchTool.Vertical);
+        typeof(DrawingWorkbench).GetProperty("CommandPromptText", Private)!.GetValue(workbench)!
+            .ToString().Should().Contain("could not be satisfied", "the modal tool prompt must not hide solve errors");
+        Get<DrawingDocument>(workbench, "_document").Entities.Should().Equal(original.Entities);
+        Invoke(workbench, "UndoLastDocumentChange");
+        Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
+        Invoke(workbench, "RedoLastDocumentChange");
+        Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(result.Document);
+        result.Document.Constraints.Should().Contain(c => c.Id == "vertical" && c.State == SketchConstraintState.Unsatisfied);
+    }
 
     [Theory]
     [InlineData("NewBlankDocument")]

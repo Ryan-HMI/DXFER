@@ -602,6 +602,11 @@ public static class SketchConstraintService
             && SketchReference.TryParse(constraint.ReferenceKeys[0], out var lineReference)
             && SketchGeometryEditor.TryGetLine(entities, lineReference, out _, out var line))
         {
+            if (SketchGeometryEditor.AreClose(line.Start, line.End))
+            {
+                return false;
+            }
+
             return isHorizontal
                 ? SketchGeometryEditor.AreClose(line.Start.Y, line.End.Y)
                 : SketchGeometryEditor.AreClose(line.Start.X, line.End.X);

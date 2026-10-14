@@ -1,5 +1,17 @@
 # User Test Tracking
 
+## Constraint transaction pass, 2026-10-13
+
+- Automated: 601 .NET and 265 JS tests; actual canvas conflict/undo/redo checked.
+- User/Flux retest pending: Horizontal must retain a driving length; Midpoint
+  must keep joined rectangle corners closed; contradictory H/V or dimensions
+  must keep the previous geometry and display failed intent. Remove the
+  conflict or Undo to continue, with Redo retaining its failed state.
+- Not complete: native constraint save/reopen and general solver convergence.
+- Follow-up tool defects reported by Flux: polyline fillet/chamfer silent no-op,
+  line/arc fillet missing feedback, and spline trim silently approximating a
+  cubic with degree-1 geometry. These are not covered by this solver patch.
+
 Use this file to separate what the user has actually tested from what is only automated-tested or app-verified by Codex. Do not mark an item `USER-PASSED` unless the user reports it working. Do not mark an item `APP-VERIFIED` until it has been tested in the running app or canvas.
 
 ## Legend

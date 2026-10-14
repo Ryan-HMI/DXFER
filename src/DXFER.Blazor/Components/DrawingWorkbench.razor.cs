@@ -53,6 +53,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         || _grainDirection != _savedGrainDirection || _grainAngleDegrees != _savedGrainAngleDegrees;
     private string _fileName = "Untitled.dxf";
     private string _status = "Blank drawing ready. Sketch geometry or open a DXF.";
+    private string? _solveFailureStatus;
     private string? _duplicateCleanupStatus;
     private string? _hoveredEntityId;
     private string? _activeSelectionKey;
@@ -483,7 +484,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private string CornerModifyDistanceValue =>
         FormatNumber(GetCornerModifyDistance());
 
-    private string CommandPromptText => _duplicateCleanupStatus ?? (_activeTool switch
+    private string CommandPromptText => _solveFailureStatus ?? _duplicateCleanupStatus ?? (_activeTool switch
     {
         WorkbenchTool.Measure => "Measure: select points or geometry for live deltas. Esc: exit measure.",
         WorkbenchTool.Line => "Line: click start point, then end point. Shift: polar snap. Double-click: start a fresh line. Esc: cancel.",
@@ -1188,6 +1189,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void OnToolCanceled()
     {
+        _solveFailureStatus = null;
         if (_activeTool is null)
         {
             return;
@@ -1201,6 +1203,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void ActivateTool(WorkbenchTool tool, string status)
     {
+        _solveFailureStatus = null;
         if (tool != WorkbenchTool.SplitAtPoint)
         {
             _pendingCircleSplit = null;
@@ -1212,6 +1215,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void UndoLastDocumentChange()
     {
+        _solveFailureStatus = null;
         _duplicateCleanupStatus = null;
         if (!_undoStack.TryPop(out var previousDocument))
         {
@@ -1227,6 +1231,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void RedoLastDocumentChange()
     {
+        _solveFailureStatus = null;
         _duplicateCleanupStatus = null;
         if (!_redoStack.TryPop(out var nextDocument))
         {
@@ -1850,11 +1855,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        ApplyDocumentChange(
+        ApplySketchSolveResult(
             SolveSketchChange(
                 _document,
                 Array.Empty<SketchConstraint>(),
-                new[] { dimension }).Document,
+                new[] { dimension }),
             status);
         _ = InvokeAsync(StateHasChanged);
     }
@@ -1878,14 +1883,14 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        ApplyDocumentChange(
+        ApplySketchSolveResult(
             SolveSketchChange(
                 _document,
                 Array.Empty<SketchConstraint>(),
-                new[] { dimension }).Document,
+                new[] { dimension }),
             status);
         _activeTool = WorkbenchTool.Dimension;
-        _status = $"{status} Dimension tool stays active; pick another reference or Esc to cancel.";
+        _status = $"{_status} Dimension tool stays active; pick another reference or Esc to cancel.";
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);
     }
@@ -1929,19 +1934,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return false;
         }
 
-        var nextDocument = SolveSketchChange(
+        var result = SolveSketchChange(
             _document,
             new[] { constraint },
-            Array.Empty<SketchDimension>()).Document;
-        var appliedConstraint = nextDocument.Constraints.FirstOrDefault(candidate => candidate.Id == constraint.Id);
-        var appliedStatus = appliedConstraint?.State == SketchConstraintState.Unsatisfied
-            ? $"{status} Constraint is currently unsatisfied."
-            : status;
-        ApplyDocumentChange(nextDocument, appliedStatus);
+            Array.Empty<SketchDimension>());
+        ApplySketchSolveResult(result, status);
         if (keepModal && TryGetConstraintTool(kind, out var tool))
         {
             _activeTool = tool;
-            _status = $"{appliedStatus} {FormatConstraintKind(kind)} stays active; select the next eligible references or Esc to cancel.";
+            _status = $"{_status} {FormatConstraintKind(kind)} stays active; select the next eligible references or Esc to cancel.";
             ResetSelection();
         }
 
@@ -1977,11 +1978,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             nextValue,
             existing.Anchor,
             isDriving: true);
-        ApplyDocumentChange(
+        ApplySketchSolveResult(
             SolveSketchChange(
                 _document,
                 Array.Empty<SketchConstraint>(),
-                new[] { nextDimension }).Document,
+                new[] { nextDimension }),
             $"Updated {FormatDimensionKind(existing.Kind)} dimension to {FormatNumber(nextValue)}.");
         _ = InvokeAsync(StateHasChanged);
     }
@@ -2158,8 +2159,18 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         IEnumerable<SketchDimension> dimensions) =>
         _sketchSolver.Solve(new SketchSolveRequest(document, constraints, dimensions));
 
+    private void ApplySketchSolveResult(SketchSolveResult result, string successStatus)
+    {
+        var status = result.Status == SketchSolveStatus.Solved
+            ? successStatus
+            : "Constraints could not be satisfied. Geometry unchanged; resolve the highlighted constraints or dimensions.";
+        ApplyDocumentChange(result.Document, status);
+        _solveFailureStatus = result.Status == SketchSolveStatus.Solved ? null : status;
+    }
+
     private void ApplyDocumentChange(DrawingDocument nextDocument, string status)
     {
+        _solveFailureStatus = null;
         if (ReferenceEquals(_document, nextDocument))
         {
             _status = status;
@@ -2190,6 +2201,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void ClearHistory()
     {
+        _solveFailureStatus = null;
         _undoStack.Clear();
         _redoStack.Clear();
     }
