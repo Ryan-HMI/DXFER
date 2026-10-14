@@ -2,6 +2,23 @@
 
 ## Current Deployment Follow-up
 
+2026-10-14 approximately19:18Z: ba2a661 deployed Dev only. Independent palette
+layout persists across reload, including dock, order, compaction and preferred
+floating coordinates. Integrated tests:783 .NET and273 JS pass. Installed real
+browser verifies drag/dock/collapse/reload,820/390/320 viewport recovery,
+malformed/unknown storage fallback, and no JS errors. Desktop/320 screenshots
+inspected. Ten runtime settings preserved, all four assemblies match Release,
+health200 and anonymous root302. Production/Test runtime PIDs unchanged.
+Rollback:dev-publish-before-ba2a661. Browser-local preferences only; no drawing
+or business records repaired. Flux independent QA requested. Includes42df453
+trim-result visibility; spline geometry correction is not in this deployment.
+
+2026-10-14 approximately18:56Z:0eb7dc5 deployed Dev only. Includes101d415
+invalid-corner-input gating and responsive result text;775 tests and installed
+browser checks pass. Stable CSS/JS responses now require revalidation. Flux
+confirmed the previous footer discrepancy was stale cached CSS and verified
+the new layout after hard reload. No Production/Test changes.
+
 2026-10-14 approximately18:31Z: dcb6304 deployed Dev only, including7de1167
 polyline corner topology.769 .NET tests pass. Actual installed browser vertex
 gestures apply R0.7 fillet and D0.5 chamfer and survive Undo/Redo. The browser
