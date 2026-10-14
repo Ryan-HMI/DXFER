@@ -128,7 +128,20 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = context =>
+    {
+        // Scoped CSS imports and JS modules have stable URLs across deployments.
+        // Revalidate them so an existing browser cannot mix old assets with new handlers.
+        var extension = Path.GetExtension(context.File.Name);
+        if (extension.Equals(".css", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".js", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Context.Response.Headers.CacheControl = "no-cache";
+        }
+    }
+});
 app.UseAuthentication();
 app.Use(async (context, next) =>
 {

@@ -28,3 +28,10 @@ Normal Google sign-in and disabled Sync callbacks remain. Production/Test
 unchanged. Flux has the exact ref and retest request; independent retest pending.
 No drawing data repair: this prevents a stale-value operation rather than
 reconstructing prior edits. Broader palette persistence is separate.
+
+Flux's existing browser initially retained the old nested scoped stylesheet:
+computed three-column footer and chips grid-column:auto, while fresh browsers
+and the live asset had the new rules. Stable CSS/JS URLs now send Cache-Control:
+no-cache so they revalidate rather than remaining heuristically fresh across
+deployments. Existing responses cached before this policy may need one hard
+reload; new responses retain conditional caching. Images/fonts are unchanged.
