@@ -101,7 +101,8 @@ public static class DxfDocumentWriter
 
         WritePair(builder, 0, "ENDSEC");
         WritePair(builder, 0, "EOF");
-        return builder.ToString();
+        var dxf = builder.ToString();
+        return options.IncludeNativeDocument ? DxfNativeDocument.Embed(dxf, document) : dxf;
     }
 
     private static void WriteTables(

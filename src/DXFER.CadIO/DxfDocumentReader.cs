@@ -8,12 +8,15 @@ namespace DXFER.CadIO;
 
 public static class DxfDocumentReader
 {
-    public static DrawingDocument Read(string dxfText)
+    public static DrawingDocument Read(string dxfText) => Read(dxfText, out _);
+
+    public static DrawingDocument Read(string dxfText, out bool nativeDocumentRestored)
     {
         ArgumentNullException.ThrowIfNull(dxfText);
 
         var cutWarnings = new List<DrawingDocumentWarning>();
         var pairs = ReadPairs(dxfText, cutWarnings).ToArray();
+        var malformedRecords = cutWarnings.Count > 0;
         var entities = new List<DrawingEntity>();
         var entityStyles = new Dictionary<string, DxfEntityStyle>(StringComparer.Ordinal);
         var layerStyles = ReadLayerStyles(pairs);
@@ -163,11 +166,12 @@ public static class DxfDocumentReader
             EntityStyles = entityStyles
         };
 
-        return new DrawingDocument(
+        var imported = new DrawingDocument(
             entities,
             Array.Empty<SketchDimension>(),
             Array.Empty<SketchConstraint>(),
             metadata);
+        return DxfNativeDocument.Restore(pairs, imported, malformedRecords, out nativeDocumentRestored);
     }
 
     private static DrawingUnits ReadUnits(IReadOnlyList<DxfPair> pairs)
@@ -652,7 +656,7 @@ public static class DxfDocumentReader
         return EntityId.Create($"{prefix}-{generatedId++}");
     }
 
-    private static IEnumerable<DxfPair> ReadPairs(string text, ICollection<DrawingDocumentWarning> warnings)
+    internal static IEnumerable<DxfPair> ReadPairs(string text, ICollection<DrawingDocumentWarning> warnings)
     {
         using var reader = new StringReader(text);
         var offset = 0;
@@ -721,7 +725,7 @@ public static class DxfDocumentReader
         return text;
     }
 
-    private sealed record DxfPair(int Code, string Value, int Start = 0);
+    internal sealed record DxfPair(int Code, string Value, int Start = 0);
 
     private static double RadiansToDegrees(double radians) => radians * 180.0 / Math.PI;
 }
