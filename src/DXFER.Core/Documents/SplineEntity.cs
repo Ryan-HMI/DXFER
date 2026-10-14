@@ -187,6 +187,121 @@ public sealed record SplineEntity : DrawingEntity
         return true;
     }
 
+    internal bool TryGetExactKnotSpline(out SplineEntity spline)
+    {
+        spline = this;
+        if (FitPoints.Count >= 2)
+        {
+            // Hermite spans are cubic Beziers with handles at one third of each tangent.
+            var tangents = GetFitPointTangents(FitPoints);
+            var controls = new List<Point2> { FitPoints[0] };
+            var knots = new List<double> { 0, 0, 0, 0 };
+            for (var index = 0; index < FitPoints.Count - 1; index++)
+            {
+                var start = FitPoints[index];
+                var end = FitPoints[index + 1];
+                controls.Add(new Point2(start.X + tangents[index].X / 3, start.Y + tangents[index].Y / 3));
+                controls.Add(new Point2(end.X - tangents[index + 1].X / 3, end.Y - tangents[index + 1].Y / 3));
+                controls.Add(end);
+                knots.AddRange(Enumerable.Repeat((double)index + 1, index == FitPoints.Count - 2 ? 4 : 3));
+            }
+
+            spline = new SplineEntity(Id, 3, controls, knots, isConstruction: IsConstruction);
+        }
+
+        // Non-clamped, discontinuous and non-positive-weight curves need separate support.
+        var degree = spline.Degree;
+        var domainStart = spline.Knots[degree];
+        var domainEnd = spline.Knots[spline.ControlPoints.Count];
+        var weights = spline.Weights;
+        return spline.ControlPoints.All(point => double.IsFinite(point.X) && double.IsFinite(point.Y))
+            && spline.Weights.All(weight => double.IsFinite(weight) && weight > 0)
+            && spline.ControlPoints.Select((point, index) =>
+                double.IsFinite(point.X * weights[index]) && double.IsFinite(point.Y * weights[index])).All(value => value)
+            && spline.Knots.All(double.IsFinite)
+            && double.IsFinite(domainEnd - domainStart)
+            && spline.Knots[degree + 1] > domainStart
+            && spline.Knots[spline.ControlPoints.Count - 1] < domainEnd
+            && spline.Knots.Zip(spline.Knots.Skip(1)).All(pair => pair.First <= pair.Second)
+            && spline.Knots.Take(degree + 1).All(knot => knot == domainStart)
+            && spline.Knots.TakeLast(degree + 1).All(knot => knot == domainEnd)
+            && spline.Knots.Skip(spline.Degree + 1).SkipLast(spline.Degree + 1)
+                .GroupBy(knot => knot).All(group => group.Count() <= degree);
+    }
+
+    internal bool TryTrimKnotParameters(double start, double end, EntityId id, out SplineEntity result)
+    {
+        result = this;
+        if (!TryGetExactKnotSpline(out var spline)
+            || !double.IsFinite(start) || !double.IsFinite(end)
+            || start < spline.Knots[spline.Degree] || end > spline.Knots[spline.ControlPoints.Count]
+            || end <= start)
+        {
+            return false;
+        }
+
+        if (end < spline.Knots[spline.ControlPoints.Count])
+        {
+            spline.SplitKnotParameter(end, out spline, out _);
+        }
+
+        if (start > spline.Knots[spline.Degree])
+        {
+            spline.SplitKnotParameter(start, out _, out spline);
+        }
+
+        result = new SplineEntity(id, spline.Degree, spline.ControlPoints, spline.Knots, spline.Weights, IsConstruction);
+        return result.ControlPoints.All(point => double.IsFinite(point.X) && double.IsFinite(point.Y))
+            && result.Weights.All(weight => double.IsFinite(weight) && weight > 0);
+    }
+
+    private void SplitKnotParameter(double parameter, out SplineEntity left, out SplineEntity right)
+    {
+        var knots = Knots.ToList();
+        var controls = ControlPoints.Select((point, index) =>
+            new WeightedPoint(point.X * Weights[index], point.Y * Weights[index], Weights[index])).ToList();
+        var multiplicity = knots.Count(knot => knot == parameter);
+        // Insert in homogeneous coordinates using the same affine blend as de Boor evaluation.
+        // Multiplicity == degree exposes a shared control point without changing the curve.
+        while (multiplicity < Degree)
+        {
+            var span = knots.FindLastIndex(knot => knot <= parameter);
+            var next = new WeightedPoint[controls.Count + 1];
+            for (var index = 0; index <= span - Degree; index++)
+            {
+                next[index] = controls[index];
+            }
+
+            for (var index = span - multiplicity; index < controls.Count; index++)
+            {
+                next[index + 1] = controls[index];
+            }
+
+            for (var index = span - Degree + 1; index <= span - multiplicity; index++)
+            {
+                var alpha = (parameter - knots[index]) / (knots[index + Degree] - knots[index]);
+                next[index] = WeightedPoint.Lerp(controls[index - 1], controls[index], alpha);
+            }
+
+            controls = next.ToList();
+            knots.Insert(span + 1, parameter);
+            multiplicity++;
+        }
+
+        var lastKnot = knots.FindLastIndex(knot => knot == parameter);
+        var sharedControl = lastKnot - Degree;
+        SplineEntity Create(IEnumerable<WeightedPoint> points, IEnumerable<double> values)
+        {
+            var weighted = points.ToArray();
+            return new SplineEntity(Id, Degree,
+                weighted.Select(point => new Point2(point.X / point.Weight, point.Y / point.Weight)),
+                values, weighted.Select(point => point.Weight), IsConstruction);
+        }
+
+        left = Create(controls.Take(sharedControl + 1), knots.Take(lastKnot + 1).Append(parameter));
+        right = Create(controls.Skip(sharedControl), knots.Skip(sharedControl + 1).Prepend(parameter));
+    }
+
     private IReadOnlyList<Point2> GetFitSamplePoints()
     {
         var fitPoints = FitPoints;

@@ -14,7 +14,7 @@ public static class DrawingModifyService
     private const double GeometryTolerance = 0.000001;
     private const double SampledPathProjectionTolerance = 0.05;
 
-    private readonly record struct SampledPathCut(double Distance, Point2 Point);
+    private readonly record struct SampledPathCut(double Distance, Point2 Point, double KnotParameter = double.NaN);
     private readonly record struct LineEndpointReference(LineEntity Line, string Target, Point2 Point);
     private readonly record struct CornerEdge(SketchReference Reference, LineEntity Line);
 
@@ -1388,6 +1388,11 @@ public static class DrawingModifyService
         Func<string, EntityId> createEntityId,
         out DrawingDocument nextDocument)
     {
+        if (!target.TryGetExactKnotSpline(out var exactTarget))
+        {
+            return FailUnchanged(document, out nextDocument);
+        }
+
         var samples = target.GetSamplePoints();
         if (samples.Count < 2
             || !TryBuildSampledPathDistances(samples, out var cumulativeDistances, out var totalLength))
@@ -1400,7 +1405,14 @@ public static class DrawingModifyService
             return TryExtendSplineTarget(document, target, samples, pickedPoint, out nextDocument);
         }
 
-        var cutDistances = new List<double>();
+        target = exactTarget;
+        if (!TryFindSplineParameter(target, pickedPoint, double.PositiveInfinity, out var pickedParameter))
+        {
+            return FailUnchanged(document, out nextDocument);
+        }
+
+        var domainStart = target.Knots[target.Degree];
+        var domainEnd = target.Knots[target.ControlPoints.Count];
         var preciseCuts = new List<SampledPathCut>();
         foreach (var cutter in document.Entities)
         {
@@ -1436,22 +1448,28 @@ public static class DrawingModifyService
                     break;
 
                 case SplineEntity spline:
+                    if (!spline.TryGetExactKnotSpline(out _))
+                    {
+                        return FailUnchanged(document, out nextDocument);
+                    }
+
                     AddSplineTargetSplineCuts(target, samples, cumulativeDistances, spline, preciseCuts);
                     break;
 
                 case PointEntity point:
-                    AddSampledPathPointCutDistance(samples, cumulativeDistances, point.Location, cutDistances);
+                    if (TryFindSplineParameter(target, point.Location, GeometryTolerance, out var parameter))
+                    {
+                        preciseCuts.Add(new SampledPathCut(0, point.Location, parameter));
+                    }
                     break;
             }
         }
 
-        var distinctCuts = cutDistances
-            .Select(distance => new SampledPathCut(distance, PointAtSampledPathDistance(samples, cumulativeDistances, distance)))
-            .Concat(preciseCuts)
-            .Where(cut => double.IsFinite(cut.Distance))
-            .Where(cut => cut.Distance > GeometryTolerance && cut.Distance < totalLength - GeometryTolerance)
-            .DistinctBy(cut => Math.Round(cut.Distance, 6))
-            .OrderBy(cut => cut.Distance)
+        var distinctCuts = preciseCuts
+            .Where(cut => double.IsFinite(cut.KnotParameter))
+            .Where(cut => cut.KnotParameter > domainStart && cut.KnotParameter < domainEnd)
+            .DistinctBy(cut => Math.Round((cut.KnotParameter - domainStart) / (domainEnd - domainStart), 12))
+            .OrderBy(cut => cut.KnotParameter)
             .ToArray();
         if (distinctCuts.Length == 0)
         {
@@ -1460,25 +1478,37 @@ public static class DrawingModifyService
                 : FailUnchanged(document, out nextDocument);
         }
 
-        var leftCandidates = distinctCuts.Where(cut => cut.Distance < pickedDistance).ToArray();
-        var rightCandidates = distinctCuts.Where(cut => cut.Distance > pickedDistance).ToArray();
+        if (distinctCuts.Any(cut => Math.Abs(cut.KnotParameter - pickedParameter) <= (domainEnd - domainStart) * 1e-10))
+        {
+            return FailUnchanged(document, out nextDocument);
+        }
+
+        var leftCandidates = distinctCuts.Where(cut => cut.KnotParameter < pickedParameter).ToArray();
+        var rightCandidates = distinctCuts.Where(cut => cut.KnotParameter > pickedParameter).ToArray();
         var hasLeft = leftCandidates.Length > 0;
         var hasRight = rightCandidates.Length > 0;
         var left = hasLeft ? leftCandidates[^1] : default;
         var right = hasRight ? rightCandidates[0] : default;
         var keptSplines = new List<DrawingEntity>();
-        if (hasLeft && hasRight)
+        if (hasLeft)
         {
-            AddTrimmedSplineIfValid(target, samples, cumulativeDistances, 0, left.Distance, target.Id, keptSplines, endPointOverride: left.Point);
-            AddTrimmedSplineIfValid(target, samples, cumulativeDistances, right.Distance, totalLength, createEntityId("spline"), keptSplines, startPointOverride: right.Point);
+            if (!target.TryTrimKnotParameters(domainStart, left.KnotParameter, target.Id, out var first))
+            {
+                return FailUnchanged(document, out nextDocument);
+            }
+
+            keptSplines.Add(first);
         }
-        else if (hasLeft)
+
+        if (hasRight)
         {
-            AddTrimmedSplineIfValid(target, samples, cumulativeDistances, 0, left.Distance, target.Id, keptSplines, endPointOverride: left.Point);
-        }
-        else
-        {
-            AddTrimmedSplineIfValid(target, samples, cumulativeDistances, right.Distance, totalLength, target.Id, keptSplines, startPointOverride: right.Point);
+            var id = hasLeft ? createEntityId("spline") : target.Id;
+            if (!target.TryTrimKnotParameters(right.KnotParameter, domainEnd, id, out var last))
+            {
+                return FailUnchanged(document, out nextDocument);
+            }
+
+            keptSplines.Add(last);
         }
 
         if (keptSplines.Count == 0)
@@ -1503,7 +1533,10 @@ public static class DrawingModifyService
         Point2 pickedPoint,
         out DrawingDocument nextDocument)
     {
-        if (!TryGetSampledPathExtensionLine(samples, target.Id, pickedPoint, out var extendStart, out var extensionLine))
+        // A tangent-ray extension is not a continuation of a higher-degree spline.
+        // Refuse it rather than replacing the entire original curve with sampled chords.
+        if (target.Degree != 1 || target.FitPoints.Count >= 2
+            || !TryGetSampledPathExtensionLine(samples, target.Id, pickedPoint, out var extendStart, out var extensionLine))
         {
             return FailUnchanged(document, out nextDocument);
         }
@@ -1522,6 +1555,8 @@ public static class DrawingModifyService
 
         var extensionPoint = PointAtParameter(extensionLine, extensionParameter);
         var points = samples.ToList();
+        var knots = target.Knots.ToList();
+        var weights = target.Weights.ToList();
         if (extendStart)
         {
             if (Distance(points[0], extensionPoint) <= GeometryTolerance)
@@ -1530,6 +1565,10 @@ public static class DrawingModifyService
             }
 
             points.Insert(0, extensionPoint);
+            var start = knots[0] - (knots[^1] - knots[0]);
+            knots[0] = start;
+            knots.Insert(0, start);
+            weights.Insert(0, weights[0]);
         }
         else
         {
@@ -1539,13 +1578,23 @@ public static class DrawingModifyService
             }
 
             points.Add(extensionPoint);
+            var end = knots[^1] + (knots[^1] - knots[0]);
+            knots[^1] = end;
+            knots.Add(end);
+            weights.Add(weights[^1]);
+        }
+
+        if (!double.IsFinite(extensionPoint.X) || !double.IsFinite(extensionPoint.Y)
+            || !knots.All(double.IsFinite))
+        {
+            return FailUnchanged(document, out nextDocument);
         }
 
         nextDocument = ReplaceTrimmedEntities(
             document,
             new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
             {
-                [target.Id.Value] = new SplineEntity(target.Id, 1, points, Array.Empty<double>(), isConstruction: target.IsConstruction)
+                [target.Id.Value] = new SplineEntity(target.Id, 1, points, knots, weights, target.IsConstruction)
             },
             Array.Empty<DrawingEntity>());
         return true;
@@ -4962,7 +5011,7 @@ public static class DrawingModifyService
             target,
             point => SignedLineDistanceValue(cutter, point),
             lineTolerance,
-            point => AddKnownSplineTargetLineCut(samples, cumulativeDistances, point, cutter, cuts));
+            (parameter, point) => AddKnownSplineTargetLineCut(samples, cumulativeDistances, point, cutter, cuts, parameter));
     }
 
     private static void AddFitSplineTargetLineSpanCuts(
@@ -5047,7 +5096,8 @@ public static class DrawingModifyService
         IReadOnlyList<double> cumulativeDistances,
         Point2 point,
         LineEntity cutter,
-        ICollection<SampledPathCut> cuts)
+        ICollection<SampledPathCut> cuts,
+        double parameter)
     {
         if (!TryProjectParameter(cutter, point, out var cutterParameter)
             || cutterParameter < -GeometryTolerance
@@ -5056,7 +5106,7 @@ public static class DrawingModifyService
             return;
         }
 
-        AddKnownSplineTargetCut(samples, cumulativeDistances, point, cuts);
+        AddKnownSplineTargetCut(samples, cumulativeDistances, point, cuts, parameter);
     }
 
     private static void AddSampledPathLineCuts(
@@ -5155,7 +5205,7 @@ public static class DrawingModifyService
             target,
             point => CircleImplicitValue(cutter.Center, cutter.Radius, point),
             GeometryTolerance,
-            point => AddKnownSplineTargetCut(samples, cumulativeDistances, point, cuts));
+            (parameter, point) => AddKnownSplineTargetCut(samples, cumulativeDistances, point, cuts, parameter));
     }
 
     private static void AddFitSplineTargetCircleSpanCuts(
@@ -5287,7 +5337,7 @@ public static class DrawingModifyService
             target,
             point => CircleImplicitValue(cutter.Center, cutter.Radius, point),
             GeometryTolerance,
-            point => AddKnownSplineTargetArcCut(samples, cumulativeDistances, point, cutter, cuts));
+            (parameter, point) => AddKnownSplineTargetArcCut(samples, cumulativeDistances, point, cutter, cuts, parameter));
     }
 
     private static void AddFitSplineTargetArcSpanCuts(
@@ -5366,11 +5416,12 @@ public static class DrawingModifyService
         IReadOnlyList<double> cumulativeDistances,
         Point2 point,
         ArcEntity cutter,
-        ICollection<SampledPathCut> cuts)
+        ICollection<SampledPathCut> cuts,
+        double parameter)
     {
         if (TryGetArcSweepParameter(cutter, point, allowEndpoints: true, out _))
         {
-            AddKnownSplineTargetCut(samples, cumulativeDistances, point, cuts);
+            AddKnownSplineTargetCut(samples, cumulativeDistances, point, cuts, parameter);
         }
     }
 
@@ -5468,7 +5519,7 @@ public static class DrawingModifyService
             target,
             point => EllipseImplicitValue(cutter, majorUnit, minorUnit, majorLength, minorLength, point),
             GeometryTolerance,
-            point => AddKnownSplineTargetEllipseCut(samples, cumulativeDistances, point, cutter, cuts));
+            (parameter, point) => AddKnownSplineTargetEllipseCut(samples, cumulativeDistances, point, cutter, cuts, parameter));
     }
 
     private static void AddFitSplineTargetEllipseSpanCuts(
@@ -5554,11 +5605,12 @@ public static class DrawingModifyService
         IReadOnlyList<double> cumulativeDistances,
         Point2 point,
         EllipseEntity cutter,
-        ICollection<SampledPathCut> cuts)
+        ICollection<SampledPathCut> cuts,
+        double parameter)
     {
         if (TryGetEllipseSweepParameter(cutter, point, allowEndpoints: true, out _))
         {
-            AddKnownSplineTargetCut(samples, cumulativeDistances, point, cuts);
+            AddKnownSplineTargetCut(samples, cumulativeDistances, point, cuts, parameter);
         }
     }
 
@@ -5621,6 +5673,12 @@ public static class DrawingModifyService
         SplineEntity cutter,
         ICollection<SampledPathCut> cuts)
     {
+        if (target.FitPoints.Count < 2 && cutter.TryGetExactKnotSpline(out var exactCutter))
+        {
+            AddExactSplineIntersectionCuts(target, exactCutter, cuts);
+            return;
+        }
+
         if (target.FitPoints.Count < 2 || cutter.FitPoints.Count < 2)
         {
             AddSplineTargetSegmentCuts(target, samples, cumulativeDistances, cutter.GetSamplePoints(), closeLoop: false, cuts);
@@ -5640,6 +5698,66 @@ public static class DrawingModifyService
                     cumulativeDistances,
                     cuts);
             }
+        }
+    }
+
+    private static void AddExactSplineIntersectionCuts(SplineEntity target, SplineEntity cutter, ICollection<SampledPathCut> cuts)
+    {
+        // Chords seed the existing two-parameter Newton refinement; only evaluated curve points become cuts.
+        const int intervals = 32;
+        foreach (var (targetStart, targetEnd) in target.GetKnotParameterSpans())
+        foreach (var (cutterStart, cutterEnd) in cutter.GetKnotParameterSpans())
+        {
+            var targetPoints = Enumerable.Range(0, intervals + 1).Select(index => Evaluate(target, targetStart + (targetEnd - targetStart) * index / intervals)).ToArray();
+            var cutterPoints = Enumerable.Range(0, intervals + 1).Select(index => Evaluate(cutter, cutterStart + (cutterEnd - cutterStart) * index / intervals)).ToArray();
+            for (var ti = 0; ti < intervals; ti++)
+            for (var ci = 0; ci < intervals; ci++)
+            {
+                var targetSegment = new LineEntity(target.Id, targetPoints[ti], targetPoints[ti + 1]);
+                var cutterSegment = new LineEntity(cutter.Id, cutterPoints[ci], cutterPoints[ci + 1]);
+                if (!TryGetLineIntersection(targetSegment, cutterSegment, true, true, out _, out var tf, out var cf))
+                {
+                    continue;
+                }
+
+                var t = targetStart + (targetEnd - targetStart) * (ti + tf) / intervals;
+                var c = cutterStart + (cutterEnd - cutterStart) * (ci + cf) / intervals;
+                for (var iteration = 0; iteration < 32; iteration++)
+                {
+                    var targetPoint = Evaluate(target, t);
+                    var delta = Subtract(targetPoint, Evaluate(cutter, c));
+                    if (Math.Sqrt(Dot(delta, delta)) <= 1e-9)
+                    {
+                        cuts.Add(new SampledPathCut(0, targetPoint, t));
+                        break;
+                    }
+
+                    var td = Derivative(target, t, targetStart, targetEnd);
+                    var cd = Derivative(cutter, c, cutterStart, cutterEnd);
+                    var determinant = cd.X * td.Y - td.X * cd.Y;
+                    if (Math.Abs(determinant) < 1e-20) break;
+                    var dt = (delta.X * cd.Y - cd.X * delta.Y) / determinant;
+                    var dc = (delta.X * td.Y - td.X * delta.Y) / determinant;
+                    if (!double.IsFinite(dt) || !double.IsFinite(dc)) break;
+                    t = Math.Clamp(t + dt, targetStart, targetEnd);
+                    c = Math.Clamp(c + dc, cutterStart, cutterEnd);
+                }
+            }
+        }
+
+        static Point2 Evaluate(SplineEntity spline, double parameter)
+        {
+            spline.TryEvaluateKnotParameter(parameter, out var point);
+            return point;
+        }
+
+        static Point2 Derivative(SplineEntity spline, double parameter, double start, double end)
+        {
+            var step = (end - start) * 1e-6;
+            var low = Math.Max(start, parameter - step);
+            var high = Math.Min(end, parameter + step);
+            var delta = Subtract(Evaluate(spline, high), Evaluate(spline, low));
+            return new Point2(delta.X / (high - low), delta.Y / (high - low));
         }
     }
 
@@ -5783,7 +5901,14 @@ public static class DrawingModifyService
         SplineEntity spline,
         Func<Point2, double> implicitValue,
         double tolerance,
-        Action<Point2> addCut)
+        Action<Point2> addCut) =>
+        AddKnotSplineImplicitRootCuts(spline, implicitValue, tolerance, (_, point) => addCut(point));
+
+    private static void AddKnotSplineImplicitRootCuts(
+        SplineEntity spline,
+        Func<Point2, double> implicitValue,
+        double tolerance,
+        Action<double, Point2> addCut)
     {
         const int searchIntervals = 64;
         foreach (var (spanStart, spanEnd) in spline.GetKnotParameterSpans())
@@ -5795,7 +5920,7 @@ public static class DrawingModifyService
 
             var previousParameter = spanStart;
             var previousValue = implicitValue(previousPoint);
-            AddKnotSplineImplicitRootIfNear(previousPoint, previousValue, tolerance, addCut);
+            AddKnotSplineImplicitRootIfNear(previousPoint, previousValue, tolerance, point => addCut(spanStart, point));
 
             for (var interval = 1; interval <= searchIntervals; interval++)
             {
@@ -5808,7 +5933,7 @@ public static class DrawingModifyService
                 }
 
                 var value = implicitValue(point);
-                AddKnotSplineImplicitRootIfNear(point, value, tolerance, addCut);
+                AddKnotSplineImplicitRootIfNear(point, value, tolerance, nearPoint => addCut(parameter, nearPoint));
 
                 if (HasOppositeSigns(previousValue, value, tolerance))
                 {
@@ -5819,7 +5944,7 @@ public static class DrawingModifyService
                         parameter);
                     if (spline.TryEvaluateKnotParameter(rootParameter, out var rootPoint))
                     {
-                        addCut(rootPoint);
+                        addCut(rootParameter, rootPoint);
                     }
                 }
 
@@ -5981,37 +6106,67 @@ public static class DrawingModifyService
         IReadOnlyList<Point2> samples,
         IReadOnlyList<double> cumulativeDistances,
         Point2 point,
-        ICollection<SampledPathCut> cuts)
+        ICollection<SampledPathCut> cuts,
+        double parameter)
     {
         if (TryProjectPointToSampledPath(samples, cumulativeDistances, point, double.PositiveInfinity, out var pathDistance))
         {
-            cuts.Add(new SampledPathCut(pathDistance, point));
+            cuts.Add(new SampledPathCut(pathDistance, point, parameter));
         }
     }
 
-    private static void AddTrimmedSplineIfValid(
-        SplineEntity target,
-        IReadOnlyList<Point2> samples,
-        IReadOnlyList<double> cumulativeDistances,
-        double startDistance,
-        double endDistance,
-        EntityId id,
-        ICollection<DrawingEntity> entities,
-        Point2? startPointOverride = null,
-        Point2? endPointOverride = null)
+    private static bool TryFindSplineParameter(SplineEntity spline, Point2 point, double tolerance, out double parameter)
     {
-        if (endDistance - startDistance <= GeometryTolerance)
+        parameter = double.NaN;
+        var bestDistance = double.PositiveInfinity;
+        double DistanceSquared(double value)
         {
-            return;
+            spline.TryEvaluateKnotParameter(value, out var evaluated);
+            var delta = Subtract(evaluated, point);
+            return Dot(delta, delta);
         }
 
-        var points = GetSampledPathSpan(samples, cumulativeDistances, startDistance, endDistance, startPointOverride, endPointOverride);
-        if (points.Count < 2)
+        foreach (var (start, end) in spline.GetKnotParameterSpans())
         {
-            return;
+            // Bracket local minima per knot span; never treat sampled arc length as a knot parameter.
+            const int intervals = 64;
+            var distances = Enumerable.Range(0, intervals + 1)
+                .Select(index => DistanceSquared(start + (end - start) * index / intervals)).ToArray();
+            for (var index = 0; index <= intervals; index++)
+            {
+                if ((index > 0 && distances[index] > distances[index - 1])
+                    || (index < intervals && distances[index] > distances[index + 1]))
+                {
+                    continue;
+                }
+
+                var low = start + (end - start) * Math.Max(0, index - 1) / intervals;
+                var high = start + (end - start) * Math.Min(intervals, index + 1) / intervals;
+                for (var iteration = 0; iteration < 64; iteration++)
+                {
+                    var first = low + (high - low) / 3;
+                    var second = high - (high - low) / 3;
+                    if (DistanceSquared(first) <= DistanceSquared(second)) high = second;
+                    else low = first;
+                }
+
+                var candidate = (low + high) / 2;
+                var distance = DistanceSquared(candidate);
+                if (distances[index] < distance)
+                {
+                    candidate = start + (end - start) * index / intervals;
+                    distance = distances[index];
+                }
+
+                if (distance < bestDistance)
+                {
+                    parameter = candidate;
+                    bestDistance = distance;
+                }
+            }
         }
 
-        entities.Add(new SplineEntity(id, 1, points, Array.Empty<double>(), isConstruction: target.IsConstruction));
+        return double.IsFinite(parameter) && bestDistance <= tolerance * tolerance;
     }
 
     private static void AddTrimmedPolylineIfValid(
