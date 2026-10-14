@@ -25,6 +25,11 @@
     border-color: #38bdf8;
 }
 
+.dxfer-icon-button:focus-visible {
+    outline: 2px solid #66d9ff;
+    outline-offset: 2px;
+}
+
 .dxfer-icon-button-future:not(:disabled) {
     border-style: dashed;
 }
