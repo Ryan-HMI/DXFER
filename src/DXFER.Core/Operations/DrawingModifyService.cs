@@ -387,7 +387,8 @@ public static class DrawingModifyService
         ArgumentNullException.ThrowIfNull(selectionKeys);
         ArgumentNullException.ThrowIfNull(createEntityId);
 
-        if (!TryResolveSelectedCornerEdges(document, selectionKeys, out var edges, out var intersection)
+        if (!double.IsFinite(distance) || distance <= GeometryTolerance
+            || !TryResolveSelectedCornerEdges(document, selectionKeys, out var edges, out var intersection)
             || edges.Length != 2)
         {
             nextDocument = document;
@@ -415,6 +416,7 @@ public static class DrawingModifyService
             new[] { firstTrimmed, secondTrimmed },
             chamfer,
             CreateChamferCornerConstraints(edges, intersection, chamfer),
+            createEntityId,
             out nextDocument);
     }
 
@@ -429,7 +431,8 @@ public static class DrawingModifyService
         ArgumentNullException.ThrowIfNull(selectionKeys);
         ArgumentNullException.ThrowIfNull(createEntityId);
 
-        if (!TryResolveSelectedCornerEdges(document, selectionKeys, out var edges, out var intersection)
+        if (!double.IsFinite(radius) || radius <= GeometryTolerance
+            || !TryResolveSelectedCornerEdges(document, selectionKeys, out var edges, out var intersection)
             || edges.Length != 2)
         {
             nextDocument = document;
@@ -456,6 +459,7 @@ public static class DrawingModifyService
             new[] { firstTrimmed, secondTrimmed },
             fillet,
             CreateFilletCornerConstraints(edges, intersection, new[] { firstTrimmed, secondTrimmed }, fillet),
+            createEntityId,
             out nextDocument);
     }
 
@@ -1784,6 +1788,7 @@ public static class DrawingModifyService
         IReadOnlyList<LineEntity> trimmedEdges,
         DrawingEntity addition,
         IEnumerable<SketchConstraint> additionalConstraints,
+        Func<string, EntityId> createEntityId,
         out DrawingDocument nextDocument)
     {
         if (edges.Count != trimmedEdges.Count)
@@ -1791,6 +1796,11 @@ public static class DrawingModifyService
             nextDocument = document;
             return false;
         }
+
+        if (edges.Count == 2 && edges[0].Reference.EntityId == edges[1].Reference.EntityId
+            && document.Entities.FirstOrDefault(e => e.Id.Value == edges[0].Reference.EntityId) is PolylineEntity polyline)
+            return TryReplacePolylineCorner(document, polyline, edges, intersection, trimmedEdges,
+                addition, additionalConstraints, createEntityId, out nextDocument);
 
         var nextEntities = document.Entities.ToArray();
         for (var index = 0; index < edges.Count; index++)
@@ -1829,6 +1839,131 @@ public static class DrawingModifyService
             changedDocument.Metadata);
         return true;
     }
+
+    private static bool TryReplacePolylineCorner(
+        DrawingDocument document, PolylineEntity source, IReadOnlyList<CornerEdge> edges, Point2 intersection,
+        IReadOnlyList<LineEntity> trimmedEdges, DrawingEntity addition,
+        IEnumerable<SketchConstraint> additionalConstraints, Func<string, EntityId> createEntityId,
+        out DrawingDocument nextDocument)
+    {
+        nextDocument = document;
+        // Imported bulges are not represented by PolylineEntity. Never edit their flattened surrogate.
+        if (document.Metadata.Warnings.Any(w => w.Code == CutPathLengthService.UnsafeImportCode)
+            || edges[0].Reference.SegmentIndex is not { } firstIndex
+            || edges[1].Reference.SegmentIndex is not { } secondIndex
+            || HasCurvedEndpointAtCorner(document, intersection)
+            || !PolylineCornerTopology.TryCreate(source, firstIndex, secondIndex, trimmedEdges[0], trimmedEdges[1],
+                createEntityId, out var topology))
+            return false;
+
+        var entities = document.Entities.SelectMany(e => e.Id == source.Id
+            ? topology.Paths.Cast<DrawingEntity>() : new[] { e }).Append(addition).ToArray();
+        if (entities.Any(e => string.IsNullOrWhiteSpace(e.Id.Value))
+            || entities.Select(e => e.Id).Distinct().Count() != entities.Length) return false;
+
+        var constraints = new List<SketchConstraint>();
+        var originalConstraints = new List<SketchConstraint>();
+        var cornerReferences = edges.Select(e => GetCornerEndpointReference(e, intersection)).ToArray();
+        foreach (var constraint in document.Constraints)
+        {
+            if (constraint.Kind == SketchConstraintKind.Coincident && constraint.State != SketchConstraintState.Suppressed
+                && constraint.ReferenceKeys.Count == 2
+                && constraint.ReferenceKeys.All(k => SketchReference.TryParse(k, out var r) && cornerReferences.Contains(r))
+                && constraint.ReferenceKeys.Distinct(StringComparer.Ordinal).Count() == 2)
+                continue;
+            if (!topology.TryMapKeys(constraint.ReferenceKeys, out var keys)) return false;
+            constraints.Add(new SketchConstraint(constraint.Id, constraint.Kind, keys, constraint.State));
+            originalConstraints.Add(constraint);
+        }
+        var preservedCount = constraints.Count;
+        foreach (var constraint in additionalConstraints)
+        {
+            if (!topology.TryMapKeys(constraint.ReferenceKeys, out var keys)) return false;
+            constraints.Add(new SketchConstraint(constraint.Id, constraint.Kind, keys, constraint.State));
+        }
+        if (constraints.Select(c => c.Id).Distinct(StringComparer.Ordinal).Count() != constraints.Count) return false;
+
+        var dimensions = new List<SketchDimension>();
+        foreach (var dimension in document.Dimensions)
+        {
+            if (!topology.TryMapKeys(dimension.ReferenceKeys, out var keys)) return false;
+            dimensions.Add(new SketchDimension(dimension.Id, dimension.Kind, keys,
+                dimension.Value, dimension.Anchor, dimension.IsDriving));
+        }
+        var metadata = document.Metadata;
+        if (metadata.EntityStyles.TryGetValue(source.Id.Value, out var style))
+        {
+            var styles = new Dictionary<string, DxfEntityStyle>(metadata.EntityStyles, StringComparer.Ordinal);
+            foreach (var path in topology.Paths) styles[path.Id.Value] = style;
+            styles[addition.Id.Value] = style;
+            metadata = metadata with { EntityStyles = styles };
+        }
+        var candidate = new DrawingDocument(entities, dimensions, constraints, metadata);
+        for (var index = 0; index < constraints.Count; index++)
+        {
+            var constraint = constraints[index];
+            if (constraint.State == SketchConstraintState.Suppressed) continue;
+            var affected = index >= preservedCount
+                || ReferenceKeysContainEntity(originalConstraints[index].ReferenceKeys, source.Id.Value);
+            if (!affected) continue;
+            if (constraint.Kind == SketchConstraintKind.Fix
+                && FixedCornerReferenceMoved(document, candidate, originalConstraints[index], constraint)) return false;
+            var validated = SketchConstraintService.ValidateConstraint(candidate, constraint);
+            if (validated.State != SketchConstraintState.Satisfied) return false;
+            constraints[index] = validated;
+        }
+        candidate = new DrawingDocument(entities, dimensions, constraints, metadata);
+        for (var index = 0; index < dimensions.Count; index++)
+        {
+            var original = document.Dimensions[index];
+            if (!ReferenceKeysContainEntity(original.ReferenceKeys, source.Id.Value)) continue;
+            var dimension = dimensions[index];
+            if (dimension.IsDriving)
+            {
+                if (!SketchDimensionSolverService.IsDimensionSatisfied(candidate, dimension)) return false;
+            }
+            else
+            {
+                if (!SketchDimensionSolverService.TryGetDimensionMeasurement(candidate, dimension, out var value)
+                    || !double.IsFinite(value)) return false;
+                dimensions[index] = new SketchDimension(dimension.Id, dimension.Kind, dimension.ReferenceKeys,
+                    value, dimension.Anchor, false);
+            }
+        }
+        nextDocument = new DrawingDocument(entities, dimensions, constraints, metadata);
+        return true;
+    }
+
+    private static bool FixedCornerReferenceMoved(DrawingDocument before, DrawingDocument after,
+        SketchConstraint original, SketchConstraint mapped)
+    {
+        for (var index = 0; index < original.ReferenceKeys.Count; index++)
+        {
+            var oldKey = original.ReferenceKeys[index];
+            var newKey = mapped.ReferenceKeys[index];
+            if (SketchReferenceResolver.TryGetLine(before, oldKey, out var oldLine)
+                && SketchReferenceResolver.TryGetLine(after, newKey, out var newLine))
+            {
+                if (!PointsCoincide(oldLine.Start, newLine.Start) || !PointsCoincide(oldLine.End, newLine.End)) return true;
+            }
+            else if (!SketchReferenceResolver.TryGetPoint(before, oldKey, out var oldPoint)
+                || !SketchReferenceResolver.TryGetPoint(after, newKey, out var newPoint)
+                || !PointsCoincide(oldPoint, newPoint)) return true;
+        }
+        return false;
+    }
+
+    private static bool HasCurvedEndpointAtCorner(DrawingDocument document, Point2 corner) =>
+        document.Entities.Any(entity => entity switch
+        {
+            ArcEntity arc => PointsCoincide(PointOnArc(arc, arc.StartAngleDegrees), corner)
+                || PointsCoincide(PointOnArc(arc, arc.EndAngleDegrees), corner),
+            EllipseEntity ellipse => PointsCoincide(ellipse.PointAtParameterDegrees(ellipse.StartParameterDegrees), corner)
+                || PointsCoincide(ellipse.PointAtParameterDegrees(ellipse.EndParameterDegrees), corner),
+            SplineEntity spline => spline.GetSamplePoints() is { Count: > 0 } points
+                && (PointsCoincide(points[0], corner) || PointsCoincide(points[^1], corner)),
+            _ => false
+        });
 
     private static IEnumerable<SketchConstraint> CreateChamferCornerConstraints(
         IReadOnlyList<CornerEdge> edges,
