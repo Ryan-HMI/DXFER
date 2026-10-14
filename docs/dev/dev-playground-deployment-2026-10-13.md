@@ -2,6 +2,14 @@
 
 ## Current Deployment Follow-up
 
+2026-10-14T02:58Z: 442c395 deployed to DXFer Dev only. Shared constraint
+transaction/propagation patch: 601 .NET and 265 JS tests plus isolated canvas
+conflict/undo/redo checks pass. Installed Core DLL matches Release; public
+auth/status200 with normal Google authentication retained. Sync callbacks remain
+disabled. Rollback directory: dev-publish-before-solver-442c395. Flux retest
+requested; native save/reopen of constraints remains open. See
+constraint-transactions-2026-10-13.md. Production/Test were not restarted.
+
 2026-10-13T11:40:29Z: code4d7e7c9 deployed, including document-lifecycle fix
 2571107.591 .NET and265 JS tests pass. Installed-service browser validates
 initial/explicit Fit at1440/820/390/320, collapse and floating palettes,
