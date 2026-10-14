@@ -351,6 +351,33 @@ public sealed class PolylineCornerModifyTests
         AssertSatisfied(next);
     }
 
+    [Theory]
+    [InlineData(true, .7)]
+    [InlineData(false, .5)]
+    public void BrowserVertexSelectionUsesTheSameTopologyFix(bool fillet, double amount)
+    {
+        var document = new DrawingDocument(new[] { OpenPath() });
+        Modify(document, fillet, amount, new[] { "path|point|vertex-1|10|0" }, out var next).Should().BeTrue();
+        next.Entities.OfType<PolylineEntity>().Should().HaveCount(2);
+        AssertConnector(next, fillet, amount);
+        AssertSatisfied(next);
+    }
+
+    [Theory]
+    [InlineData("path|point|vertex-1|9|0")]
+    [InlineData("path|point|vertex-99|10|0")]
+    [InlineData("missing|point|vertex-1|10|0")]
+    [InlineData("path|point|vertex-bad|10|0")]
+    public void StaleOrInvalidBrowserVertexSelectionDoesNotMutate(string key)
+    {
+        var document = new DrawingDocument(new[] { OpenPath() });
+        foreach (var fillet in new[] { true, false })
+        {
+            Modify(document, fillet, .5, new[] { key }, out var next).Should().BeFalse();
+            next.Should().BeSameAs(document);
+        }
+    }
+
     private static PolylineEntity OpenPath() => new(EntityId.Create("path"),
         new[] { new Point2(0, 0), new Point2(10, 0), new Point2(10, 10) });
 

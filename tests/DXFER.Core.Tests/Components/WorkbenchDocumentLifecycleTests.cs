@@ -14,6 +14,21 @@ public sealed class WorkbenchDocumentLifecycleTests
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
+    [Theory]
+    [InlineData(WorkbenchTool.Fillet)]
+    [InlineData(WorkbenchTool.Chamfer)]
+    public void CornerToolDoesNotHideOperationResultsBehindGenericPrompt(WorkbenchTool tool)
+    {
+        var workbench = Create();
+        Set(workbench, "_activeTool", tool);
+        foreach (var status in new[] { "Operation not applied. Geometry unchanged.", "Operation applied at 0.7." })
+        {
+            Set(workbench, "_status", status);
+            typeof(DrawingWorkbench).GetProperty("CommandPromptText", Private)!.GetValue(workbench)
+                .Should().Be(status);
+        }
+    }
+
     [Fact]
     public void FailedSolveShowsFailureAndPreservesIntentThroughUndoRedo()
     {

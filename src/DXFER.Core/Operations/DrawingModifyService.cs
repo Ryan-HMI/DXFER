@@ -1652,6 +1652,22 @@ public static class DrawingModifyService
         var selectedPoints = new List<Point2>();
         foreach (var selectionKey in selectionKeys.Where(key => !string.IsNullOrWhiteSpace(key)).Distinct(StringComparer.Ordinal))
         {
+            if (SketchReference.TryParseCanvasPointCoordinates(selectionKey, out var entityId, out var label, out var encodedPoint)
+                && label.StartsWith("vertex-", StringComparison.Ordinal))
+            {
+                if (document.Entities.FirstOrDefault(entity => entity.Id.Value == entityId) is not PolylineEntity polyline
+                    || !TryGetCanvasPointReferencePoint(polyline, label, out var vertex)
+                    || !PointsCoincide(encodedPoint, vertex))
+                {
+                    edges = Array.Empty<CornerEdge>();
+                    intersection = default;
+                    return false;
+                }
+
+                selectedPoints.Add(vertex);
+                continue;
+            }
+
             if (!SketchReference.TryParse(selectionKey, out var reference))
             {
                 edges = Array.Empty<CornerEdge>();

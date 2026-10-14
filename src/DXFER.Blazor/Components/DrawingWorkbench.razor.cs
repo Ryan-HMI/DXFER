@@ -512,8 +512,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.SplitAtPoint => "Split at point: click a line or arc, or pick two points on a circle. Esc: cancel.",
         WorkbenchTool.AddSplinePoint => "Add spline point: select one fit-point spline, then click the spline where the new fit point belongs. Esc: cancel.",
         WorkbenchTool.Offset => "Offset: select whole geometry, then click the through side or radius point. Esc: cancel.",
-        WorkbenchTool.Fillet => "Fillet: select two converging edges, or one vertex with exactly two adjacent edges. Esc: cancel.",
-        WorkbenchTool.Chamfer => "Chamfer: select two converging edges, or one vertex with exactly two adjacent edges. Esc: cancel.",
+        WorkbenchTool.Fillet or WorkbenchTool.Chamfer => _status,
         WorkbenchTool.Translate => "Translate: select whole geometry, click from point, then to point. Esc: cancel.",
         WorkbenchTool.Rotate => "Rotate: select whole geometry, click center, reference point, then target point. Esc: cancel.",
         WorkbenchTool.Scale => "Scale: select whole geometry, click center, reference radius, then target radius. Esc: cancel.",
@@ -1535,7 +1534,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         if (!applied)
         {
-            _status = $"{FormatCommandName(commandId)} needs two converging edges or one vertex with exactly two adjacent edges and enough length.";
+            _status = $"{FormatCommandName(commandId)} not applied. Check straight-edge selection, size, and existing constraints. Geometry unchanged.";
             _ = InvokeAsync(StateHasChanged);
             return false;
         }
