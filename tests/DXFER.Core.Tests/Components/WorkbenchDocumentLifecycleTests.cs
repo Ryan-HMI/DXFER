@@ -38,9 +38,41 @@ public sealed class WorkbenchDocumentLifecycleTests
         Get<DrawingDocument>(workbench, "_document").Entities.Should().Equal(original.Entities);
         Invoke(workbench, "UndoLastDocumentChange");
         Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
+        Get<string?>(workbench, "_solveFailureStatus").Should().BeNull();
         Invoke(workbench, "RedoLastDocumentChange");
         Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(result.Document);
         result.Document.Constraints.Should().Contain(c => c.Id == "vertical" && c.State == SketchConstraintState.Unsatisfied);
+        Get<string>(workbench, "_status").Should().Contain("unsatisfied");
+        typeof(DrawingWorkbench).GetProperty("CommandPromptText", Private)!.GetValue(workbench)!
+            .ToString().Should().Contain("unsatisfied");
+        Invoke(workbench, "RedoLastDocumentChange");
+        Get<string>(workbench, "_solveFailureStatus").Should().Contain("unsatisfied", "an empty redo stack must not dismiss a remaining conflict");
+        Invoke(workbench, "ApplyDocumentChange", original, "Removed conflict.");
+        Invoke(workbench, "UndoLastDocumentChange");
+        Get<string>(workbench, "_solveFailureStatus").Should().Contain("unsatisfied", "undoing conflict removal restores its explanation too");
+        Invoke(workbench, "RedoLastDocumentChange");
+        Get<string?>(workbench, "_solveFailureStatus").Should().BeNull();
+    }
+
+    [Fact]
+    public void HistoryRestoresDimensionOnlyFailureFeedback()
+    {
+        var workbench = Create();
+        var original = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new(0, 0), new(10, 0))
+        });
+        var failed = new DrawingDocument(original.Entities, new[]
+        {
+            new SketchDimension("length", SketchDimensionKind.LinearDistance, new[] { "edge" }, 20, isDriving: true)
+        }, Array.Empty<SketchConstraint>());
+        Set(workbench, "_document", original);
+        Invoke(workbench, "ApplyDocumentChange", failed, "Failed dimension.");
+        Invoke(workbench, "UndoLastDocumentChange");
+        Get<string?>(workbench, "_solveFailureStatus").Should().BeNull();
+        Invoke(workbench, "RedoLastDocumentChange");
+        Get<string>(workbench, "_solveFailureStatus").Should().Contain("unsatisfied");
+        Get<DrawingDocument>(workbench, "_document").Entities.Should().Equal(original.Entities);
     }
 
     [Theory]

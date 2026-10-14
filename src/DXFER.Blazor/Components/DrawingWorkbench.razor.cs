@@ -1215,8 +1215,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void UndoLastDocumentChange()
     {
-        _solveFailureStatus = null;
-        _duplicateCleanupStatus = null;
         if (!_undoStack.TryPop(out var previousDocument))
         {
             return;
@@ -1226,13 +1224,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _document = previousDocument;
         MarkManualOverride();
         ResetSelection();
-        _status = "Undo applied.";
+        RestoreHistoryFeedback("Undo applied.");
     }
 
     private void RedoLastDocumentChange()
     {
-        _solveFailureStatus = null;
-        _duplicateCleanupStatus = null;
         if (!_redoStack.TryPop(out var nextDocument))
         {
             return;
@@ -1242,7 +1238,16 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _document = nextDocument;
         MarkManualOverride();
         ResetSelection();
-        _status = "Redo applied.";
+        RestoreHistoryFeedback("Redo applied.");
+    }
+
+    private void RestoreHistoryFeedback(string status)
+    {
+        _duplicateCleanupStatus = null;
+        _solveFailureStatus = SketchSolveDiagnostics.FromDocument(_document).Count > 0
+            ? $"{status} This drawing has unsatisfied constraints or dimensions. Resolve the highlighted items."
+            : null;
+        _status = _solveFailureStatus ?? status;
     }
 
     private async Task FitAsync()

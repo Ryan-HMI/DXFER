@@ -39,6 +39,18 @@ references remain document intent, not manufacturing cut entities.
 
 ## Remaining work
 
+### History feedback follow-up (2026-10-14)
+
+Flux reproduced Redo restoring failed intent while replacing its explanation
+with a generic success message. Undo and Redo now derive failure feedback from
+the restored document's constraint and driving-dimension diagnostics. Empty
+history actions leave the existing explanation intact. Undoing conflict removal
+also restores the explanation, and redoing removal clears it. Layout and tool
+handlers are unchanged; this is shared history feedback, not a geometry repair.
+Regression coverage includes dimension-only failures. A real-browser conflict,
+Undo and Redo check verifies unchanged ten-inch geometry and visible explanation
+(`/tmp/dxfer-solver-redo.png`). No existing records require repair.
+
 Verification: 601 .NET tests and 265 JavaScript tests pass. Scoped formatting and
 Web build pass (the older lifecycle-test file retains preexisting whitespace
 warnings outside this patch). Isolated Playwright canvas test imports a real
