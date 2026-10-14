@@ -2,6 +2,21 @@
 
 ## Current Deployment Follow-up
 
+2026-10-14 approximately18:31Z: dcb6304 deployed Dev only, including7de1167
+polyline corner topology.769 .NET tests pass. Actual installed browser vertex
+gestures apply R0.7 fillet and D0.5 chamfer and survive Undo/Redo. The browser
+check first exposed unsupported canvas vertex references; the follow-up resolves
+them against live polyline vertices, rejects stale/invalid references, and shows
+corner operation feedback instead of hiding it behind the modal prompt. Existing
+native roundtrip/failed-intent/stale-envelope smoke passed on7de1167; final corner
+gesture checks passed ondcb6304. Core Release/installed hashes match. Normal
+Google sign-in and disabled Sync callbacks retained. Production/Test unchanged.
+Rollback directories:dev-publish-before-7de1167 anddev-publish-before-dcb6304.
+Layout contract: existing command bar, targets, docking and responsive structure
+unchanged; only corner result text uses the existing status slot. Desktop
+screenshot inspected; independent Flux QA requested. Palette persistence and
+curved-edge fillet support remain open. No existing document data repaired.
+
 2026-10-14T11:53Z verification:885aca7 deployed Dev only. Native constraint
 download/reopen integration passes704 .NET/265 JS tests and installed browser
 roundtrip/stale-envelope checks. All four installed assemblies match Release;
