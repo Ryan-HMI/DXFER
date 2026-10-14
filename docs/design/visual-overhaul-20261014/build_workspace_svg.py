@@ -7,17 +7,40 @@ def icon(n,x,y,col='#BBC5D1',z=20):s.append(f'<g transform="translate({x} {y}) s
 rect(0,0,1440,900,'#07090D');rect(0,0,1440,48,'#0A0D12');rect(0,48,200,820,'#10141B');rect(200,48,944,820,'url(#depth)');rect(200,48,944,820,'url(#grid)');rect(1144,48,296,820,'#10141B');rect(0,868,1440,32,'#0A0D12')
 text(20,30,'DXFer',17,'#F4F7FB',700);text(106,30,'Bracket profile.dxf');text(237,29,'•',14,'#66D9FF');rect(260,12,56,25,'#151B24','#242D39',4);text(270,29,'Inches',11)
 for x,n,l in [(820,'search','Find a command'),(1005,'undo','Undo'),(1096,'redo','Redo'),(1228,'download','Export DXF')]:icon(n,x,14);text(x+28,29,l)
-y=76
-for title,items in [('Create geometry',[('line','Line'),('rectangle','Rectangle'),('circle','Circle'),('arc','Arc'),('spline','Spline'),('ellipse','Ellipse'),('slot','Slot')]),('Modify geometry',[('trim','Trim'),('extend','Extend'),('fillet','Fillet'),('chamfer','Chamfer'),('offset','Offset'),('dimension','Dimension')]),('Transform & pattern',[('move','Transform'),('linear-pattern','Pattern')]),('Relations & preparation',[('constraints','Constraints'),('layers','Cleanup & grain')])]:
- text(20,y,title,12,'#F4F7FB',600);y+=12
- for n,l in items:
-  if n=='fillet':rect(12,y,176,34,'#1C303B','#687B90',6);rect(12,y+5,2,24,'#66D9FF')
-  icon(n,21,y+7,'#66D9FF' if n=='fillet' else '#BBC5D1');text(51,y+23,l,13,'#66D9FF' if n=='fillet' else '#BBC5D1');y+=35
- if title=='Create geometry':text(22,y+17,'More create tools  ›',12,'#97A5B6');y+=30
- y+=22
+def palette(title,y,items,collapsed=False):
+ h=34 if collapsed else 40+((len(items)+1)//2)*36
+ rect(8,y,184,h,'#10141B','#354252',6)
+ rect(9,y+1,182,32,'#151B24',None,5)
+ for dx in [0,4]:
+  for dy in [0,4,8]:rect(17+dx,y+11+dy,1.4,1.4,'#97A5B6')
+ text(31,y+22,title,12,'#F4F7FB',600)
+ icon('return-to-tools',147,y+9,z=16)
+ icon('chevron-down',170,y+9,z=16)
+ if not collapsed:
+  for i,(n,l) in enumerate(items):
+   x=14+(i%2)*87; yy=y+37+(i//2)*36
+   if n=='fillet':rect(x,yy,84,32,'#1C303B','#687B90',4)
+   icon(n,x+3,yy+8,'#66D9FF' if n=='fillet' else '#BBC5D1',20)
+   text(x+25,yy+22,l,12,'#66D9FF' if n=='fillet' else '#BBC5D1')
+ return y+h+8
+y=60
+y=palette('Sketch',y,[('line','Line'),('rectangle','Rectangle'),('circle','Circle'),('arc','Arc'),('spline','Spline'),('ellipse','Ellipse'),('slot','Slot'),('polygon','More…')])
+y=palette('Modify',y,[('trim','Trim'),('extend','Extend'),('fillet','Fillet'),('chamfer','Chamfer'),('offset','Offset'),('dimension','Dimension')])
+y=palette('Transform',y,[('move','Move'),('rotate','Rotate'),('scale','Scale'),('mirror','Mirror')])
+y=palette('Pattern',y,[('linear-pattern','Linear'),('circular-pattern','Circular')])
+y=palette('Constraints',y,[],True)
+y=palette('Cleanup',y,[],True)
+y=palette('Grain',y,[],True)
+text(16,y+18,'Each palette moves separately',10,'#97A5B6')
+text(16,y+38,'Palettes / Reset layout',11,'#BBC5D1')
 text(222,80,'Top · orthographic',13,'#F4F7FB',600);text(222,99,'Sketch editing',12,'#97A5B6');text(854,131,'DESIGN TARGET · illustrative geometry',10,'#97A5B6')
-rect(849,62,278,40,'#0A0D12','#242D39',8)
-for x,n,l in [(861,'fit','Fit'),(929,'grid','Grid'),(1010,'constraints','Relations')]:icon(n,x,72);text(x+25,87,l,12)
+rect(835,148,292,79,'#10141B','#687B90',8)
+rect(836,149,290,31,'#151B24',None,7)
+for dx in [0,4]:
+ for dy in [0,4,8]:rect(847+dx,159+dy,1.4,1.4,'#97A5B6')
+text(862,170,'View',12,'#F4F7FB',600);text(905,170,'Floating palette',10,'#97A5B6')
+icon('return-to-tools',1070,156,z=18);icon('chevron-down',1100,156,z=18)
+for x,n,l in [(849,'fit','Fit'),(917,'grid','Grid'),(998,'constraints','Relations')]:icon(n,x,192);text(x+25,207,l,12)
 s.append('<g transform="translate(200 48)" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M180 590V300a70 70 0 0 1 70-70h370V590Z" stroke="#D3E1ED" stroke-width="2"/><path d="M180 300V230h70" stroke="#66D9FF" stroke-dasharray="5 5"/><path d="M180 300a70 70 0 0 1 70-70" stroke="#66D9FF" stroke-width="3"/><circle cx="292" cy="360" r="40" stroke="#D3E1ED" stroke-width="2"/><circle cx="506" cy="360" r="40" stroke="#D3E1ED" stroke-width="2"/><path d="M292 476h214a30 30 0 0 1 0 60H292a30 30 0 0 1 0-60Z" stroke="#D3E1ED" stroke-width="2"/><path d="M250 300 212 261 134 261" stroke="#66D9FF"/><path d="M180 633h440m-434-4-6 4 6 4m428-8 6 4-6 4M180 600v44m440-44v44" stroke="#97A5B6"/></g>')
 text(319,295,'R 0.750 in',13,'#66D9FF');text(563,672,'4.714 in')
 text(1160,79,'Active tool',12,'#97A5B6');text(1160,103,'Fillet',17,'#F4F7FB',600);text(1160,127,'Round a corner between two edges.',12)

@@ -9,7 +9,7 @@ The target SVG shows an illustrative fillet operation. Values and geometry are v
 ## Priority order and bounded change sets
 
 1. **Foundation:** tokens, icon component, typography and semantic control states. Replace existing icons one family at a time while retaining handlers. Keep screenshots of the old and new UI.
-2. **Workspace composition:** document header; labeled tool library; docked active-operation inspector; stable viewport controls; bounded status regions. Keep all existing tools, cleanup and grain commands reachable.
+2. **Workspace composition:** document header; independently dockable tool palettes; supplementary active-operation inspector; stable viewport controls; bounded status regions. Keep all existing tools, cleanup and grain commands reachable.
 3. **Feedback:** textual constraint conflicts, input validation, explicit selection types and safe cancellation. This may require new state plumbing; it is not a CSS-only fix.
 4. **Polish and evidence:** narrow-window reflow, keyboard focus, tooltip placement, saved-layout recovery, contrast and DPI checks. Ship only after running screenshots and behavioral tests.
 
@@ -17,15 +17,25 @@ Do not bundle solver rewrites, persistence changes or new CAD capabilities into 
 
 ## Layout contract
 
-Baseline 1440 × 900: header 48 px; left tool shelf 200 px; right operation inspector 296 px; footer 32 px. Inspector range 280–320 px. Main viewport is the remaining space, not a fixed width. Do not put a large floating View palette over geometry by default.
+**Mandatory architecture: preserve multiple independently dockable tool palettes.** Every existing palette retains its stable identity, command membership, independent docking/undocking, movement, collapse/expand state, visibility, and saved layout. Do not replace them with one fixed shelf, one combined Tools palette, or one mandatory drawer. The active-operation inspector supplements these palettes; it never replaces them. Apply the new icons, labels, spacing and colors inside each existing palette.
 
-The shelf is a stable tool library with short icon + label rows, grouped into Create, Modify, Transform/Pattern, Relations, and Preparation. Place shape variants behind explicit, labeled flyouts: Rectangle → corner/center/aligned; Circle → center/three-point; Arc → three-point/center/elliptical; Polygon → inscribed/circumscribed. Keep rare existing tools in those menus and command search. A flyout trigger needs a chevron and accessible expanded state. Do not silently delete, disable or combine distinct commands.
+The 1440 × 900 target illustrates one user-arranged layout: header 48 px, a 200 px left dock zone containing several independent palettes, a 296 px active-operation inspector, and footer 32 px. These are example dimensions, not fixed architecture. The viewport occupies the remaining unobscured space. Sketch, Modify, Transform, Pattern, Constraints, Cleanup, Grain and View remain separate palettes wherever those identities already exist. Match actual palette IDs and names rather than renaming or regrouping by this illustration. The View palette is shown floating to demonstrate that it can move independently while others remain docked.
 
-The target's broad Transform, Pattern, Constraints and Cleanup/Grain rows open complete labeled lists, not a single inferred operation. Move, Rotate, Scale, Mirror; linear/circular pattern; every relation; all cleanup and grain commands retain separate names, shortcuts and discoverability. A full command catalog remains available even with no selection, explaining prerequisites for unavailable actions.
+Each palette has its own labeled header, drag grip, dock/undock control, collapse control and body. A dock zone is only a container: dragging one header moves that palette alone. Docked and floating states share the same visual language, command handlers and tool state. Use compact icon + label grids or rows per palette; offer density/label choices without combining palettes. Preserve all commands and shape variants in their existing palette; optional labeled flyouts must not remove existing direct access without a separately approved change. Do not collapse unrelated palettes automatically when a tool activates.
 
-At 1280 × 720: shorten shelf groups through explicit disclosures; do not shrink type. Active tool and its primary fields, warning, Cancel and Apply must remain visible with no core-path scrolling. Inspector layout is `header auto / content minmax(0,1fr) / footer auto`. Only optional relation/history details scroll. During an active tool, collapse unrelated shelf groups by default without relocating the tool or hiding its name. At widths under 1100 px, collapse the shelf into a labeled Tools drawer; keep a visible active-tool name and access to all commands. Below 760 px, use a bounded bottom tool sheet with a persistent commit/cancel row, never an offscreen floating card. A mobile composition needs a separate screenshot review before claiming support.
+At smaller windows, preserve identities and user choice. Let users individually collapse, hide, relocate or redock palettes through their own controls and a Palettes menu listing every palette and Reset layout. A dock zone may scroll its palette collection independently; it is not a merged tool palette. Keep the active tool's required fields, warning and commit/cancel visible. Do not force all tools into one drawer, move all palettes as a unit, discard saved positions, or change visibility merely because a breakpoint was crossed. Any optional compact layout must be user-selected and restore the previous arrangement. Below the supported minimum, show a clear size limitation rather than pretending the docking workflow has been verified on mobile.
 
-Preserve existing docking if supported. Clamp floating panels after viewport resize and at saved-layout restore. Minimum 44 px of the title/return controls must remain reachable, with Reset layout as recovery. Fit computes actual unobscured drawing area after docks and overlays, not the browser rectangle.
+Clamp each floating palette after resize and layout restoration, keeping its header and dock/collapse controls reachable. Preserve each palette's last chosen position separately. Provide Reset layout as explicit recovery, never automatic reset. Fit uses the actual unobscured area after dock zones and floating palettes. Numeric editor fields and the operation footer may use independent scrolling regions for optional details, but not require scrolling to commit or cancel the common path.
+
+### Palette acceptance gates
+
+- Inventory and preserve every existing palette ID, membership, shortcut, visibility and docking capability before styling.
+- Float Sketch and View independently; move one and assert the other's position and state do not change.
+- Dock, undock, reorder and collapse each palette separately. Preserve the active tool, typed values, selections and undo history throughout.
+- Reload with mixed docked/floating/collapsed palettes and verify each saved identity, position, visibility and collapse state.
+- Resize through baseline and smallest supported dimensions; every floating header/control stays reachable and no palette is silently consolidated, hidden or reset.
+- Keyboard-accessible per-palette dock/collapse controls and the Palettes menu provide alternatives to dragging. Focus remains on the moved palette or its control.
+- Capture before/after screenshots with at least two independently floating palettes and a mixed docked/floating layout. A single-sidebar screenshot is not evidence of preserved independent docking.
 
 ## Active-operation contract
 
@@ -65,6 +75,6 @@ Hover uses a neutral local fill. Pressed adds border contrast without movement. 
 - Open every tool family; compare action inventory and all IDs/shortcuts with the baseline. Disabled prerequisites remain accurate. No CSS class should determine which geometry command executes.
 - Draw line/arc/ellipse/spline/slot; edit dimension with actual keyboard; trim, extend, fillet/chamfer; move/rotate/scale/mirror; both patterns; constraint apply/reject; Undo/Redo; cancel at each stage.
 - Preserve exact geometry and relation results, selection kind, import/export semantics and dirty-document warnings. Preserve existing automated regression tests.
-- Tab/Shift-Tab through shelf and inspector; Enter/Esc; command search returns all supported tools. Focus never disappears into a hidden drawer or offscreen panel.
+- Tab/Shift-Tab through each palette and inspector; Enter/Esc; command search returns all supported tools. Focus never disappears into a hidden palette or offscreen panel.
 - Inspect light/dark, hover/selected/disabled and grayscale icon contact sheets at actual 18/20/24 px and 125–200% scale. Validate tool labels rather than relying on three-point/center-point icon differences.
 - Run real UI checks, not only snapshot or unit tests. Artifact validation below does not establish production acceptance.
