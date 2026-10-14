@@ -77,7 +77,8 @@ public sealed class WorkbenchRenderBoundaryTests
         downloadEnd.Should().BeGreaterThan(downloadStart);
         var downloadBody = source[downloadStart..downloadEnd];
 
-        downloadBody.Should().Contain("CreateDxfWriteOptions");
+        downloadBody.Should().Contain("CreateDownloadWriteOptions");
+        source.Should().Contain("CreateDxfWriteOptions() with { IncludeNativeDocument = EnableFullEditing && !IsSyncLaunch }");
         source.Should().Contain("GRAIN");
         downloadBody.Should().NotContain("DxferSidecarWriter.Write");
         downloadBody.Should().NotContain("DxfDownloadFileName.SidecarFromSourceName");

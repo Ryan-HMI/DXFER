@@ -623,19 +623,23 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         bool trustedSource,
         bool autoNormalize)
     {
-        var document = WithOpenFileMetadata(DxfDocumentReader.Read(text), fileName, text, trustedSource);
+        var imported = DxfDocumentReader.Read(text, out var nativeRestored);
+        var document = WithOpenFileMetadata(imported, fileName, text, trustedSource);
         var sourceDocument = document;
-        var cleanup = ExactDuplicateGeometryService.Remove(document);
+        // A verified native snapshot already owns its geometry and reference identities.
+        var cleanup = nativeRestored
+            ? new DuplicateGeometryResult(document, 0, 0)
+            : ExactDuplicateGeometryService.Remove(document);
         document = cleanup.Document;
 
-        if (document.Entities.Count == 0)
+        if (document.Entities.Count == 0 && !nativeRestored)
         {
             _status = "No supported DXF entities were found. V1 reads LINE, CIRCLE, ARC, POINT, LWPOLYLINE, POLYLINE, and SPLINE."
                 + FormatWarningSummary(document.Metadata.Warnings);
             return;
         }
 
-        var normalization = autoNormalize ? DrawingNormalizationService.AutoNormalize(document) : null;
+        var normalization = autoNormalize && !nativeRestored ? DrawingNormalizationService.AutoNormalize(document) : null;
         if (!trustedSource) DetachSyncDocument();
         _fileName = fileName;
         _grainDirection = GrainDirection.None;
@@ -668,6 +672,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _documentFitToken++;
         ClearHistory();
         ResetSelection();
+        RestoreHistoryFeedback(_status);
     }
 
     private static DrawingDocument WithOpenFileMetadata(
@@ -2324,7 +2329,21 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         var savedDocument = _document;
         var savedGrain = _grainDirection;
         var savedAngle = _grainAngleDegrees;
-        var exportText = DxfDocumentWriter.Write(_document, CreateDxfWriteOptions());
+        string exportText;
+        try
+        {
+            exportText = DxfDocumentWriter.Write(_document, CreateDownloadWriteOptions());
+        }
+        catch (Exception ex) when (ex is FormatException or ArgumentException)
+        {
+            _status = $"Could not download drawing: {ex.Message}";
+            return;
+        }
+        if (Encoding.UTF8.GetByteCount(exportText) > MaxDxfFileSize)
+        {
+            _status = "Download exceeds the 25 MB reopen limit. No file was downloaded.";
+            return;
+        }
         var downloadName = DxfDownloadFileName.FromSourceName(_fileName);
         _downloadModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", DownloadModulePath);
         await _downloadModule.InvokeVoidAsync(
@@ -2457,6 +2476,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private DxfWriteOptions CreateDxfWriteOptions() =>
         new(CreateGrainAnnotation());
+
+    private DxfWriteOptions CreateDownloadWriteOptions() =>
+        CreateDxfWriteOptions() with { IncludeNativeDocument = EnableFullEditing && !IsSyncLaunch };
 
     private GrainAnnotation? CreateGrainAnnotation()
     {

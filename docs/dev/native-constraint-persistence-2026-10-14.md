@@ -1,5 +1,23 @@
 # Native document constraint persistence
 
+## Application integration
+
+The standalone full editor's existing Download DXF now opts into native intent.
+Cleanup-only downloads and every Sync save/callback writer remain geometry-only.
+Verified native reopen bypasses cleanup/normalization and accepts empty native
+drawings, retaining exact IDs and failed intent; displayed diagnostics are
+restored from the document. Invalid serialization leaves the save point intact,
+and downloads exceeding the browser's25MiB reopen limit are refused.
+
+Parent verification:704 .NET and265 JavaScript tests pass. Actual browser
+Download/New/Open/Download compares entity IDs, geometry, constraints and
+dimensions; the ten-inch conflict stays unchanged and explained. External DXF
+editing to12in imports that geometry with a stale-intent warning and no old
+constraints. Existing ordinary imports and Sync ownership guards pass. No
+existing saved files or records were repaired. Older files without native intent
+cannot recover constraints that were already lost. Grain controls, viewport and
+undo history remain outside document persistence.
+
 Dev-only worker branch based on `23c57d9`. No Workbench, visual, Sync, machine,
 business-data, or deployment files changed. Parent owns browser integration.
 

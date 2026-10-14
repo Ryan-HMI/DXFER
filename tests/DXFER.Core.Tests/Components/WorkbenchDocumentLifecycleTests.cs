@@ -86,6 +86,72 @@ public sealed class WorkbenchDocumentLifecycleTests
         Get<SyncEditLaunchOptions>(workbench, "_syncLaunchOptions").Should().Be(SyncEditLaunchOptions.Empty);
     }
 
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    public void OnlyStandaloneFullEditorDownloadIncludesNativeIntent(bool fullEditing, bool sync, bool expected)
+    {
+        var workbench = Create();
+        typeof(DrawingWorkbench).GetProperty(nameof(DrawingWorkbench.EnableFullEditing))!.SetValue(workbench, fullEditing);
+        if (sync) Set(workbench, "_syncLaunchOptions", Launch());
+        ((DxfWriteOptions)Invoke(workbench, "CreateDownloadWriteOptions")!).IncludeNativeDocument.Should().Be(expected);
+        ((DxfWriteOptions)Invoke(workbench, "CreateDxfWriteOptions")!).IncludeNativeDocument.Should().BeFalse();
+    }
+
+    [Fact]
+    public void NativeReopenPreservesReferenceIdsGeometryAndFailedIntentWithoutCleaningOrSolving()
+    {
+        var workbench = Create();
+        var original = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("edge"), new(5, 2), new(15, 2)),
+            new LineEntity(EntityId.Create("duplicate"), new(5, 2), new(15, 2))
+        }, new[]
+        {
+            new SketchDimension("length", SketchDimensionKind.LinearDistance, new[] { "edge" }, 20, isDriving: true)
+        }, new[]
+        {
+            new SketchConstraint("vertical", SketchConstraintKind.Vertical, new[] { "edge" }, SketchConstraintState.Unsatisfied)
+        });
+        var text = DxfDocumentWriter.Write(original, new DxfWriteOptions(IncludeNativeDocument: true));
+        Invoke(workbench, "LoadDxfText", "editable.dxf", text, false, true);
+        var reopened = Get<DrawingDocument>(workbench, "_document");
+        reopened.Entities.Should().BeEquivalentTo(original.Entities);
+        reopened.Dimensions.Should().BeEquivalentTo(original.Dimensions);
+        reopened.Constraints.Should().BeEquivalentTo(original.Constraints);
+        reopened.Metadata.TrustedSource.Should().BeFalse();
+        Get<string>(workbench, "_solveFailureStatus").Should().Contain("unsatisfied");
+        Dirty(workbench).Should().BeFalse();
+    }
+
+    [Fact]
+    public void EmptyNativeSnapshotCanReplaceAnExistingDocument()
+    {
+        var workbench = Create();
+        Set(workbench, "_document", Document());
+        var text = DxfDocumentWriter.Write(new DrawingDocument(Array.Empty<DrawingEntity>()),
+            new DxfWriteOptions(IncludeNativeDocument: true));
+        Invoke(workbench, "LoadDxfText", "blank.dxf", text, false, false);
+        Get<DrawingDocument>(workbench, "_document").Entities.Should().BeEmpty();
+        Dirty(workbench).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task NativeSerializationFailureDoesNotDownloadOrMarkDocumentSaved()
+    {
+        var workbench = Create();
+        typeof(DrawingWorkbench).GetProperty(nameof(DrawingWorkbench.EnableFullEditing))!.SetValue(workbench, true);
+        var edge = new LineEntity(EntityId.Create("duplicate-id"), new(0, 0), new(10, 0));
+        var invalid = new DrawingDocument(new DrawingEntity[] { edge, edge });
+        Set(workbench, "_document", invalid);
+        await (Task)Invoke(workbench, "DownloadDxfFilesAsync")!;
+        Dirty(workbench).Should().BeTrue();
+        Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(invalid);
+        Get<string>(workbench, "_status").Should().Contain("Could not download");
+    }
+
     [Fact]
     public void RejectedImportPreservesDocumentNameGrainAndOwnership()
     {
