@@ -4,6 +4,8 @@ Use this log for bugs and feature requests that arrive while another task is act
 
 ## Open
 
+- [ ] UT-ELLIPSE-001 live follow-up,2026-10-15: Flux creates a keyed5x3 ellipse successfully, then edits major diameter5->6. Shared solve wrongly refuses this compatible edit; geometry remains semimajor2.5/ratio0.6 while failed intent stores6/minor3. Core axis-solver investigation assigned; not fixed. Keep original center/orientation/minor dimension and verify minor/rotated/conflicting cases rather than rewriting values to hide rejection.
+
 - [x] AXIS-DIMENSION-GUIDES-20261015: Shared axis projection and hit-testing fixed, deployed Dev f40d167.845 .NET/333 JS tests pass; installed desktop/500px high-DPI browser checks verify guide selection, label-only movement and Undo/Redo. No solver/data rewrite or record repair. See `axis-dimension-projection-2026-10-15.md`. No trivial visual acceptance reminder.
 
 - [x] DRAG-TRANSACTION-20261015: Fixed generic drag constraint rejection and stale optimistic canvas after server refusal. Dev e94f6ee,814 .NET/304 JS tests pass; installed browser verifies fixed-peer unchanged preview/release/export/history and free-peer successful propagation/Undo/Redo. See `drag-constraint-transactions-2026-10-15.md`. No saved drawings repaired; general constraint convergence remains open.
