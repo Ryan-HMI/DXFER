@@ -87,5 +87,12 @@ bounds stay within fixed targets, no page overflow or JS errors, and the canvas
 remains nonblank. Imported geometry is unchanged after activation/cancellation.
 Desktop and phone screenshots inspected under `/tmp/dxfer-geometry-icons-*.png`.
 Repeatable check: `/tmp/dxfer-drag-live-qa.cjs --icons`.
-Installed-app verification follows the next Dev-only rollout; not full UI acceptance.
+Installed on Dev67ef64a and retained in current170e976. Actual installed browser
+checks pass all four command mappings and fixed icon bounds at1440/820/390px;
+canvas nonblank, no overflow or geometry changes. Parent rechecked the current
+installed Blazor assembly against the reviewed Release build: SHA256
+`a7e9b07c1a6f58377d602b33d467e771d9a3ced827f0cb5edae7d4ae1d890772`.
+This is not full UI acceptance. The corrected independent-palette contract at
+3bc680971f791700c635e1b30843f283f31b022e remains authoritative; asset delivery
+does not establish implementation of its entire workspace composition.
 Existing drawings/business records require no repair for these static glyphs.

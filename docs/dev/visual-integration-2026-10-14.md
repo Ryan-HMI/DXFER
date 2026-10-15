@@ -26,7 +26,13 @@ Undo/Redo and icon-bound checks pass at 1440, 1280, 820 and 390px; desktop and
 phone screenshots inspected. No browser errors. This does not claim the larger
 composition or all CAD operations are fully tested.
 
-This is not the complete workspace composition redesign. Labeled tool shelf,
-active-operation inspector, responsive drawer and palette reorganization remain
-separate implementation work. Solver and file persistence are not changed by
-this visual pass. No user drawing or business record requires repair.
+This is not the complete workspace composition redesign. The corrected handoff
+3bc680971f791700c635e1b30843f283f31b022e preserves separate independently dockable
+palettes; the earlier fixed-shelf/mandatory-drawer wording is superseded.
+Per-palette label/density styling, supplementary active-operation inspector,
+document header and remaining composition/feedback polish are separate work.
+Do not merge palettes or invent proposed controls with no implemented behavior.
+Current Dev170e976 includes49 of81 icon masters; see
+geometry-icon-integration-2026-10-15.md for deployed evidence and the32 remaining
+dispositions. Solver and file persistence are not changed by this visual pass.
+No user drawing or business record requires repair.
