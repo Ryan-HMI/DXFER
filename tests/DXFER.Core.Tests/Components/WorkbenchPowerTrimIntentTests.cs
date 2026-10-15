@@ -74,6 +74,44 @@ public sealed class WorkbenchPowerTrimIntentTests
         });
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SplitRefusalIsVisibleAndNotOverwrittenByActivation(bool preselected)
+    {
+        using var services = new ServiceCollection().BuildServiceProvider();
+        await using var renderer = new TestRenderer(services);
+        var workbench = new HeadlessWorkbench();
+        typeof(DrawingWorkbench).GetProperty("MenuCommandService", Private)!.SetValue(workbench, new WorkbenchMenuCommandService());
+        typeof(DrawingWorkbench).GetProperty("ToolHotkeys", Private)!.SetValue(workbench, new ToolHotkeyService());
+        renderer.Attach(workbench);
+        var original = new DrawingDocument(new DrawingEntity[]
+        {
+            new LineEntity(EntityId.Create("target"), new(0, 0), new(10, 0)),
+            new PointEntity(EntityId.Create("pick"), new(2, 0))
+        }, new[] { new SketchDimension("length", SketchDimensionKind.LinearDistance,
+            new[] { "target:start", "target:end" }, 10, isDriving: true) }, Array.Empty<SketchConstraint>());
+        typeof(DrawingWorkbench).GetField("_document", Private)!.SetValue(workbench, original);
+        await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            if (preselected)
+            {
+                Get<HashSet<string>>(workbench, "_selectedEntityIds").UnionWith(new[] { "target", "pick" });
+                await (Task)Invoke(workbench, "InvokeWorkbenchCommand", WorkbenchCommandId.SplitAtPoint)!;
+            }
+            else
+            {
+                typeof(DrawingWorkbench).GetField("_activeTool", Private)!.SetValue(workbench, WorkbenchTool.SplitAtPoint);
+                Invoke(workbench, "OnSplitAtPointRequested", "target", new CanvasPointDto(2, 0));
+            }
+            Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
+            var status = Get<string>(workbench, "_status");
+            status.Should().Contain("Geometry unchanged").And.Contain("dimensions and constraints");
+            typeof(DrawingWorkbench).GetProperty("CommandPromptText", Private)!.GetValue(workbench).Should().Be(status);
+            Get<Stack<DrawingDocument>>(workbench, "_undoStack").Should().BeEmpty();
+        });
+    }
+
     private static T Get<T>(DrawingWorkbench target, string name) => (T)typeof(DrawingWorkbench).GetField(name, Private)!.GetValue(target)!;
     private static object? Invoke(DrawingWorkbench target, string name, params object[] args) =>
         typeof(DrawingWorkbench).GetMethod(name, Private)!.Invoke(target, args);

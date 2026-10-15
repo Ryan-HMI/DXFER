@@ -511,7 +511,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.Slot => "Slot: click first center, second center, then radius point. Esc: cancel.",
         WorkbenchTool.Construction => "Construction: click geometry to toggle construction state. Esc: cancel.",
         WorkbenchTool.PowerTrim => _status,
-        WorkbenchTool.SplitAtPoint => "Split at point: click a line or arc, or pick two points on a circle. Esc: cancel.",
+        WorkbenchTool.SplitAtPoint => _status,
         WorkbenchTool.AddSplinePoint => "Add spline point: select one fit-point spline, then click the spline where the new fit point belongs. Esc: cancel.",
         WorkbenchTool.Offset => "Offset: select whole geometry, then click the through side or radius point. Esc: cancel.",
         WorkbenchTool.Fillet or WorkbenchTool.Chamfer => _status,
@@ -818,7 +818,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 break;
             case WorkbenchCommandId.SplitAtPoint:
                 await SyncSelectionFromCanvasAsync();
-                if (!TrySplitSelectedLineAtPoint())
+                if (!TryHandleSelectedLineSplit())
                 {
                     ActivateTool(
                         WorkbenchTool.SplitAtPoint,
@@ -1141,9 +1141,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 entityId,
                 ToPoint(point),
                 CreateEntityId,
-                out var nextDocument))
+                out var nextDocument,
+                out var status))
         {
-            _status = "Power trim/extend could not apply this edit. Geometry unchanged. Choose a crossed section or a supported extension.";
+            _status = status;
             _ = InvokeAsync(StateHasChanged);
             return;
         }
@@ -1772,7 +1773,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
     }
 
-    private bool TrySplitSelectedLineAtPoint()
+    private bool TryHandleSelectedLineSplit()
     {
         if (!LineSplitSelectionResolver.TryResolveLineAndPoint(
                 _document,
@@ -1783,7 +1784,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return false;
         }
 
-        return SplitLineAtPoint(lineEntityId, point);
+        SplitLineAtPoint(lineEntityId, point);
+        return true;
     }
 
     private bool SplitLineAtPoint(string lineEntityId, Point2 point)
@@ -1792,7 +1794,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         var newLineId = CreateEntityId("line");
         if (!LineSplitService.TrySplitLineAtPoint(_document, lineEntityId, point, newLineId, out var nextDocument))
         {
-            _status = "Split point must lie inside the selected line.";
+            _status = "Split could not preserve valid geometry and existing intent at this point. Geometry unchanged. Check the split location, dimensions and constraints.";
             _ = InvokeAsync(StateHasChanged);
             return false;
         }
@@ -1830,7 +1832,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 newArcId,
                 out var nextDocument))
         {
-            _status = "Second split point must be a different point on the same circle.";
+            _status = "Split could not preserve valid geometry and existing intent. Geometry unchanged. Check that the points differ on the same circle and review attached dimensions and constraints.";
             _ = InvokeAsync(StateHasChanged);
             return false;
         }
@@ -1848,7 +1850,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         var newArcId = CreateEntityId("arc");
         if (!CurveSplitService.TrySplitArcAtPoint(_document, arcEntityId, point, newArcId, out var nextDocument))
         {
-            _status = "Split point must lie inside the selected arc.";
+            _status = "Split could not preserve valid geometry and existing intent at this point. Geometry unchanged. Check the split location, dimensions and constraints.";
             _ = InvokeAsync(StateHasChanged);
             return false;
         }
