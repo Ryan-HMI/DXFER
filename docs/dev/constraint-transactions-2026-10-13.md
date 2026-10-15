@@ -67,9 +67,14 @@ it is not proof that every such system is mathematically inconsistent. PlaneGCS
 remains an unavailable adapter, not an active engine. General drag coverage and
 convergence need further work.
 
-DXF and the current analysis sidecar do not preserve constraint intent on reopen.
-A versioned native project round trip remains required; do not claim this patch
-implements save/reopen persistence. Existing damaged drawings cannot be
+The original transaction patch did not preserve intent on reopen. The later
+standalone full-editor native DXF snapshot now does; see
+`native-constraint-persistence-2026-10-14.md`. Analysis sidecars and Sync-bound
+manufacturing exports remain geometry/analysis only. Existing damaged drawings cannot be
 automatically reconstructed; users need Undo or a verified original. No saved
 Engineering artifacts, Sync records, machine programs, or Production/Test
 deployments are changed by these source edits.
+
+The generic drag path was not covered by the adapter transaction fix. The
+2026-10-15 Equal/Fix browser reproduction and missing canvas rejection response
+are tracked separately in `drag-constraint-transactions-2026-10-15.md`.
