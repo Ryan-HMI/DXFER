@@ -68,7 +68,7 @@ public static class CutPathLengthService
                     length = PathLength(vertices) + MeasurementService.Measure(vertices[^1], vertices[0]).Distance;
                     break;
                 case EllipseEntity ellipse when Finite(ellipse.Center) && Finite(ellipse.MajorAxisEndPoint)
-                    && Positive(ellipse.MinorRadiusRatio) && ellipse.MinorRadiusRatio <= 1
+                    && Positive(ellipse.MinorRadiusRatio)
                     && double.IsFinite(ellipse.StartParameterDegrees) && double.IsFinite(ellipse.EndParameterDegrees)
                     && Math.Abs(ellipse.EndParameterDegrees - ellipse.StartParameterDegrees) <= 360.000001:
                     length = EllipseLength(ellipse, scale);
@@ -95,7 +95,8 @@ public static class CutPathLengthService
     {
         // Smooth ellipses converge quadratically under chord refinement. Cap both
         // eccentricity and work; display samples alone are not a quoting tolerance.
-        if (ellipse.MinorRadiusRatio < 0.001) return double.NaN;
+        var axisRatio = Math.Min(ellipse.MinorRadiusRatio, 1 / ellipse.MinorRadiusRatio);
+        if (axisRatio < 0.001) return double.NaN;
         var previous = PathLength(ellipse.GetSamplePoints(64));
         for (var count = 128; count <= 32768; count *= 2)
         {

@@ -111,3 +111,41 @@ Other conflicts continue to require correction, not data overrides.
 - Parent reported normal 6 x 3 -> 6 x 4 browser edits, Undo/Redo and reopen passing.
   Crossing/browser rollout verification remains with the parent. No deployment
   or production data writes were performed for these patches.
+
+## Cut Analysis Follow-Up
+
+Flux and parent reproduced a crossed 6 x 8 ellipse reporting invalid cut geometry
+on Dev `67ef64a`, including native reopen, despite its canonical DXF passing audit.
+The cut-length gate incorrectly required the editor ratio to be at most one.
+The existing sampler already supports either axis order and preserves the exact
+parameter span, so analysis now samples the original entity without swapping or
+mutating it. The eccentricity bound uses `min(ratio, 1 / ratio) >= 0.001`.
+Contour sampling uses the larger physical radius to preserve its deviation bound.
+Removing only the cut-length gate incorrectly counted two thin ellipses that
+equivalent canonical representations correctly sent for clearance review; the
+larger-radius change fixes those regressions as well.
+
+Limits remain conservative: chord refinement must converge within the existing
+1e-6-inch threshold and 32768-segment cap. Nonfinite, overflowed, degenerate,
+sub-resolution and too-eccentric geometry remains Review, never a partial total.
+Partial ellipse cut lengths are supported, including rotated/wrapped spans;
+partial ellipse contour counts still require Review. Existing contour coordinate,
+vertex, clearance and endpoint guards remain in place. This does not extend the
+numeric range of the model sampler or guarantee results below its tolerances.
+
+Only ellipse cut length and full-ellipse contour sampling change. Line, polyline,
+polygon, circle, arc, spline, point, dimension and constraint-reference paths are
+unchanged; document geometry, styles, intent and parameters are not mutated.
+No dependencies, solver, native serialization, writer or UI changes are included.
+
+Red: ten initial crossed-axis tests failed on base `f38c50f`; after the length-only
+fix, two thin-contour regressions still failed. Green: all nineteen focused tests
+and all 930 core-suite tests pass. Coverage includes 6 x 8, native/plain reopen,
+rotated/partial/wrapped/equal spans, disjoint contours, eccentricity symmetry and
+nonfinite/overflow rejection. Focused command: `dotnet test
+tests/DXFER.Core.Tests/DXFER.Core.Tests.csproj --filter
+FullyQualifiedName~EllipseCutAnalysisTests`.
+
+The shared analysis cause is fixed; no stored geometry or records need repair
+for this false Review result. Reanalysis uses the existing geometry. Corrected
+installed/browser verification and deployment remain with the parent.
