@@ -6,27 +6,30 @@
     width: 2.15rem;
     height: 2.15rem;
     padding: 0;
-    color: #edf3f7;
-    background: #26323b;
-    border: 1px solid #46545f;
+    color: var(--dx-secondary, #bbc5d1);
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: 4px;
     font: 0.76rem/1.1 "Segoe UI", system-ui, sans-serif;
 }
 
 .dxfer-icon-button:hover:not(:disabled),
 .dxfer-icon-button:focus-visible:not(:disabled) {
-    background: #31404a;
-    border-color: #7f96a8;
+    background: var(--dx-hover, #1a222d);
+    border-color: var(--dx-border-strong, #687b90);
 }
 
-.dxfer-icon-button-active {
-    color: #f8fbfd;
-    background: #1f4b5f;
-    border-color: #38bdf8;
+.dxfer-icon-button-active,
+.dxfer-icon-button-active:hover:not(:disabled),
+.dxfer-icon-button-active:focus-visible:not(:disabled) {
+    color: var(--dx-accent, #66d9ff);
+    background: var(--dx-selected, rgba(102, 217, 255, 0.14));
+    border-color: var(--dx-accent, #66d9ff);
+    box-shadow: inset 2px 0 var(--dx-accent, #66d9ff);
 }
 
 .dxfer-icon-button:focus-visible {
-    outline: 2px solid #66d9ff;
+    outline: 2px solid var(--dx-accent, #66d9ff);
     outline-offset: 2px;
 }
 
@@ -35,9 +38,9 @@
 }
 
 .dxfer-icon-button:disabled {
-    color: #697781;
-    background: #1d242a;
-    border-color: #313941;
+    color: var(--dx-disabled, #56616f);
+    background: transparent;
+    border-color: transparent;
 }
 
 .dxfer-icon-button-wide {

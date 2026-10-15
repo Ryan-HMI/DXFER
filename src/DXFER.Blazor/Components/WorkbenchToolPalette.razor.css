@@ -38,7 +38,7 @@
     position: absolute;
     z-index: 0;
     display: block;
-    color: #a7b8c4;
+    color: var(--dx-muted, #97a5b6);
     background: rgba(20, 27, 32, 0.72);
     border: 1px dashed #4b6473;
     content: "";
@@ -47,7 +47,7 @@
 
 .dxfer-workbench-tool-palette-dragging .dxfer-tool-dock-zone-preview::before {
     background: rgba(30, 75, 95, 0.34);
-    border-color: #38bdf8;
+    border-color: var(--dx-accent, #66d9ff);
     box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.32);
 }
 
@@ -129,10 +129,11 @@
     width: max-content;
     max-width: min(360px, calc(100vw - 1rem));
     padding: 0;
-    color: #dce3e8;
-    background: #181c20;
-    border: 1px solid #2d343b;
-    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+    color: var(--dx-text, #f4f7fb);
+    background: var(--dx-panel, #10141b);
+    border: 1px solid var(--dx-border, #242d39);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
     pointer-events: auto;
     user-select: none;
 }
@@ -148,7 +149,7 @@
     position: sticky;
     top: 0;
     z-index: 1;
-    background: #181c20;
+    background: var(--dx-raised, #151b24);
 }
 
 .dxfer-tool-group-dragging {
@@ -213,6 +214,8 @@
 }
 
 .dxfer-tool-section-summary {
+    background: var(--dx-raised, #151b24);
+    border-radius: 5px 5px 0 0;
     align-items: center;
     cursor: grab;
     display: flex;
@@ -225,7 +228,7 @@
 
 .dxfer-tool-group-grip {
     align-items: center;
-    color: #91a4b0;
+    color: var(--dx-muted, #97a5b6);
     cursor: grab;
     display: inline-flex;
     flex: 0 0 auto;
@@ -261,7 +264,7 @@
 }
 
 .dxfer-section-title {
-    color: #f2f5f7;
+    color: var(--dx-text, #f4f7fb);
     font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0;
@@ -273,10 +276,10 @@
 
 .dxfer-tool-group-collapse-toggle {
     align-items: center;
-    background: #20272d;
-    border: 1px solid #3a4650;
+    background: var(--dx-raised, #151b24);
+    border: 1px solid var(--dx-border-strong, #687b90);
     border-radius: 4px;
-    color: #dce7ee;
+    color: var(--dx-text, #f4f7fb);
     cursor: pointer;
     display: inline-flex;
     flex: 0 0 auto;
@@ -287,19 +290,19 @@
 }
 
 .dxfer-tool-group-collapse-toggle:focus-visible {
-    outline: 2px solid #66d9ff;
+    outline: 2px solid var(--dx-accent, #66d9ff);
     outline-offset: 2px;
 }
 
 .dxfer-tool-label-toggle[aria-pressed="true"] {
-    color: #b9ecff;
-    background: #244556;
+    color: var(--dx-accent-strong, #b7efff);
+    background: var(--dx-selected, rgba(102, 217, 255, 0.14));
 }
 
 .dxfer-tool-group-collapse-toggle:hover,
 .dxfer-tool-group-collapse-toggle:focus-visible {
-    background: #2b353d;
-    border-color: #7f96a8;
+    background: var(--dx-hover, #1a222d);
+    border-color: var(--dx-border-strong, #687b90);
 }
 
 .dxfer-tool-group-collapse-toggle ::deep .dxfer-icon {
@@ -309,14 +312,14 @@
 
 .dxfer-tool-group-compact-grip {
     align-self: stretch;
-    background: #151a1f;
-    border-right: 1px solid #2d343b;
+    background: var(--dx-raised, #151b24);
+    border-right: 1px solid var(--dx-border, #242d39);
     min-height: 1.45rem;
     width: 0.76rem;
 }
 
 .dxfer-tool-group-horizontal .dxfer-tool-group-compact-grip {
-    border-right: 1px solid #2d343b;
+    border-right: 1px solid var(--dx-border, #242d39);
     min-height: 1.45rem;
 }
 

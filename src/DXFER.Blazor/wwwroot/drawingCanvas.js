@@ -654,8 +654,7 @@ function draw(state) {
 
   context.save();
   context.setTransform(state.pixelRatio, 0, 0, state.pixelRatio, 0, 0);
-  context.fillStyle = "#0f172a";
-  context.fillRect(0, 0, size.width, size.height);
+  // Keep the canvas transparent so the reference field fade survives redraws.
 
   if (state.showOriginAxes) {
     drawOriginAxes(state, size);
@@ -666,7 +665,7 @@ function draw(state) {
   for (const entity of entities) {
     const affectedByDiagnostics = diagnosticEntityIds.has(getEntityId(entity));
     drawEntity(state, entity, {
-      strokeStyle: affectedByDiagnostics ? "#f87171" : entity.isConstruction ? "#64748b" : "#94a3b8",
+      strokeStyle: affectedByDiagnostics ? "#ff6c7c" : entity.isConstruction ? "#97a5b6" : "#d3e1ed",
       lineWidth: affectedByDiagnostics ? 2.15 : entity.isConstruction ? 1.1 : 1.5,
       lineDash: getEntityRenderLineDash(entity, entity.isConstruction ? [8, 5] : [])
     });
@@ -680,7 +679,7 @@ function draw(state) {
     if (target && shouldDrawSelectionTargetOverlay(target) && !isDimensionTargetBeingEdited(state, target)) {
       const isActive = selectedKey === state.activeSelectionKey;
       drawTarget(state, target, {
-        strokeStyle: isActive ? "#7dd3fc" : "#2d7898",
+        strokeStyle: isActive ? "#b7efff" : "#66d9ff",
         lineWidth: target.kind === "point" ? isActive ? 3 : 1.65 : isActive ? 4.5 : 2.4,
         lineDash: getTargetSelectionLineDash(target),
         glow: isActive
@@ -699,7 +698,7 @@ function draw(state) {
     const isActive = state.hoveredTarget.key === state.activeSelectionKey;
     const isPowerTrimExtendHover = powerTrimHoverMode === "extend";
     drawTarget(state, state.hoveredTarget, {
-      strokeStyle: isPowerTrimExtendHover ? "#22d3ee" : isActive ? "#bae6fd" : isSelected ? "#38bdf8" : "#f59e0b",
+      strokeStyle: isPowerTrimExtendHover ? "#66d9ff" : isActive ? "#b7efff" : isSelected ? "#66d9ff" : "#ffc56c",
       lineWidth: state.hoveredTarget.kind === "point" ? isActive ? 3 : 1.8 : isActive ? 4.5 : isSelected ? 2.5 : 3.5,
       lineDash: isPowerTrimExtendHover ? [10, 4] : getTargetSelectionLineDash(state.hoveredTarget, isSelected ? [6, 4] : []),
       glow: isActive || isPowerTrimExtendHover

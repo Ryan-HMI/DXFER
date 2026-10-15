@@ -51,9 +51,10 @@ test("requested cleanup icons use the specified SVG motifs", () => {
   assert.match(iconCase("Construction"), /<path d="M5 19 19 5" stroke-dasharray="2 3" \/>/);
   assert.doesNotMatch(iconCase("Construction"), /M5 12h14|M12 5v14/);
 
-  assert.match(iconCase("Split"), /dxfer-scissors-icon/);
-  assert.match(iconCase("Split"), /<circle cx="8" cy="8" r="2"/);
-  assert.match(iconCase("Split"), /<circle cx="8" cy="16" r="2"/);
+  assert.match(iconCase("Split"), /dxfer-split-point-icon/);
+  assert.match(iconCase("Split"), /M3 12h5m8 0h5M8 9v6m8-6v6/);
+  assert.match(iconCase("Split"), /<circle cx="12" cy="12" r="1.3"/);
+  assert.doesNotMatch(iconCase("Split"), /scissors/);
 
   assert.match(iconCase("Scale"), /<rect x="4" y="15" width="5" height="5" fill="currentColor" \/>/);
   assert.match(iconCase("Scale"), /<rect x="14" y="4" width="6" height="6" \/>/);

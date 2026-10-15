@@ -1,5 +1,5 @@
 html, body {
-    background: #0f1418;
+    background: var(--dx-app, #07090d);
     color: #d6dde5;
     font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     height: 100%;
@@ -18,7 +18,7 @@ html, body {
 
 .app-header {
     align-items: center;
-    background: #171e24;
+    background: var(--dx-chrome, #0a0d12);
     border-bottom: 1px solid #2b3640;
     display: flex;
     gap: 10px;
@@ -33,9 +33,9 @@ html, body {
 }
 
 .app-menu-toggle {
-    color: #dce7ed;
+    color: var(--dx-text, #f4f7fb);
     align-items: center;
-    background: #222c34;
+    background: var(--dx-raised, #151b24);
     border: 1px solid #3f4b55;
     border-radius: 4px;
     cursor: pointer;
@@ -56,8 +56,8 @@ html, body {
 .app-menu-toggle:hover,
 .app-menu-toggle:focus-visible,
 .app-menu-open .app-menu-toggle {
-    background: #2d3943;
-    border-color: #7f96a8;
+    background: var(--dx-hover, #1a222d);
+    border-color: var(--dx-border-strong, #687b90);
     outline: none;
 }
 
@@ -73,7 +73,7 @@ html, body {
 }
 
 .app-menu-panel {
-    background: #1b232a;
+    background: var(--dx-panel, #10141b);
     border: 1px solid #35434e;
     border-radius: 6px;
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.34);
@@ -101,7 +101,7 @@ html, body {
     background: transparent;
     border: 0;
     border-radius: 4px;
-    color: #dce7ed;
+    color: var(--dx-text, #f4f7fb);
     display: flex;
     font: 0.78rem/1.2 "Segoe UI", system-ui, sans-serif;
     gap: 0.6rem;
@@ -118,7 +118,7 @@ html, body {
 .app-menu-command:focus-visible:not(:disabled),
 .app-menu-group:hover > .app-menu-item,
 .app-menu-group:focus-within > .app-menu-item {
-    background: #2b3741;
+    background: var(--dx-hover, #1a222d);
     color: #f8fbfd;
     outline: none;
 }
@@ -147,7 +147,7 @@ html, body {
 }
 
 .app-submenu {
-    background: #1b232a;
+    background: var(--dx-panel, #10141b);
     border: 1px solid #35434e;
     border-radius: 6px;
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.34);
@@ -188,7 +188,7 @@ html, body {
 }
 
 .app-menu-separator {
-    border-top: 1px solid #2d3841;
+    border-top: 1px solid var(--dx-border, #242d39);
     margin: 4px 2px;
 }
 
@@ -236,11 +236,11 @@ html, body {
 }
 
 .app-modal-card {
-    background: #182027;
+    background: var(--dx-panel, #10141b);
     border: 1px solid #35434e;
     border-radius: 6px;
     box-shadow: 0 18px 48px rgba(0, 0, 0, 0.46);
-    color: #dce7ed;
+    color: var(--dx-text, #f4f7fb);
     display: grid;
     gap: 0;
     max-width: min(620px, 100%);
@@ -264,7 +264,7 @@ html, body {
     align-items: center;
     background: transparent;
     border: 0;
-    color: #dce7ed;
+    color: var(--dx-text, #f4f7fb);
     cursor: pointer;
     display: inline-flex;
     height: 1.8rem;
@@ -291,8 +291,8 @@ html, body {
 }
 
 .app-field input {
-    background: #0e141a;
-    border: 1px solid #34414b;
+    background: var(--dx-input, #0a0d12);
+    border: 1px solid var(--dx-border, #242d39);
     border-radius: 4px;
     color: #f2f7fa;
     height: 2rem;
@@ -300,7 +300,7 @@ html, body {
 }
 
 .app-field input:focus {
-    border-color: #7f96a8;
+    border-color: var(--dx-border-strong, #687b90);
     outline: none;
 }
 
@@ -329,13 +329,13 @@ html, body {
 .app-primary-action {
     background: #244052;
     border: 1px solid #4e7b93;
-    color: #edf3f7;
+    color: var(--dx-text, #f4f7fb);
 }
 
 .app-secondary-action {
-    background: #26323b;
-    border: 1px solid #46545f;
-    color: #edf3f7;
+    background: var(--dx-raised, #151b24);
+    border: 1px solid var(--dx-border-strong, #687b90);
+    color: var(--dx-text, #f4f7fb);
 }
 
 button {
@@ -350,7 +350,7 @@ button {
 }
 
 .dxfer-section-title {
-    color: #f2f5f7;
+    color: var(--dx-text, #f4f7fb);
     font-size: 0.78rem;
     font-weight: 700;
     letter-spacing: 0.02em;
@@ -373,23 +373,23 @@ button {
     width: 2.15rem;
     height: 2.15rem;
     padding: 0;
-    color: #edf3f7;
-    background: #26323b;
-    border: 1px solid #46545f;
+    color: var(--dx-text, #f4f7fb);
+    background: var(--dx-raised, #151b24);
+    border: 1px solid var(--dx-border-strong, #687b90);
     border-radius: 4px;
     font: 0.76rem/1.1 "Segoe UI", system-ui, sans-serif;
 }
 
 .dxfer-icon-button:hover:not(:disabled),
 .dxfer-icon-button:focus-visible:not(:disabled) {
-    background: #31404a;
-    border-color: #7f96a8;
+    background: var(--dx-hover, #1a222d);
+    border-color: var(--dx-border-strong, #687b90);
 }
 
 .dxfer-icon-button-active {
     color: #f8fbfd;
-    background: #1f4b5f;
-    border-color: #38bdf8;
+    background: var(--dx-selected, rgba(102, 217, 255, 0.14));
+    border-color: var(--dx-accent, #66d9ff);
 }
 
 .dxfer-icon-button-future:not(:disabled) {
@@ -397,9 +397,9 @@ button {
 }
 
 .dxfer-icon-button:disabled {
-    color: #697781;
-    background: #1d242a;
-    border-color: #313941;
+    color: var(--dx-disabled, #56616f);
+    background: var(--dx-raised, #151b24);
+    border-color: var(--dx-border, #242d39);
 }
 
 .dxfer-icon-button-wide {
@@ -424,9 +424,9 @@ button {
     width: 2.15rem;
     height: 2.15rem;
     padding: 0;
-    color: #edf3f7;
-    background: #26323b;
-    border: 1px solid #46545f;
+    color: var(--dx-text, #f4f7fb);
+    background: var(--dx-raised, #151b24);
+    border: 1px solid var(--dx-border-strong, #687b90);
     border-radius: 4px;
     font: 0.76rem/1.1 "Segoe UI", system-ui, sans-serif;
     cursor: pointer;
@@ -434,8 +434,8 @@ button {
 
 .dxfer-file-picker:hover,
 .dxfer-file-picker:focus-within {
-    background: #31404a;
-    border-color: #7f96a8;
+    background: var(--dx-hover, #1a222d);
+    border-color: var(--dx-border-strong, #687b90);
 }
 
 .dxfer-file-input {

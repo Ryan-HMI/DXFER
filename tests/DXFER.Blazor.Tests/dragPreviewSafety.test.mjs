@@ -178,7 +178,9 @@ for (const outcome of [false, "reject"]) {
     assert.deepEqual([state.canvas.width, state.canvas.height], [1600, 1200]);
     assert.deepEqual(state.view, { scale: 10, offsetX: 0, offsetY: 0 });
     assert.ok(drawingCalls.some(call => JSON.stringify(call) === JSON.stringify(["setTransform", 2, 0, 0, 2, 0, 0])));
-    assert.ok(drawingCalls.some(call => JSON.stringify(call) === JSON.stringify(["fillRect", 0, 0, 800, 600])));
+    assert.ok(drawingCalls.some(call => JSON.stringify(call) === JSON.stringify(["clearRect", 0, 0, 1600, 1200])));
+    assert.ok(!drawingCalls.some(call => JSON.stringify(call) === JSON.stringify(["fillRect", 0, 0, 800, 600])),
+      "redraw must not cover the Foundry field fade with an opaque fill");
   });
 
   test(`late server ${outcome} cannot overwrite a newer document`, async t => {

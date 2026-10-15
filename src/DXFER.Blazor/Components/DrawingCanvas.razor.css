@@ -4,9 +4,9 @@
     height: 100%;
     min-height: 0;
     overflow: hidden;
-    color: #d7e0e8;
-    background: #101418;
-    border: 1px solid #2a3540;
+    color: var(--dx-text, #f4f7fb);
+    background: var(--dx-panel, #10141b);
+    border: 1px solid var(--dx-border, #242d39);
 }
 
 .drawing-toolbar {
@@ -15,30 +15,30 @@
     gap: 0.75rem;
     min-height: 2.25rem;
     padding: 0.35rem 0.5rem;
-    border-bottom: 1px solid #2a3540;
-    background: #171d22;
+    border-bottom: 1px solid var(--dx-border, #242d39);
+    background: var(--dx-chrome, #0a0d12);
     font: 0.8125rem/1.2 "Segoe UI", system-ui, sans-serif;
 }
 
 .drawing-toolbar-button {
     height: 1.6rem;
     padding: 0 0.6rem;
-    color: #e7edf2;
-    background: #24303a;
-    border: 1px solid #3c4b58;
+    color: var(--dx-text, #f4f7fb);
+    background: var(--dx-raised, #151b24);
+    border: 1px solid var(--dx-border-strong, #687b90);
     border-radius: 4px;
     font: inherit;
 }
 
 .drawing-toolbar-button:hover,
 .drawing-toolbar-button:focus-visible {
-    background: #2e3c48;
-    border-color: #6a8094;
+    background: var(--dx-hover, #1a222d);
+    border-color: var(--dx-border-strong, #687b90);
 }
 
 .drawing-toolbar-status {
     min-width: 0;
-    color: #aebbc7;
+    color: var(--dx-secondary, #bbc5d1);
     white-space: nowrap;
 }
 
@@ -46,7 +46,7 @@
     position: relative;
     flex: 1 1 auto;
     min-height: 0;
-    background: #0a0d10;
+    background: var(--dx-chrome, #0a0d12);
     overflow: hidden;
 }
 
@@ -54,7 +54,7 @@
     display: block;
     width: 100%;
     height: 100%;
-    background: #0a0d10;
+    background: radial-gradient(ellipse at center, #172832 0%, #0b1016 70%);
     cursor: crosshair;
     touch-action: none;
 }
@@ -75,7 +75,7 @@
     padding: 0 0.34rem;
     color: #dff7ff;
     background: rgba(15, 23, 42, 0.92);
-    border: 1px solid #38bdf8;
+    border: 1px solid var(--dx-accent, #66d9ff);
     border-radius: 3px;
     outline: none;
     box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.15);

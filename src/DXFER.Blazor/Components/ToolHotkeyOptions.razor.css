@@ -14,8 +14,8 @@
     flex-direction: column;
     width: min(520px, calc(100vw - 24px));
     max-height: calc(100vh - 72px);
-    color: #dce7ed;
-    background: #1b232a;
+    color: var(--dx-text, #f4f7fb);
+    background: var(--dx-panel, #10141b);
     border: 1px solid #35434e;
     border-radius: 6px;
     box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
@@ -28,12 +28,12 @@
     justify-content: space-between;
     gap: 0.65rem;
     padding: 0.65rem 0.75rem;
-    border-bottom: 1px solid #2d3841;
+    border-bottom: 1px solid var(--dx-border, #242d39);
 }
 
 .dxfer-options-footer {
     justify-content: flex-end;
-    border-top: 1px solid #2d3841;
+    border-top: 1px solid var(--dx-border, #242d39);
     border-bottom: 0;
 }
 
@@ -44,9 +44,9 @@
 
 .dxfer-options-icon-button,
 .dxfer-options-command {
-    color: #edf3f7;
-    background: #26323b;
-    border: 1px solid #46545f;
+    color: var(--dx-text, #f4f7fb);
+    background: var(--dx-raised, #151b24);
+    border: 1px solid var(--dx-border-strong, #687b90);
     border-radius: 4px;
     font: 0.78rem/1.1 "Segoe UI", system-ui, sans-serif;
 }
@@ -74,8 +74,8 @@
 .dxfer-options-icon-button:focus-visible,
 .dxfer-options-command:hover,
 .dxfer-options-command:focus-visible {
-    background: #31404a;
-    border-color: #7f96a8;
+    background: var(--dx-hover, #1a222d);
+    border-color: var(--dx-border-strong, #687b90);
     outline: none;
 }
 
@@ -92,7 +92,7 @@
     align-items: center;
     gap: 0.7rem;
     min-height: 2rem;
-    color: #dce7ed;
+    color: var(--dx-text, #f4f7fb);
     font-size: 0.8rem;
 }
 
@@ -101,7 +101,7 @@
     height: 1.75rem;
     box-sizing: border-box;
     color: #f4f7fa;
-    background: #0e1216;
+    background: var(--dx-input, #0a0d12);
     border: 1px solid #303941;
     border-radius: 4px;
     font: 0.82rem/1 "Segoe UI", system-ui, sans-serif;
@@ -112,7 +112,7 @@
 }
 
 .dxfer-hotkey-row input:focus {
-    border-color: #38bdf8;
+    border-color: var(--dx-accent, #66d9ff);
     outline: none;
 }
 
