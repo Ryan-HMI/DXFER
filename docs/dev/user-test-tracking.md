@@ -11,7 +11,8 @@
   in the installed browser. Core correction passes51 drag/811 full tests;
   integrated814 .NET/304 JS tests pass. Local real browser confirms stable
   rejected preview/release/export/history, plus successful free-peer propagation
-  and Undo/Redo. Ready for Dev rollout; no user-acceptance claim.
+  and Undo/Redo. Deployed Dev e94f6ee and repeated successfully against the
+  installed URL; no user-acceptance claim. Production/Test unchanged.
 - UT-SOLVER-003 exact deleted-Vertical case is now APP-VERIFIED on Dev20b645c:
   actual glyph deletion, endpoint drag, dimension-label drag and Undo/Redo.
   Label movement preserves geometry, length10 and the removed constraint.

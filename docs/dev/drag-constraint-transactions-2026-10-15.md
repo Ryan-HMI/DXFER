@@ -38,7 +38,10 @@ quadrant resolves to the original grip, confirming the visible canvas is not
 stale. With Fix removed, both radii become5 and Undo/Redo restore the correct
 documents. Screenshots inspected, no browser errors. QA script:
 `/tmp/dxfer-drag-live-qa.cjs`; fixture generator `/tmp/dxfer-drag-fixtures`.
-Ready for Dev rollout, not yet deployed.
+Deployed Dev only at e94f6ee on2026-10-15. Both browser cases pass against the
+installed public URL; screenshots inspected. Authentication, disabled Sync
+callbacks and10 runtime settings preserved, all four assemblies match Release,
+health200/anonymous302, Production/Test PIDs unchanged. No user acceptance claimed.
 
 The shared guard uses the existing constraint validator for every generic
 entity path. Line, polyline/polygon, circle, arc, ellipse, spline and point

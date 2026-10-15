@@ -2,6 +2,17 @@
 
 ## Current Deployment Follow-up
 
+2026-10-15:e94f6ee deployed Dev only. Generic drag candidates that violate
+constraints now reject atomically; preview and server rejection both restore
+the original geometry without overwriting newer canvas state.814 .NET/304 JS
+tests pass. Installed browser reproducer now keeps Equal/Fix circles unchanged
+during preview and after release, exports the original document, and creates
+no Undo entry. A free peer still propagates and Undo/Redo works. Deleted-Vertical
+then dimension-label-drag also passes. Screenshots inspected; no browser errors.
+All four assembly hashes and10 runtime settings match; health200/sign-in302;
+Production/Test PIDs unchanged. Rollback:dev-publish-before-e94f6ee. No saved
+drawings or business records repaired. General solver convergence remains open.
+
 2026-10-14 approximately19:25Z:20b645c deployed Dev only. Exact retained spline
 geometry replaces the old sampled-degree-one trim result.807 .NET tests pass;
 two installed-browser cubic fixtures pass trim/Undo/Redo/DXF reopen and exact

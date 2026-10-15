@@ -4,7 +4,7 @@ Use this log for bugs and feature requests that arrive while another task is act
 
 ## Open
 
-- [ ] DRAG-TRANSACTION-20261015: Installed Dev reproduction: resizing an Equal-constrained circle whose peer is fixed commits an unsatisfied result. Core rejection added; browser revealed optimistic geometry remains after server rejection. Explicit acceptance response and matching preview validation in progress. See `drag-constraint-transactions-2026-10-15.md`. No saved drawings repaired; not deployed yet.
+- [x] DRAG-TRANSACTION-20261015: Fixed generic drag constraint rejection and stale optimistic canvas after server refusal. Dev e94f6ee,814 .NET/304 JS tests pass; installed browser verifies fixed-peer unchanged preview/release/export/history and free-peer successful propagation/Undo/Redo. See `drag-constraint-transactions-2026-10-15.md`. No saved drawings repaired; general constraint convergence remains open.
 
 - [ ] SOLVER-TRANSACTION-20261013: Ryan requested persistent coherent constraints and existing-tool testing. Stale satisfied states, conflicting edits and propagation/driving-length reapplication fixed in shared adapter; history failure reporting and native save/reopen now implemented. See `constraint-transactions-2026-10-13.md` and `native-constraint-persistence-2026-10-14.md`. General convergence and drag consistency remain open. Flux owns independent tool/browser checks; parent owns implementation.
 
