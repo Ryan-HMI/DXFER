@@ -37,4 +37,8 @@ rendering only; no live circuit failure was induced. Sync-connect remains
 disabled on Dev and is covered by the shared icon/binding contract.
 
 Evidence: /tmp/dxfer-chrome-*.png and /tmp/dxfer-drag-live-qa.cjs --chrome.
-No user drawings or business records need repair. Dev deployment still pending.
+No user drawings or business records need repair. Deployed with0eca667 to Dev
+only on2026-10-15; installed browser repeats the checks above. Four assembly
+hashes and ten runtime settings match; normal sign-in retained, Sync callbacks
+off, Production/Test unchanged.52 of81 masters are now installed. The remaining
+composition work is separate; no blanket visual acceptance is claimed.

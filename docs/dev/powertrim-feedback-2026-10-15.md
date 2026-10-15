@@ -47,3 +47,14 @@ are generated through DxfDocumentWriter, not edited native-payload bytes.
 The shared cause is fixed; existing corrupted drawings were not repaired.
 Recover those from verified originals or Undo/history, not inferred old values.
 Dev deployment and independent QA remain separate from this local verification.
+
+## Installed Dev
+
+Deployed0eca667 on2026-10-15, PID4188556. All four installed assemblies match
+the reviewed Release candidate, ten runtime settings are preserved, health200
+and anonymous root302 retain normal Google sign-in; Sync callbacks stay off.
+Production/Test PIDs unchanged. Rollback publish: dev-publish-before-0eca667.
+Installed browser repeats all six driving/reference cases, history/reopen and
+readable failure screenshots. Axes/menu/close/hotkey-dialog suite passes;
+previous ellipse6x8 analysis and cubic tangent checks also pass. No existing
+drawings repaired; independent acceptance is pending, not implied by deployment.
