@@ -157,6 +157,8 @@ public partial class DrawingCanvas : IAsyncDisposable
         await SetConstructionModeAsync();
     }
 
+    public ValueTask FocusAsync() => _canvas.FocusAsync(preventScroll: true);
+
     public async Task FitToExtentsAsync()
     {
         if (_canvasInstance is null)

@@ -76,6 +76,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private double? _cornerModifyDistance;
     private string? _cornerModifyDistanceText;
     private bool _cornerModifyDistanceInvalid;
+    private bool _operationInspectorCollapsed;
+    private ElementReference _inspectorToggle;
+    private bool _focusInspectorToggleAfterRender;
+    private bool _focusCanvasAfterRender;
     private CornerModifyEqualChain? _cornerModifyEqualChain;
     private PendingCircleSplit? _pendingCircleSplit;
     private readonly HashSet<string> _selectedEntityIds = new(StringComparer.Ordinal);
@@ -119,6 +123,16 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_focusInspectorToggleAfterRender)
+        {
+            _focusInspectorToggleAfterRender = false;
+            await _inspectorToggle.FocusAsync(preventScroll: true);
+        }
+        if (_focusCanvasAfterRender && _canvas is not null)
+        {
+            _focusCanvasAfterRender = false;
+            await _canvas.FocusAsync();
+        }
         if (_clearSyncLaunchUrl)
         {
             _clearSyncLaunchUrl = false;
@@ -431,7 +445,35 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
     }
 
-    private string WorkbenchGridStyle => string.Empty;
+    private string WorkbenchGridStyle => IsOperationInspectorVisible
+        ? "--dxfer-inspector-width:18.5rem;"
+        : "--dxfer-inspector-width:0px;";
+
+    private bool HasOperationInspector => EnableFullEditing && _activeTool.HasValue;
+    private bool IsOperationInspectorVisible => HasOperationInspector && !_operationInspectorCollapsed;
+    private string DocumentUnitsText => _document.Metadata.Units switch
+    {
+        DrawingUnits.Inches => "in",
+        DrawingUnits.Millimeters => "mm",
+        _ => "Unspecified"
+    };
+
+    private void ToggleOperationInspector()
+    {
+        _operationInspectorCollapsed = !_operationInspectorCollapsed;
+        _focusInspectorToggleAfterRender = true;
+    }
+
+    private void ExitInspectorTool()
+    {
+        OnToolCanceled();
+        _focusCanvasAfterRender = true;
+    }
+
+    private void HandleInspectorKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape") ExitInspectorTool();
+    }
 
     private bool IsParametricCommandActive =>
         _activeTool.HasValue;

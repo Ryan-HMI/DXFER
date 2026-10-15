@@ -120,7 +120,7 @@ try {
     await page.evaluate(() => document.body.style.zoom = 1);
     await page.setViewportSize({width: 1440, height: 900});
 
-    for (const [name, x, y, side] of [['Transform', 1270, 200, 2], ['Pattern', 600, 70, 3], ['Constraints', 650, 760, 4]]) {
+    for (const [name, x, y, side] of [['Transform', 1400, 200, 2], ['Pattern', 600, 70, 3], ['Constraints', 650, 820, 4]]) {
         await drag(name, x, y);
         await waitState(name, {side});
     }

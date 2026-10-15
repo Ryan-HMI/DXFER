@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { restoreLayout, loadLayout, saveLayout, storageKey, floatingLimits, observeLayout }
+import { restoreLayout, loadLayout, saveLayout, storageKey, floatingLimits, observeLayout, getBounds }
   from '../../src/DXFER.Blazor/wwwroot/paletteLayout.js';
 
 const state = (groupName, overrides = {}) => ({ groupName, side: 1, compaction: 2,
@@ -10,6 +10,12 @@ const encoded = groups => JSON.stringify({ version: 1, groups });
 const memoryStorage = (value = null) => ({ value, writes: 0,
   getItem(key) { assert.equal(key, storageKey); return this.value; },
   setItem(key, value) { assert.equal(key, storageKey); this.value = value; this.writes++; } });
+
+test('drag bounds use current canvas area and display scale, not fixed desktop width', () => {
+  const root = {offsetWidth: 984, offsetHeight: 600,
+    getBoundingClientRect: () => ({left: 20, top: 48, width: 1230, height: 750})};
+  assert.deepEqual(getBounds(root), {left: 20, top: 48, width: 1230, height: 750, scaleX: 1.25, scaleY: 1.25});
+});
 
 test('independent identities, all docks, order, compaction and positions round trip', () => {
   const groups = Array.from({length: 5}, (_, side) => state(`Group${side}`,

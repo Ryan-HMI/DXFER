@@ -49,9 +49,9 @@ test("tool groups own independent dock state and drag handles", () => {
   assert.match(paletteMarkup, /OrderBy\(group => GetDockState\(group\)\.DockOrder\)/);
 });
 
-test("drag preview zones share the same dock side state used for final drop", () => {
+test("drag preview and final drop use the same bounds calculation at their actual pointer positions", () => {
   assert.match(paletteMarkup, /_previewDropSide = GetDropSide\(args\)/);
-  assert.match(paletteMarkup, /state\.Side = _previewDropSide \?\? GetDropSide\(args\)/);
+  assert.match(paletteMarkup, /state\.Side = GetDropSide\(args\)/);
   assert.match(paletteMarkup, /state\.DockOrder = GetDockOrder\(state\.Side, args\)/);
   assert.match(paletteMarkup, /dxfer-tool-dock-zone-preview/);
   assert.match(paletteMarkup, /dxfer-tool-floating-layer-preview/);
@@ -71,9 +71,9 @@ test("drop model supports each requested side plus free floating", () => {
 test("dragging keeps the grip under the pointer and uses a closed hand cursor", () => {
   assert.match(paletteMarkup, /DragGripOffset = 16/);
   assert.match(paletteMarkup, /PaletteViewportTop = 48/);
-  assert.match(paletteMarkup, /FloatingX = Math\.Max\(0, args\.ClientX - DragGripOffset\)/);
-  assert.match(paletteMarkup, /FloatingY = Math\.Max\(0, args\.ClientY - PaletteViewportTop - DragGripOffset\)/);
-  assert.match(paletteMarkup, /FloatingY = Math\.Max\(0, args\.ClientY - PaletteViewportTop - _draggedGroup\.OffsetY\)/);
+  assert.match(paletteMarkup, /FloatingX = Math\.Max\(0, LocalPointerX\(args\) - DragGripOffset\)/);
+  assert.match(paletteMarkup, /FloatingY = Math\.Max\(0, LocalPointerY\(args\) - DragGripOffset\)/);
+  assert.match(paletteMarkup, /FloatingY = Math\.Max\(0, LocalPointerY\(args\) - _draggedGroup\.OffsetY\)/);
   assert.match(paletteMarkup, /new DraggedToolGroup\(group\.Name, DragGripOffset, DragGripOffset\)/);
   assert.match(paletteCss, /\.dxfer-workbench-tool-palette-dragging\s*\{[^}]*cursor:\s*grabbing;/s);
   assert.match(paletteCss, /\.dxfer-tool-group-dragging\s*\{[^}]*cursor:\s*grabbing;/s);
@@ -162,9 +162,9 @@ test("confirmed-good green styling is not reintroduced", () => {
 
 test("tool palette host overlays the canvas without owning a layout column", () => {
   assert.match(workbenchCss, /\.dxfer-tool-palette-host/);
-  assert.match(workbenchCss, /grid-template-columns:\s*minmax\(0,\s*1fr\)\s*!important/);
+  assert.match(workbenchCss, /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+var\(--dxfer-inspector-width,\s*0px\)\s*!important/);
   assert.match(workbenchCss, /\.dxfer-canvas-panel\s*\{[^}]*grid-column:\s*1\s*!important;/s);
-  assert.doesNotMatch(workbenchCss, /\.dxfer-inspector/);
+  assert.match(workbenchCss, /\.dxfer-operation-inspector\s*\{[^}]*grid-column:\s*2;/s);
   assert.match(workbenchCss, /grid-template-rows:\s*minmax\(0,\s*1fr\)\s+auto\s*!important/);
   assert.match(workbenchCss, /\.dxfer-sync-control-bar\s*\{[^}]*position:\s*absolute\s*!important;[^}]*top:\s*0\.55rem\s*!important;[^}]*right:\s*0\.55rem\s*!important;/s);
   assert.match(workbenchCss, /\.dxfer-command-bar\s*\{[^}]*grid-row:\s*2\s*!important;/s);

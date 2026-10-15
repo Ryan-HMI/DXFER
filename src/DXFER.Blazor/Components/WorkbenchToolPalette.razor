@@ -57,6 +57,8 @@
     private bool _layoutLoaded;
     private bool _savePending;
     private bool _disposed;
+    private PaletteBounds? _dragBounds;
+    private long _dragGeneration;
 
     [Parameter, EditorRequired]
     public IReadOnlyList<WorkbenchToolGroup> Groups { get; set; } = Array.Empty<WorkbenchToolGroup>();
@@ -123,7 +125,7 @@
             if (_layoutModule is null)
             {
                 _layoutModule = await JsRuntime.InvokeAsync<IJSObjectReference>(
-                    "import", "./_content/DXFER.Blazor/paletteLayout.js?v=20261015-labels-scale");
+                    "import", "./_content/DXFER.Blazor/paletteLayout.js?v=20261015-inspector-bounds");
                 if (_disposed)
                 {
                     await _layoutModule.DisposeAsync();
@@ -366,13 +368,30 @@
     private static bool CanToggleSideCompaction(ToolGroupDockState state) =>
         state.Side is ToolGroupDockSide.Left or ToolGroupDockSide.Right;
 
-    private void BeginGroupDrag(WorkbenchToolGroup group, PointerEventArgs args)
+    private async Task BeginGroupDrag(WorkbenchToolGroup group, PointerEventArgs args)
     {
+        var generation = ++_dragGeneration;
+        _dragBounds = null;
+        if (_layoutModule is not null)
+        {
+            try
+            {
+                var bounds = await _layoutModule.InvokeAsync<PaletteBounds>("getBounds", _palette);
+                if (generation != _dragGeneration || _disposed) return;
+                if (bounds.Width > 0 && bounds.Height > 0 && bounds.ScaleX > 0 && bounds.ScaleY > 0)
+                    _dragBounds = bounds;
+            }
+            catch (Exception exception) when (exception is JSException or JSDisconnectedException or TaskCanceledException)
+            {
+                // Keep the established fallback when browser measurements are unavailable.
+            }
+        }
+        if (generation != _dragGeneration || _disposed) return;
         _editedGroups.Add(group.Name);
         var state = GetDockState(group);
         state.Side = ToolGroupDockSide.Floating;
-        state.FloatingX = Math.Max(0, args.ClientX - DragGripOffset);
-        state.FloatingY = Math.Max(0, args.ClientY - PaletteViewportTop - DragGripOffset);
+        state.FloatingX = Math.Max(0, LocalPointerX(args) - DragGripOffset);
+        state.FloatingY = Math.Max(0, LocalPointerY(args) - DragGripOffset);
         _draggedGroup = new DraggedToolGroup(group.Name, DragGripOffset, DragGripOffset);
         _previewDropSide = GetDropSide(args);
     }
@@ -420,13 +439,14 @@
             return;
         }
 
-        state.FloatingX = Math.Max(0, args.ClientX - _draggedGroup.OffsetX);
-        state.FloatingY = Math.Max(0, args.ClientY - PaletteViewportTop - _draggedGroup.OffsetY);
+        state.FloatingX = Math.Max(0, LocalPointerX(args) - _draggedGroup.OffsetX);
+        state.FloatingY = Math.Max(0, LocalPointerY(args) - _draggedGroup.OffsetY);
         _previewDropSide = GetDropSide(args);
     }
 
     private async Task OnPalettePointerUp(PointerEventArgs args)
     {
+        _dragGeneration++;
         if (_draggedGroup is null || !_groupDockStates.TryGetValue(_draggedGroup.GroupName, out var state))
         {
             _draggedGroup = null;
@@ -434,7 +454,7 @@
             return;
         }
 
-        state.Side = _previewDropSide ?? GetDropSide(args);
+        state.Side = GetDropSide(args);
         state.DockOrder = GetDockOrder(state.Side, args);
         if (state.Side is ToolGroupDockSide.Top or ToolGroupDockSide.Bottom)
         {
@@ -450,8 +470,21 @@
         await PersistLayoutAsync();
     }
 
-    private static ToolGroupDockSide GetDropSide(PointerEventArgs args)
+    private double LocalPointerX(PointerEventArgs args) => (args.ClientX - (_dragBounds?.Left ?? 0)) / (_dragBounds?.ScaleX ?? 1);
+    private double LocalPointerY(PointerEventArgs args) => (args.ClientY - (_dragBounds?.Top ?? PaletteViewportTop)) / (_dragBounds?.ScaleY ?? 1);
+
+    private ToolGroupDockSide GetDropSide(PointerEventArgs args)
     {
+        if (_dragBounds is { } bounds)
+        {
+            var x = LocalPointerX(args);
+            var y = LocalPointerY(args);
+            if (x <= DockThreshold) return ToolGroupDockSide.Left;
+            if (y <= DockThreshold - PaletteViewportTop) return ToolGroupDockSide.Top;
+            if (y >= bounds.Height / bounds.ScaleY - (DockThreshold - PaletteViewportTop)) return ToolGroupDockSide.Bottom;
+            if (x >= bounds.Width / bounds.ScaleX - DockThreshold) return ToolGroupDockSide.Right;
+            return ToolGroupDockSide.Floating;
+        }
         if (args.ClientX <= DockThreshold)
         {
             return ToolGroupDockSide.Left;
@@ -511,6 +544,16 @@
     }
 
     private sealed record DraggedToolGroup(string GroupName, double OffsetX, double OffsetY);
+
+    private sealed class PaletteBounds
+    {
+        public double Left { get; set; }
+        public double Top { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+        public double ScaleX { get; set; } = 1;
+        public double ScaleY { get; set; } = 1;
+    }
 
     private enum ToolGroupDockSide
     {

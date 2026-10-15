@@ -41,6 +41,41 @@
                        DeleteSelectionRequested="DeleteSelectedGeometry" />
     </main>
 
+    @if (IsOperationInspectorVisible)
+    {
+        <aside class="dxfer-operation-inspector" aria-label="Active operation" @onkeydown="HandleInspectorKeyDown">
+            <header class="dxfer-operation-heading">
+                <h2>@ActiveToolLabel</h2>
+                <button type="button" class="dxfer-inspector-toggle" @ref="_inspectorToggle"
+                        aria-label="Hide operation inspector" title="Hide operation inspector" @onclick="ToggleOperationInspector">
+                    <CadIcon Name="CadIconName.CollapseRight" />
+                </button>
+            </header>
+            <div class="dxfer-operation-feedback">
+                <div class="dxfer-command-prompt" role="status">@CommandPromptText</div>
+                @if (IsCornerModifyToolActive)
+                {
+                    @CornerSizeControl
+                }
+            </div>
+            <dl class="dxfer-operation-readouts" aria-label="Operation selection and measurements">
+                @foreach (var item in LiveMeasurementReadouts)
+                {
+                    <div>
+                        <dt>@item.Label</dt>
+                        <dd>@item.Value</dd>
+                    </div>
+                }
+            </dl>
+            <footer class="dxfer-operation-actions">
+                <button type="button" class="dxfer-exit-tool" title="Exit current tool" @onclick="ExitInspectorTool">
+                    <CadIcon Name="CadIconName.Close" />
+                    <span>Exit tool</span>
+                </button>
+            </footer>
+        </aside>
+    }
+
     @if (IsSyncLaunch)
     {
         <section class="dxfer-sync-control-bar" aria-label="Sync connection status">
@@ -56,18 +91,20 @@
     }
 
     <footer class="dxfer-command-bar" aria-label="Command and measurement readout">
-        <div class="dxfer-command-prompt" role="status">@CommandPromptText</div>
-        @if (IsCornerModifyToolActive)
+        @if (!IsOperationInspectorVisible)
         {
-            <label class="dxfer-corner-size-control">
-                <span>@CornerModifyDistanceLabel</span>
-                <input type="number"
-                       min="0"
-                       step="0.1"
-                       value="@CornerModifyDistanceValue"
-                       aria-invalid="@(_cornerModifyDistanceInvalid ? "true" : "false")"
-                       @oninput="OnCornerModifyDistanceChanged" />
-            </label>
+            <div class="dxfer-command-prompt" role="status">@CommandPromptText</div>
+            @if (IsCornerModifyToolActive)
+            {
+                @CornerSizeControl
+            }
+            @if (HasOperationInspector)
+            {
+                <button type="button" class="dxfer-inspector-toggle" @ref="_inspectorToggle"
+                        aria-label="Show operation inspector" title="Show operation inspector" @onclick="ToggleOperationInspector">
+                    <CadIcon Name="CadIconName.CollapseLeft" />
+                </button>
+            }
         }
         <div class="dxfer-command-chips" aria-label="Live measurement readout">
             @if (HasDocument)
@@ -83,7 +120,7 @@
                     <span class="dxfer-live-readout-value">@ContourCountText</span>
                 </div>
             }
-            @foreach (var item in LiveMeasurementReadouts)
+            @foreach (var item in IsOperationInspectorVisible ? Array.Empty<LiveReadoutItem>() : LiveMeasurementReadouts)
             {
                 <div class="dxfer-live-readout-item">
                     <span class="dxfer-live-readout-label">@item.Label</span>
@@ -94,3 +131,13 @@
     </footer>
 
 </div>
+
+@code {
+    private RenderFragment CornerSizeControl => @<label class="dxfer-corner-size-control">
+        <span>@CornerModifyDistanceLabel <span class="dxfer-input-units">(@DocumentUnitsText)</span></span>
+        <input type="number" min="0" step="0.1" value="@CornerModifyDistanceValue"
+               aria-label="@($"{ActiveToolLabel} size ({DocumentUnitsText})")"
+               aria-invalid="@(_cornerModifyDistanceInvalid ? "true" : "false")"
+               @oninput="OnCornerModifyDistanceChanged" />
+    </label>;
+}

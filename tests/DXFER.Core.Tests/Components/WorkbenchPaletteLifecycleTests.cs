@@ -100,6 +100,19 @@ public sealed class WorkbenchPaletteLifecycleTests
     }
 
     [Fact]
+    public async Task RightDockUsesReducedCanvasBoundsWithInspectorOpen()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Render("Sketch", "View");
+        await fixture.AfterRender(true);
+        fixture.Module.BoundsWidth = 984;
+        await fixture.Invoke("BeginGroupDrag", new WorkbenchToolGroup("Sketch", []), new PointerEventArgs { ClientX = 400, ClientY = 300 });
+        await fixture.Invoke("OnPalettePointerUp", new PointerEventArgs { ClientX = 930, ClientY = 300 });
+        fixture.State("Sketch")["side"]!.GetValue<int>().Should().Be(2);
+        fixture.State("View")["side"]!.GetValue<int>().Should().Be(0);
+    }
+
+    [Fact]
     public async Task LabelsPersistIndependentlyWithoutChangingDockingOrPeers()
     {
         await using var fixture = new Fixture();
@@ -239,6 +252,7 @@ public sealed class WorkbenchPaletteLifecycleTests
 
     private sealed class FakeModule : IJSObjectReference
     {
+        public double BoundsWidth { get; set; } = 1440;
         public List<string[]> Loads { get; } = [];
         public List<JsonNode> Saves { get; } = [];
         public TaskCompletionSource LoadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -251,6 +265,9 @@ public sealed class WorkbenchPaletteLifecycleTests
         public async ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
         {
             if (identifier == "observeLayout") return (TValue)(object)Observer;
+            if (identifier == "getBounds")
+                return JsonSerializer.Deserialize<TValue>(JsonSerializer.Serialize(new
+                { left = 0, top = 48, width = BoundsWidth, height = 800, scaleX = 1, scaleY = 1 }), JsonOptions)!;
             args.Should().HaveCount(1, "interop must pass one array, not spread its elements as arguments");
             var payload = JsonSerializer.SerializeToNode(args![0], JsonOptions)!.AsArray();
             if (identifier == "saveLayout") { Saves.Add(payload); return default!; }

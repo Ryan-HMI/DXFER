@@ -16,6 +16,45 @@ public sealed class WorkbenchDocumentLifecycleTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Theory]
+    [InlineData(WorkbenchTool.Fillet)]
+    [InlineData(WorkbenchTool.PowerTrim)]
+    [InlineData(WorkbenchTool.Line)]
+    public void InspectorVisibilityChangesPreserveActiveIntentAndHistory(WorkbenchTool tool)
+    {
+        var workbench = Create();
+        typeof(DrawingWorkbench).GetProperty(nameof(DrawingWorkbench.EnableFullEditing))!.SetValue(workbench, true);
+        Set(workbench, "_activeTool", tool);
+        Invoke(workbench, "OnCornerModifyDistanceChanged", new ChangeEventArgs { Value = "0" });
+        var original = Get<DrawingDocument>(workbench, "_document");
+        var prompt = typeof(DrawingWorkbench).GetProperty("CommandPromptText", Private)!.GetValue(workbench);
+        object? Property(string name) => typeof(DrawingWorkbench).GetProperty(name, Private)!.GetValue(workbench);
+        Property("IsOperationInspectorVisible").Should().Be(true);
+        Invoke(workbench, "ToggleOperationInspector");
+        Property("IsOperationInspectorVisible").Should().Be(false);
+        Get<WorkbenchTool?>(workbench, "_activeTool").Should().Be(tool);
+        Property("CornerModifyDistanceValue").Should().Be("0");
+        Property("CommandPromptText").Should().Be(prompt);
+        Invoke(workbench, "ToggleOperationInspector");
+        Property("IsOperationInspectorVisible").Should().Be(true);
+        Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
+        Get<Stack<DrawingDocument>>(workbench, "_undoStack").Should().BeEmpty();
+        typeof(DrawingWorkbench).GetProperty(nameof(DrawingWorkbench.EnableFullEditing))!.SetValue(workbench, false);
+        Property("IsOperationInspectorVisible").Should().Be(false);
+    }
+
+    [Theory]
+    [InlineData(DrawingUnits.Inches, "in")]
+    [InlineData(DrawingUnits.Millimeters, "mm")]
+    [InlineData(DrawingUnits.Unspecified, "Unspecified")]
+    public void InspectorUsesActualDocumentUnits(DrawingUnits units, string expected)
+    {
+        var workbench = Create();
+        Set(workbench, "_document", new DrawingDocument(Array.Empty<DrawingEntity>(), Array.Empty<SketchDimension>(), Array.Empty<SketchConstraint>(),
+            metadata: new DrawingDocumentMetadata { Units = units }));
+        typeof(DrawingWorkbench).GetProperty("DocumentUnitsText", Private)!.GetValue(workbench).Should().Be(expected);
+    }
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public void ControlSplineTangentEditSurvivesWorkbenchUndoRedoAndDxfReopen(bool start)

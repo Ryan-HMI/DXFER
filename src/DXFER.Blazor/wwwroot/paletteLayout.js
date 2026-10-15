@@ -70,6 +70,13 @@ export function floatingLimits(width, height, paletteWidth, headerHeight) {
     return { x: Math.max(0, width - paletteWidth), y: Math.max(0, height - headerHeight) };
 }
 
+export function getBounds(root) {
+    const bounds = root.getBoundingClientRect();
+    return { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height,
+        scaleX: root.offsetWidth > 0 ? bounds.width / root.offsetWidth : 1,
+        scaleY: root.offsetHeight > 0 ? bounds.height / root.offsetHeight : 1 };
+}
+
 export function observeLayout(root, host = window) {
     const refresh = () => {
         const bounds = root.getBoundingClientRect();

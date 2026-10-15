@@ -88,20 +88,21 @@ public sealed class WorkbenchRenderBoundaryTests
     }
 
     [Fact]
-    public void WorkbenchDoesNotRenderInspectorOrJsonDebugPanel()
+    public void OperationInspectorDoesNotRestoreMetadataOrJsonDebugPanels()
     {
         var markup = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor"));
         var source = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs"));
         var css = File.ReadAllText(FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.css"));
 
-        markup.Should().NotContain("dxfer-inspector");
-        markup.Should().NotContain("Show inspector");
+        markup.Should().Contain("@if (IsOperationInspectorVisible)");
+        markup.Should().Contain("aria-label=\"Active operation\"");
+        markup.Should().Contain("@CornerSizeControl");
         markup.Should().NotContain("Sync Metadata");
         markup.Should().NotContain("DXF Export");
         source.Should().NotContain("_exportText");
         source.Should().NotContain("BuildSyncMetadataJson");
-        source.Should().NotContain("ToggleInspector");
-        css.Should().NotContain("dxfer-inspector");
+        source.Should().Contain("EnableFullEditing && _activeTool.HasValue");
+        css.Should().Contain(".dxfer-operation-inspector");
         css.Should().NotContain("dxfer-metadata");
         css.Should().NotContain("dxfer-export");
     }
