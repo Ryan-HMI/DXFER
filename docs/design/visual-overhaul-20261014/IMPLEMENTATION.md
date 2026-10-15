@@ -2,6 +2,13 @@
 
 ## Target
 
+Ryan's scope clarification (Slack delivery `5a5e8e2c96d4f5f655fedbb6`): DXFer
+targets PC browsers, not phones. Prioritize desktop/laptop mouse and keyboard
+workflows, resizable windows and display scaling. Phone/touch usability is not
+a development requirement or acceptance gate. Prior narrow-screen screenshots
+are historical checks, not a mobile-support commitment. Preserve working layout
+behavior; do not spend implementation effort adding mobile-specific controls.
+
 A precise, viewport-first 2D editing instrument: blue-black drawing space, quiet neutral panels, consistent line icons, sentence-case labels, explicit selections and trustworthy edit feedback. Cyan identifies the current operation or selected geometry; it does not decorate every border. Amber identifies protected/excluded geometry. No glow, ornamental patterns, large dashboard cards or invented workflow.
 
 The target SVG shows an illustrative fillet operation. Values and geometry are visual examples, not computed model results. `Keep original edges`, corner mode, layer display, command search, and new preview/apply affordances are **proposals**: render them only when the real operation supports them, or implement/test them in a separately reviewed behavior change. Never expose fake controls or imply a solver result is valid before the solver says so.
@@ -71,7 +78,7 @@ Hover uses a neutral local fill. Pressed adds border contrast without movement. 
 
 ## Verification gates
 
-- Before/after captures at 1440×900 and 1280×720; then 1920×1080, 125/150/200% scale and smallest actually supported size. Verify no clipped footer, inaccessible inspector actions or offscreen saved floating palette.
+- Before/after captures at 1440×900 and 1280×720; then 1920×1080 and desktop display/browser scaling at 125/150/200%. Check resized PC windows, not phone or touch workflows. Verify no clipped footer, inaccessible inspector actions or offscreen saved floating palette.
 - Open every tool family; compare action inventory and all IDs/shortcuts with the baseline. Disabled prerequisites remain accurate. No CSS class should determine which geometry command executes.
 - Draw line/arc/ellipse/spline/slot; edit dimension with actual keyboard; trim, extend, fillet/chamfer; move/rotate/scale/mirror; both patterns; constraint apply/reject; Undo/Redo; cancel at each stage.
 - Preserve exact geometry and relation results, selection kind, import/export semantics and dirty-document warnings. Preserve existing automated regression tests.
