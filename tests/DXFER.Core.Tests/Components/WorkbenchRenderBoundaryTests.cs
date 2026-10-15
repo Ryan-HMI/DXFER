@@ -251,7 +251,7 @@ public sealed class WorkbenchRenderBoundaryTests
 
         css.Should().Contain("grid-template-rows: minmax(0, 1fr) auto !important;");
         css.Should().Contain(".dxfer-sync-control-bar {\n    position: absolute !important;");
-        css.Should().Contain("right: 0.55rem !important;");
+        css.Should().Contain("right: calc(var(--dxfer-inspector-width, 0px) + 0.55rem) !important;");
         css.Should().Contain("top: 0.55rem !important;");
         css.Should().Contain(".dxfer-command-bar {\n    grid-column: 1 / -1 !important;\n    grid-row: 2 !important;");
         css.Should().NotContain("grid-template-rows: minmax(0, 1fr) auto auto !important;");
