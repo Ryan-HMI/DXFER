@@ -572,7 +572,7 @@
 .dxfer-sync-control-bar {
     position: absolute !important;
     top: 0.55rem !important;
-    right: 0.55rem !important;
+    right: calc(var(--dxfer-inspector-width, 0px) + 0.55rem) !important;
 }
 
 .dxfer-command-bar {

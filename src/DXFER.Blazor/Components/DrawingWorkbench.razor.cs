@@ -116,6 +116,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             ? SyncLaunchOptionsParser.ParseQueryString(Navigation.ToAbsoluteUri(Navigation.Uri).Query)
             : SyncEditLaunchOptions.Empty;
         MenuCommandService.SetSyncDocument(IsSyncLaunch);
+        PublishDocumentState();
         MenuCommandService.CommandRequested += InvokeWorkbenchCommand;
         MenuCommandService.FileOpenRequested += OpenFileAsync;
         ToolHotkeys.BindingsChanged += OnToolHotkeysChanged;
@@ -123,6 +124,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        PublishDocumentState();
         if (_focusInspectorToggleAfterRender)
         {
             _focusInspectorToggleAfterRender = false;
@@ -160,6 +162,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         ToolHotkeys.BindingsChanged -= OnToolHotkeysChanged;
         _hotkeyDotNetReference?.Dispose();
     }
+
+    private void PublishDocumentState() => MenuCommandService.SetDocumentState(
+        _fileName, DocumentUnitsText, HasUnsavedChanges,
+        hasDocument: true, // An empty working drawing is still an open document.
+        isReferenceOnly: _document.Metadata.Mode == DrawingDocumentMode.ReferenceOnly);
 
     public async ValueTask DisposeAsync()
     {

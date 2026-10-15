@@ -45,6 +45,10 @@ without a revision it displays the informational version, never an invented SHA.
 
 ## Verification
 
+Parent integration is now implemented; see `operation-inspector-2026-10-15.md`
+for the integrated tests and installed follow-up. The figures below describe the
+worker's isolated pre-integration verification, not a separate current deployment.
+
 - Focused service/layout tests:29 passed. Full .NET suite:1,062 passed.
 - Web build passes; source assertions cover header markup, lifecycle/dispatcher,
   truthfulness, fixed slots and the existing48px viewport contract.

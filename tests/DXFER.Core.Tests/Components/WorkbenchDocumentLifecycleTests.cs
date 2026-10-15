@@ -15,6 +15,34 @@ public sealed class WorkbenchDocumentLifecycleTests
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
+    [Fact]
+    public void HeaderTracksWorkingDocumentAndSavedBaselineWithoutTreatingEmptyDrawingAsClosed()
+    {
+        var workbench = Create();
+        var service = (WorkbenchMenuCommandService)typeof(DrawingWorkbench).GetProperty("MenuCommandService", Private)!.GetValue(workbench)!;
+        Invoke(workbench, "PublishDocumentState");
+        service.DocumentState.HasDocument.Should().BeTrue();
+        service.DocumentState.FileName.Should().Be("Untitled.dxf");
+        service.DocumentState.HasUnsavedChanges.Should().BeFalse();
+
+        var original = Get<DrawingDocument>(workbench, "_document");
+        var changed = new DrawingDocument(Array.Empty<DrawingEntity>(), Array.Empty<SketchDimension>(), Array.Empty<SketchConstraint>(),
+            metadata: new DrawingDocumentMetadata { Units = DrawingUnits.Millimeters, Mode = DrawingDocumentMode.ReferenceOnly });
+        Set(workbench, "_fileName", "empty-reference.dxf");
+        Invoke(workbench, "ApplyDocumentChange", changed, "Changed.");
+        Invoke(workbench, "PublishDocumentState");
+        service.DocumentState.Should().Be(new WorkbenchDocumentState("empty-reference.dxf", "mm", true, true, true));
+        Invoke(workbench, "UndoLastDocumentChange");
+        Invoke(workbench, "PublishDocumentState");
+        service.DocumentState.HasUnsavedChanges.Should().BeFalse();
+        Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
+        Invoke(workbench, "RedoLastDocumentChange");
+        Set(workbench, "_savedDocument", changed);
+        Invoke(workbench, "PublishDocumentState");
+        service.DocumentState.HasUnsavedChanges.Should().BeFalse();
+        service.DocumentState.Units.Should().Be("mm");
+    }
+
     [Theory]
     [InlineData(WorkbenchTool.Fillet)]
     [InlineData(WorkbenchTool.PowerTrim)]

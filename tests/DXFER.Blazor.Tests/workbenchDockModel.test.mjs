@@ -166,7 +166,7 @@ test("tool palette host overlays the canvas without owning a layout column", () 
   assert.match(workbenchCss, /\.dxfer-canvas-panel\s*\{[^}]*grid-column:\s*1\s*!important;/s);
   assert.match(workbenchCss, /\.dxfer-operation-inspector\s*\{[^}]*grid-column:\s*2;/s);
   assert.match(workbenchCss, /grid-template-rows:\s*minmax\(0,\s*1fr\)\s+auto\s*!important/);
-  assert.match(workbenchCss, /\.dxfer-sync-control-bar\s*\{[^}]*position:\s*absolute\s*!important;[^}]*top:\s*0\.55rem\s*!important;[^}]*right:\s*0\.55rem\s*!important;/s);
+  assert.match(workbenchCss, /\.dxfer-sync-control-bar\s*\{[^}]*position:\s*absolute\s*!important;[^}]*top:\s*0\.55rem\s*!important;[^}]*right:\s*calc\(var\(--dxfer-inspector-width, 0px\) \+ 0\.55rem\)\s*!important;/s);
   assert.match(workbenchCss, /\.dxfer-command-bar\s*\{[^}]*grid-row:\s*2\s*!important;/s);
   assert.doesNotMatch(workbenchCss, /grid-template-rows:\s*minmax\(0,\s*1fr\)\s+auto\s+auto\s*!important/);
 });
