@@ -324,15 +324,15 @@ public static class DrawingModifyService
             secondChamferPoint,
             lines[0].IsConstruction && lines[1].IsConstruction);
 
-        nextDocument = ReplaceTrimmedEntities(
+        return TryReplaceCornerLines(
             document,
             new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
             {
                 [lines[0].Id.Value] = firstTrimmed,
                 [lines[1].Id.Value] = secondTrimmed
             },
-            new[] { chamfer });
-        return true;
+            new[] { chamfer },
+            out nextDocument);
     }
 
     public static bool TryFilletSelectedLines(
@@ -365,15 +365,15 @@ public static class DrawingModifyService
             IsConstruction = lines[0].IsConstruction && lines[1].IsConstruction
         };
 
-        nextDocument = ReplaceTrimmedEntities(
+        return TryReplaceCornerLines(
             document,
             new Dictionary<string, DrawingEntity>(StringComparer.Ordinal)
             {
                 [lines[0].Id.Value] = firstTrimmed,
                 [lines[1].Id.Value] = secondTrimmed
             },
-            new[] { fillet });
-        return true;
+            new[] { fillet },
+            out nextDocument);
     }
 
     public static bool TryChamferSelectedCorner(
@@ -1691,6 +1691,65 @@ public static class DrawingModifyService
             nextDocument.Metadata);
     }
 
+    private static bool TryReplaceCornerLines(
+        DrawingDocument document,
+        IReadOnlyDictionary<string, DrawingEntity> replacements,
+        IEnumerable<DrawingEntity> additions,
+        out DrawingDocument nextDocument)
+    {
+        nextDocument = document;
+        var candidate = ReplaceEntities(document, replacements, additions);
+        if (InvalidatesPreviouslySatisfiedConstraints(document, candidate, document.Constraints)) return false;
+        return TryFinalizeCornerReplacement(document, candidate,
+            replacements.Keys.ToHashSet(StringComparer.Ordinal), out nextDocument);
+    }
+
+    private static bool TryFinalizeCornerReplacement(
+        DrawingDocument document,
+        DrawingDocument candidate,
+        IReadOnlySet<string> replacedIds,
+        out DrawingDocument nextDocument)
+    {
+        nextDocument = document;
+        // Fix validation alone only checks the constraint kind, not movement from the original geometry.
+        foreach (var constraint in document.Constraints)
+        {
+            if (constraint.Kind != SketchConstraintKind.Fix || constraint.State == SketchConstraintState.Suppressed
+                || !ReferenceKeysContainAnyEntity(constraint.ReferenceKeys, replacedIds)) continue;
+            if (!TryRefreshDimensionReferenceKeys(candidate.Entities, constraint.ReferenceKeys, replacedIds, out var keys)
+                || FixedCornerReferenceMoved(document, candidate, constraint,
+                    new SketchConstraint(constraint.Id, constraint.Kind, keys, constraint.State))) return false;
+        }
+
+        var dimensions = new List<SketchDimension>(document.Dimensions.Count);
+        foreach (var dimension in document.Dimensions)
+        {
+            if (!ReferenceKeysContainAnyEntity(dimension.ReferenceKeys, replacedIds))
+            {
+                dimensions.Add(dimension);
+                continue;
+            }
+            if (!TryRefreshDimensionReferenceKeys(candidate.Entities, dimension.ReferenceKeys, replacedIds, out var keys))
+                return false;
+            var refreshed = new SketchDimension(dimension.Id, dimension.Kind, keys,
+                dimension.Value, dimension.Anchor, dimension.IsDriving);
+            if (dimension.IsDriving)
+            {
+                if (!SketchDimensionSolverService.IsDimensionSatisfied(candidate, refreshed)) return false;
+                dimensions.Add(refreshed);
+            }
+            else
+            {
+                if (!SketchDimensionSolverService.TryGetDimensionMeasurement(candidate, refreshed, out var value)
+                    || !double.IsFinite(value)) return false;
+                dimensions.Add(new SketchDimension(dimension.Id, dimension.Kind, keys, value, dimension.Anchor, false));
+            }
+        }
+
+        nextDocument = new DrawingDocument(candidate.Entities, dimensions, candidate.Constraints, candidate.Metadata);
+        return true;
+    }
+
     private static bool TryResolveSelectedCornerEdges(
         DrawingDocument document,
         IEnumerable<string> selectionKeys,
@@ -1896,13 +1955,7 @@ public static class DrawingModifyService
         }
 
         var replacedIds = edges.Select(edge => edge.Reference.EntityId).ToHashSet(StringComparer.Ordinal);
-        var refreshedDimensions = RefreshDimensionsForReplacedEntities(changedDocument, replacedIds);
-        nextDocument = new DrawingDocument(
-            changedDocument.Entities,
-            refreshedDimensions,
-            nextConstraints,
-            changedDocument.Metadata);
-        return true;
+        return TryFinalizeCornerReplacement(document, changedDocument, replacedIds, out nextDocument);
     }
 
     private static bool TryReplacePolylineCorner(
