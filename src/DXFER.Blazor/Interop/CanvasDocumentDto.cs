@@ -128,7 +128,12 @@ public sealed record CanvasDocumentDto(
                     : null,
                 StartTangentHandle: spline.StartTangentHandle is { } startTangentHandle ? FromPoint(startTangentHandle) : null,
                 EndTangentHandle: spline.EndTangentHandle is { } endTangentHandle ? FromPoint(endTangentHandle) : null,
-                LineTypeName: lineTypeName),
+                LineTypeName: lineTypeName,
+                SplineDegree: spline.Degree,
+                SplineKnots: spline.Knots,
+                SplineWeights: spline.Weights,
+                StartTangentControlPointIndex: spline.GetTangentControlPointIndex(true),
+                EndTangentControlPointIndex: spline.GetTangentControlPointIndex(false)),
             _ => new CanvasEntityDto(
                 id,
                 kind,
@@ -204,7 +209,12 @@ public sealed record CanvasEntityDto(
     [property: JsonPropertyName("fitPoints")] IReadOnlyList<CanvasPointDto>? FitPoints = null,
     [property: JsonPropertyName("startTangentHandle")] CanvasPointDto? StartTangentHandle = null,
     [property: JsonPropertyName("endTangentHandle")] CanvasPointDto? EndTangentHandle = null,
-    [property: JsonPropertyName("lineTypeName")] string? LineTypeName = null);
+    [property: JsonPropertyName("lineTypeName")] string? LineTypeName = null,
+    [property: JsonPropertyName("splineDegree")] int? SplineDegree = null,
+    [property: JsonPropertyName("splineKnots")] IReadOnlyList<double>? SplineKnots = null,
+    [property: JsonPropertyName("splineWeights")] IReadOnlyList<double>? SplineWeights = null,
+    [property: JsonPropertyName("startTangentControlPointIndex")] int? StartTangentControlPointIndex = null,
+    [property: JsonPropertyName("endTangentControlPointIndex")] int? EndTangentControlPointIndex = null);
 
 public sealed record CanvasPointDto(
     [property: JsonPropertyName("x")] double X,

@@ -1,3 +1,4 @@
+import { sampleControlSpline } from "./canvas/splineGeometry.js";
 import {
   addUniqueNumber,
   addUniquePoint,
@@ -8151,6 +8152,10 @@ function resolveCurrentPointTargetPoint(entity, label, fallbackPoint) {
     }
 
     const controlPoints = getEntityControlPoints(entity);
+    if (normalizedLabel === "tangent-start" || normalizedLabel === "tangent-end") {
+      const handles = getPersistentSplineTangentHandlesForEntity(entity);
+      return normalizedLabel === "tangent-start" ? handles[0]?.forward || fallbackPoint : handles[1]?.backward || fallbackPoint;
+    }
     const controlIndex = parseIndexedPointLabel(normalizedLabel, "control-");
     if (controlIndex !== null && controlIndex >= 0 && controlIndex < controlPoints.length) {
       return controlPoints[controlIndex];
@@ -10921,6 +10926,17 @@ function applyPreviewSplinePointDrag(entity, normalizedLabel, delta, dragEnd) {
 
 function applyPreviewSplineEditablePointDrag(entity, sourcePoints, sourceKind, normalizedLabel, delta, dragEnd) {
   const points = sourcePoints.map(point => ({ ...point }));
+  if (sourceKind === "control" && (normalizedLabel === "tangent-start" || normalizedLabel === "tangent-end")) {
+    const atStart = normalizedLabel === "tangent-start";
+    const index = getSplineTangentControlPointIndex(entity, atStart);
+    if (index === null) return false;
+    const endpoint = points[atStart ? 0 : points.length - 1];
+    const control = { x: endpoint.x + (dragEnd.x - endpoint.x) / SPLINE_TANGENT_HANDLE_SCALE,
+      y: endpoint.y + (dragEnd.y - endpoint.y) / SPLINE_TANGENT_HANDLE_SCALE };
+    if (distanceBetweenWorldPoints(endpoint, control) <= WORLD_GEOMETRY_TOLERANCE) return false;
+    points[index] = control;
+    return setPreviewSplineEditablePoints(entity, sourceKind, points, index, delta);
+  }
   const pointPrefix = `${sourceKind}-`;
   let pointIndex = parseIndexedPointLabel(normalizedLabel, pointPrefix);
   if (pointIndex === null && normalizedLabel === "start") {
@@ -10935,8 +10951,7 @@ function applyPreviewSplineEditablePointDrag(entity, sourcePoints, sourceKind, n
     }
 
     points[pointIndex] = addWorldPoints(points[pointIndex], delta);
-    setPreviewSplineEditablePoints(entity, sourceKind, points, pointIndex, delta);
-    return true;
+    return setPreviewSplineEditablePoints(entity, sourceKind, points, pointIndex, delta);
   }
 
   return false;
@@ -10979,11 +10994,17 @@ function setPreviewSplineEditablePoints(entity, sourceKind, points, movedPointIn
       SPLINE_FIT_SEGMENTS_PER_SPAN,
       getEntityStartTangentHandle(entity),
       getEntityEndTangentHandle(entity));
-    return;
+    return true;
   }
 
+  const samples = sampleControlSpline(copiedPoints,
+    readProperty(entity, "splineDegree", "SplineDegree"),
+    readProperty(entity, "splineKnots", "SplineKnots"),
+    readProperty(entity, "splineWeights", "SplineWeights"));
+  if (!samples) return false;
   entity.controlPoints = copiedPoints.map(point => ({ ...point }));
-  entity.points = copiedPoints.map(point => ({ ...point }));
+  entity.points = samples;
+  return true;
 }
 
 function applyPreviewEntityDrag(document, entity, delta, dragEnd) {
@@ -14223,12 +14244,20 @@ export function getPersistentSplineTangentHandlesForEntity(entity) {
 
   const fitPoints = getEntityFitPoints(entity);
   const controlPoints = getEntityControlPoints(entity);
-  const handlePoints = fitPoints.length >= 2
-    ? fitPoints
-    : controlPoints.length >= 2
-      ? controlPoints
-      : getEntityPoints(entity);
-  const handles = getSplineTangentHandles(handlePoints, SPLINE_TANGENT_HANDLE_SCALE);
+  if (fitPoints.length < 2) {
+    if (controlPoints.length < 2) return [];
+    return [true, false].map(atStart => {
+      const index = getSplineTangentControlPointIndex(entity, atStart);
+      const point = controlPoints[atStart ? 0 : controlPoints.length - 1];
+      const neighbor = index === null ? null : controlPoints[index];
+      const handle = neighbor && distanceBetweenWorldPoints(point, neighbor) > WORLD_GEOMETRY_TOLERANCE
+        ? { x: point.x + (neighbor.x - point.x) * SPLINE_TANGENT_HANDLE_SCALE,
+          y: point.y + (neighbor.y - point.y) * SPLINE_TANGENT_HANDLE_SCALE }
+        : null;
+      return { point: copyPoint(point), forward: atStart ? handle : null, backward: atStart ? null : handle };
+    });
+  }
+  const handles = getSplineTangentHandles(fitPoints, SPLINE_TANGENT_HANDLE_SCALE);
   const startTangentHandle = getEntityStartTangentHandle(entity);
   if (handles[0] && startTangentHandle) {
     handles[0] = {
@@ -14246,6 +14275,14 @@ export function getPersistentSplineTangentHandlesForEntity(entity) {
   }
 
   return handles;
+}
+
+function getSplineTangentControlPointIndex(entity, atStart) {
+  const index = atStart
+    ? readProperty(entity, "startTangentControlPointIndex", "StartTangentControlPointIndex")
+    : readProperty(entity, "endTangentControlPointIndex", "EndTangentControlPointIndex");
+  const points = getEntityControlPoints(entity);
+  return Number.isInteger(index) && index === (atStart ? 1 : points.length - 2) ? index : null;
 }
 
 function getEntityFitPoints(entity) {

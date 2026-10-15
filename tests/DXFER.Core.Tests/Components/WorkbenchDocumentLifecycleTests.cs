@@ -16,6 +16,33 @@ public sealed class WorkbenchDocumentLifecycleTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ControlSplineTangentEditSurvivesWorkbenchUndoRedoAndDxfReopen(bool start)
+    {
+        var workbench = Create();
+        var spline = new SplineEntity(EntityId.Create("spline"), 3,
+            new DXFER.Core.Geometry.Point2[] { new(0, 0), new(1, 0), new(3, 1), new(4, 1) },
+            new double[] { 0, 0, 0, 0, 1, 1, 1, 1 });
+        var original = new DrawingDocument(new DrawingEntity[] { spline });
+        Set(workbench, "_document", original);
+        var from = start ? new DXFER.Core.Geometry.Point2(0.25, 0) : new(3.75, 1);
+        SketchGeometryDragService.TryApplyDrag(original, $"spline|point|tangent-{(start ? "start" : "end")}|0|0",
+            from, new(from.X, from.Y + 0.4), false, out var changed, out var status).Should().BeTrue();
+        Invoke(workbench, "ApplyDocumentChange", changed, status);
+        var changedDxf = DxfDocumentWriter.Write(changed);
+        Invoke(workbench, "UndoLastDocumentChange");
+        Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
+        Invoke(workbench, "RedoLastDocumentChange");
+        DxfDocumentWriter.Write(Get<DrawingDocument>(workbench, "_document")).Should().Be(changedDxf);
+        var reopened = DxfDocumentReader.Read(changedDxf).Entities.OfType<SplineEntity>().Single();
+        reopened.Degree.Should().Be(3);
+        reopened.ControlPoints.Should().HaveCount(4);
+        reopened.ControlPoints[start ? 1 : 2].Y.Should().BeApproximately(start ? 1.6 : 2.6, 1e-12);
+        reopened.Knots.Should().Equal(spline.Knots);
+    }
+
+    [Theory]
     [InlineData("0")]
     [InlineData("-1")]
     [InlineData("")]
