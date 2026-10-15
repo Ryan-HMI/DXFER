@@ -99,6 +99,12 @@ public static class SketchGeometryDragService
             draggedDocument.Dimensions,
             SketchConstraintPropagationService.ValidateConstraints(draggedDocument, document.Constraints),
             document.Metadata);
+        if (draggedDocument.Constraints.Any(constraint => constraint.State == SketchConstraintState.Unsatisfied))
+        {
+            status = "Drag could not satisfy the active constraints. Geometry unchanged.";
+            return false;
+        }
+
         if (GeometryMatches(document.Entities, draggedDocument.Entities))
         {
             status = "Selected geometry is constrained.";

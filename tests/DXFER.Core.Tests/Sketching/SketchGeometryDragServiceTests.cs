@@ -1516,6 +1516,84 @@ public sealed class SketchGeometryDragServiceTests
     }
 
     [Fact]
+    public void DraggingEqualCircleRadiusCannotBreakFixedPeerConstraint()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new CircleEntity(EntityId.Create("moving"), new Point2(0, 0), 3),
+                new CircleEntity(EntityId.Create("fixed"), new Point2(10, 0), 3)
+            },
+            Array.Empty<SketchDimension>(),
+            new[]
+            {
+                new SketchConstraint("equal", SketchConstraintKind.Equal, new[] { "moving", "fixed" }, SketchConstraintState.Satisfied),
+                new SketchConstraint("fix", SketchConstraintKind.Fix, new[] { "fixed" }, SketchConstraintState.Satisfied)
+            });
+
+        var changed = SketchGeometryDragService.TryApplyDrag(
+            document, "moving|point|quadrant-0|3|0", new Point2(3, 0), new Point2(5, 0),
+            false, out var next, out var status);
+
+        changed.Should().BeFalse();
+        next.Should().BeSameAs(document);
+        status.Should().Contain("Geometry unchanged");
+    }
+
+    [Fact]
+    public void DraggingMidpointLineCannotLeaveFixedPointBehind()
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("line"), new Point2(0, 0), new Point2(10, 0)),
+                new PointEntity(EntityId.Create("marker"), new Point2(5, 0))
+            }, Array.Empty<SketchDimension>(), new[]
+            {
+                new SketchConstraint("midpoint", SketchConstraintKind.Midpoint, new[] { "line", "marker" }, SketchConstraintState.Satisfied),
+                new SketchConstraint("fix", SketchConstraintKind.Fix, new[] { "marker" }, SketchConstraintState.Satisfied)
+            });
+
+        SketchGeometryDragService.TryApplyDrag(document, "line|point|end|10|0",
+            new Point2(10, 0), new Point2(12, 4), false, out var next, out var status)
+            .Should().BeFalse();
+        next.Should().BeSameAs(document);
+        status.Should().Contain("Geometry unchanged");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DraggingEqualLineRespectsFixedPeerUnlessRelationIsSuppressed(bool suppressed)
+    {
+        var document = new DrawingDocument(
+            new DrawingEntity[]
+            {
+                new LineEntity(EntityId.Create("moving"), new Point2(0, 0), new Point2(10, 0)),
+                new LineEntity(EntityId.Create("fixed"), new Point2(0, 5), new Point2(10, 5))
+            }, Array.Empty<SketchDimension>(), new[]
+            {
+                new SketchConstraint("equal", SketchConstraintKind.Equal, new[] { "moving", "fixed" },
+                    suppressed ? SketchConstraintState.Suppressed : SketchConstraintState.Satisfied),
+                new SketchConstraint("fix", SketchConstraintKind.Fix, new[] { "fixed" }, SketchConstraintState.Satisfied)
+            });
+
+        SketchGeometryDragService.TryApplyDrag(document, "moving|point|end|10|0",
+            new Point2(10, 0), new Point2(12, 0), false, out var next, out _)
+            .Should().Be(suppressed);
+        if (!suppressed)
+        {
+            next.Should().BeSameAs(document);
+        }
+        else
+        {
+            ((LineEntity)next.Entities[0]).End.Should().Be(new Point2(12, 0));
+            next.Constraints[0].State.Should().Be(SketchConstraintState.Suppressed);
+        }
+        next.Entities[1].Should().Be(document.Entities[1]);
+    }
+
+    [Fact]
     public void FixedLineDoesNotDrag()
     {
         var document = new DrawingDocument(

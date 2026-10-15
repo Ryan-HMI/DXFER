@@ -1,5 +1,21 @@
 # User Test Tracking
 
+## Resumed implementation, 2026-10-15
+
+- Current Dev20b645c: Flux independently passed bounded cubic-trim fidelity,
+  Undo/Redo, download/reopen, and docked/collapsed palette reload/500px resize.
+  He also passed the earlier corner topology, invalid input and feedback fixes.
+  These are not blanket UI or Ryan acceptance. Smaller phone/floating palette
+  and unsupported spline cases remain separate independent checks.
+- DRAG-TRANSACTION-20261015: parent reproduced Equal/Fix circle drag corruption
+  in the installed browser. Core correction passes51 drag/811 full tests;
+  local exported document/history are stable but browser preview rollback still
+  needs integration. No current-deployment or user-acceptance claim.
+- UT-SOLVER-003 exact deleted-Vertical case is now APP-VERIFIED on Dev20b645c:
+  actual glyph deletion, endpoint drag, dimension-label drag and Undo/Redo.
+  Label movement preserves geometry, length10 and the removed constraint.
+  Existing fix is sufficient for this case; no new Ryan acceptance claimed.
+
 ## Continued implementation, 2026-10-14
 
 - Flux independently passed the focused442c395 solver checks; this is not Ryan

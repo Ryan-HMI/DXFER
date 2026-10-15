@@ -2035,7 +2035,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private void OnGeometryDragRequested(
+    private bool OnGeometryDragRequested(
         string selectionKey,
         CanvasPointDto dragStart,
         CanvasPointDto dragEnd,
@@ -2052,11 +2052,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         {
             _status = status;
             _ = InvokeAsync(StateHasChanged);
-            return;
+            return false;
         }
 
         ApplyDocumentChange(nextDocument, status);
         _ = InvokeAsync(StateHasChanged);
+        return true;
     }
 
     private bool TryGetLineIdForSplitTarget(string targetKey, out string lineEntityId)
