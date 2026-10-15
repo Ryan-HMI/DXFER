@@ -31,7 +31,7 @@ Inspect screenshots before Dev-only deployment; Production/Test stay unchanged.
 ## Cause and Verification
 
 The shared default set ShowLabels=true and fixed side/floating widths at15.8rem,
-while labeled styling used two56px rows and16px glyphs. Hiding labels alone would
+while labeled styling used two columns of56px-high tiles and16px glyphs. Hiding labels alone would
 have retained wasted width. Both the default and common sizing rules are corrected.
 Density marker2 in the existing v1 envelope resets only old label state on restore;
 no storage deletion or position reconstruction. Fresh defaults and new groups are
@@ -55,3 +55,24 @@ Browser driver: `tests/DXFER.Blazor.Tests/compactPalette.browser.mjs`, with
 `DXFER_QA_URL`, `DXFER_QA_API_KEY`, optional `PLAYWRIGHT_MODULE`. Only isolated local
 or approved DXFer Dev hosts accepted. Uses disposable browser contexts and blank
 drawings. Independent visual acceptance remains pending until reported.
+
+## Installed Dev
+
+`0b1e0da39a7173840b9e61b78019efaebe53b2b2` deployed2026-10-15T14:35Z at
+https://dxferdev.sync.harrisonmetals.com. Installed compact browser contract passes
+with rendered tooltip `DXFER build 0b1e0da`. Four DLL hashes, both served scoped
+stylesheets and palette JS match published bytes. Ten runtime settings retained;
+health200/anonymous302. Production/Test process IDs unchanged. Normal sign-in and
+disabled Sync callbacks retained. Rollback copy:
+`/home/ryan/dxfer-runtime/dev-publish-before-0b1e0da`.
+
+Flux QA request: compare fresh and old saved labeled layouts;32px buttons/20px
+icons/152px palettes, native tooltips and keyboard names/focus, active/disabled
+states; opt into labels for one palette and reload; mixed floating/side/top/bottom
+docks and collapse/preferences remain independent. Check1188x761 and1100x705 with
+the inspector open. No phone QA. Earlier functional acceptance is not Ryan's
+visual acceptance, and this correction is not claimed independently accepted yet.
+
+Installed header/inspector regression also passes on0b1e0da: invalid input remains
+blocked, driving conflict adds no Undo, reference edit survives Exit/history/native
+reopen, state/unit/read-only header is accurate and reduced-canvas docking works.
