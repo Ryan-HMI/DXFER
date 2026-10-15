@@ -3573,7 +3573,7 @@ test("geometry drag preview translates whole ellipse and dimension anchors", () 
       {
         id: "ellipse-major",
         kind: "lineardistance",
-        referenceKeys: ["ellipse:start", "ellipse:end"],
+        referenceKeys: ["ellipse|point|major-start|-3|2", "ellipse|point|major-end|5|2"],
         value: 8,
         anchor: { x: 1, y: 4 }
       }
