@@ -41,5 +41,14 @@ coordinates and resize at device pixel ratio 2. Coverage includes the reported
 overrides, zoom/pan, reference-only and unsatisfied state preservation,
 unresolved references, zero axis span and unchanged aligned dimensions.
 
-Installed-app browser verification and integration are parent-owned. No
-deployment, core/solver edits, new dependencies or application-data changes.
+Parent integration passes845 .NET and333 JS tests. Local actual browser at
+1440x1000 and500x761 with device pixel ratio2 verifies axis-guide hit-testing,
+dimension-label movement without geometry changes, and Undo/Redo. Both
+screenshots inspected: `/tmp/dxfer-axis-guides-desktop.png` and
+`/tmp/dxfer-axis-guides-narrow.png`. Repeat with
+`node /tmp/dxfer-drag-live-qa.cjs --axis-guides`.
+
+Installed-app verification follows Dev-only deployment. No core/solver edits,
+new dependencies or application-data changes. Existing outside anchors still
+need zoom/pan when Fit Extents only frames document geometry; this patch does
+not claim to change that separate framing contract.
