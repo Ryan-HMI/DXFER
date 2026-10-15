@@ -46,3 +46,15 @@ refusal, unchanged curve/native download, and disabled Undo on a fresh fixture.
 Keep the pick within the existing18px extension hit radius. Repeat with a
 degree1 spline `(0,0)->(4,0)` and vertical boundary atx6: off-end click extends
 successfully. Existing cubic interior-trim browser fixture should remain exact.
+
+## Parent integration and installed verification
+
+Integrated as f11f71b, deployed to DXFer Dev only on 2026-10-15. Production/Test
+unchanged, normal sign-in retained, Sync callbacks disabled. Integrated suite:
+1,052 .NET / 363 JS passed. Installed browser verified explicit refusal at both
+cubic endpoints with raw14px/3px-offset clicks, exact native geometry preservation
+and disabled Undo. Degree1 extension reachesx6; the original cubic trim fixture
+retains degree3 and controls [(2,-4),(2.75,-4.5),(3.5,-5),(4,-4)]. Undo/Redo and
+native download/reopen preserve the expected results. Screenshots:
+/tmp/dxfer-spline-refusal-14.png and /tmp/dxfer-spline-refusal--14.png.
+No source drawings changed. Independent Flux QA remains a separate acceptance.

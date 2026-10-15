@@ -41,3 +41,18 @@ Full document header and active-operation inspector remain a subsequent slice.
   status bar. Screenshot and final Slot target checks cover this path.
 - Evidence: /tmp/dxfer-palette-labels-*.png and /tmp/dxfer-palette-evidence/.
 - No drawing or business records changed; no existing-data repair required.
+
+## Installed Dev verification
+
+Deployed f11f71ba076837d3f41987db3ded5ef580bd30e2 on 2026-10-15 with
+palette commit d8c7066 and spline-feedback integration. Full integrated suite:
+1,052 .NET / 363 JS passed; Release publish succeeded. Four installed assemblies
+match the candidate; ten runtime settings preserved, health200, anonymous root302,
+normal sign-in retained and Sync callbacks disabled. Production/Test PIDs unchanged.
+Rollback: /home/ryan/dxfer-runtime/dev-publish-before-f11f71b.
+
+Installed real browser repeated the synthetic-document palette checks: independent
+labels, keyboard toggle, mixed floats, collapse, complete command inventory,
+activation, reload, legacy preferences, desktop/scaled available viewports, unchanged
+geometry/dimensions and no Undo entry. Isolated local app stopped after verification.
+No existing drawing repairs. Independent Flux acceptance is still separate.
