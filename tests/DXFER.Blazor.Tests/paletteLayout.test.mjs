@@ -6,7 +6,7 @@ import { restoreLayout, loadLayout, saveLayout, storageKey, floatingLimits, obse
 const state = (groupName, overrides = {}) => ({ groupName, side: 1, compaction: 2,
   dockOrder: 60, floatingX: 24, floatingY: 24, showLabels: false, ...overrides });
 const defaults = [state('Sketch'), state('View', { dockOrder: 160 }), state('New')];
-const encoded = groups => JSON.stringify({ version: 1, groups });
+const encoded = (groups, densityVersion = 2) => JSON.stringify({ version: 1, densityVersion, groups });
 const memoryStorage = (value = null) => ({ value, writes: 0,
   getItem(key) { assert.equal(key, storageKey); return this.value; },
   setItem(key, value) { assert.equal(key, storageKey); this.value = value; this.writes++; } });
@@ -81,6 +81,29 @@ test('labels persist independently without changing layout or other groups', () 
   const storage = memoryStorage();
   assert.equal(saveLayout(groups, storage), true);
   assert.deepEqual(loadLayout(defaults.slice(0, 2), storage), groups);
+});
+
+test('old default-on labels migrate without changing any dock, collapse, order or position', () => {
+  const old = [state('Sketch', {showLabels: true, side: 0, floatingX: 891, floatingY: 235}),
+    state('View', {showLabels: true, side: 2, dockOrder: 400, compaction: 1})];
+  const storage = memoryStorage(encoded(old, 1));
+  const migrated = loadLayout(defaults.slice(0, 2), storage);
+  assert.deepEqual(migrated, old.map(s => ({...s, showLabels: false})));
+  assert.equal(storage.writes, 0);
+  migrated[0].showLabels = true;
+  assert.equal(saveLayout(migrated, storage), true);
+  assert.equal(JSON.parse(storage.value).densityVersion, 2);
+  assert.deepEqual(loadLayout(defaults.slice(0, 2), storage), migrated);
+});
+
+test('unmarked legacy layouts migrate on each load until an explicit new choice is saved', () => {
+  const old = state('Sketch', {showLabels: true, side: 4, dockOrder: 200});
+  const storage = memoryStorage(JSON.stringify({version: 1, groups: [old]}));
+  assert.deepEqual(loadLayout(defaults, storage)[0], {...old, showLabels: false});
+  assert.deepEqual(loadLayout(defaults, storage)[0], {...old, showLabels: false});
+  saveLayout([state('View', {showLabels: true})], storage);
+  assert.deepEqual(loadLayout(defaults, storage)[0], {...old, showLabels: false});
+  assert.equal(loadLayout(defaults, storage)[1].showLabels, true);
 });
 
 test('legacy or malformed label preference preserves valid dock positions', () => {

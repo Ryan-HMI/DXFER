@@ -120,15 +120,16 @@ public sealed class WorkbenchPaletteLifecycleTests
         await fixture.AfterRender(true);
         var before = fixture.State("Sketch").AsObject();
         var view = fixture.State("View").ToJsonString();
-        await fixture.Invoke("ToggleLabels", new WorkbenchToolGroup("Sketch", []));
         fixture.State("Sketch")["showLabels"]!.GetValue<bool>().Should().BeFalse();
+        await fixture.Invoke("ToggleLabels", new WorkbenchToolGroup("Sketch", []));
+        fixture.State("Sketch")["showLabels"]!.GetValue<bool>().Should().BeTrue();
         fixture.State("Sketch")["side"]!.GetValue<int>().Should().Be(before["side"]!.GetValue<int>());
         fixture.State("Sketch")["floatingX"]!.GetValue<double>().Should().Be(before["floatingX"]!.GetValue<double>());
         fixture.State("View").ToJsonString().Should().Be(view);
         fixture.Module.Saves.Should().ContainSingle();
         await fixture.Render("Sketch", "View");
         await fixture.AfterRender(false);
-        fixture.State("Sketch")["showLabels"]!.GetValue<bool>().Should().BeFalse();
+        fixture.State("Sketch")["showLabels"]!.GetValue<bool>().Should().BeTrue();
     }
 
     [Fact]

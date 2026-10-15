@@ -49,6 +49,10 @@ try {
     const inventory = () => page.locator('.dxfer-command-strip button').evaluateAll(buttons =>
         buttons.map(button => button.getAttribute('aria-label')).sort());
     const commands = await inventory();
+    assert.equal(await labelToggle('Sketch').getAttribute('aria-pressed'), 'false');
+    assert.equal(await labelToggle('View').getAttribute('aria-pressed'), 'false');
+    await labelToggle('Sketch').click();
+    await labelToggle('View').click();
     assert.equal(await labelToggle('Sketch').getAttribute('aria-pressed'), 'true');
     await labelToggle('View').focus();
     await page.keyboard.press('Enter');

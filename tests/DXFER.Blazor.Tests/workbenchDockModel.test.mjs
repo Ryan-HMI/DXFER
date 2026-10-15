@@ -87,22 +87,26 @@ test("compact docks hide headings but keep draggable handles", () => {
   assert.doesNotMatch(paletteMarkup, /<summary/);
   assert.match(paletteCss, /\.dxfer-tool-group-compact/);
   assert.match(paletteCss, /\.dxfer-tool-group-compact-grip/);
-  assert.match(paletteCss, /grid-template-columns:\s*repeat\(var\(--dxfer-group-columns,\s*2\),\s*2\.15rem\)/);
+  assert.match(paletteCss, /grid-template-columns:\s*repeat\(var\(--dxfer-group-columns,\s*2\),\s*2rem\)/);
 });
 
 test("left and right collapsed groups keep the header and hide only the command strip", () => {
   assert.match(paletteMarkup, /state\.Side is ToolGroupDockSide\.Floating or ToolGroupDockSide\.Left or ToolGroupDockSide\.Right/);
   assert.match(paletteMarkup, /dxfer-tool-group-side-collapsed/);
-  assert.match(paletteCss, /\.dxfer-tool-group-side-collapsed\s*\{[^}]*width:\s*15\.8rem;/s);
+  assert.match(paletteCss, /\.dxfer-tool-group-side-collapsed\s*\{[^}]*width:\s*9\.5rem;/s);
   assert.match(paletteCss, /\.dxfer-tool-group-side-collapsed \.dxfer-command-strip\s*\{[^}]*display:\s*none;/s);
 });
 
-test("side docked groups reserve enough width for six icon columns with even padding", () => {
-  assert.match(paletteCss, /--dxfer-side-dock-width:\s*17\.65rem/);
+test("side docked groups use compact four-column icons with even padding", () => {
+  assert.match(paletteCss, /--dxfer-left-dock-width:\s*10\.25rem/);
+  assert.match(paletteCss, /--dxfer-right-dock-width:\s*10\.25rem/);
   assert.match(paletteCss, /\.dxfer-tool-dock-zone-left,[\s\S]*\.dxfer-tool-dock-zone-right\s*\{[^}]*overflow-x:\s*hidden;[\s\S]*overflow-y:\s*auto;/s);
-  assert.match(paletteCss, /\.dxfer-tool-group-left\.dxfer-tool-group-expanded,[\s\S]*\.dxfer-tool-group-right\.dxfer-tool-group-expanded\s*\{[^}]*width:\s*15\.8rem;/s);
-  assert.match(paletteCss, /\.dxfer-tool-section-summary\s*\{[^}]*padding:\s*0\.4rem;/s);
-  assert.match(paletteCss, /\.dxfer-command-strip\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fill,\s*2\.15rem\);[\s\S]*gap:\s*0\.36rem;[\s\S]*padding:\s*0\.36rem;/s);
+  assert.match(paletteCss, /\.dxfer-tool-group-left\.dxfer-tool-group-expanded,[\s\S]*\.dxfer-tool-group-right\.dxfer-tool-group-expanded\s*\{[^}]*width:\s*9\.5rem;/s);
+  assert.match(paletteCss, /\.dxfer-tool-section-summary\s*\{[^}]*padding:\s*4px;/s);
+  assert.match(paletteCss, /\.dxfer-command-strip\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*2rem\);[\s\S]*gap:\s*3px;[\s\S]*padding:\s*4px;/s);
+  assert.doesNotMatch(paletteMarkup, /ShowLabels \{ get; set; \} = true/);
+  assert.match(paletteMarkup, /Tooltip="@command.TooltipText"/);
+  assert.match(paletteCss, /\.dxfer-command-strip ::deep \.dxfer-icon\s*\{[^}]*width:\s*1\.25rem;/s);
 });
 
 test("top and bottom docked groups use horizontal compact strips", () => {
@@ -172,9 +176,9 @@ test("tool palette host overlays the canvas without owning a layout column", () 
 });
 
 test("top and bottom dock zones reserve side dock width instead of overlapping side stacks", () => {
-  assert.match(paletteCss, /--dxfer-side-dock-width:\s*17\.65rem/);
+  assert.match(paletteCss, /--dxfer-left-dock-width:\s*10\.25rem/);
   assert.match(paletteCss, /--dxfer-horizontal-dock-preview-height:\s*4\.35rem/);
-  assert.match(paletteCss, /\.dxfer-tool-dock-zone-top,[\s\S]*left:\s*var\(--dxfer-side-dock-width\);[\s\S]*right:\s*var\(--dxfer-side-dock-width\);/);
+  assert.match(paletteCss, /\.dxfer-tool-dock-zone-top,[\s\S]*left:\s*var\(--dxfer-left-dock-width\);[\s\S]*right:\s*var\(--dxfer-right-dock-width\);/);
   assert.match(paletteCss, /\.dxfer-tool-dock-zone-top,[\s\S]*min-height:\s*var\(--dxfer-horizontal-dock-preview-height\);/);
   assert.match(paletteCss, /\.dxfer-workbench-tool-palette-dragging \.dxfer-tool-dock-zone-top::before\s*\{[^}]*inset:\s*1px 1px auto;/s);
   assert.match(paletteCss, /\.dxfer-workbench-tool-palette-dragging \.dxfer-tool-dock-zone-bottom::before\s*\{[^}]*inset:\s*auto 1px 1px;/s);

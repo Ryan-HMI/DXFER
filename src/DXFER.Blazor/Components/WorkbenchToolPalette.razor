@@ -125,7 +125,7 @@
             if (_layoutModule is null)
             {
                 _layoutModule = await JsRuntime.InvokeAsync<IJSObjectReference>(
-                    "import", "./_content/DXFER.Blazor/paletteLayout.js?v=20261015-inspector-bounds");
+                    "import", "./_content/DXFER.Blazor/paletteLayout.js?v=20261015-compact-density");
                 if (_disposed)
                 {
                     await _layoutModule.DisposeAsync();
@@ -534,7 +534,7 @@
 
         public ToolGroupCompaction Compaction { get; set; }
 
-        public bool ShowLabels { get; set; } = true;
+        public bool ShowLabels { get; set; }
 
         public double DockOrder { get; set; }
 

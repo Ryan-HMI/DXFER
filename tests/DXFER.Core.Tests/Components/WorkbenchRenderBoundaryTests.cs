@@ -24,7 +24,7 @@ public sealed class WorkbenchRenderBoundaryTests
         var responsive = css[css.IndexOf("@media (max-width: 980px)", StringComparison.Ordinal)..];
         responsive.Should().Contain(".dxfer-tool-group-side-collapsed");
         responsive.Should().Contain("min-width: 0;");
-        responsive.Should().Contain("width: min(15.8rem, 100%);");
+        responsive.Should().Contain("width: min(9.5rem, 100%);");
     }
 
     [Fact]

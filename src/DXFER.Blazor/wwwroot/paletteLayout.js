@@ -1,6 +1,7 @@
 export const storageKey = 'dxfer.paletteLayout.v1';
 const maxGroups = 128;
 const maxLength = 65536;
+const densityVersion = 2;
 
 function validState(state) {
     return state && typeof state.groupName === 'string'
@@ -29,7 +30,9 @@ function storedStates(json) {
             if (seen.has(state.groupName)) {
                 states.delete(state.groupName);
             } else {
-                states.set(state.groupName, copyState(state));
+                // Old releases saved default-on labels indistinguishably from explicit choices.
+                states.set(state.groupName, copyState({...state,
+                    showLabels: data.densityVersion === densityVersion && state.showLabels === true}));
                 seen.add(state.groupName);
             }
         }
@@ -57,7 +60,7 @@ export function saveLayout(groups, storage) {
         const stored = storedStates(target.getItem(storageKey));
         for (const state of groups) stored.set(state.groupName, copyState(state));
         if (stored.size > maxGroups) return false;
-        const json = JSON.stringify({ version: 1, groups: [...stored.values()] });
+        const json = JSON.stringify({ version: 1, densityVersion, groups: [...stored.values()] });
         if (json.length > maxLength) return false;
         target.setItem(storageKey, json);
         return true;
