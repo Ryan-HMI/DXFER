@@ -97,7 +97,8 @@ public static class SketchDimensionSolverService
         return dimension.Kind switch
         {
             SketchDimensionKind.Angle => IsOverConstrainedAngleDimension(document, dimension),
-            SketchDimensionKind.LinearDistance => IsOverConstrainedLinearDistanceDimension(document, dimension),
+            SketchDimensionKind.LinearDistance => SketchOrthogonalDistanceDependencies.IsRedundant(
+                document, dimension, DimensionValueTolerance),
             _ => false
         };
     }
@@ -115,65 +116,6 @@ public static class SketchDimensionSolverService
                 document.Constraints,
                 firstReference.EntityId,
                 secondReference.EntityId);
-    }
-
-    private static bool IsOverConstrainedLinearDistanceDimension(
-        DrawingDocument document,
-        SketchDimension dimension)
-    {
-        if (!TryGetTwoPointDimensionPoints(document.Entities, dimension, out var firstPoint, out var secondPoint))
-        {
-            return false;
-        }
-
-        var xComponent = Math.Abs(secondPoint.X - firstPoint.X);
-        var yComponent = Math.Abs(secondPoint.Y - firstPoint.Y);
-        if (xComponent <= SketchGeometryEditor.Tolerance || yComponent <= SketchGeometryEditor.Tolerance)
-        {
-            return false;
-        }
-
-        var componentEntityIds = GetConstrainedLineComponentEntityIds(document, dimension.ReferenceKeys);
-        if (componentEntityIds.Count == 0)
-        {
-            return false;
-        }
-
-        var hasHorizontalComponent = false;
-        var hasVerticalComponent = false;
-        foreach (var existingDimension in document.Dimensions)
-        {
-            if (!existingDimension.IsDriving
-                || StringComparer.Ordinal.Equals(existingDimension.Id, dimension.Id)
-                || !DimensionReferencesOnlyEntities(existingDimension, componentEntityIds)
-                || !TryGetTwoPointDimensionPoints(document.Entities, existingDimension, out var existingFirstPoint, out var existingSecondPoint))
-            {
-                continue;
-            }
-
-            var existingX = Math.Abs(existingSecondPoint.X - existingFirstPoint.X);
-            var existingY = Math.Abs(existingSecondPoint.Y - existingFirstPoint.Y);
-            if (existingX > SketchGeometryEditor.Tolerance
-                && existingY <= SketchGeometryEditor.Tolerance
-                && Math.Abs(existingX - xComponent) <= DimensionValueTolerance)
-            {
-                hasHorizontalComponent = true;
-            }
-
-            if (existingY > SketchGeometryEditor.Tolerance
-                && existingX <= SketchGeometryEditor.Tolerance
-                && Math.Abs(existingY - yComponent) <= DimensionValueTolerance)
-            {
-                hasVerticalComponent = true;
-            }
-
-            if (hasHorizontalComponent && hasVerticalComponent)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static bool AreLineOrientationsAlreadyConstrained(
@@ -244,70 +186,6 @@ public static class SketchDimensionSolverService
         }
 
         return false;
-    }
-
-    private static HashSet<string> GetConstrainedLineComponentEntityIds(
-        DrawingDocument document,
-        IReadOnlyList<string> referenceKeys)
-    {
-        var seedEntityIds = referenceKeys
-            .Select(GetReferenceEntityId)
-            .Where(entityId => document.Entities.OfType<LineEntity>().Any(line => StringComparer.Ordinal.Equals(line.Id.Value, entityId)))
-            .ToHashSet(StringComparer.Ordinal);
-        if (seedEntityIds.Count == 0)
-        {
-            return seedEntityIds;
-        }
-
-        var adjacency = document.Entities
-            .OfType<LineEntity>()
-            .ToDictionary(line => line.Id.Value, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
-        foreach (var constraint in document.Constraints)
-        {
-            if (constraint.State == SketchConstraintState.Suppressed
-                || constraint.Kind != SketchConstraintKind.Coincident
-                || !TryGetTwoReferenceEntityIds(constraint, out var first, out var second)
-                || !adjacency.ContainsKey(first)
-                || !adjacency.ContainsKey(second)
-                || StringComparer.Ordinal.Equals(first, second))
-            {
-                continue;
-            }
-
-            adjacency[first].Add(second);
-            adjacency[second].Add(first);
-        }
-
-        var visited = new HashSet<string>(seedEntityIds, StringComparer.Ordinal);
-        var queue = new Queue<string>(seedEntityIds);
-        while (queue.Count > 0)
-        {
-            var current = queue.Dequeue();
-            if (!adjacency.TryGetValue(current, out var connected))
-            {
-                continue;
-            }
-
-            foreach (var next in connected)
-            {
-                if (visited.Add(next))
-                {
-                    queue.Enqueue(next);
-                }
-            }
-        }
-
-        return visited;
-    }
-
-    private static bool DimensionReferencesOnlyEntities(
-        SketchDimension dimension,
-        IReadOnlySet<string> entityIds)
-    {
-        return dimension.ReferenceKeys.Count > 0
-            && dimension.ReferenceKeys
-                .Select(GetReferenceEntityId)
-                .All(entityIds.Contains);
     }
 
     private static bool TryGetAxisConstraint(
