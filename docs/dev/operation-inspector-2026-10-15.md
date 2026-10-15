@@ -98,3 +98,20 @@ in the header but the existing cut total remains inch-assumed. This change does
 not silently introduce unit conversion; mixed-unit quoting/manufacturing is not
 accepted by this UI verification. Ryan is notified of the distinction for a
 separate policy decision (inch-only guard versus explicit conversion).
+
+## Independent QA
+
+Flux delivery `d1abc6920bcc6246d162b146` closes this bounded scope. Rendered build
+tooltip independently confirms `d7ed511`. Reference Chamfer D2 updates10->8;
+Exit preserves the edit, Undo restores10/Unchanged, Redo8/Modified, Download
+Unchanged. New clears to empty Untitled.dxf/Unspecified with Undo disabled.
+Native reopen preserves geometry/dimensions; DXF audit0 errors/0 fixes.
+
+Invalid Fillet/Chamfer values persist across collapse/reopen and refuse tested
+cuts. Size2 driving10 conflicts refuse without an Undo entry. Escape exits and
+focuses Drawing canvas. Right-docked View aligns beside the inspector at1100x705
+and1188x761, with readable feedback/Exit and48px header. Long filename and inch
+metadata pass. No new confirmed defect. Extreme-length selection identifiers
+and mm cut-total policy remain outside acceptance. This is not Ryan's overall
+visual acceptance; no deployment, document or business-data changes accompany
+this evidence update.
