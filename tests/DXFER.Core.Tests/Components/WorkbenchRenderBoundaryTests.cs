@@ -353,6 +353,43 @@ public sealed class WorkbenchRenderBoundaryTests
         source.Should().Contain("WorkbenchCommandId.RemoveDuplicates");
     }
 
+    [Fact]
+    public void DocumentHeaderUsesTruthfulSnapshotAndDispatcherSafeEventLifecycle()
+    {
+        var source = File.ReadAllText(FindRepositoryFile("src", "DXFER.Web", "Components", "Layout", "MainLayout.razor"));
+        source.Should().Contain("WorkbenchDocumentState DocumentState => MenuCommands.DocumentState");
+        source.Should().Contain("MenuCommands.DocumentStateChanged += OnDocumentStateChanged;");
+        source.Should().Contain("MenuCommands.DocumentStateChanged -= OnDocumentStateChanged;");
+        source.Should().Contain("OnDocumentStateChanged() => _ = InvokeAsync(StateHasChanged)");
+        source.Should().Contain("title=\"@DocumentFileName\">@DocumentFileName");
+        source.Should().Contain("title=\"@DocumentUnits\">@DocumentUnits");
+        source.Should().Contain("!DocumentState.HasDocument ? \"No document\"");
+        source.Should().Contain("string.IsNullOrWhiteSpace(DocumentState.Units) ? \"Unspecified\"");
+        source.Should().Contain("DocumentState.HasUnsavedChanges ? \"Modified\" : \"Unchanged\"");
+        source.Should().Contain("DocumentState.HasDocument && DocumentState.IsReferenceOnly ? \"Read-only\"");
+        source.Should().NotContain(">Saved<");
+        source.Should().Contain("title=\"@BuildTitle\"");
+        source.Should().Contain("typeof(MainLayout).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()");
+        source.Should().Contain("revision.All(Uri.IsHexDigit)");
+        source.Should().Contain("revision[..7]");
+    }
+
+    [Fact]
+    public void DocumentHeaderReservesFixedStateSlotsWithoutAnotherViewportRowOrClippingMenus()
+    {
+        var css = File.ReadAllText(FindRepositoryFile("src", "DXFER.Web", "Components", "Layout", "MainLayout.razor.css"));
+        var globalCss = File.ReadAllText(FindRepositoryFile("src", "DXFER.Web", "wwwroot", "app.css"));
+        css.Should().Contain("grid-template-columns: minmax(0, 1fr) 90px 88px 76px;");
+        css.Should().Contain("flex-wrap: nowrap;");
+        css.Should().Contain("text-overflow: ellipsis;");
+        css.Should().Contain("white-space: nowrap;");
+        css.Should().Contain("min-width: 0;");
+        css.Should().NotContain("grid-template-rows");
+        css[..css.IndexOf(".document-header", StringComparison.Ordinal)].Should().NotContain("overflow:");
+        globalCss.Should().Contain("grid-template-rows: 48px minmax(0, 1fr);");
+        globalCss.Should().Contain("height: calc(100vh - 48px);");
+    }
+
     private static string FindRepositoryFile(params string[] segments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
