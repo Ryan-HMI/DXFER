@@ -123,7 +123,7 @@
             if (_layoutModule is null)
             {
                 _layoutModule = await JsRuntime.InvokeAsync<IJSObjectReference>(
-                    "import", "./_content/DXFER.Blazor/paletteLayout.js");
+                    "import", "./_content/DXFER.Blazor/paletteLayout.js?v=20261015-labels-scale");
                 if (_disposed)
                 {
                     await _layoutModule.DisposeAsync();
@@ -230,6 +230,16 @@
                 <span class="dxfer-tool-section-heading">
                     <span class="dxfer-section-title">@group.Name</span>
                 </span>
+                <button type="button"
+                        class="dxfer-tool-group-collapse-toggle dxfer-tool-label-toggle"
+                        title="@($"Show {group.Name} tool labels")"
+                        aria-label="@($"Show {group.Name} tool labels")"
+                        aria-pressed="@(GetDockState(group).ShowLabels ? "true" : "false")"
+                        @onpointerdown:stopPropagation="true"
+                        @onclick:stopPropagation="true"
+                        @onclick="@(() => ToggleLabels(group))">
+                    <CadIcon Name="CadIconName.Text" />
+                </button>
                 @if (CanToggleSideCompaction(GetDockState(group)))
                 {
                     <button type="button"
@@ -260,6 +270,7 @@
                                Label="@command.Label"
                                Tooltip="@command.TooltipText"
                                Hotkey="@(IsCompactDock(GetDockState(group)) ? null : command.Hotkey)"
+                               ShowLabel="@(GetDockState(group).ShowLabels && !IsCompactDock(GetDockState(group)))"
                                Disabled="@command.Disabled"
                                Pressed="@command.Pressed"
                                Class="@BuildCommandClass(command)"
@@ -322,6 +333,11 @@
             classes.Add("dxfer-tool-group-dragging");
         }
 
+        if (state.ShowLabels && !IsCompactDock(state))
+        {
+            classes.Add("dxfer-tool-group-labeled");
+        }
+
         return string.Join(" ", classes);
     }
 
@@ -334,7 +350,7 @@
         }
 
         var index = GetGroupIndex(group);
-        return $"left:clamp(0px,{state.FloatingX:0}px,var(--dxfer-palette-max-x-{index},0px));top:clamp(0px,{state.FloatingY:0}px,var(--dxfer-palette-max-y-{index},0px));--dxfer-group-columns:2;";
+        return $"left:clamp(0px,{state.FloatingX:0}px,var(--dxfer-palette-max-x-{index},0px));top:clamp(0px,{state.FloatingY:0}px,var(--dxfer-palette-max-y-{index},0px));max-height:calc(100% - clamp(0px,{state.FloatingY:0}px,var(--dxfer-palette-max-y-{index},0px)));--dxfer-group-columns:2;";
     }
 
     private static bool ShouldShowGroupHeader(ToolGroupDockState state) =>
@@ -372,6 +388,14 @@
         state.Compaction = state.Compaction is ToolGroupCompaction.Expanded
             ? ToolGroupCompaction.DoubleColumn
             : ToolGroupCompaction.Expanded;
+        _editedGroups.Add(group.Name);
+        await PersistLayoutAsync();
+    }
+
+    private async Task ToggleLabels(WorkbenchToolGroup group)
+    {
+        var state = GetDockState(group);
+        state.ShowLabels = !state.ShowLabels;
         _editedGroups.Add(group.Name);
         await PersistLayoutAsync();
     }
@@ -476,6 +500,8 @@
         public ToolGroupDockSide Side { get; set; }
 
         public ToolGroupCompaction Compaction { get; set; }
+
+        public bool ShowLabels { get; set; } = true;
 
         public double DockOrder { get; set; }
 

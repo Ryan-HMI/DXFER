@@ -13,7 +13,8 @@ function validState(state) {
 
 function copyState(state) {
     const { groupName, side, compaction, dockOrder, floatingX, floatingY } = state;
-    return { groupName, side, compaction, dockOrder, floatingX, floatingY };
+    return { groupName, side, compaction, dockOrder, floatingX, floatingY,
+        showLabels: state.showLabels === true };
 }
 
 function storedStates(json) {
@@ -72,8 +73,11 @@ export function floatingLimits(width, height, paletteWidth, headerHeight) {
 export function observeLayout(root, host = window) {
     const refresh = () => {
         const bounds = root.getBoundingClientRect();
-        const width = Math.max(0, Math.min(bounds.width, host.innerWidth - bounds.left));
-        const height = Math.max(0, Math.min(bounds.height, host.innerHeight - bounds.top));
+        // CSS limits and offset sizes use layout pixels; client bounds include display scaling.
+        const scaleX = root.offsetWidth > 0 ? bounds.width / root.offsetWidth : 1;
+        const scaleY = root.offsetHeight > 0 ? bounds.height / root.offsetHeight : 1;
+        const width = Math.max(0, Math.min(bounds.width, host.innerWidth - bounds.left)) / (scaleX || 1);
+        const height = Math.max(0, Math.min(bounds.height, host.innerHeight - bounds.top)) / (scaleY || 1);
         for (const group of root.querySelectorAll('.dxfer-tool-group-floating')) {
             const header = group.querySelector('.dxfer-tool-group-drag-header');
             const limits = floatingLimits(width, height, group.offsetWidth, header?.offsetHeight ?? 40);

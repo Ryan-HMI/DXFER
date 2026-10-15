@@ -100,6 +100,25 @@ public sealed class WorkbenchPaletteLifecycleTests
     }
 
     [Fact]
+    public async Task LabelsPersistIndependentlyWithoutChangingDockingOrPeers()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Render("Sketch", "View");
+        await fixture.AfterRender(true);
+        var before = fixture.State("Sketch").AsObject();
+        var view = fixture.State("View").ToJsonString();
+        await fixture.Invoke("ToggleLabels", new WorkbenchToolGroup("Sketch", []));
+        fixture.State("Sketch")["showLabels"]!.GetValue<bool>().Should().BeFalse();
+        fixture.State("Sketch")["side"]!.GetValue<int>().Should().Be(before["side"]!.GetValue<int>());
+        fixture.State("Sketch")["floatingX"]!.GetValue<double>().Should().Be(before["floatingX"]!.GetValue<double>());
+        fixture.State("View").ToJsonString().Should().Be(view);
+        fixture.Module.Saves.Should().ContainSingle();
+        await fixture.Render("Sketch", "View");
+        await fixture.AfterRender(false);
+        fixture.State("Sketch")["showLabels"]!.GetValue<bool>().Should().BeFalse();
+    }
+
+    [Fact]
     public async Task DisposalDuringLoadDoesNotApplyResultsOrPersistAndReleasesInterop()
     {
         await using var fixture = new Fixture();

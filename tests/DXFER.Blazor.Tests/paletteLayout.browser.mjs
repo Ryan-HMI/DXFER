@@ -45,6 +45,17 @@ try {
     await page.goto(url);
     await ready();
     assert.equal(await page.locator('.dxfer-tool-group').count(), 8);
+    const labelToggle = name => page.getByRole('button', {name: `Show ${name} tool labels`, exact: true});
+    const inventory = () => page.locator('.dxfer-command-strip button').evaluateAll(buttons =>
+        buttons.map(button => button.getAttribute('aria-label')).sort());
+    const commands = await inventory();
+    assert.equal(await labelToggle('Sketch').getAttribute('aria-pressed'), 'true');
+    await labelToggle('View').focus();
+    await page.keyboard.press('Enter');
+    await waitState('View', {showLabels: false});
+    assert.equal(await labelToggle('Sketch').getAttribute('aria-pressed'), 'true');
+    assert.equal(await group('View').locator('.dxfer-icon-button-label').count(), 0);
+    assert.ok(await group('Sketch').locator('.dxfer-icon-button-label').count() > 0);
     await page.screenshot({path: `${output}/default-1440.png`});
     await drag('Sketch', 450, 250);
     await waitState('Sketch', {side: 0});
@@ -64,8 +75,16 @@ try {
     await page.waitForSelector('.dxfer-tool-group-floating');
     assert.deepEqual(await snapshot(), mixed);
     assert.deepEqual(await read(), saved);
+    assert.deepEqual(await inventory(), commands);
+    assert.equal(await labelToggle('View').getAttribute('aria-pressed'), 'false');
+    assert.equal(await labelToggle('Sketch').getAttribute('aria-pressed'), 'true');
     await page.screenshot({path: `${output}/reopened-1440.png`});
-    for (const [width, height] of [[1280, 720], [800, 600], [390, 844]]) {
+    const lastTool = group('Sketch').getByRole('button', {name: 'Slot', exact: true});
+    await lastTool.scrollIntoViewIfNeeded();
+    const lastBox = await lastTool.boundingBox();
+    const footer = await page.locator('.dxfer-command-bar').boundingBox();
+    assert.ok(lastBox.y + lastBox.height <= footer.y + 1, 'floating palette body must scroll above the footer');
+    for (const [width, height] of [[1280, 720], [1000, 700]]) {
         await page.setViewportSize({width, height});
         await page.waitForTimeout(150);
         for (const name of ['Sketch', 'View']) {
@@ -86,6 +105,21 @@ try {
     await page.waitForTimeout(150);
     assert.deepEqual(await snapshot(), mixed);
 
+    for (const zoom of [1.25, 1.5, 2]) {
+        // Desktop display scaling reduces available CSS pixels; do not scale a 100vh page with CSS zoom.
+        const width = Math.floor(1920 / zoom), height = Math.floor(1080 / zoom);
+        await page.setViewportSize({width, height});
+        await page.waitForTimeout(200);
+        for (const name of ['Sketch', 'View']) {
+            const box = await group(name).locator('.dxfer-tool-group-drag-header').boundingBox();
+            assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= width + 1 && box.y + box.height <= height + 1);
+        }
+        assert.deepEqual(await read(), saved);
+        await page.screenshot({path: `${output}/scaled-${zoom}.png`});
+    }
+    await page.evaluate(() => document.body.style.zoom = 1);
+    await page.setViewportSize({width: 1440, height: 900});
+
     for (const [name, x, y, side] of [['Transform', 1270, 200, 2], ['Pattern', 600, 70, 3], ['Constraints', 650, 760, 4]]) {
         await drag(name, x, y);
         await waitState(name, {side});
@@ -97,6 +131,13 @@ try {
     for (const side of ['left', 'right', 'top', 'bottom', 'floating'])
         assert.ok(await page.locator(`.dxfer-tool-group-${side}`).count() > 0);
     await page.screenshot({path: `${output}/all-docks-reopened-1440.png`});
+
+    const legacy = {...saved, groups: saved.groups.map(({showLabels, ...state}) => state)};
+    await page.evaluate(({key, legacy}) => localStorage.setItem(key, JSON.stringify(legacy)), {key, legacy});
+    await page.reload();
+    await ready();
+    assert.equal(await labelToggle('Sketch').getAttribute('aria-pressed'), 'false');
+    assert.match(await group('Sketch').getAttribute('class'), /group-floating/);
 
     for (const corrupt of ['{', JSON.stringify({version: 99, groups: saved.groups})]) {
         await page.evaluate(({key, corrupt}) => localStorage.setItem(key, corrupt), {key, corrupt});

@@ -4,7 +4,7 @@ import { restoreLayout, loadLayout, saveLayout, storageKey, floatingLimits, obse
   from '../../src/DXFER.Blazor/wwwroot/paletteLayout.js';
 
 const state = (groupName, overrides = {}) => ({ groupName, side: 1, compaction: 2,
-  dockOrder: 60, floatingX: 24, floatingY: 24, ...overrides });
+  dockOrder: 60, floatingX: 24, floatingY: 24, showLabels: false, ...overrides });
 const defaults = [state('Sketch'), state('View', { dockOrder: 160 }), state('New')];
 const encoded = groups => JSON.stringify({ version: 1, groups });
 const memoryStorage = (value = null) => ({ value, writes: 0,
@@ -70,6 +70,22 @@ test('floating limits keep the complete header reachable without changing prefer
   assert.deepEqual(floatingLimits(200, 20, 253, 34), {x: 0, y: 0});
 });
 
+test('labels persist independently without changing layout or other groups', () => {
+  const groups = [state('Sketch', {showLabels: true, side: 0}), state('View')];
+  const storage = memoryStorage();
+  assert.equal(saveLayout(groups, storage), true);
+  assert.deepEqual(loadLayout(defaults.slice(0, 2), storage), groups);
+});
+
+test('legacy or malformed label preference preserves valid dock positions', () => {
+  for (const showLabels of [undefined, 'true', 1, null]) {
+    const legacy = state('Sketch', {side: 0, floatingX: 900, showLabels});
+    assert.deepEqual(restoreLayout(encoded([legacy]), defaults)[0],
+      state('Sketch', {side: 0, floatingX: 900, showLabels: false}));
+  }
+  assert.equal(restoreLayout(null, [state('New', {showLabels: true})])[0].showLabels, true);
+});
+
 test('observer refreshes measured bounds and releases listeners on disposal', () => {
   const properties = new Map();
   const group = {offsetWidth: 253, querySelector: () => ({offsetHeight: 34}), dataset: {paletteIndex: '0'}};
@@ -89,4 +105,20 @@ test('observer refreshes measured bounds and releases listeners on disposal', ()
   assert.equal(properties.get('--dxfer-palette-max-x-0'), '547px');
   observer.dispose();
   assert.ok(disconnected && removed);
+});
+
+test('scaled client bounds convert back to layout pixels before clamping', () => {
+  const properties = new Map();
+  const root = {offsetWidth: 960, offsetHeight: 500,
+    getBoundingClientRect: () => ({left: 0, top: 96, width: 1920, height: 1000}),
+    querySelectorAll: () => [{offsetWidth: 253, dataset: {paletteIndex: '0'},
+      querySelector: () => ({offsetHeight: 34})}],
+    style: {setProperty: (key, value) => properties.set(key, value)}};
+  const host = {innerWidth: 1920, innerHeight: 1080,
+    addEventListener() {}, removeEventListener() {},
+    ResizeObserver: class {observe() {} disconnect() {}}};
+  const observer = observeLayout(root, host);
+  assert.equal(properties.get('--dxfer-palette-max-x-0'), '707px');
+  assert.equal(properties.get('--dxfer-palette-max-y-0'), '458px');
+  observer.dispose();
 });
