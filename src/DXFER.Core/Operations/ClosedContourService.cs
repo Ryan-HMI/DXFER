@@ -56,7 +56,8 @@ public static class ClosedContourService
                     var ellipseSweep = ellipse.EndParameterDegrees - ellipse.StartParameterDegrees;
                     if (Math.Abs(ellipseSweep) > 0.000001 && Math.Abs(ellipseSweep - 360) > 0.000001)
                         return Review("Partial ellipse contours require review.");
-                    var radius = MeasurementService.Measure(new(0, 0), ellipse.MajorAxisEndPoint).Distance;
+                    var radius = MeasurementService.Measure(new(0, 0), ellipse.MajorAxisEndPoint).Distance
+                        * Math.Max(1, ellipse.MinorRadiusRatio);
                     points = SampleCurve(Math.Tau, radius * scale, ellipse.GetSamplePoints);
                     break;
                 default:
@@ -144,8 +145,8 @@ public static class ClosedContourService
     private static IReadOnlyList<Point2>? SampleCurve(double sweepRadians, double maximumRadiusInches,
         Func<int, IReadOnlyList<Point2>> sample)
     {
-        // For ellipse/circle parametrization, |second derivative| <= major
-        // radius; linear interpolation deviation is bounded by M * step^2 / 8.
+        // For ellipse/circle parametrization, |second derivative| <= the larger
+        // physical radius; interpolation deviation is bounded by M * step^2 / 8.
         var segments = Math.Ceiling(sweepRadians * Math.Sqrt(maximumRadiusInches / (8 * CurveDeviationInches)));
         if (!double.IsFinite(segments) || segments > MaximumVertices - 1) return null;
         return sample(Math.Max(16, (int)segments));
