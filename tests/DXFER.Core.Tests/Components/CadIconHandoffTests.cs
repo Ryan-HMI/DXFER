@@ -58,6 +58,9 @@ public sealed class CadIconHandoffTests
     [InlineData("VectorToX", "align-x")]
     [InlineData("VectorToY", "align-y")]
     [InlineData("RemoveDuplicates", "remove-duplicates")]
+    [InlineData("OriginAxes", "axes")]
+    [InlineData("Menu", "menu")]
+    [InlineData("Close", "close")]
     public void IntegratedArtworkMatchesReviewedMaster(string name, string asset)
     {
         var source = Read("src/DXFER.Blazor/Components/CadIcon.razor");
@@ -83,6 +86,25 @@ public sealed class CadIconHandoffTests
         var button = Read("src/DXFER.Blazor/Components/CadIconButton.razor");
         button.Should().Contain("aria-label=\"@Label\"").And.Contain("title=\"@TitleText\"")
             .And.Contain("@onclick=\"OnClick\"").And.Contain("disabled=\"@Disabled\"");
+    }
+
+    [Fact]
+    public void ChromeUsesSharedIconsWithoutChangingHandlersOrAccessibleNames()
+    {
+        var layout = Read("src/DXFER.Web/Components/Layout/MainLayout.razor");
+        layout.Should().Contain("Name=\"CadIconName.Menu\"")
+            .And.Contain("aria-label=\"Open application menu\"")
+            .And.Contain("@onclick=\"ToggleAppMenu\"")
+            .And.Contain("@onclick=\"CloseSyncConnectDialog\"")
+            .And.Contain("aria-label=\"Dismiss error\"")
+            .And.NotContain("app-menu-bar");
+        Regex.Matches(layout, "Name=\"CadIconName.Close\"").Count.Should().Be(2);
+        Regex.Match(layout, @"private void OpenHotkeyOptions\(\)[\s\S]*?\n    \}").Value
+            .Should().Contain("InvokeAsync(StateHasChanged)");
+        var hotkeys = Read("src/DXFER.Blazor/Components/ToolHotkeyOptions.razor");
+        hotkeys.Should().Contain("Name=\"CadIconName.Close\"")
+            .And.Contain("aria-label=\"Close tool hotkey settings\"")
+            .And.Contain("@onclick=\"CloseAsync\"");
     }
 
     private static string Read(string relative)

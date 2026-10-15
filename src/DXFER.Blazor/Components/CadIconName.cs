@@ -77,5 +77,7 @@ public enum CadIconName
     GrainX,
     GrainY,
     GrainVector,
-    RemoveDuplicates
+    RemoveDuplicates,
+    Menu,
+    Close
 }

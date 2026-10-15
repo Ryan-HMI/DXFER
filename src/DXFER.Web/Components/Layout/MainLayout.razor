@@ -13,9 +13,7 @@
     <header class="app-header">
         <div class="@AppMenuClass" @onpointerleave="CloseAppMenu">
             <button type="button" class="app-menu-toggle" aria-label="Open application menu" title="Application menu" @onclick="ToggleAppMenu">
-                <span class="app-menu-bar" aria-hidden="true"></span>
-                <span class="app-menu-bar" aria-hidden="true"></span>
-                <span class="app-menu-bar" aria-hidden="true"></span>
+                <CadIcon Name="CadIconName.Menu" />
             </button>
             <nav class="app-menu-panel" aria-label="Application menu">
                 <div class="app-menu-group">
@@ -80,7 +78,7 @@
         <section class="app-modal-card" role="dialog" aria-modal="true" aria-labelledby="sync-connect-title" @onclick:stopPropagation="true">
             <header class="app-modal-header">
                 <h2 id="sync-connect-title">Connect to Sync</h2>
-                <button type="button" class="app-modal-close" aria-label="Close" @onclick="CloseSyncConnectDialog">x</button>
+                <button type="button" class="app-modal-close" aria-label="Close" title="Close" @onclick="CloseSyncConnectDialog"><CadIcon Name="CadIconName.Close" /></button>
             </header>
             <div class="app-modal-body">
                 <label class="app-field">
@@ -107,7 +105,7 @@
 <div id="blazor-error-ui">
     An unhandled error has occurred.
     <a href="" class="reload">Reload</a>
-    <a class="dismiss">x</a>
+    <button type="button" class="dismiss" aria-label="Dismiss error" title="Dismiss error"><CadIcon Name="CadIconName.Close" /></button>
 </div>
 
 <ToolHotkeyOptions IsOpen="_isHotkeyOptionsOpen" OnClose="CloseHotkeyOptions" />
@@ -147,6 +145,7 @@
     {
         _isAppMenuOpen = false;
         _isHotkeyOptionsOpen = true;
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private void CloseHotkeyOptions() => _isHotkeyOptionsOpen = false;

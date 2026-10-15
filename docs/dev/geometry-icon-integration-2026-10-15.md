@@ -1,5 +1,9 @@
 # Geometry Icon Integration
 
+Follow-up: chrome-icon-integration-2026-10-15.md maps axes/menu/close, raising
+the integrated count to52. The49-master counts below describe this earlier
+geometry-only batch; the remaining13 retained and16 unmatched masters persist.
+
 Base: 7ad15ab. Bounded follow-up to the 45-master integration. This batch maps
 only these four existing CadIcon renderings to the reviewed icons.json bodies:
 

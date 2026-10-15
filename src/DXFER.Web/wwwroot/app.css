@@ -33,6 +33,7 @@ html, body {
 }
 
 .app-menu-toggle {
+    color: #dce7ed;
     align-items: center;
     background: #222c34;
     border: 1px solid #3f4b55;
@@ -64,12 +65,11 @@ html, body {
     box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.32);
 }
 
-.app-menu-bar {
-    background: #dce7ed;
-    border-radius: 1px;
-    display: block;
-    height: 2px;
-    width: 14px;
+.app-menu-toggle .dxfer-icon,
+.app-modal-close .dxfer-icon,
+#blazor-error-ui .dismiss .dxfer-icon {
+    width: 1.25rem;
+    height: 1.25rem;
 }
 
 .app-menu-panel {
@@ -461,6 +461,15 @@ button {
 }
 
 #blazor-error-ui .dismiss {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
     cursor: pointer;
     position: absolute;
     right: 0.75rem;
