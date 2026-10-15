@@ -79,6 +79,11 @@ unchanged. Existing PowerTrim tests explicitly expect driving values to be
 rewritten. Trim/extend/split policy requires a separate bounded decision and
 regression migration, not a blanket helper change in this corner patch.
 
+Follow-up 2026-10-15: the separate bounded PowerTrim/split guard is now coded and
+automated-tested. See [PowerTrim driving intent](powertrim-driving-intent-2026-10-15.md)
+for policy, conservative topology refusals, native browser fixtures and evidence.
+Parent integration/installed-browser verification remains pending at that handoff.
+
 This code prevents future corner corruption; it does not repair previously
 saved drawings. A stored driving value of 8 cannot reveal whether 10 was the
 original request. Any restoration requires a verified original, undo history,
