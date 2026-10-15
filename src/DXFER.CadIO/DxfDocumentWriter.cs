@@ -412,6 +412,31 @@ public static class DxfDocumentWriter
 
     private static void WriteEllipse(StringBuilder builder, DrawingDocument document, EllipseEntity ellipse)
     {
+        if (ellipse.MinorRadiusRatio > 1)
+        {
+            // Named editor axes need not be size-ordered. DXF requires the longer
+            // axis first; changing the basis also shifts every arc parameter.
+            var start = NormalizeEllipseParameter(ellipse.StartParameterDegrees - 90);
+            var end = NormalizeEllipseParameter(ellipse.EndParameterDegrees - 90);
+            var sweep = NormalizeEllipseParameter(ellipse.EndParameterDegrees - ellipse.StartParameterDegrees);
+            var majorAxis = new Point2(
+                -ellipse.MajorAxisEndPoint.Y * ellipse.MinorRadiusRatio,
+                ellipse.MajorAxisEndPoint.X * ellipse.MinorRadiusRatio);
+            var ratio = 1 / ellipse.MinorRadiusRatio;
+            if (ratio < 1e-10 || !double.IsFinite(majorAxis.X) || !double.IsFinite(majorAxis.Y))
+            {
+                throw new FormatException($"Ellipse '{ellipse.Id.Value}' cannot be represented with a valid DXF axis ratio and finite axes.");
+            }
+
+            ellipse = ellipse with
+            {
+                MajorAxisEndPoint = majorAxis,
+                MinorRadiusRatio = ratio,
+                StartParameterDegrees = sweep <= 0.000001 ? 0 : start,
+                EndParameterDegrees = sweep <= 0.000001 ? 360 : end
+            };
+        }
+
         WriteEntityStyle(builder, document, ellipse);
         WritePair(builder, 100, "AcDbEllipse");
         WritePoint(builder, ellipse.Center, 10, 20);
@@ -420,6 +445,8 @@ public static class DxfDocumentWriter
         WritePair(builder, 41, Format(DegreesToRadians(ellipse.StartParameterDegrees)));
         WritePair(builder, 42, Format(DegreesToRadians(ellipse.EndParameterDegrees)));
     }
+
+    private static double NormalizeEllipseParameter(double degrees) => (degrees % 360 + 360) % 360;
 
     private static void WritePointEntity(StringBuilder builder, DrawingDocument document, PointEntity point)
     {

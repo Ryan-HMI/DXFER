@@ -32,8 +32,41 @@ dimensions could be measured but never resized their ellipse.
 - `LegacySketchSolverAdapter` still owns transaction rollback. Conflicting
   dimensions or blocked edits keep original entities/metadata and retain failed
   intent with diagnostics. Direct `ApplyDimension(s)` remains nontransactional.
-- Existing positive ratios greater than one remain supported; this patch does
-  not swap/relabel axes when the named minor diameter exceeds the named major.
+- Existing positive ratios greater than one remain supported in the editor;
+  named axes are not swapped/relabelled when the named minor diameter exceeds
+  the named major. DXF export must canonicalize them as described below.
+
+## DXF Axis Crossing Follow-Up
+
+The initial axis-edit patch exposed an existing writer defect: it wrote the
+editor ratio directly, even above one. Pinned ezdxf 1.4.4 audited eight actual
+writer outputs (major shrink/minor growth, full/arc, plain/native) and repaired
+every one with `INVALID_ELLIPSE_RATIO`. Native roundtrip success did not establish
+CAD compliance. The model, keyed creation and reader all already accept ratios
+above one, so rejecting axis crossing in the solver would impose a new editor
+restriction rather than fix that shared export defect.
+
+The writer now canonicalizes only its local export copy when ratio > 1:
+
+- Export major vector becomes the old minor vector `(-major.Y, major.X) * ratio`.
+- Export ratio becomes `1 / ratio`; arc parameters shift by -90 degrees and
+  normalize to [0, 360). Full ellipses use 0..360, including the editor's
+  equal-parameter full-ellipse convention. This preserves the curve and directed
+  arc span; full-ellipse sampling may have a different arbitrary start seam.
+- The source document, named references, dimensions and native snapshot remain
+  unchanged. The native fingerprint covers the canonical external geometry;
+  verified reopen restores the original named-axis representation exactly.
+- Plain external DXF contains the same geometric curve with canonical axes, not
+  editor dimension intent. External edits still invalidate the native snapshot
+  under the existing fingerprint contract.
+- If canonicalization overflows an axis or would require a ratio below DXF's
+  1e-10 minimum, export throws `FormatException` rather than clamping the curve
+  or emitting an invalid file. General malformed/degenerate ellipse validation
+  and the existing writer numeric precision are not redesigned here.
+
+Previously exported files are not rewritten. Re-exporting representable source
+documents through the fixed writer produces canonical files; external consumers
+may otherwise need to repair old ratio-above-one exports.
 
 ## Applicability And Limits
 
@@ -45,7 +78,8 @@ ellipse constraint/DOF solver. Reference-only dimensions do not resize geometry.
 Line, polyline, polygon, circle, arc, spline and point application paths are
 unchanged. Dimension IDs, reference keys and anchors are preserved. Constraint
 glyph rendering, drag logic, orthogonal redundancy checks, history, native
-serialization, UI and JavaScript are unchanged.
+snapshot serialization, UI and JavaScript are unchanged. Only the external DXF
+ellipse representation is canonicalized at export.
 
 The shared axis application defect is fixed. No saved files or existing records
 were rewritten. Native files retaining this compatible failed intent can recover
@@ -62,8 +96,18 @@ Other conflicts continue to require correction, not data overrides.
   labels, elliptical arc span/construction state, reference-only intent, and
   native success/conflict/recovered-intent round trips.
 - Full core suite: 867 passed, zero failures/skips.
+- Follow-up red: 10 crossing export tests failed on ratios 1.2/1.5; two existing
+  canonical-axis controls passed. Follow-up green: 16 writer tests and the full
+  883-test suite pass, zero failures/skips. Cases include rotated, wrapped,
+  negative and equal parameters, native intent/re-solve, canonical controls and
+  explicit rejection of unrepresentable exports.
+- Independent follow-up: 20 actual-writer exports audited with pinned ezdxf 1.4.4
+  have zero errors/repairs. Full-curve and directed arc sample errors are below
+  1.7e-10 drawing units. Local evidence and reproducible probes are under
+  `/tmp/dxfer-ellipse-axis-export-20261015` (`before` and `after` audit JSON/DXFs).
 - Commands: `dotnet test tests/DXFER.Core.Tests/DXFER.Core.Tests.csproj --filter
   FullyQualifiedName~SketchEllipseAxisDimensionTests` and the same command
   without the filter.
-- Corrected installed/browser verification remains with the parent. No deployment
-  or production data writes were performed for this patch.
+- Parent reported normal 6 x 3 -> 6 x 4 browser edits, Undo/Redo and reopen passing.
+  Crossing/browser rollout verification remains with the parent. No deployment
+  or production data writes were performed for these patches.
