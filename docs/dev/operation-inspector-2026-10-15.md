@@ -70,3 +70,31 @@ Underlying layout/state integration is implemented, including the shared docking
 cause exposed by a narrower canvas. No user documents, preferences or business
 records require repair. Previously damaged geometry from older defects is outside
 this UI change and is not reconstructed here.
+
+## Installed Dev Verification
+
+Deployed `d7ed51128cbd06ebd68277f9e787164ac36d94c7` to
+https://dxferdev.sync.harrisonmetals.com at 2026-10-15T11:35Z. Four installed
+assembly hashes match the published candidate; both served scoped stylesheets
+match installed bytes and return no-cache. All ten tracked runtime settings are
+unchanged. Health200, anonymous root302, full editing enabled, Sync callbacks
+disabled; Production/Test process IDs unchanged. Rollback publish retained at
+`/home/ryan/dxfer-runtime/dev-publish-before-d7ed511`.
+
+Installed browser contract passes, including right-docking, input preservation,
+constrained refusal, completed edit/Exit/history/reopen, read-only/unit states and
+desktop screenshots. Browser brand tooltip reads `DXFER build d7ed511`; local
+pre-commit builds were not used as installed-version proof. Independent Flux QA
+requested for this bounded scope; neither full visual nor Ryan acceptance claimed.
+
+Installed spline regression also passes: both cubic endpoint refusals, unchanged
+native data/no Undo, supported degree-one extension, exact cubic trim and history/
+reopen. No geometry repair performed.
+
+Separate preexisting units policy: `CutPathLengthService` deliberately treats all
+coordinates as inches per the HMI workflow, independent of DXF units metadata.
+The new header reports metadata honestly. A synthetic mm file therefore shows mm
+in the header but the existing cut total remains inch-assumed. This change does
+not silently introduce unit conversion; mixed-unit quoting/manufacturing is not
+accepted by this UI verification. Ryan is notified of the distinction for a
+separate policy decision (inch-only guard versus explicit conversion).
