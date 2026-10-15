@@ -69,6 +69,12 @@ public static class SketchDimensionSolverService
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(dimension);
 
+        if (TryGetEllipseAxis(document.Entities, dimension, out _, out var ellipse, out var isMajor)
+            && !TryResizeEllipseAxis(ellipse, isMajor, dimension.Value, out _))
+        {
+            return false;
+        }
+
         if (IsOverConstrainedDimension(document, dimension))
         {
             return false;
@@ -232,6 +238,17 @@ public static class SketchDimensionSolverService
         switch (dimension.Kind)
         {
             case SketchDimensionKind.LinearDistance:
+                if (TryGetEllipseAxis(entities, dimension, out var ellipseIndex, out var ellipse, out var isMajor))
+                {
+                    if (fixedReferences.CanChangeCircleLikeRadius(new SketchReference(ellipse.Id.Value, SketchReferenceTarget.Entity))
+                        && TryResizeEllipseAxis(ellipse, isMajor, dimension.Value, out var resized))
+                    {
+                        entities[ellipseIndex] = resized;
+                    }
+
+                    break;
+                }
+
                 if (!TryApplyRectangleSideDistance(
                         entities,
                         constraints,
@@ -674,6 +691,70 @@ public static class SketchDimensionSolverService
         }
 
         point = storedPoint;
+        return true;
+    }
+
+    private static bool TryGetEllipseAxis(
+        IReadOnlyList<DrawingEntity> entities,
+        SketchDimension dimension,
+        out int entityIndex,
+        out EllipseEntity ellipse,
+        out bool isMajor)
+    {
+        entityIndex = -1;
+        ellipse = null!;
+        isMajor = false;
+        if (dimension.Kind != SketchDimensionKind.LinearDistance
+            || dimension.ReferenceKeys.Count != 2
+            || !SketchReference.TryParseCanvasPointCoordinates(dimension.ReferenceKeys[0], out var firstId, out var firstLabel, out _)
+            || !SketchReference.TryParseCanvasPointCoordinates(dimension.ReferenceKeys[1], out var secondId, out var secondLabel, out _)
+            || !StringComparer.Ordinal.Equals(firstId, secondId)
+            || !SketchGeometryEditor.TryFindEntity(entities, firstId, out entityIndex, out var entity)
+            || entity is not EllipseEntity foundEllipse)
+        {
+            return false;
+        }
+
+        isMajor = IsOppositePair(firstLabel, secondLabel, "major-start", "major-end");
+        if (!isMajor && !IsOppositePair(firstLabel, secondLabel, "minor-start", "minor-end"))
+        {
+            return false;
+        }
+
+        ellipse = foundEllipse;
+        return true;
+    }
+
+    private static bool IsOppositePair(string first, string second, string start, string end) =>
+        (StringComparer.OrdinalIgnoreCase.Equals(first, start) && StringComparer.OrdinalIgnoreCase.Equals(second, end))
+        || (StringComparer.OrdinalIgnoreCase.Equals(first, end) && StringComparer.OrdinalIgnoreCase.Equals(second, start));
+
+    private static bool TryResizeEllipseAxis(EllipseEntity ellipse, bool isMajor, double diameter, out EllipseEntity resized)
+    {
+        resized = ellipse;
+        var majorLength = Distance(new Point2(0, 0), ellipse.MajorAxisEndPoint);
+        var minorLength = majorLength * ellipse.MinorRadiusRatio;
+        var radius = diameter / 2;
+        if (!double.IsFinite(majorLength) || majorLength <= SketchGeometryEditor.Tolerance
+            || !double.IsFinite(minorLength) || minorLength <= 0
+            || !double.IsFinite(ellipse.MinorRadiusRatio) || ellipse.MinorRadiusRatio <= SketchGeometryEditor.Tolerance
+            || !double.IsFinite(radius) || radius <= SketchGeometryEditor.Tolerance)
+        {
+            return false;
+        }
+
+        // Changing the stored major vector alone would scale both axes through the ratio.
+        var ratio = isMajor ? minorLength / radius : radius / majorLength;
+        var majorVector = isMajor
+            ? new Point2(ellipse.MajorAxisEndPoint.X / majorLength * radius, ellipse.MajorAxisEndPoint.Y / majorLength * radius)
+            : ellipse.MajorAxisEndPoint;
+        if (!double.IsFinite(ratio) || ratio <= SketchGeometryEditor.Tolerance
+            || !double.IsFinite(majorVector.X) || !double.IsFinite(majorVector.Y))
+        {
+            return false;
+        }
+
+        resized = ellipse with { MajorAxisEndPoint = majorVector, MinorRadiusRatio = ratio };
         return true;
     }
 
