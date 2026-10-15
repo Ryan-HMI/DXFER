@@ -81,6 +81,11 @@ dotnet test tests/DXFER.Core.Tests/DXFER.Core.Tests.csproj --no-build --no-resto
 node --test tests/DXFER.Blazor.Tests/*.test.mjs
 ```
 
-Parent owns actual browser screenshots and integration. This branch does not
-claim installed-app visual acceptance and does not deploy or restart services.
+Parent integration reran850 .NET tests and the actual local browser at
+1440/820/390px. All four existing buttons activate their original tools; SVG
+bounds stay within fixed targets, no page overflow or JS errors, and the canvas
+remains nonblank. Imported geometry is unchanged after activation/cancellation.
+Desktop and phone screenshots inspected under `/tmp/dxfer-geometry-icons-*.png`.
+Repeatable check: `/tmp/dxfer-drag-live-qa.cjs --icons`.
+Installed-app verification follows the next Dev-only rollout; not full UI acceptance.
 Existing drawings/business records require no repair for these static glyphs.
