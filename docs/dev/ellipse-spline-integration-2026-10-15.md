@@ -33,4 +33,11 @@ noncanonical external ellipse files require re-export. The spline no-op did
 not save changed geometry and needs no repair. Unsupported tangent mappings
 remain refused; a quadratic shares its middle control between both ends.
 
-Installed runtime verification and independent Flux retesting follow deployment.
+## Installed Dev Verification
+
+Deployed67ef64a on2026-10-15. PID4119144; four installed assemblies match
+the reviewed Release publish, ten runtime settings are unchanged, public health
+returns200 and anonymous root redirects302 to normal sign-in. Production/Test
+PIDs unchanged. Rollback publish retained. Both exact browser cases above pass
+again against the installed Dev URL, including Undo/Redo and native reopen.
+Flux has the reference for independent retesting; no blanket user acceptance.
