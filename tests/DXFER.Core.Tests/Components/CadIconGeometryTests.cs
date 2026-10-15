@@ -29,25 +29,40 @@ public sealed class CadIconGeometryTests
     public void CenterPointArcIconUsesDisplayedCenterAsArcCenter()
     {
         var block = GetIconCaseBlock("CadIconName.CenterPointArc");
+        var arc = MatchCircularArc(block);
+        var center = MatchCircles(block, fillRequired: true).Single();
 
-        block.Should().Contain("A7 7", "the drawn arc should be a radius-7 arc around the displayed center point");
-        block.Should().NotContain("a8 8", "a relative arc with an implicit center makes the center marker look non-concentric");
+        // This small positive-sweep quarter arc must be centered at the pick,
+        // not at the other possible SVG endpoint-arc center.
+        arc.Start.X.Should().BeApproximately(center.Cx - arc.Radius, 0.05);
+        arc.Start.Y.Should().BeApproximately(center.Cy, 0.05);
+        arc.End.X.Should().BeApproximately(center.Cx, 0.05);
+        arc.End.Y.Should().BeApproximately(center.Cy - arc.Radius, 0.05);
+        Distance(center.Cx, center.Cy, arc.Start.X, arc.Start.Y).Should().BeApproximately(arc.Radius, 0.05);
+        Distance(center.Cx, center.Cy, arc.End.X, arc.End.Y).Should().BeApproximately(arc.Radius, 0.05);
     }
 
     [Fact]
     public void ThreePointArcIconPlacesPickedPointsOnTheArc()
     {
         var block = GetIconCaseBlock("CadIconName.Arc");
+        var arc = MatchCircularArc(block);
         var markers = MatchCircles(block, fillRequired: true).ToArray();
 
-        block.Should().Contain("A6.5 6.5", "the three-point arc icon should draw the same circular arc implied by its picked points");
+        arc.End.Y.Should().BeApproximately(arc.Start.Y, 0.05);
+        (arc.End.X - arc.Start.X).Should().BeApproximately(2 * arc.Radius, 0.05);
+        var center = new MarkupPoint((arc.Start.X + arc.End.X) / 2, arc.Start.Y);
+        var expectedMarkers = new[] { arc.Start, new MarkupPoint(center.X, center.Y - arc.Radius), arc.End };
         markers.Should().HaveCount(3);
-        foreach (var marker in markers)
+        for (var index = 0; index < markers.Length; index++)
         {
-            Distance(12, 16.5, marker.Cx, marker.Cy).Should().BeApproximately(
-                6.5,
+            var marker = markers[index];
+            Distance(center.X, center.Y, marker.Cx, marker.Cy).Should().BeApproximately(
+                arc.Radius,
                 0.05,
                 "the start, through, and end markers should all sit on the displayed arc");
+            Distance(expectedMarkers[index].X, expectedMarkers[index].Y, marker.Cx, marker.Cy)
+                .Should().BeApproximately(0, 0.05, "the through pick must be on the drawn half, not the opposite semicircle");
         }
     }
 
@@ -127,10 +142,70 @@ public sealed class CadIconGeometryTests
     {
         var path = Regex.Match(block, "<path\\s+d=\"(?<d>[^\"]+)\"", RegexOptions.CultureInvariant);
         path.Success.Should().BeTrue();
-        foreach (Match match in Regex.Matches(path.Groups["d"].Value, "(?<x>[0-9.]+)[, ]+(?<y>[0-9.]+)", RegexOptions.CultureInvariant))
+        return ParsePolygonVertices(path.Groups["d"].Value);
+    }
+
+    // Deliberately limited to the line-only polygon grammar used by these icons.
+    // Reject unsupported commands instead of interpreting their parameters as vertices.
+    private static IReadOnlyList<MarkupPoint> ParsePolygonVertices(string path)
+    {
+        const string number = @"[-+]?(?:\d+(?:\.\d*)?|\.\d+)";
+        var tokens = Regex.Matches(path, $@"[A-Za-z]|{number}").Select(match => match.Value).ToArray();
+        Regex.Replace(path, $@"[A-Za-z]|{number}|[\s,]", "").Should().BeEmpty();
+        var vertices = new List<MarkupPoint>();
+        var point = new MarkupPoint(0, 0);
+        var command = ' ';
+        var index = 0;
+        while (index < tokens.Length)
         {
-            yield return new MarkupPoint(Parse(match.Groups["x"].Value), Parse(match.Groups["y"].Value));
+            if (char.IsLetter(tokens[index][0])) command = tokens[index++][0];
+            if (command is 'Z' or 'z')
+            {
+                index.Should().Be(tokens.Length);
+                return vertices;
+            }
+
+            "MmLlHhVv".Should().Contain(command.ToString());
+            var relative = char.IsLower(command);
+            var first = Parse(tokens[index++]);
+            point = char.ToUpperInvariant(command) switch
+            {
+                'M' or 'L' => new MarkupPoint(first + (relative ? point.X : 0), Parse(tokens[index++]) + (relative ? point.Y : 0)),
+                'H' => new MarkupPoint(first + (relative ? point.X : 0), point.Y),
+                'V' => new MarkupPoint(point.X, first + (relative ? point.Y : 0)),
+                _ => throw new InvalidOperationException("Unsupported polygon command.")
+            };
+            vertices.Add(point);
+            command = command switch { 'M' => 'L', 'm' => 'l', _ => command };
         }
+
+        throw new InvalidOperationException("Icon polygon must be closed.");
+    }
+
+    [Fact]
+    public void PolygonVertexReaderResolvesRelativeMovesAndHorizontalEdges()
+    {
+        ParsePolygonVertices("m12 3 8.6 6.2-3.3 10.1H6.7L3.4 9.2Z").Should().BeEquivalentTo(
+            new[] { new MarkupPoint(12, 3), new MarkupPoint(20.6, 9.2), new MarkupPoint(17.3, 19.3),
+                new MarkupPoint(6.7, 19.3), new MarkupPoint(3.4, 9.2) },
+            options => options.WithStrictOrdering().Using<double>(context => context.Subject.Should().BeApproximately(context.Expectation, 1e-10)).WhenTypeIs<double>());
+    }
+
+    private static MarkupArc MatchCircularArc(string block)
+    {
+        const string number = @"[-+]?(?:\d+(?:\.\d*)?|\.\d+)";
+        var match = Regex.Match(block,
+            $@"<path\s+d=""M(?<x>{number})[\s,]+(?<y>{number})\s*(?<command>[Aa])(?<rx>{number})[\s,]+(?<ry>{number})[\s,]+0[\s,]+0[\s,]+1[\s,]+(?<ex>{number})[\s,]*(?<ey>{number})",
+            RegexOptions.CultureInvariant);
+        match.Success.Should().BeTrue("these circular icons use unrotated, small, positive-sweep arcs");
+        var start = new MarkupPoint(Parse(match.Groups["x"].Value), Parse(match.Groups["y"].Value));
+        var radius = Parse(match.Groups["rx"].Value);
+        radius.Should().BeGreaterThan(0);
+        Parse(match.Groups["ry"].Value).Should().Be(radius);
+        var relative = match.Groups["command"].Value == "a";
+        var end = new MarkupPoint(Parse(match.Groups["ex"].Value) + (relative ? start.X : 0),
+            Parse(match.Groups["ey"].Value) + (relative ? start.Y : 0));
+        return new MarkupArc(start, end, radius);
     }
 
     private static IEnumerable<MarkupSegment> ConsecutiveSegments(IReadOnlyList<MarkupPoint> vertices)
@@ -187,6 +262,8 @@ public sealed class CadIconGeometryTests
     private sealed record CircleMarkup(double Cx, double Cy, double R);
 
     private sealed record MarkupPoint(double X, double Y);
+
+    private sealed record MarkupArc(MarkupPoint Start, MarkupPoint End, double Radius);
 
     private sealed record MarkupSegment(MarkupPoint Start, MarkupPoint End);
 }
