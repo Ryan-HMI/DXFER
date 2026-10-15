@@ -39,7 +39,22 @@ header/inspector invalid input, constraint refusal, Exit, Undo/Redo and native
 download/reopen contract also pass. Actual 20px Split glyph capture inspected.
 Evidence: /tmp/dxfer-foundry-evidence, /tmp/dxfer-compact-evidence and the existing
 inspector evidence directory. Native OS scaling has not been independently
-verified by this pass. Dev deployment verification is pending.
+verified by this pass.
+
+## Installed Dev verification
+
+Installed 7a47210be39de0ff42687876667ffa2d201fed10 on 2026-10-15 at 15:18 UTC,
+https://dxferdev.sync.harrisonmetals.com. Browser build tooltip independently
+reports 7a47210; the installed Foundry contract passes with exact screenshot
+center/edge pixels and unchanged exported entities. All four assembly hashes
+match the published candidate; served app CSS, outer and nested scoped CSS, and
+canvas module match byte-for-byte and return no-cache. Ten runtime settings
+preserved; public health 200, anonymous root 302. Production/Test runtime PIDs
+unchanged. Normal Google auth remains, Sync callbacks disabled. Rollback:
+/home/ryan/dxfer-runtime/dev-publish-before-7a47210.
+Installed compact migration/persistence/state and header/inspector browser
+contracts both pass again on rendered build 7a47210, including invalid inputs,
+driving refusal, Exit/Escape, Undo/Redo and native download/reopen.
 
 No drawing or business-record repair is needed; this fixes the shared rendering
 and surface integration, not just one stored layout. Overall visual acceptance
