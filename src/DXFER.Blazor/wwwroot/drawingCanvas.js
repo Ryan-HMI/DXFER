@@ -2474,6 +2474,8 @@ function getDimensionGeometry(state, kind, referenceKeys, anchorPoint) {
   if (points.length >= 2) {
     return {
       type: "linear",
+      ...(kind === "horizontaldistance" ? { axis: "horizontal" }
+        : kind === "verticaldistance" ? { axis: "vertical" } : {}),
       start: points[0],
       end: points[1],
       anchorPoint
@@ -2504,14 +2506,33 @@ function drawDimensionGraphics(state, dimension, isPreview, visualState = null) 
   }
 }
 
-function drawLinearDimensionGraphics(state, dimension, isPreview, visualState = null) {
-  const geometry = dimension.geometry;
+export function getDimensionLinearScreenGeometry(state, geometry, textWidth = 0) {
   const start = worldToScreen(state, geometry.start);
   const end = worldToScreen(state, geometry.end);
   const anchor = worldToScreen(state, geometry.anchorPoint);
+  if (geometry.axis !== "horizontal" && geometry.axis !== "vertical") {
+    return getLinearDimensionScreenGeometry(start, end, anchor, textWidth);
+  }
+
+  const horizontal = geometry.axis === "horizontal";
+  const projectedEnd = horizontal ? { x: end.x, y: start.y } : { x: start.x, y: end.y };
+  const screenGeometry = getLinearDimensionScreenGeometry(start, projectedEnd, anchor, textWidth);
+  if (!screenGeometry) {
+    return null;
+  }
+
+  // Reuse the extension primitive from each real reference; the two references
+  // can lie on opposite sides of the dimension line through the label anchor.
+  const projectedStart = horizontal ? { x: start.x, y: end.y } : { x: end.x, y: start.y };
+  const reverseGeometry = getLinearDimensionScreenGeometry(end, projectedStart, anchor, textWidth);
+  screenGeometry.extensionSegments[1] = reverseGeometry.extensionSegments[0];
+  return screenGeometry;
+}
+
+function drawLinearDimensionGraphics(state, dimension, isPreview, visualState = null) {
   const text = getDimensionDisplayText(dimension);
   const textWidth = text ? measureDimensionCanvasText(state, text) : 0;
-  const screenGeometry = getLinearDimensionScreenGeometry(start, end, anchor, textWidth);
+  const screenGeometry = getDimensionLinearScreenGeometry(state, dimension.geometry, textWidth);
   if (!screenGeometry) {
     return;
   }
@@ -6136,11 +6157,8 @@ function getDimensionLabelScreenDistance(state, dimension, screenPoint) {
 function getDimensionGeometryScreenDistance(state, dimension, screenPoint) {
   const geometry = dimension.geometry;
   if (geometry.type === "linear") {
-    const start = worldToScreen(state, geometry.start);
-    const end = worldToScreen(state, geometry.end);
-    const anchor = worldToScreen(state, geometry.anchorPoint);
     const textWidth = measureDimensionCanvasText(state, getDimensionDisplayText(dimension));
-    const screenGeometry = getLinearDimensionScreenGeometry(start, end, anchor, textWidth);
+    const screenGeometry = getDimensionLinearScreenGeometry(state, geometry, textWidth);
     const segments = screenGeometry
       ? screenGeometry.extensionSegments.concat(screenGeometry.dimensionSegments)
       : [];

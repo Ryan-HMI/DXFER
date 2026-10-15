@@ -31,6 +31,7 @@ import {
   getConstraintGlyphGroupHit,
   getDimensionAnchorUpdateRequest,
   getDimensionDisplayText,
+  getDimensionLinearScreenGeometry,
   getDimensionInputClassName,
   getDimensionPlacementRequest,
   getDimensionRenderStyle,
@@ -155,6 +156,65 @@ function withCanvasRuntime(callback) {
       globalThis.window = previousWindow;
     }
   }
+}
+
+for (const [kind, anchor, value] of [
+  ["HorizontalDistance", { x: 1.5, y: -1 }, 3],
+  ["VerticalDistance", { x: 4, y: 2 }, 4]
+]) {
+  test(`${kind} canvas paints projected guides through high-DPI resize`, () => withCanvasRuntime(() => {
+    const { canvas, context } = createRecordingCanvas();
+    let resize;
+    window.addEventListener = (name, callback) => {
+      if (name === "resize") resize = callback;
+    };
+    const instance = createDrawingCanvas(canvas, {});
+    const document = {
+      entities: [
+        { id: "a", kind: "point", points: [{ x: 0, y: 0 }] },
+        { id: "b", kind: "point", points: [{ x: 3, y: 4 }] }
+      ],
+      bounds: { minX: 0, minY: 0, maxX: 3, maxY: 4 },
+      dimensions: [{ id: "distance", kind, referenceKeys: ["a", "b"], value, anchor }]
+    };
+    const before = structuredClone(document);
+    const assertPainted = () => {
+      const state = {
+        document,
+        view: {
+          scale: Number(canvas.dataset.scale),
+          offsetX: Number(canvas.dataset.offsetX),
+          offsetY: Number(canvas.dataset.offsetY)
+        }
+      };
+      const [dimension] = getPersistentDimensionDescriptors(state);
+      const geometry = getDimensionLinearScreenGeometry(state, dimension.geometry, 7);
+      for (const segment of geometry.extensionSegments.concat(geometry.dimensionSegments)) {
+        assert.ok(context.calls.some((call, index) => call.method === "moveTo"
+          && call.args[0] === segment.start.x && call.args[1] === segment.start.y
+          && context.calls[index + 1]?.method === "lineTo"
+          && context.calls[index + 1].args[0] === segment.end.x
+          && context.calls[index + 1].args[1] === segment.end.y));
+      }
+      assert.ok(context.calls.some(call => call.method === "fillText"
+        && call.args[0] === String(value) && call.args[1] === dimension.point.x
+        && call.args[2] === dimension.point.y + 0.5));
+    };
+    context.calls.length = 0;
+    instance.setDocument(document, true);
+    assertPainted();
+    context.calls.length = 0;
+    window.devicePixelRatio = 2;
+    canvas.clientWidth = 320;
+    canvas.clientHeight = 240;
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 320, height: 240 });
+    resize();
+    assert.equal(canvas.width, 640);
+    assert.equal(canvas.height, 480);
+    assertPainted();
+    assert.deepEqual(document, before);
+    instance.dispose();
+  }));
 }
 
 test("DXF dashed linetype renders with a canvas dash pattern", () => {
