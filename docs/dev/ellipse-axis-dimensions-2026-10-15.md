@@ -1,5 +1,14 @@
 # UT-ELLIPSE-001: Driving Axis Edits
 
+## Installed Follow-Up
+
+Dev170e976 on2026-10-15 includes crossed-axis analysis. Parent installed browser
+checks5x3 ->6x3 ->6x4 ->6x8: last state reports22.103492in and1contour, retaining
+the native axes/dimensions on reopen.970 integrated .NET/352 JS tests pass.
+Flux independently accepted the prior67ef64a edit/tangent/export cases; his
+separate analysis warning is now internally fixed, awaiting independent retest.
+Production/Test remain unchanged; no existing files or business records repaired.
+
 ## Evidence And Root Cause
 
 Flux and the parent reproduced keyed creation of a 5 x 3 ellipse with two

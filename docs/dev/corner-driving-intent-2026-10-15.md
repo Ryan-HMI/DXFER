@@ -68,7 +68,10 @@ Parent local browser verification after integration: both Fillet2 and Chamfer2
 reject the driving10-inch fixture with explicit unchanged-geometry feedback,
 original native entities/dimensions/constraints and disabled Undo. Both reference
 variants succeed with value8 and retain working Undo/Redo. Screenshots inspected;
-installed Dev verification remains pending the combined rollout.
+installed Dev170e976 now also verifies both driving refusals with readable
+unchanged-geometry feedback. Combined970 .NET/352 JS tests pass. Runtime hashes,
+ten settings, normal authentication and disabled Sync callbacks retained;
+Production/Test unchanged. Independent operator retesting remains separate.
 
 **OPEN: PowerTrim driving-dimension rewriting.** The non-corner
 `RefreshDimensionsForReplacedEntities` helper and all its remaining callers are
