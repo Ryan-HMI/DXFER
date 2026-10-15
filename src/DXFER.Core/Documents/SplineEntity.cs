@@ -115,6 +115,30 @@ public sealed record SplineEntity : DrawingEntity
 
     public IReadOnlyList<Point2> GetSamplePoints() => _samplePoints.Value;
 
+    public int? GetTangentControlPointIndex(bool atStart)
+    {
+        if (FitPoints.Count >= 2 || Degree < 2
+            || ControlPoints.Any(point => !double.IsFinite(point.X) || !double.IsFinite(point.Y))
+            || Weights.Any(weight => !double.IsFinite(weight) || weight <= 0)
+            || Knots.Any(knot => !double.IsFinite(knot))
+            || Knots.Zip(Knots.Skip(1)).Any(pair => pair.First > pair.Second))
+        {
+            return null;
+        }
+
+        var endpoint = atStart ? 0 : ControlPoints.Count - 1;
+        var adjacent = atStart ? 1 : ControlPoints.Count - 2;
+        var domainStart = Knots[Degree];
+        var domainEnd = Knots[ControlPoints.Count];
+        var clamped = atStart
+            ? Knots.Take(Degree + 1).All(knot => knot == domainStart) && Knots[Degree + 1] > domainStart
+            : Knots.Skip(ControlPoints.Count).All(knot => knot == domainEnd) && Knots[ControlPoints.Count - 1] < domainEnd;
+        return domainEnd > domainStart && clamped
+            && Distance(ControlPoints[endpoint], ControlPoints[adjacent]) > 0.000001
+                ? adjacent
+                : null;
+    }
+
     private IReadOnlyList<Point2> BuildSamplePoints()
     {
         if (FitPoints.Count >= 2)

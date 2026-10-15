@@ -439,7 +439,7 @@ test("spline tangent handles are generated only from endpoint fit point neighbor
   assert.equal(handles.some(handle => handle.point === fitPoints[2]), false);
 });
 
-test("created spline entities expose persistent endpoint tangent handles", () => {
+test("sample-only spline entities do not advertise uneditable tangent handles", () => {
   const spline = {
     id: "spline-a",
     kind: "spline",
@@ -453,9 +453,7 @@ test("created spline entities expose persistent endpoint tangent handles", () =>
 
   const handles = getPersistentSplineTangentHandlesForEntity(spline);
 
-  assert.equal(handles.length, 2);
-  assert.deepEqual(handles[0].point, { x: 0, y: 0 });
-  assert.deepEqual(handles[1].point, { x: 3, y: 1 });
+  assert.deepEqual(handles, []);
 });
 
 test("persistent spline edit handles display only while the spline is selected", () => {

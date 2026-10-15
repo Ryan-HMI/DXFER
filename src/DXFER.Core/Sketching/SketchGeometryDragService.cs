@@ -2095,9 +2095,35 @@ public static class SketchGeometryDragService
     {
         var points = sourcePoints.ToArray();
         var pointPrefix = isFitSpline ? "fit-" : "control-";
-        if (isFitSpline && (label == "tangent-start" || label == "tangent-end"))
+        if (label == "tangent-start" || label == "tangent-end")
         {
-            entities[entityIndex] = WithSplineTangentHandle(spline, label, dragEnd);
+            if (isFitSpline)
+            {
+                entities[entityIndex] = WithSplineTangentHandle(spline, label, dragEnd);
+            }
+            else
+            {
+                var atStart = label == "tangent-start";
+                if (spline.GetTangentControlPointIndex(atStart) is not { } adjacent)
+                {
+                    status = "This spline endpoint has no supported control tangent handle. Geometry unchanged.";
+                    return false;
+                }
+
+                var endpoint = points[atStart ? 0 : points.Length - 1];
+                // Canvas handles are one quarter of the endpoint-to-control vector.
+                var control = new Point2(endpoint.X + 4 * (dragEnd.X - endpoint.X),
+                    endpoint.Y + 4 * (dragEnd.Y - endpoint.Y));
+                if (!double.IsFinite(control.X) || !double.IsFinite(control.Y)
+                    || SketchGeometryEditor.Distance(endpoint, control) <= SketchGeometryEditor.Tolerance)
+                {
+                    status = "Spline tangent handle must stay distinct from its endpoint. Geometry unchanged.";
+                    return false;
+                }
+
+                points[adjacent] = control;
+                entities[entityIndex] = WithSplineEditablePoints(spline, points, false, adjacent, delta);
+            }
             status = label == "tangent-start"
                 ? "Changed spline start tangent."
                 : "Changed spline end tangent.";
