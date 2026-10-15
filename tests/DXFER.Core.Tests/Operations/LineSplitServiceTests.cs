@@ -53,7 +53,7 @@ public sealed class LineSplitServiceTests
     }
 
     [Fact]
-    public void SplitLinePreservesSketchData()
+    public void SplitLinePreservesConstraintsAndRefreshesReferenceDimension()
     {
         var dimension = new SketchDimension(
             "dim-1",
@@ -80,8 +80,11 @@ public sealed class LineSplitServiceTests
             out var nextDocument);
 
         split.Should().BeTrue();
-        nextDocument.Dimensions.Should().ContainSingle()
-            .Which.Should().BeSameAs(dimension);
+        var refreshed = nextDocument.Dimensions.Should().ContainSingle().Subject;
+        refreshed.Id.Should().Be(dimension.Id);
+        refreshed.ReferenceKeys.Should().Equal(dimension.ReferenceKeys);
+        refreshed.IsDriving.Should().BeFalse();
+        refreshed.Value.Should().Be(4);
         nextDocument.Constraints.Should().ContainSingle()
             .Which.Should().BeSameAs(constraint);
     }

@@ -750,7 +750,7 @@ public sealed class DrawingModifyServiceTests
     }
 
     [Fact]
-    public void PowerTrimUpdatesDimensionedTargetLineToRetainedSpan()
+    public void PowerTrimUpdatesReferenceDimensionedTargetLineToRetainedSpan()
     {
         var dimension = new SketchDimension(
             "target-length",
@@ -758,7 +758,7 @@ public sealed class DrawingModifyServiceTests
             new[] { "target:start", "target:end" },
             10,
             new Point2(5, 1),
-            isDriving: true);
+            isDriving: false);
         var document = new DrawingDocument(
             new DrawingEntity[]
             {
@@ -780,14 +780,14 @@ public sealed class DrawingModifyServiceTests
         var refreshedDimension = next.Dimensions.Should().ContainSingle().Subject;
         refreshedDimension.ReferenceKeys.Should().Equal("target:start", "target:end");
         refreshedDimension.Value.Should().BeApproximately(3, 0.000001);
-        refreshedDimension.IsDriving.Should().BeTrue();
+        refreshedDimension.IsDriving.Should().BeFalse();
         SketchDimensionSolverService.GetDimensionState(next, refreshedDimension)
             .Should()
             .Be(SketchConstraintState.Satisfied);
     }
 
     [Fact]
-    public void PowerTrimRefreshesAffectedCanvasPointDimensionReferences()
+    public void PowerTrimRefreshesAffectedCanvasPointReferenceDimensions()
     {
         var dimension = new SketchDimension(
             "target-mid-distance",
@@ -795,7 +795,7 @@ public sealed class DrawingModifyServiceTests
             new[] { "target|point|mid|5|0", "marker" },
             5,
             new Point2(2.5, 1),
-            isDriving: true);
+            isDriving: false);
         var document = new DrawingDocument(
             new DrawingEntity[]
             {
@@ -1830,8 +1830,10 @@ public sealed class DrawingModifyServiceTests
         next.Entities[5].Should().Be(new LineEntity(EntityId.Create("right"), new Point2(2, -10), new Point2(2, 10)));
     }
 
-    [Fact]
-    public void PowerTrimPolygonExplodesIntoLinesAndRemovesStaleSketchReferences()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PowerTrimPolygonExplodesOnlyWithoutAttachedIntent(bool hasIntent)
     {
         var document = new DrawingDocument(
             new DrawingEntity[]
@@ -1858,12 +1860,21 @@ public sealed class DrawingModifyServiceTests
                     SketchConstraintState.Satisfied)
             });
 
+        if (!hasIntent) document = new DrawingDocument(document.Entities);
+
         var trimmed = DrawingModifyService.TryPowerTrimOrExtendLine(
             document,
             "target",
             new Point2(3, 2),
             prefix => EntityId.Create($"{prefix}-split"),
             out var next);
+
+        if (hasIntent)
+        {
+            trimmed.Should().BeFalse();
+            next.Should().BeSameAs(document);
+            return;
+        }
 
         trimmed.Should().BeTrue();
         next.Entities.Should().NotContain(entity => entity.Id == EntityId.Create("target"));

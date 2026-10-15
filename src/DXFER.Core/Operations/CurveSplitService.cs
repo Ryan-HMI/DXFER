@@ -44,10 +44,10 @@ public static class CurveSplitService
             nextEntities.Add(entity);
         }
 
-        nextDocument = split
-            ? new DrawingDocument(nextEntities, document.Dimensions, document.Constraints, document.Metadata)
-            : document;
-        return split;
+        nextDocument = document;
+        return split && DrawingModifyService.TryFinalizeTrimReplacement(document,
+            new DrawingDocument(nextEntities, document.Dimensions, document.Constraints, document.Metadata),
+            circleEntityId, out nextDocument);
     }
 
     public static bool TrySplitArcAtPoint(
@@ -83,10 +83,10 @@ public static class CurveSplitService
             nextEntities.Add(entity);
         }
 
-        nextDocument = split
-            ? new DrawingDocument(nextEntities, document.Dimensions, document.Constraints, document.Metadata)
-            : document;
-        return split;
+        nextDocument = document;
+        return split && DrawingModifyService.TryFinalizeTrimReplacement(document,
+            new DrawingDocument(nextEntities, document.Dimensions, document.Constraints, document.Metadata),
+            arcEntityId, out nextDocument);
     }
 
     private static bool TryGetInteriorPointAngleOnArc(ArcEntity arc, Point2 point, out double angle)

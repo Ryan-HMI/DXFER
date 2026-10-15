@@ -469,6 +469,34 @@ public static class DrawingModifyService
         Point2 pickedPoint,
         Func<string, EntityId> createEntityId,
         out DrawingDocument nextDocument)
+        => TryPowerTrimOrExtendLine(document, targetEntityId, pickedPoint, createEntityId, out nextDocument, out _);
+
+    public static bool TryPowerTrimOrExtendLine(
+        DrawingDocument document,
+        string targetEntityId,
+        Point2 pickedPoint,
+        Func<string, EntityId> createEntityId,
+        out DrawingDocument nextDocument,
+        out string status)
+    {
+        nextDocument = document;
+        status = "Power trim/extend could not apply this edit. Geometry unchanged. Choose a crossed section or a supported extension.";
+        if (!TryBuildPowerTrimOrExtendCandidate(document, targetEntityId, pickedPoint, createEntityId, out var candidate)) return false;
+        if (!TryFinalizeTrimReplacement(document, candidate, targetEntityId, out nextDocument))
+        {
+            status = "Power trim/extend could not preserve dimensions, constraints, or their references. Geometry unchanged.";
+            return false;
+        }
+        status = "Power trim/extend applied.";
+        return true;
+    }
+
+    private static bool TryBuildPowerTrimOrExtendCandidate(
+        DrawingDocument document,
+        string targetEntityId,
+        Point2 pickedPoint,
+        Func<string, EntityId> createEntityId,
+        out DrawingDocument nextDocument)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(createEntityId);
@@ -598,12 +626,7 @@ public static class DrawingModifyService
                 nextEntities.Add(splitLine);
             }
 
-            var splitDocument = new DrawingDocument(nextEntities, document.Dimensions, document.Constraints, document.Metadata);
-            nextDocument = new DrawingDocument(
-                splitDocument.Entities,
-                RefreshDimensionsForReplacedEntities(splitDocument, new[] { target.Id.Value }),
-                splitDocument.Constraints,
-                splitDocument.Metadata);
+            nextDocument = new DrawingDocument(nextEntities, document.Dimensions, document.Constraints, document.Metadata);
             return true;
         }
 
@@ -1680,15 +1703,77 @@ public static class DrawingModifyService
     private static DrawingDocument ReplaceTrimmedEntities(
         DrawingDocument document,
         IReadOnlyDictionary<string, DrawingEntity> replacements,
-        IEnumerable<DrawingEntity> additions)
+        IEnumerable<DrawingEntity> additions) => ReplaceEntities(document, replacements, additions);
+
+    internal static bool TryFinalizeTrimReplacement(
+        DrawingDocument document,
+        DrawingDocument candidate,
+        string targetEntityId,
+        out DrawingDocument nextDocument)
     {
-        var nextDocument = ReplaceEntities(document, replacements, additions);
-        var dimensions = RefreshDimensionsForReplacedEntities(nextDocument, replacements.Keys);
-        return new DrawingDocument(
-            nextDocument.Entities,
-            dimensions,
-            nextDocument.Constraints,
-            nextDocument.Metadata);
+        nextDocument = document;
+        var replacedIds = new HashSet<string>(StringComparer.Ordinal) { targetEntityId };
+        var original = document.Entities.FirstOrDefault(e => e.Id.Value == targetEntityId);
+        var replacement = candidate.Entities.FirstOrDefault(e => e.Id.Value == targetEntityId);
+        var affectedKeys = document.Dimensions.SelectMany(d => d.ReferenceKeys)
+            .Concat(document.Constraints.SelectMany(c => c.ReferenceKeys))
+            .Where(key => ReferenceKeysContainEntity(new[] { key }, targetEntityId)).ToArray();
+
+        // No reliable indexed-point/segment remapping exists for topology-changing trims.
+        // Refuse attached intent instead of binding it to a different segment or spline control.
+        if (affectedKeys.Length > 0 && (replacement is null
+            || original is PolylineEntity oldPath && replacement is PolylineEntity newPath
+                && !CanPreservePolylineTrimReferences(oldPath, newPath)
+            || original is SplineEntity && affectedKeys.Any(key =>
+                SketchReference.TryParseCanvasPointCoordinates(key, out _, out var label, out _)
+                && label is not "start" and not "end"))) return false;
+
+        var constraints = candidate.Constraints.ToArray();
+        foreach (var constraint in document.Constraints)
+        {
+            if (!ReferenceKeysContainAnyEntity(constraint.ReferenceKeys, replacedIds)) continue;
+            var index = Array.FindIndex(constraints, c => c.Id == constraint.Id);
+            if (index < 0 || !TryRefreshDimensionReferenceKeys(candidate.Entities,
+                constraint.ReferenceKeys, replacedIds, out var keys)) return false;
+            constraints[index] = keys.SequenceEqual(constraint.ReferenceKeys)
+                ? constraint
+                : new SketchConstraint(constraint.Id, constraint.Kind, keys, constraint.State);
+        }
+        candidate = new DrawingDocument(candidate.Entities, candidate.Dimensions, constraints, candidate.Metadata);
+        foreach (var constraint in document.Constraints)
+        {
+            if (!ReferenceKeysContainAnyEntity(constraint.ReferenceKeys, replacedIds)
+                || constraint.State == SketchConstraintState.Suppressed) continue;
+            var mapped = constraints.First(c => c.Id == constraint.Id);
+            if (SketchConstraintService.ValidateConstraint(document, constraint).State == SketchConstraintState.Satisfied
+                && SketchConstraintService.ValidateConstraint(candidate, mapped).State != SketchConstraintState.Satisfied)
+                return false;
+        }
+        return TryFinalizeGeometryReplacement(document, candidate, replacedIds, out nextDocument);
+    }
+
+    private static bool CanPreservePolylineTrimReferences(PolylineEntity original, PolylineEntity candidate)
+    {
+        var before = original.Vertices;
+        var after = candidate.Vertices;
+        if (before.Count != after.Count
+            || PointsCoincide(before[0], before[^1]) != PointsCoincide(after[0], after[^1])) return false;
+
+        // Only shorten the existing end segments in place; equal lengths do not establish edge identity.
+        for (var index = 1; index < before.Count - 1; index++)
+            if (!PointsCoincide(before[index], after[index])) return false;
+        for (var index = 1; index < before.Count; index++)
+        {
+            if (PointsCoincide(before[index - 1], after[index - 1])
+                && PointsCoincide(before[index], after[index])) continue;
+            var segment = new LineEntity(original.Id, before[index - 1], before[index]);
+            if (DistancePointToSegment(after[index - 1], segment) > GeometryTolerance
+                || DistancePointToSegment(after[index], segment) > GeometryTolerance
+                || !TryProjectParameter(segment, after[index - 1], out var start)
+                || !TryProjectParameter(segment, after[index], out var end)
+                || end <= start) return false;
+        }
+        return true;
     }
 
     private static bool TryReplaceCornerLines(
@@ -1700,11 +1785,11 @@ public static class DrawingModifyService
         nextDocument = document;
         var candidate = ReplaceEntities(document, replacements, additions);
         if (InvalidatesPreviouslySatisfiedConstraints(document, candidate, document.Constraints)) return false;
-        return TryFinalizeCornerReplacement(document, candidate,
+        return TryFinalizeGeometryReplacement(document, candidate,
             replacements.Keys.ToHashSet(StringComparer.Ordinal), out nextDocument);
     }
 
-    private static bool TryFinalizeCornerReplacement(
+    private static bool TryFinalizeGeometryReplacement(
         DrawingDocument document,
         DrawingDocument candidate,
         IReadOnlySet<string> replacedIds,
@@ -1955,7 +2040,7 @@ public static class DrawingModifyService
         }
 
         var replacedIds = edges.Select(edge => edge.Reference.EntityId).ToHashSet(StringComparer.Ordinal);
-        return TryFinalizeCornerReplacement(document, changedDocument, replacedIds, out nextDocument);
+        return TryFinalizeGeometryReplacement(document, changedDocument, replacedIds, out nextDocument);
     }
 
     private static bool TryReplacePolylineCorner(
@@ -2231,59 +2316,6 @@ public static class DrawingModifyService
         && first.Target == second.Target
         && first.SegmentIndex == second.SegmentIndex;
 
-    private static IReadOnlyList<SketchDimension> RefreshDimensionsForReplacedEntities(
-        DrawingDocument document,
-        IEnumerable<string> replacedEntityIds)
-    {
-        var replacedIds = replacedEntityIds.ToHashSet(StringComparer.Ordinal);
-        if (replacedIds.Count == 0)
-        {
-            return document.Dimensions;
-        }
-
-        var dimensions = new List<SketchDimension>(document.Dimensions.Count);
-        foreach (var dimension in document.Dimensions)
-        {
-            if (!ReferenceKeysContainAnyEntity(dimension.ReferenceKeys, replacedIds))
-            {
-                dimensions.Add(dimension);
-                continue;
-            }
-
-            if (!TryRefreshDimensionReferenceKeys(
-                    document.Entities,
-                    dimension.ReferenceKeys,
-                    replacedIds,
-                    out var referenceKeys))
-            {
-                continue;
-            }
-
-            var refreshedDimension = new SketchDimension(
-                dimension.Id,
-                dimension.Kind,
-                referenceKeys,
-                dimension.Value,
-                dimension.Anchor,
-                dimension.IsDriving);
-            if (!SketchDimensionSolverService.TryGetDimensionMeasurement(document, refreshedDimension, out var measuredValue)
-                || !IsUsableDimensionMeasurement(dimension.Kind, measuredValue))
-            {
-                continue;
-            }
-
-            dimensions.Add(new SketchDimension(
-                dimension.Id,
-                dimension.Kind,
-                referenceKeys,
-                measuredValue,
-                dimension.Anchor,
-                dimension.IsDriving));
-        }
-
-        return dimensions;
-    }
-
     private static bool TryRefreshDimensionReferenceKeys(
         IReadOnlyList<DrawingEntity> entities,
         IEnumerable<string> referenceKeys,
@@ -2474,6 +2506,12 @@ public static class DrawingModifyService
 
     private static bool TryGetEllipseCanvasPoint(EllipseEntity ellipse, string label, out Point2 point)
     {
+        if (label is "start" or "end")
+        {
+            point = ellipse.PointAtParameterDegrees(label == "start" ? ellipse.StartParameterDegrees : ellipse.EndParameterDegrees);
+            return true;
+        }
+
         if (StringComparer.Ordinal.Equals(label, "center"))
         {
             point = ellipse.Center;
@@ -2573,18 +2611,6 @@ public static class DrawingModifyService
         index = default;
         return label.StartsWith(prefix, StringComparison.Ordinal)
             && int.TryParse(label[prefix.Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out index);
-    }
-
-    private static bool IsUsableDimensionMeasurement(SketchDimensionKind kind, double value)
-    {
-        if (!double.IsFinite(value))
-        {
-            return false;
-        }
-
-        return kind == SketchDimensionKind.Count
-            ? value >= PolygonEntity.MinSideCount
-            : Math.Abs(value) > GeometryTolerance;
     }
 
     private static string CreateCanvasPointReferenceKey(string entityId, string label, Point2 point) =>

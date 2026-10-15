@@ -41,10 +41,10 @@ public static class LineSplitService
             nextEntities.Add(entity);
         }
 
-        nextDocument = split
-            ? new DrawingDocument(nextEntities, document.Dimensions, document.Constraints, document.Metadata)
-            : document;
-        return split;
+        nextDocument = document;
+        return split && DrawingModifyService.TryFinalizeTrimReplacement(document,
+            new DrawingDocument(nextEntities, document.Dimensions, document.Constraints, document.Metadata),
+            lineEntityId, out nextDocument);
     }
 
     private static bool TryGetInteriorSplitPoint(LineEntity line, Point2 point, out Point2 splitPoint)
