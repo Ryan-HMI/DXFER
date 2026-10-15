@@ -4,6 +4,8 @@ Use this log for bugs and feature requests that arrive while another task is act
 
 ## Open
 
+- [ ] SPLINE-EXTEND-FEEDBACK-20261015: Flux delivery034d72b62f6f9b3c3c5177ef independently verifies attempted cubic endpoint extension preserves exact geometry but gives only the generic line-extension prompt, not a specific unsupported-operation refusal. Geometry safety is a pass; explicit-rejection UX is not. Reproduce the shared extension dispatch/status path and add regression coverage; do not approximate or introduce spline extension as a workaround. The same report independently passes unsupported unclamped cubic trim with explicit refusal and unchanged native data/history.
+
 - [x] UT-SPLINE-002 control-spline no-op follow-up,2026-10-15: shared native tangent dispatch and rational preview fixed; installed Dev67ef64a exact fixture changes only adjacent control to approximately(1,1.6), preserving endpoints/degree/knots/weights. Undo/Redo and native reopen pass.911 .NET/352 JS integrated tests pass. No saved-data repair. Independent Flux retest pending; broader fit-spline acceptance remains separate. See spline-tangent-drag-2026-10-15.md.
 
 - [x] UT-ELLIPSE-001 live follow-up,2026-10-15: named-axis dimension application fixed on Dev67ef64a. Installed browser5x3 ->6x3 ->6x4 preserves center/orientation/opposite diameter, Undo/Redo and native reopen. Crossed-axis export canonicalizes external DXF while preserving native intent. Old failed edits need explicit resubmission; old noncanonical exports need re-export. Independent Flux retest pending; see ellipse-axis-dimensions-2026-10-15.md.
