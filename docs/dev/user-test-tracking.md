@@ -2,6 +2,12 @@
 
 ## Resumed implementation, 2026-10-15
 
+- SPLINE-EXTEND-FEEDBACK-20261015: AUTOMATED-TESTED, not yet APP-VERIFIED.
+  1,051 .NET/360 JS pass, including real canvas event dispatch at both spline
+  endpoints and workbench visible refusal/noUndo/native preservation. Flux's
+  prior installed-browser report is the before-fix evidence, not acceptance of
+  this patch. Parent owns installed-browser retest and deployment.
+
 - On Dev20b645c, Flux independently passed bounded cubic-trim fidelity,
   Undo/Redo, download/reopen, and docked/collapsed palette reload/500px resize.
   He also passed the earlier corner topology, invalid input and feedback fixes.
