@@ -481,7 +481,12 @@ public static class DrawingModifyService
     {
         nextDocument = document;
         status = "Power trim/extend could not apply this edit. Geometry unchanged. Choose a crossed section or a supported extension.";
-        if (!TryBuildPowerTrimOrExtendCandidate(document, targetEntityId, pickedPoint, createEntityId, out var candidate)) return false;
+        if (!TryBuildPowerTrimOrExtendCandidate(document, targetEntityId, pickedPoint, createEntityId,
+                out var candidate, out var refusalReason))
+        {
+            status = refusalReason ?? status;
+            return false;
+        }
         if (!TryFinalizeTrimReplacement(document, candidate, targetEntityId, out nextDocument))
         {
             status = "Power trim/extend could not preserve dimensions, constraints, or their references. Geometry unchanged.";
@@ -496,10 +501,12 @@ public static class DrawingModifyService
         string targetEntityId,
         Point2 pickedPoint,
         Func<string, EntityId> createEntityId,
-        out DrawingDocument nextDocument)
+        out DrawingDocument nextDocument,
+        out string? refusalReason)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(createEntityId);
+        refusalReason = null;
 
         var targetEntity = document.Entities
             .FirstOrDefault(entity => StringComparer.Ordinal.Equals(entity.Id.Value, targetEntityId));
@@ -541,7 +548,7 @@ public static class DrawingModifyService
 
         if (targetEntity is SplineEntity splineTarget)
         {
-            return TryPowerTrimSpline(document, splineTarget, pickedPoint, createEntityId, out nextDocument);
+            return TryPowerTrimSpline(document, splineTarget, pickedPoint, createEntityId, out nextDocument, out refusalReason);
         }
 
         if (targetEntity is not LineEntity target)
@@ -1409,8 +1416,10 @@ public static class DrawingModifyService
         SplineEntity target,
         Point2 pickedPoint,
         Func<string, EntityId> createEntityId,
-        out DrawingDocument nextDocument)
+        out DrawingDocument nextDocument,
+        out string? refusalReason)
     {
+        refusalReason = null;
         if (!target.TryGetExactKnotSpline(out var exactTarget))
         {
             return FailUnchanged(document, out nextDocument);
@@ -1423,7 +1432,16 @@ public static class DrawingModifyService
             return FailUnchanged(document, out nextDocument);
         }
 
-        if (!TryProjectPointToSampledPath(samples, cumulativeDistances, pickedPoint, out var pickedDistance))
+        var onPath = TryProjectPointToSampledPath(samples, cumulativeDistances, pickedPoint, out var pickedDistance);
+        if ((target.Degree != 1 || target.FitPoints.Count >= 2)
+            && (!onPath || pickedDistance <= GeometryTolerance || pickedDistance >= totalLength - GeometryTolerance)
+            && IsOffEndSampledSplinePick(samples, target.Id, pickedPoint))
+        {
+            refusalReason = "Spline extension is not supported for higher-degree or fit-point splines. Geometry unchanged.";
+            return FailUnchanged(document, out nextDocument);
+        }
+
+        if (!onPath)
         {
             return TryExtendSplineTarget(document, target, samples, pickedPoint, out nextDocument);
         }
@@ -1547,6 +1565,17 @@ public static class DrawingModifyService
             },
             keptSplines.Skip(1));
         return true;
+    }
+
+    private static bool IsOffEndSampledSplinePick(IReadOnlyList<Point2> samples, EntityId id, Point2 point)
+    {
+        if (samples.Count < 2 || PointsCoincide(samples[0], samples[^1])) return false;
+        // Canvas sends raw off-end picks, not points projected onto a tangent ray.
+        // This classifies refusal feedback only; it does not relax extension/trim geometry tolerances.
+        return TryProjectParameter(new LineEntity(id, samples[0], samples[1]), point, out var first)
+                && first < -GeometryTolerance
+            || TryProjectParameter(new LineEntity(id, samples[^2], samples[^1]), point, out var last)
+                && last > 1 + GeometryTolerance;
     }
 
     private static bool TryExtendSplineTarget(

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { sampleControlSpline } from "../../src/DXFER.Blazor/wwwroot/canvas/splineGeometry.js";
 import {
   applyDraftDimensionValue,
   adjustPolygonSideCount,
@@ -3912,6 +3913,60 @@ test("power trim request preserves off-end spline edge pick for extend", () => {
   assertApproxEqual(request.point.x, 10.9);
   assertApproxEqual(request.point.y, 0);
 });
+
+for (const start of [true, false]) {
+  test(`curved spline off-${start ? "start" : "end"} pointer click dispatches the extension request`, () => withCanvasRuntime(() => {
+    const { canvas } = createRecordingCanvas();
+    const listeners = new Map();
+    canvas.addEventListener = (name, callback) => listeners.set(name, callback);
+    const callbacks = [];
+    const instance = createDrawingCanvas(canvas, {
+      invokeMethodAsync: (method, ...args) => { callbacks.push({ method, args }); return Promise.resolve(); }
+    });
+    const controls = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 3, y: 1 }, { x: 4, y: 1 }];
+    const knots = [0, 0, 0, 0, 1, 1, 1, 1];
+    const document = { entities: [{ id: "spline", kind: "spline", degree: 3, controlPoints: controls,
+      knots, weights: [1, 1, 1, 1], points: sampleControlSpline(controls, 3, knots, [1, 1, 1, 1]) }],
+      bounds: { minX: 0, minY: 0, maxX: 4, maxY: 1 } };
+    const before = structuredClone(document);
+    instance.setDocument(document, true);
+    instance.setActiveTool("powertrim");
+    const scale = Number(canvas.dataset.scale);
+    const raw = { x: (start ? 0 : 4) + (start ? -14 : 14) / scale, y: (start ? 0 : 1) + 3 / scale };
+    const event = { pointerId: 1, button: 0, pointerType: "mouse", preventDefault() {},
+      clientX: raw.x * scale + Number(canvas.dataset.offsetX),
+      clientY: Number(canvas.dataset.offsetY) - raw.y * scale };
+    listeners.get("pointerdown")(event);
+    listeners.get("pointerup")(event);
+    const requests = callbacks.filter(call => call.method === "OnPowerTrimRequested");
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].args[0], "spline");
+    assertApproxPoint({ x: requests[0].args[1], y: requests[0].args[2] }, raw);
+    assert.deepEqual(document, before);
+    instance.dispose();
+  }));
+
+  for (const scale of [10, 100, 1000]) {
+    test(`curved spline off-${start ? "start" : "end"} pick reaches core unchanged at scale ${scale}`, () => {
+      const controls = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 3, y: 1 }, { x: 4, y: 1 }];
+      const knots = [0, 0, 0, 0, 1, 1, 1, 1];
+      const entity = { id: "spline", kind: "spline", degree: 3, controlPoints: controls,
+        knots, weights: [1, 1, 1, 1], points: sampleControlSpline(controls, 3, knots, [1, 1, 1, 1]) };
+      const state = createHitTestState([entity]);
+      state.activeTool = "powertrim";
+      state.view.scale = scale;
+      const endpoint = entity.points.at(start ? 0 : -1);
+      const raw = { x: endpoint.x + (start ? -14 : 14) / scale, y: endpoint.y + 3 / scale };
+      const screen = { x: raw.x * scale, y: 100 - raw.y * scale };
+      const original = JSON.stringify(state.document);
+      const request = getPowerTrimRequest(state, screen);
+      assert.equal(request?.targetKey, "spline");
+      assert.equal(getPowerTrimRequestMode(state, screen), "extend");
+      assertApproxPoint(request.point, raw);
+      assert.equal(JSON.stringify(state.document), original);
+    });
+  }
+}
 
 test("power trim request preserves off-end arc edge pick for extend", () => {
   const state = createHitTestState([
