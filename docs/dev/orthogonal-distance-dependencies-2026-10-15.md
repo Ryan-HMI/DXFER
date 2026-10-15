@@ -33,6 +33,11 @@ Release assemblies match;10 runtime settings retained, normal sign-in302,
 health200, Sync callbacks disabled. Production/Test processes unchanged.
 This is app verification, not Ryan acceptance.
 
+The reconstructable native fixture is `fixtures/orthogonal-redundant-distance.dxf`.
+Open it, select Dimension, click points(0,0) and(3,4), then place at(1,3).
+The new distance is exactly5, compatible but redundant with the existing driving
+projections3 and4. Do not change its value to create an ordinary conflict.
+
 ## Limits And Separate Work
 
 This is a conservative orthogonal proof, not a general rotated/nonlinear rank
@@ -42,7 +47,6 @@ ellipse/spline samples do not prove dependencies. A failed proof is not evidence
 that a general system is independent. Previously accepted redundant intent may
 need deletion or conversion to reference; no stored document repair is attempted.
 
-The browser check also exposed existing diagonal guide rendering for horizontal/
-vertical dimensions. Numerical measurement/solver semantics are correct; visual
-projection is tracked separately as AXIS-DIMENSION-GUIDES-20261015. It is not
-silently marked fixed by this core patch.
+The browser check also exposed diagonal guide rendering for horizontal/vertical
+dimensions. That separate rendering/hit-test fix is now deployed in Dev f40d167;
+see AXIS-DIMENSION-GUIDES-20261015. It does not change this solver proof.

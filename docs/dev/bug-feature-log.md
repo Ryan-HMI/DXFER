@@ -4,7 +4,7 @@ Use this log for bugs and feature requests that arrive while another task is act
 
 ## Open
 
-- [ ] AXIS-DIMENSION-GUIDES-20261015: Browser fixture with HorizontalDistance3 and VerticalDistance4 between points(0,0)/(3,4) renders diagonal guides. Model values remain correct. Separate JS projection/anchor fix underway; no solver/data rewrite. Screenshot `/tmp/dxfer-redundant-before.png`.
+- [x] AXIS-DIMENSION-GUIDES-20261015: Shared axis projection and hit-testing fixed, deployed Dev f40d167.845 .NET/333 JS tests pass; installed desktop/500px high-DPI browser checks verify guide selection, label-only movement and Undo/Redo. No solver/data rewrite or record repair. See `axis-dimension-projection-2026-10-15.md`. No trivial visual acceptance reminder.
 
 - [x] DRAG-TRANSACTION-20261015: Fixed generic drag constraint rejection and stale optimistic canvas after server refusal. Dev e94f6ee,814 .NET/304 JS tests pass; installed browser verifies fixed-peer unchanged preview/release/export/history and free-peer successful propagation/Undo/Redo. See `drag-constraint-transactions-2026-10-15.md`. No saved drawings repaired; general constraint convergence remains open.
 

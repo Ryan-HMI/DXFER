@@ -48,7 +48,10 @@ screenshots inspected: `/tmp/dxfer-axis-guides-desktop.png` and
 `/tmp/dxfer-axis-guides-narrow.png`. Repeat with
 `node /tmp/dxfer-drag-live-qa.cjs --axis-guides`.
 
-Installed-app verification follows Dev-only deployment. No core/solver edits,
+Deployed Dev f40d167 and repeated the browser check successfully against
+https://dxferdev.sync.harrisonmetals.com. Release hashes match;10 runtime
+settings retained, health200/normal sign-in302, callbacks disabled and other
+runtime PIDs unchanged. No core/solver edits,
 new dependencies or application-data changes. Existing outside anchors still
 need zoom/pan when Fit Extents only frames document geometry; this patch does
 not claim to change that separate framing contract.
