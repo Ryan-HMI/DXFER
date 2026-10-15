@@ -64,6 +64,12 @@ Focused filter: `--filter 'FullyQualifiedName~CornerIntent|FullyQualifiedName~Po
 
 ## Explicit remaining issue and existing drawings
 
+Parent local browser verification after integration: both Fillet2 and Chamfer2
+reject the driving10-inch fixture with explicit unchanged-geometry feedback,
+original native entities/dimensions/constraints and disabled Undo. Both reference
+variants succeed with value8 and retain working Undo/Redo. Screenshots inspected;
+installed Dev verification remains pending the combined rollout.
+
 **OPEN: PowerTrim driving-dimension rewriting.** The non-corner
 `RefreshDimensionsForReplacedEntities` helper and all its remaining callers are
 unchanged. Existing PowerTrim tests explicitly expect driving values to be
