@@ -23,13 +23,22 @@ gap: the unchanged server document does not replace the optimistic canvas.
 The JS interop needs an explicit accepted/rejected result, not only exception
 rollback. Canvas preview must also preserve valid geometry on failed intent.
 
-## Coverage In Progress
+## Verification
 
 Core rejection: Equal circle/Fix, Equal line/Fix, Midpoint line/fixed point,
 and suppressed relation still permitting free movement. Existing successful
-peer propagation and all51 drag tests pass; full811-test suite passes.
-Local browser confirms rejected document/history unchanged; preview/canvas
-recovery is still being implemented and is not yet deployed.
+peer propagation and all51 drag tests pass; full814-test suite passes including
+three interop acceptance tests. The integrated preview patch passes304 JS tests,
+including31 constraint/rollback cases. Web build has zero warnings/errors.
+
+Real local browser repeats the installed-Dev failure fixture: rejected preview
+and released canvas retain both radius3 circles, native export preserves exact
+entities/dimensions/constraints, and Undo remains disabled. Hover at the original
+quadrant resolves to the original grip, confirming the visible canvas is not
+stale. With Fix removed, both radii become5 and Undo/Redo restore the correct
+documents. Screenshots inspected, no browser errors. QA script:
+`/tmp/dxfer-drag-live-qa.cjs`; fixture generator `/tmp/dxfer-drag-fixtures`.
+Ready for Dev rollout, not yet deployed.
 
 The shared guard uses the existing constraint validator for every generic
 entity path. Line, polyline/polygon, circle, arc, ellipse, spline and point

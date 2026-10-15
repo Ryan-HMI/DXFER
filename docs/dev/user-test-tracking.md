@@ -9,8 +9,9 @@
   and unsupported spline cases remain separate independent checks.
 - DRAG-TRANSACTION-20261015: parent reproduced Equal/Fix circle drag corruption
   in the installed browser. Core correction passes51 drag/811 full tests;
-  local exported document/history are stable but browser preview rollback still
-  needs integration. No current-deployment or user-acceptance claim.
+  integrated814 .NET/304 JS tests pass. Local real browser confirms stable
+  rejected preview/release/export/history, plus successful free-peer propagation
+  and Undo/Redo. Ready for Dev rollout; no user-acceptance claim.
 - UT-SOLVER-003 exact deleted-Vertical case is now APP-VERIFIED on Dev20b645c:
   actual glyph deletion, endpoint drag, dimension-label drag and Undo/Redo.
   Label movement preserves geometry, length10 and the removed constraint.
