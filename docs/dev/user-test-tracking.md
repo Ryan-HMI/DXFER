@@ -2,7 +2,7 @@
 
 ## Resumed implementation, 2026-10-15
 
-- Current Dev20b645c: Flux independently passed bounded cubic-trim fidelity,
+- On Dev20b645c, Flux independently passed bounded cubic-trim fidelity,
   Undo/Redo, download/reopen, and docked/collapsed palette reload/500px resize.
   He also passed the earlier corner topology, invalid input and feedback fixes.
   These are not blanket UI or Ryan acceptance. Smaller phone/floating palette
@@ -13,6 +13,15 @@
   rejected preview/release/export/history, plus successful free-peer propagation
   and Undo/Redo. Deployed Dev e94f6ee and repeated successfully against the
   installed URL; no user-acceptance claim. Production/Test unchanged.
+- Flux independently accepted the bounded drag case on fresh Dev e94f6ee at
+  2026-10-15 00:12:50 Eastern: fixed-peer rejection, visible rollback, no Undo
+  entry; removing Fix permits both radii to update, with stable centers and
+  working Undo/Redo. This is independent QA, not Ryan acceptance.
+- UT-SOLVER-006: current Dev183c2c1 includes the shared orthogonal dependency
+  proof.845 .NET/304 JS tests pass. Installed browser rejects a redundant
+  diagonal over driving3/4 projections, preserves geometry and existing
+  dimensions, and retains failed intent through Undo/Redo/native reopen.
+  APP-VERIFIED; general rotated/nonlinear dependency analysis remains open.
 - UT-SOLVER-003 exact deleted-Vertical case is now APP-VERIFIED on Dev20b645c:
   actual glyph deletion, endpoint drag, dimension-label drag and Undo/Redo.
   Label movement preserves geometry, length10 and the removed constraint.
@@ -156,7 +165,7 @@ These rows are still open and should not be treated as fixed yet.
 | UT-SOLVER-001 | Dragging dimensioned geometry respects dimensions, retroactive side dimensions can be added, redundant constrained dimensions paint failed, and deleting dimensions clears stale broken solve state. | USER-FAILED | PARTIAL | PARTIAL | Rectangle partial-dimension edge drag, partial-dimension vertex decomposition, and two-dimension anchor travel are coded, auto-passed, and app-verified. Retroactive rectangle side dimensioning and redundant rectangle-side angle failure painting remain app-verified; broader non-rectangle dimension drag/deletion robustness remains queued |
 | UT-SOLVER-004 | Entity-specific drag grips behave uniformly: centers/midpoints translate, circle circumference edits diameter/radius, polygons can be free-dragged, dimensioned rectangle vertex drags do not break the solve, and point/edge drags edit only the dragged geometry. | USER-FAILED | PARTIAL | PARTIAL | Rectangle partial-dimension edge drag, partial-dimension vertex decomposition, and full-dimension drag coherence are coded, auto-passed, and app-verified. Polygon center/midpoint/whole drag and circle center/circumference drag are coded, auto-passed, and app-verified; broader entity matrix still open |
 | UT-SOLVER-005 | Drag behavior is determined by current solver constraints and grip degrees of freedom across every applicable entity type, not by rectangle-only special cases. | USER-REQUESTED | PARTIAL | PARTIAL | `DRAG-LINE-001` line endpoint dimension-preserving fallback coded, auto-passed, and app-verified; broader entity/grip matrix remains open |
-| UT-SOLVER-006 | Diagonal point-to-point driving dimensions over already width/height constrained geometry are marked overconstrained/unsatisfied. | USER-FAILED | OPEN | OPEN | Logged; focused solver reproduction next |
+| UT-SOLVER-006 | Diagonal point-to-point driving dimensions over already width/height constrained geometry are marked overconstrained/unsatisfied. | APP-VERIFIED | PASS | OPEN | Dev183c2c1: bounded orthogonal proof, installed rejection/Undo/Redo/native reopen verified; Ryan acceptance pending |
 | UT-SOLVER-007 | Persistent dimension graphics/anchors travel with geometry after the driving dimension value has been edited. | USER-FAILED | AUTO-PASSED | APP-VERIFIED | Dimension anchors and canvas-point dimension references now transform with selected/document translate and rotate paths. Rebuilt-app browser verification confirmed a keyed 10-unit line dimension followed Translate by `+96,-48` screen px and Rotate to the expected `391.2,310` anchor while keeping value `10`; exact user rectangle workflow still worth retesting |
 | UT-SOLVER-008 | Angular dimensions respect selected supplementary angles and do not flip the displayed/stored span when the label crosses the acute side. | USER-FAILED | AUTO-PASSED | APP-VERIFIED | Coded and app-verified: two converging lines produced a persistent Angle input of `135` from the obtuse-side placement, then dragging the dimension label into the acute-side area kept value/rendered span at `135`; awaiting user retest |
 | UT-SOLVER-002 | Coincident constraints weld vertices for drag/solve behavior. | USER-FAILED | PARTIAL | PARTIAL | Line-chain coincident endpoint drag is coded, auto-passed, and app-verified for live preview plus server release; broader mixed-entity coincidence matrix remains queued |

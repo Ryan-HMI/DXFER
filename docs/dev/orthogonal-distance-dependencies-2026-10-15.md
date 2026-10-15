@@ -27,7 +27,11 @@ editable failed intent. No replacement solver or external dependency added.
   `/tmp/dxfer-drag-live-qa.cjs --projections`; disposable fixture generated under
   `/tmp/dxfer-drag-fixtures`. No saved user file was used or changed.
 
-Ready for Dev rollout. Production/Test unchanged; not Ryan acceptance.
+Deployed Dev183c2c1 on2026-10-15. The installed browser repeated the same
+rejection, stable geometry, Undo/Redo and native reopen checks successfully.
+Release assemblies match;10 runtime settings retained, normal sign-in302,
+health200, Sync callbacks disabled. Production/Test processes unchanged.
+This is app verification, not Ryan acceptance.
 
 ## Limits And Separate Work
 
