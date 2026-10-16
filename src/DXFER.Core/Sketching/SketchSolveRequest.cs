@@ -23,7 +23,12 @@ public sealed class SketchSolveRequest
         Constraints = Array.AsReadOnly(constraintArray);
         Dimensions = Array.AsReadOnly(dimensionArray);
         FixedReferenceKeys = Array.AsReadOnly(
-            ResolveFixedReferenceKeys(fixedReferenceKeys, constraintArray).ToArray());
+            ResolveFixedReferenceKeys(fixedReferenceKeys, constraintArray)
+                .Concat(document.Constraints.Concat(constraintArray).SelectMany(c => c.ReferenceKeys)
+                    .Concat(document.Dimensions.Concat(dimensionArray).SelectMany(d => d.ReferenceKeys))
+                    .Where(key => SketchReference.TryParse(key, out var reference) && reference.IsOrigin)
+                    .Select(_ => SketchReference.OriginKey))
+                .Distinct(StringComparer.Ordinal).ToArray());
         InitialGuesses = Array.AsReadOnly((initialGuesses ?? Array.Empty<SketchSolveInitialGuess>()).ToArray());
     }
 

@@ -5,6 +5,10 @@ namespace DXFER.Core.Sketching;
 
 public readonly record struct SketchReference
 {
+    public const string OriginEntityId = "$origin";
+    public const string OriginKey = "$origin:center";
+    public static SketchReference Origin => new(OriginEntityId, SketchReferenceTarget.Center);
+
     private const string CanvasPointSeparator = "|point|";
     private const string SegmentSeparator = "|segment|";
 
@@ -33,6 +37,9 @@ public readonly record struct SketchReference
     public int? SegmentIndex { get; }
 
     public bool IsEntity => Target == SketchReferenceTarget.Entity;
+
+    public bool IsOrigin => EntityId == OriginEntityId
+        && Target == SketchReferenceTarget.Center && !SegmentIndex.HasValue;
 
     public static bool TryParse(string key, out SketchReference reference)
     {

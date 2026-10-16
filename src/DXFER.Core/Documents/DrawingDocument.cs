@@ -30,6 +30,10 @@ public sealed class DrawingDocument
         ArgumentNullException.ThrowIfNull(metadata);
 
         Entities = Array.AsReadOnly(entities.ToArray());
+        if (Entities.Any(entity => entity.Id.Value == SketchReference.OriginEntityId))
+        {
+            throw new ArgumentException("The $origin ID is reserved for the immutable sketch origin, not a drawing entity.", nameof(entities));
+        }
         Dimensions = Array.AsReadOnly(dimensions.ToArray());
         Constraints = Array.AsReadOnly(constraints.ToArray());
         Metadata = metadata;

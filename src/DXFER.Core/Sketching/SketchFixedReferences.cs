@@ -35,7 +35,7 @@ internal sealed class SketchFixedReferences
 
     public bool IsFixed(SketchReference reference)
     {
-        if (fixedReferences.Contains(reference.ToString()))
+        if (reference.IsOrigin || fixedReferences.Contains(reference.ToString()))
         {
             return true;
         }
@@ -55,7 +55,8 @@ internal sealed class SketchFixedReferences
     }
 
     public bool IsWholeEntityFixed(SketchReference reference) =>
-        fixedReferences.Contains(reference.EntityId)
+        reference.EntityId == SketchReference.OriginEntityId
+        || fixedReferences.Contains(reference.EntityId)
         || (reference.SegmentIndex.HasValue && fixedReferences.Contains(reference.ToString()));
 
     public bool CanMovePoint(SketchReference reference) =>

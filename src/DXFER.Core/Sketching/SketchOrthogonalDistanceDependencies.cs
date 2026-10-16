@@ -229,8 +229,13 @@ internal sealed class SketchOrthogonalDistanceDependencies
         point = default;
         if (!SketchReference.TryParse(key, out var reference)
             || !SketchGeometryEditor.TryGetPoint(document.Entities, reference, out point)
-            || !double.IsFinite(point.X) || !double.IsFinite(point.Y)
-            || !SketchGeometryEditor.TryGetEntity(document.Entities, reference, out _, out var entity))
+            || !double.IsFinite(point.X) || !double.IsFinite(point.Y))
+        {
+            return false;
+        }
+
+        DrawingEntity? entity = null;
+        if (!reference.IsOrigin && !SketchGeometryEditor.TryGetEntity(document.Entities, reference, out _, out entity))
         {
             return false;
         }
