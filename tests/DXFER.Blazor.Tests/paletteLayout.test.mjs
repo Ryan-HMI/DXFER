@@ -11,6 +11,23 @@ const memoryStorage = (value = null) => ({ value, writes: 0,
   getItem(key) { assert.equal(key, storageKey); return this.value; },
   setItem(key, value) { assert.equal(key, storageKey); this.value = value; this.writes++; } });
 
+test('labeled widths persist independently through label toggles and restricted saves', () => {
+  const groups = [state('Sketch', {labelWidth: 360, showLabels: true}), state('View', {labelWidth: 176})];
+  const storage = memoryStorage();
+  assert.equal(saveLayout(groups, storage), true);
+  assert.deepEqual(loadLayout(defaults.slice(0, 2), storage), groups);
+  saveLayout([{...groups[0], showLabels: false}], storage);
+  assert.deepEqual(loadLayout(defaults.slice(0, 2), storage), [{...groups[0], showLabels: false}, groups[1]]);
+});
+
+test('malformed widths do not discard valid dock and label preferences', () => {
+  for (const labelWidth of [-1, 0, 175, 481, 1e9, null, '320', NaN, Infinity]) {
+    const original = state('Sketch', {showLabels:true, side:2, floatingX:700});
+    assert.deepEqual(restoreLayout(encoded([{...original, labelWidth}]), defaults)[0], original);
+  }
+  assert.deepEqual(restoreLayout(encoded([state('Sketch')]), defaults), defaults);
+});
+
 test('legacy untouched Cleanup and Grain migrate right without losing display preferences', () => {
   const old = [state('Cleanup', {dockOrder:660, floatingX:72, floatingY:132, compaction:1, showLabels:true}),
     state('Grain', {dockOrder:760, floatingX:96, floatingY:150})];

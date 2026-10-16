@@ -26,8 +26,11 @@ function validState(state) {
 
 function copyState(state) {
     const { groupName, side, compaction, dockOrder, floatingX, floatingY } = state;
-    return { groupName, side, compaction, dockOrder, floatingX, floatingY,
+    const result = { groupName, side, compaction, dockOrder, floatingX, floatingY,
         showLabels: state.showLabels === true };
+    if (Number.isFinite(state.labelWidth) && state.labelWidth >= 176 && state.labelWidth <= 480)
+        result.labelWidth = state.labelWidth;
+    return result;
 }
 
 function storedStates(json) {
@@ -92,7 +95,19 @@ export function getBounds(root) {
         scaleY: root.offsetHeight > 0 ? bounds.height / root.offsetHeight : 1 };
 }
 
+export function captureResize(root, index, pointerId) {
+    const group = root.querySelector(`[data-palette-index="${index}"]`);
+    const bounds = getBounds(root);
+    root.setPointerCapture(pointerId);
+    return { ...bounds, groupWidth: group.getBoundingClientRect().width / bounds.scaleX };
+}
+
 export function observeLayout(root, host = window) {
+    const resizeKey = event => {
+        if (event.target.closest?.('.dxfer-palette-resize') &&
+            ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) event.preventDefault();
+    };
+    root.addEventListener?.('keydown', resizeKey);
     const refresh = () => {
         const bounds = root.getBoundingClientRect();
         // CSS limits and offset sizes use layout pixels; client bounds include display scaling.
@@ -116,6 +131,7 @@ export function observeLayout(root, host = window) {
     return {
         refresh,
         dispose() {
+            root.removeEventListener?.('keydown', resizeKey);
             observer.disconnect();
             host.removeEventListener('resize', refresh);
         }

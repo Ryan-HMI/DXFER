@@ -18,6 +18,47 @@ public sealed class WorkbenchPaletteLifecycleTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Fact]
+    public async Task ResizeUsesDisplayScaleAndPreservesPeersThenCancelRestoresPreferredWidth()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Render("Sketch", "View");
+        await fixture.AfterRender(true);
+        var group = new WorkbenchToolGroup("Sketch", []);
+        var peer = fixture.State("View").ToJsonString();
+        fixture.Module.ResizeScale = 2;
+        await fixture.Invoke("BeginResize", group, new PointerEventArgs { PointerId = 7, ClientX = 300 });
+        await fixture.Invoke("OnPalettePointerMove", new PointerEventArgs { PointerId = 8, ClientX = 500 });
+        fixture.State("Sketch")["labelWidth"]!.GetValue<double>().Should().Be(232);
+        await fixture.Invoke("OnPalettePointerMove", new PointerEventArgs { PointerId = 7, ClientX = 500 });
+        fixture.State("Sketch")["labelWidth"]!.GetValue<double>().Should().Be(332);
+        fixture.Module.Saves.Should().BeEmpty();
+        await fixture.Invoke("OnPalettePointerUp", new PointerEventArgs { PointerId = 7, Type = "pointercancel" });
+        fixture.State("Sketch")["labelWidth"]!.GetValue<double>().Should().Be(232);
+        fixture.State("View").ToJsonString().Should().Be(peer);
+        fixture.Module.Saves.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task WidthKeyboardBoundsAndLabelTogglesPreserveIndependentPreference()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Render("Sketch");
+        await fixture.AfterRender(true);
+        var group = new WorkbenchToolGroup("Sketch", []);
+        await fixture.Invoke("ResizeByKey", group, new KeyboardEventArgs { Key = "End" });
+        await fixture.Invoke("ResizeByKey", group, new KeyboardEventArgs { Key = "ArrowRight", ShiftKey = true });
+        fixture.State("Sketch")["labelWidth"]!.GetValue<double>().Should().Be(480);
+        await fixture.Invoke("ToggleLabels", group);
+        await fixture.Invoke("ToggleLabels", group);
+        fixture.State("Sketch")["labelWidth"]!.GetValue<double>().Should().Be(480);
+        await fixture.Invoke("ResizeByKey", group, new KeyboardEventArgs { Key = "Home" });
+        fixture.State("Sketch")["labelWidth"]!.GetValue<double>().Should().Be(232);
+        for (var i = 0; i < 4; i++)
+            await fixture.Invoke("ResizeByKey", group, new KeyboardEventArgs { Key = "ArrowLeft", ShiftKey = true });
+        fixture.State("Sketch")["labelWidth"]!.GetValue<double>().Should().Be(176);
+    }
+
+    [Fact]
     public async Task CleanupAndGrainDefaultRightWhileOtherGroupsStayLeft()
     {
         await using var fixture = new Fixture();
@@ -265,6 +306,7 @@ public sealed class WorkbenchPaletteLifecycleTests
     private sealed class FakeModule : IJSObjectReference
     {
         public double BoundsWidth { get; set; } = 1440;
+        public double ResizeScale { get; set; } = 1;
         public List<string[]> Loads { get; } = [];
         public List<JsonNode> Saves { get; } = [];
         public TaskCompletionSource LoadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -277,6 +319,9 @@ public sealed class WorkbenchPaletteLifecycleTests
         public async ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
         {
             if (identifier == "observeLayout") return (TValue)(object)Observer;
+            if (identifier == "captureResize")
+                return JsonSerializer.Deserialize<TValue>(JsonSerializer.Serialize(new
+                { groupWidth = 232, scaleX = ResizeScale }), JsonOptions)!;
             if (identifier == "getBounds")
                 return JsonSerializer.Deserialize<TValue>(JsonSerializer.Serialize(new
                 { left = 0, top = 48, width = BoundsWidth, height = 800, scaleX = 1, scaleY = 1 }), JsonOptions)!;

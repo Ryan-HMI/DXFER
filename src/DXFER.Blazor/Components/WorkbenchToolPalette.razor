@@ -3,6 +3,7 @@
 @inject IJSRuntime JsRuntime
 
 <div class="@PaletteCssClass"
+     style="@DockWidthsStyle"
      @ref="_palette"
      @onpointermove="OnPalettePointerMove"
      @onpointerup="OnPalettePointerUp"
@@ -59,6 +60,13 @@
     private bool _disposed;
     private PaletteBounds? _dragBounds;
     private long _dragGeneration;
+    private ResizedToolGroup? _resizedGroup;
+
+    private string DockWidthsStyle => FormattableString.Invariant($"--dxfer-left-label-width:{DockLabelWidth(ToolGroupDockSide.Left)}px;--dxfer-right-label-width:{DockLabelWidth(ToolGroupDockSide.Right)}px;");
+
+    private double DockLabelWidth(ToolGroupDockSide side) => _groupDockStates.Values
+        .Where(s => s.Side == side && s.ShowLabels && !IsSideCollapsed(s))
+        .Select(s => s.LabelWidth).DefaultIfEmpty(232).Max();
 
     [Parameter, EditorRequired]
     public IReadOnlyList<WorkbenchToolGroup> Groups { get; set; } = Array.Empty<WorkbenchToolGroup>();
@@ -125,7 +133,7 @@
             if (_layoutModule is null)
             {
                 _layoutModule = await JsRuntime.InvokeAsync<IJSObjectReference>(
-                    "import", "./_content/DXFER.Blazor/paletteLayout.js?v=20261016-right-defaults");
+                    "import", "./_content/DXFER.Blazor/paletteLayout.js?v=20261016-palette-width");
                 if (_disposed)
                 {
                     await _layoutModule.DisposeAsync();
@@ -279,6 +287,17 @@
                                OnClick="@(() => OnCommandInvoked.InvokeAsync(command.Id))" />
             }
         </div>
+        @if (GetDockState(group).ShowLabels && !IsCompactDock(GetDockState(group)) && !IsSideCollapsed(GetDockState(group)))
+        {
+            <div class="dxfer-palette-resize" role="separator" tabindex="0"
+                 aria-label="@($"Resize {group.Name} tools")" aria-orientation="vertical"
+                 aria-valuemin="176" aria-valuemax="480" aria-valuenow="@GetDockState(group).LabelWidth"
+                 title="Resize palette"
+                 @onpointerdown:stopPropagation="true" @onpointerdown:preventDefault="true"
+                 @onpointerdown="@((PointerEventArgs args) => BeginResize(group, args))"
+                 @onkeydown:stopPropagation="true"
+                 @onkeydown="@((KeyboardEventArgs args) => ResizeByKey(group, args))"></div>
+        }
     </section>;
 
     private IEnumerable<WorkbenchToolGroup> GroupsForDock(ToolGroupDockSide dockSide) =>
@@ -335,7 +354,7 @@
             classes.Add("dxfer-tool-group-dragging");
         }
 
-        if (state.ShowLabels && !IsCompactDock(state))
+        if (state.ShowLabels && !IsCompactDock(state) && !IsSideCollapsed(state))
         {
             classes.Add("dxfer-tool-group-labeled");
         }
@@ -346,13 +365,14 @@
     private string? BuildToolGroupStyle(WorkbenchToolGroup group)
     {
         var state = GetDockState(group);
+        var width = FormattableString.Invariant($"--dxfer-label-width:{state.LabelWidth}px;");
         if (state.Side is not ToolGroupDockSide.Floating)
         {
-            return $"--dxfer-group-columns:{(state.Compaction is ToolGroupCompaction.SingleColumn ? 1 : 2)};order:{state.DockOrder:0};";
+            return width + $"--dxfer-group-columns:{(state.Compaction is ToolGroupCompaction.SingleColumn ? 1 : 2)};order:{state.DockOrder:0};";
         }
 
         var index = GetGroupIndex(group);
-        return $"left:clamp(0px,{state.FloatingX:0}px,var(--dxfer-palette-max-x-{index},0px));top:clamp(0px,{state.FloatingY:0}px,var(--dxfer-palette-max-y-{index},0px));max-height:calc(100% - clamp(0px,{state.FloatingY:0}px,var(--dxfer-palette-max-y-{index},0px)));--dxfer-group-columns:2;";
+        return width + $"left:clamp(0px,{state.FloatingX:0}px,var(--dxfer-palette-max-x-{index},0px));top:clamp(0px,{state.FloatingY:0}px,var(--dxfer-palette-max-y-{index},0px));max-height:calc(100% - clamp(0px,{state.FloatingY:0}px,var(--dxfer-palette-max-y-{index},0px)));--dxfer-group-columns:2;";
     }
 
     private static bool ShouldShowGroupHeader(ToolGroupDockState state) =>
@@ -432,8 +452,50 @@
             ? CadIconName.ChevronUp
             : CadIconName.ChevronDown;
 
+    private async Task BeginResize(WorkbenchToolGroup group, PointerEventArgs args)
+    {
+        if (args.Button != 0 || _layoutModule is null) return;
+        var generation = ++_dragGeneration;
+        try
+        {
+            var bounds = await _layoutModule.InvokeAsync<PaletteBounds>("captureResize", _palette, GetGroupIndex(group), args.PointerId);
+            if (generation != _dragGeneration || _disposed) return;
+            var state = GetDockState(group);
+            _editedGroups.Add(group.Name);
+            _resizedGroup = new ResizedToolGroup(group.Name, args.PointerId, args.ClientX,
+                bounds.GroupWidth, state.LabelWidth, bounds.ScaleX, state.Side == ToolGroupDockSide.Right ? -1 : 1);
+        }
+        catch (Exception exception) when (exception is JSException or JSDisconnectedException or TaskCanceledException)
+        {
+        }
+    }
+
+    private async Task ResizeByKey(WorkbenchToolGroup group, KeyboardEventArgs args)
+    {
+        var state = GetDockState(group);
+        var step = (args.ShiftKey ? 32 : 8) * (state.Side == ToolGroupDockSide.Right ? -1 : 1);
+        var width = args.Key switch
+        {
+            "ArrowLeft" => state.LabelWidth - step,
+            "ArrowRight" => state.LabelWidth + step,
+            "Home" => 232,
+            "End" => 480,
+            _ => state.LabelWidth
+        };
+        if (width == state.LabelWidth) return;
+        state.LabelWidth = Math.Clamp(width, 176, 480);
+        _editedGroups.Add(group.Name);
+        await PersistLayoutAsync();
+    }
+
     private void OnPalettePointerMove(PointerEventArgs args)
     {
+        if (_resizedGroup is { } resized && resized.PointerId == args.PointerId)
+        {
+            _groupDockStates[resized.GroupName].LabelWidth = Math.Clamp(
+                resized.Width + (args.ClientX - resized.ClientX) / resized.Scale * resized.Direction, 176, 480);
+            return;
+        }
         if (_draggedGroup is null || !_groupDockStates.TryGetValue(_draggedGroup.GroupName, out var state))
         {
             return;
@@ -447,6 +509,13 @@
     private async Task OnPalettePointerUp(PointerEventArgs args)
     {
         _dragGeneration++;
+        if (_resizedGroup is { } resized && resized.PointerId == args.PointerId)
+        {
+            if (args.Type == "pointercancel") _groupDockStates[resized.GroupName].LabelWidth = resized.OriginalWidth;
+            _resizedGroup = null;
+            await PersistLayoutAsync();
+            return;
+        }
         if (_draggedGroup is null || !_groupDockStates.TryGetValue(_draggedGroup.GroupName, out var state))
         {
             _draggedGroup = null;
@@ -536,6 +605,8 @@
 
         public bool ShowLabels { get; set; }
 
+        public double LabelWidth { get; set; } = 232;
+
         public double DockOrder { get; set; }
 
         public double FloatingX { get; set; }
@@ -544,12 +615,15 @@
     }
 
     private sealed record DraggedToolGroup(string GroupName, double OffsetX, double OffsetY);
+    private sealed record ResizedToolGroup(string GroupName, long PointerId, double ClientX,
+        double Width, double OriginalWidth, double Scale, int Direction);
 
     private sealed class PaletteBounds
     {
         public double Left { get; set; }
         public double Top { get; set; }
         public double Width { get; set; }
+        public double GroupWidth { get; set; }
         public double Height { get; set; }
         public double ScaleX { get; set; } = 1;
         public double ScaleY { get; set; } = 1;
