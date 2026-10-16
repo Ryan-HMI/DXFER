@@ -54,3 +54,15 @@ test('origin horizontal relation permits only compatible free-axis motion', () =
     const bad = applyGeometryDragPreview(original, 'line|point|start|2|0', p(2, 0), p(2, 1));
     assert.ok(!bad || bad.entities[0].points[0].y === 0);
 });
+
+test('fixed-start rotation carries the label in the line frame', () => {
+    const original = { entities: [{ ...line, points: [p(0, 0), p(10, 0)] }], constraints: [
+        { id: 'fixed', kind: 'fix', state: 'satisfied', referenceKeys: ['line:start'] }
+    ], dimensions: [{ id: 'length', kind: 'lineardistance', referenceKeys: ['line:start', 'line:end'], value: 10, isDriving: true, anchor: p(5, -2) }] };
+    const next = applyGeometryDragPreview(original, 'line|point|end|10|0', p(10, 0), p(8, 6));
+    assert.ok(next);
+    assert.ok(Math.abs(next.dimensions[0].anchor.x - 5.2) < 1e-8);
+    assert.ok(Math.abs(next.dimensions[0].anchor.y - 1.4) < 1e-8);
+    assert.equal(next.dimensions[0].value, 10);
+    assert.deepEqual(original.dimensions[0].anchor, p(5, -2));
+});

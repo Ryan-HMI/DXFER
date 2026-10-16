@@ -7,6 +7,20 @@ namespace DXFER.Core.Tests.Sketching;
 
 public sealed class DimensionAnchorFollowTests
 {
+    [Fact]
+    public void FixedStartRotationPreservesTheLabelOffsetInTheLineFrame()
+    {
+        var document = new DrawingDocument(new DrawingEntity[] { new LineEntity(EntityId.Create("line"), new(0, 0), new(10, 0)) },
+            new[] { new SketchDimension("length", SketchDimensionKind.LinearDistance, new[] { "line:start", "line:end" }, 10, new(5, -2), true) },
+            new[] { new SketchConstraint("fixed", SketchConstraintKind.Fix, new[] { "line:start" }) });
+        SketchGeometryDragService.TryApplyDrag(document, "line|point|end|10|0", new(10, 0), new(8, 6), false,
+            out var next, out var status).Should().BeTrue(status);
+        next.Dimensions[0].Anchor!.Value.X.Should().BeApproximately(5.2, 1e-8);
+        next.Dimensions[0].Anchor!.Value.Y.Should().BeApproximately(1.4, 1e-8);
+        next.Dimensions[0].Value.Should().Be(10);
+        document.Dimensions[0].Anchor.Should().Be(new Point2(5, -2));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

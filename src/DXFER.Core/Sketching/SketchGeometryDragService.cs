@@ -55,6 +55,28 @@ public static class SketchGeometryDragService
             }
             if (shifts.Count == 0) return dimension;
             var anchor = Add(before.Anchor.Value, new Point2(shifts.Average(p => p.X), shifts.Average(p => p.Y)));
+            if (before.Kind == SketchDimensionKind.LinearDistance && before.ReferenceKeys.Count == 2
+                && SketchDimensionSolverService.TryResolveDimensionPoint(original.Entities, before.ReferenceKeys[0], out var a)
+                && SketchDimensionSolverService.TryResolveDimensionPoint(original.Entities, before.ReferenceKeys[1], out var b)
+                && SketchDimensionSolverService.TryResolveDimensionPoint(candidate.Entities, before.ReferenceKeys[0], out var c)
+                && SketchDimensionSolverService.TryResolveDimensionPoint(candidate.Entities, before.ReferenceKeys[1], out var d))
+            {
+                var oldLength = SketchGeometryEditor.Distance(a, b);
+                var newLength = SketchGeometryEditor.Distance(c, d);
+                if (oldLength > SketchGeometryEditor.Tolerance && newLength > SketchGeometryEditor.Tolerance)
+                {
+                    var ux = (b.X - a.X) / oldLength;
+                    var uy = (b.Y - a.Y) / oldLength;
+                    var vx = (d.X - c.X) / newLength;
+                    var vy = (d.Y - c.Y) / newLength;
+                    var x = before.Anchor.Value.X - (a.X + b.X) / 2;
+                    var y = before.Anchor.Value.Y - (a.Y + b.Y) / 2;
+                    var cosine = ux * vx + uy * vy;
+                    var sine = ux * vy - uy * vx;
+                    anchor = new Point2((c.X + d.X) / 2 + x * cosine - y * sine,
+                        (c.Y + d.Y) / 2 + x * sine + y * cosine);
+                }
+            }
             return new SketchDimension(dimension.Id, dimension.Kind, dimension.ReferenceKeys,
                 dimension.Value, anchor, dimension.IsDriving);
         }).ToArray();

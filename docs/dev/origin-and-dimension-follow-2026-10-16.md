@@ -43,4 +43,14 @@ not stale coordinates embedded in click keys.
 These shared fixes need no existing-record repair. Previously hand-positioned labels
 retain their current offset; this does not reconstruct an earlier intended placement.
 Circle/arc center visibility and implicit tangent creation are follow-on requests,
-not included in this bounded origin/label acceptance. Deployment verification pending.
+not included in this bounded origin/label acceptance.
+
+## Installed
+
+Dev `290bd5992f2c56191503fe9845f391d9a5359ec0` installed and independently
+identified in the actual public browser build tooltip. All above browser cases
+passed against that endpoint; seven exported DXFs audit with zero errors/fixes.
+Four assemblies match the published candidate, ten runtime settings preserved,
+health 200 and anonymous root 302. Production/Test runtime PIDs unchanged.
+Normal Google sign-in and disabled Sync callbacks retained. Flux replay requested;
+no independent or overall visual acceptance claimed.

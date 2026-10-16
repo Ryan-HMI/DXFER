@@ -674,6 +674,9 @@ function draw(state) {
     if (shouldShowPersistentSplineHandles(state, entity)) {
       drawPersistentSplineTangentHandles(state, entity);
     }
+    if (shouldShowPersistentCurveCenter(state, entity)) {
+      drawPointTarget(state, getEntityCenter(entity), { strokeStyle: "#66d9ff" });
+    }
   }
 
   for (const selectedKey of state.selectedKeys) {
@@ -1829,6 +1832,12 @@ function drawSplineTangentHandles(state, fitPoints) {
 function drawPersistentSplineTangentHandles(state, entity) {
   drawPersistentSplineEditPoints(state, entity);
   drawSplineTangentHandleSet(state, getPersistentSplineTangentHandlesForEntity(entity));
+}
+
+export function shouldShowPersistentCurveCenter(state, entity) {
+  const id = getEntityId(entity);
+  if (!id || !["circle", "arc"].includes(getEntityKind(entity)) || !state?.selectedKeys) return false;
+  return [...state.selectedKeys].some(key => key === id || String(key).startsWith(`${id}${POINT_KEY_SEPARATOR}`));
 }
 
 export function shouldShowPersistentSplineHandles(state, entity) {
@@ -6472,22 +6481,25 @@ function addLineStartGeometrySnapCandidate(candidates, state, tool, worldPoint) 
     return;
   }
 
-  const along = dotPoints(subtractPoints(worldPoint, anchor), startSnap.direction);
-  if (Math.abs(along) <= WORLD_GEOMETRY_TOLERANCE) {
-    return;
+  const directions = [startSnap];
+  if (startSnap.kind === "normal") {
+    const entity = startTarget.entity;
+    const center = getEntityCenter(entity), radius = getEntityRadius(entity);
+    const angle = center && radiansToDegrees(Math.atan2(anchor.y - center.y, anchor.x - center.x));
+    if (center && isFinitePositive(radius)
+      && Math.abs(distanceBetweenWorldPoints(center, anchor) - radius) <= WORLD_GEOMETRY_TOLERANCE
+      && (getEntityKind(entity) !== "arc" || isAngleOnArc(angle, getEntityStartAngle(entity), getEntityEndAngle(entity)))) {
+      directions.push({ kind: "tangent", direction: { x: -startSnap.direction.y, y: startSnap.direction.x } });
+    }
   }
-
-  const point = {
-    x: anchor.x + startSnap.direction.x * along,
-    y: anchor.y + startSnap.direction.y * along
-  };
-  const entityId = startTarget.entityId || getEntityId(startTarget.entity) || "entity";
-  candidates.push({
-    label: `${startSnap.kind}-${entityId}`,
-    point,
-    guides: [{ orientation: "segment", start: anchor, point }],
-    priority: 9
-  });
+  for (const snap of directions) {
+    const along = dotPoints(subtractPoints(worldPoint, anchor), snap.direction);
+    if (Math.abs(along) <= WORLD_GEOMETRY_TOLERANCE) continue;
+    const point = { x: anchor.x + snap.direction.x * along, y: anchor.y + snap.direction.y * along };
+    const entityId = startTarget.entityId || getEntityId(startTarget.entity) || "entity";
+    candidates.push({ label: `${snap.kind}-${entityId}`, point,
+      guides: [{ orientation: "segment", start: anchor, point }], priority: 9 });
+  }
 }
 
 function getLineStartGeometrySnap(startTarget, anchor) {
@@ -11350,8 +11362,20 @@ function followPreviewDimensionAnchors(original, candidate) {
       return from && to ? subtractPoints(to, from) : null;
     });
     if (shifts.some(shift => !shift)) return dimension;
-    const next = { x: anchor.x + shifts.reduce((sum, p) => sum + p.x, 0) / shifts.length,
+    let next = { x: anchor.x + shifts.reduce((sum, p) => sum + p.x, 0) / shifts.length,
       y: anchor.y + shifts.reduce((sum, p) => sum + p.y, 0) / shifts.length };
+    if (getSketchItemKind(before) === "lineardistance" && keys.length === 2) {
+      const [a, b] = keys.map(key => resolveSketchReferencePoint({ document: original }, key));
+      const [c, d] = keys.map(key => resolveSketchReferencePoint({ document: candidate }, key));
+      const u = a && b && normalizeWorldVector(subtractPoints(b, a));
+      const v = c && d && normalizeWorldVector(subtractPoints(d, c));
+      if (u && v) {
+        const offset = subtractPoints(anchor, midpoint(a, b)), center = midpoint(c, d);
+        const cosine = dotPoints(u, v), sine = crossPoints(u, v);
+        next = { x: center.x + offset.x * cosine - offset.y * sine,
+          y: center.y + offset.x * sine + offset.y * cosine };
+      }
+    }
     return { ...dimension, anchor: next, Anchor: next };
   });
 }

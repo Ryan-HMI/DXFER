@@ -13,9 +13,9 @@ public sealed class CircleDragMatrixTests
     public static IEnumerable<object[]> DragCases()
     {
         foreach (var fixture in Fixtures)
-        foreach (var grip in new[] { "center", "quadrant-0" })
-        foreach (var reverse in new[] { false, true })
-            yield return new object[] { fixture, grip, reverse };
+            foreach (var grip in new[] { "center", "quadrant-0" })
+                foreach (var reverse in new[] { false, true })
+                    yield return new object[] { fixture, grip, reverse };
     }
 
     [Theory]
@@ -46,9 +46,9 @@ public sealed class CircleDragMatrixTests
     public static IEnumerable<object[]> DegenerateCases()
     {
         foreach (var fixture in Fixtures)
-        foreach (var offset in new[] { 0.0, 1e-9 })
-        foreach (var reverse in new[] { false, true })
-            yield return new object[] { fixture, offset, reverse };
+            foreach (var offset in new[] { 0.0, 1e-9 })
+                foreach (var reverse in new[] { false, true })
+                    yield return new object[] { fixture, offset, reverse };
     }
 
     [Theory]
@@ -81,7 +81,8 @@ public sealed class CircleDragMatrixTests
         next.Dimensions.Single(d => d.Id == "radius").Value.Should().Be(3);
         var peer = next.Dimensions.Single(d => d.Id == "peer-length");
         peer.Value.Should().BeApproximately(Math.Sqrt(10), 1e-8);
-        peer.Anchor.Should().Be(new Point2(-0.5, -0.5));
+        peer.Anchor!.Value.X.Should().BeApproximately(-0.5 + 1 / Math.Sqrt(10), 1e-8);
+        peer.Anchor.Value.Y.Should().BeApproximately(0.5 - 3 / Math.Sqrt(10), 1e-8);
         peer.IsDriving.Should().BeFalse();
     }
 

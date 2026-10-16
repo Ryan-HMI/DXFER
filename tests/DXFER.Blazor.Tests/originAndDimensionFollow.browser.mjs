@@ -72,6 +72,25 @@ try {
     assert.deepEqual(reopened.dimensions, after.dimensions);
     console.log('Anchor preview, release, Undo/Redo and native reopen passed');
 
+    await load('anchor-rotation'); const rotationBefore = native(await download());
+    const startRotation = await screen([10, 0]), endRotation = await screen([8, 6]);
+    await page.mouse.move(startRotation.x, startRotation.y); await page.mouse.down();
+    await page.mouse.move(endRotation.x, endRotation.y, { steps: 12 }); await page.waitForTimeout(150);
+    const rotationLabel = page.locator('input[data-dimension-id="length"]');
+    close(Number(await rotationLabel.getAttribute('data-dimension-value')), 10);
+    const expectedAnchor = await screen([5.2, 1.4]), rotationBox = await rotationLabel.boundingBox();
+    assert.ok(Math.abs(rotationBox.x + rotationBox.width / 2 - expectedAnchor.x) < 2);
+    assert.ok(Math.abs(rotationBox.y + rotationBox.height / 2 - expectedAnchor.y) < 2);
+    await page.screenshot({ path: `${output}/anchor-rotation-held.png` });
+    await page.mouse.up(); await page.waitForTimeout(180);
+    const rotationText = await download('anchor-rotation'), rotationAfter = native(rotationText);
+    close(rotationAfter.dimensions[0].anchor.x, 5.2); close(rotationAfter.dimensions[0].anchor.y, 1.4);
+    close(rotationAfter.dimensions[0].value, 10);
+    await history(rotationBefore, rotationAfter);
+    await load('anchor-rotation', rotationText);
+    assert.deepEqual(native(await download()).dimensions, rotationAfter.dimensions);
+    console.log('Fixed-start rotation preserves line-relative label offset during preview/release/history/reopen');
+
     for (const reverse of [false, true]) {
         await load('origin-pick'); const original = native(await download());
         await tool('Coincident');
