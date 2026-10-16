@@ -29,11 +29,15 @@ try {
   await drag(1,112); close(await width(1),344); close(await width(0),compact);
   await page.getByRole('button',{name:'Show Cleanup tool labels',exact:true}).click();
   await drag(6,-64); close(await width(6),296); close(await width(1),344);
-  await drag(6,180); close(await width(6),176);
+  await drag(6,300);
+  const minimum=Number(await group(6).getByRole('separator').getAttribute('aria-valuemin'));
+  close(await width(6),minimum);
+  const wrapped=await group(6).locator('.dxfer-icon-button-label').evaluateAll(es=>es.some(e=>e.getBoundingClientRect().height>parseFloat(getComputedStyle(e).lineHeight)+1));
+  assert.equal(wrapped,false,'longest label must fit on one line at the resize minimum');
   const clipped=await group(6).locator('.dxfer-icon-button-label').evaluateAll(es=>es.some(e=>e.scrollWidth>e.clientWidth+1));
   assert.equal(clipped,false);
   await page.screenshot({path:`${out}/narrow-label-wrap.png`});
-  await drag(6,-120); close(await width(6),296);
+  await drag(6,-(296-minimum)); close(await width(6),296);
   await page.reload(); await ready(); close(await width(1),344); close(await width(6),296);
   for(const side of ['left','right']) {
     const metrics=await page.locator(`.dxfer-tool-dock-zone-${side}`).evaluate(e=>({client:e.clientWidth,scroll:e.scrollWidth}));
@@ -61,6 +65,20 @@ try {
   await page.screenshot({path:`${out}/labeled-narrow-desktop.png`});
   await page.setViewportSize({width:1440,height:1000}); await page.waitForTimeout(300); close(await width(1),480);
   await page.screenshot({path:`${out}/independent-widths.png`});
+  const minimums=[];
+  for(const [index,name] of ['View','Sketch','Modify','Transform','Pattern','Constraints','Cleanup','Grain'].entries()) {
+    const toggle=page.getByRole('button',{name:`Show ${name} tool labels`,exact:true});
+    if(await toggle.getAttribute('aria-pressed')!=='true')await toggle.click();
+    const handle=group(index).getByRole('separator');await handle.focus();await page.waitForTimeout(200);
+    const right=(await group(index).getAttribute('class')).includes('group-right');
+    for(let i=0;i<16;i++)await page.keyboard.press(right?'Shift+ArrowRight':'Shift+ArrowLeft');
+    const minimum=Number(await handle.getAttribute('aria-valuemin'));minimums.push(minimum);close(await width(index),minimum);
+    const wrapped=await group(index).locator('.dxfer-icon-button-label').evaluateAll(es=>es.some(e=>e.scrollWidth>e.clientWidth+1||e.getBoundingClientRect().height>parseFloat(getComputedStyle(e).lineHeight)+1));
+    assert.equal(wrapped,false,`${name} must keep longest label on one line at minimum`);
+  }
+  assert.ok(new Set(minimums).size>1,'minimums must depend on actual palette contents');
+  await page.reload();await ready();for(let index=0;index<minimums.length;index++)close(await width(index),minimums[index]);
+  await page.screenshot({path:`${out}/content-minimums.png`});
   assert.equal(await page.locator('canvas.drawing-canvas').getAttribute('data-entity-count'),'0');
   assert.ok(await page.getByRole('button',{name:'Undo',exact:true,includeHidden:true}).isDisabled());
   assert.deepEqual(errors,[]);

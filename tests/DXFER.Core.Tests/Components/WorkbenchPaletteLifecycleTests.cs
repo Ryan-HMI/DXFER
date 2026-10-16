@@ -18,6 +18,23 @@ public sealed class WorkbenchPaletteLifecycleTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Fact]
+    public async Task ContentMinimumClampsPointerKeyboardAndPreviouslySavedWidth()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Render("Sketch", "View");
+        fixture.Module.MinimumWidths = new() { ["0"] = 276 };
+        await fixture.AfterRender(true);
+        fixture.State("Sketch")["labelWidth"]!.GetValue<double>().Should().Be(276);
+        var group = new WorkbenchToolGroup("Sketch", []);
+        await fixture.Invoke("ResizeByKey", group, new KeyboardEventArgs { Key = "Home" });
+        fixture.State("Sketch")["labelWidth"]!.GetValue<double>().Should().Be(276);
+        await fixture.Invoke("BeginResize", group, new PointerEventArgs { PointerId = 7, ClientX = 300 });
+        await fixture.Invoke("OnPalettePointerMove", new PointerEventArgs { PointerId = 7, ClientX = 0 });
+        fixture.State("Sketch")["labelWidth"]!.GetValue<double>().Should().Be(276);
+        fixture.State("View")["labelWidth"]!.GetValue<double>().Should().Be(232);
+    }
+
+    [Fact]
     public async Task ResizeUsesDisplayScaleAndPreservesPeersThenCancelRestoresPreferredWidth()
     {
         await using var fixture = new Fixture();
@@ -307,6 +324,7 @@ public sealed class WorkbenchPaletteLifecycleTests
     {
         public double BoundsWidth { get; set; } = 1440;
         public double ResizeScale { get; set; } = 1;
+        public Dictionary<string, double> MinimumWidths { get; set; } = new();
         public List<string[]> Loads { get; } = [];
         public List<JsonNode> Saves { get; } = [];
         public TaskCompletionSource LoadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -319,6 +337,7 @@ public sealed class WorkbenchPaletteLifecycleTests
         public async ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
         {
             if (identifier == "observeLayout") return (TValue)(object)Observer;
+            if (identifier == "measureLabelWidths") return (TValue)(object)MinimumWidths;
             if (identifier == "captureResize")
                 return JsonSerializer.Deserialize<TValue>(JsonSerializer.Serialize(new
                 { groupWidth = 232, scaleX = ResizeScale }), JsonOptions)!;

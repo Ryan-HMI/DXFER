@@ -21,7 +21,7 @@ test('labeled widths persist independently through label toggles and restricted 
 });
 
 test('malformed widths do not discard valid dock and label preferences', () => {
-  for (const labelWidth of [-1, 0, 175, 481, 1e9, null, '320', NaN, Infinity]) {
+  for (const labelWidth of [-1, 0, 95, 481, 1e9, null, '320', NaN, Infinity]) {
     const original = state('Sketch', {showLabels:true, side:2, floatingX:700});
     assert.deepEqual(restoreLayout(encoded([{...original, labelWidth}]), defaults)[0], original);
   }

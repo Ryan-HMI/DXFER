@@ -61,6 +61,8 @@
     private PaletteBounds? _dragBounds;
     private long _dragGeneration;
     private ResizedToolGroup? _resizedGroup;
+    private readonly Dictionary<string, double> _minimumLabelWidths = new(StringComparer.Ordinal);
+    private double MinimumLabelWidth(WorkbenchToolGroup group) => _minimumLabelWidths.GetValueOrDefault(group.Name, 176);
 
     private string DockWidthsStyle => FormattableString.Invariant($"--dxfer-left-label-width:{DockLabelWidth(ToolGroupDockSide.Left)}px;--dxfer-right-label-width:{DockLabelWidth(ToolGroupDockSide.Right)}px;");
 
@@ -133,7 +135,7 @@
             if (_layoutModule is null)
             {
                 _layoutModule = await JsRuntime.InvokeAsync<IJSObjectReference>(
-                    "import", "./_content/DXFER.Blazor/paletteLayout.js?v=20261016-palette-width");
+                    "import", "./_content/DXFER.Blazor/paletteLayout.js?v=20261016-intrinsic-palette-width");
                 if (_disposed)
                 {
                     await _layoutModule.DisposeAsync();
@@ -177,10 +179,23 @@
                 restoredAny = true;
             }
 
+            var minimums = await _layoutModule.InvokeAsync<Dictionary<string, double>>("measureLabelWidths", _palette);
+            foreach (var group in Groups)
+            {
+                if (minimums is null || !minimums.TryGetValue(GetGroupIndex(group).ToString(), out var minimum)
+                    || !double.IsFinite(minimum) || minimum < 96 || minimum > 480) continue;
+                if (MinimumLabelWidth(group) != minimum)
+                {
+                    _minimumLabelWidths[group.Name] = minimum;
+                    renderNeeded = true;
+                }
+                var state = GetDockState(group);
+                if (state.LabelWidth < minimum) { state.LabelWidth = minimum; renderNeeded = true; }
+            }
             _layoutLoaded = true;
             if (_savePending) await PersistLayoutAsync();
             await _layoutObserver.InvokeVoidAsync("refresh");
-            renderNeeded = restoredAny || _pendingRestoreGroups.Count > 0;
+            renderNeeded |= restoredAny || _pendingRestoreGroups.Count > 0;
         }
         catch (Exception exception) when (exception is JSException or JSDisconnectedException or TaskCanceledException)
         {
@@ -291,7 +306,7 @@
         {
             <div class="dxfer-palette-resize" role="separator" tabindex="0"
                  aria-label="@($"Resize {group.Name} tools")" aria-orientation="vertical"
-                 aria-valuemin="176" aria-valuemax="480" aria-valuenow="@GetDockState(group).LabelWidth"
+                 aria-valuemin="@MinimumLabelWidth(group)" aria-valuemax="480" aria-valuenow="@GetDockState(group).LabelWidth"
                  title="Resize palette"
                  @onpointerdown:stopPropagation="true" @onpointerdown:preventDefault="true"
                  @onpointerdown="@((PointerEventArgs args) => BeginResize(group, args))"
@@ -483,7 +498,7 @@
             _ => state.LabelWidth
         };
         if (width == state.LabelWidth) return;
-        state.LabelWidth = Math.Clamp(width, 176, 480);
+        state.LabelWidth = Math.Clamp(width, MinimumLabelWidth(group), 480);
         _editedGroups.Add(group.Name);
         await PersistLayoutAsync();
     }
@@ -493,7 +508,8 @@
         if (_resizedGroup is { } resized && resized.PointerId == args.PointerId)
         {
             _groupDockStates[resized.GroupName].LabelWidth = Math.Clamp(
-                resized.Width + (args.ClientX - resized.ClientX) / resized.Scale * resized.Direction, 176, 480);
+                resized.Width + (args.ClientX - resized.ClientX) / resized.Scale * resized.Direction,
+                _minimumLabelWidths.GetValueOrDefault(resized.GroupName, 176), 480);
             return;
         }
         if (_draggedGroup is null || !_groupDockStates.TryGetValue(_draggedGroup.GroupName, out var state))

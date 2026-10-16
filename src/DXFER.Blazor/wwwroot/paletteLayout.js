@@ -28,7 +28,7 @@ function copyState(state) {
     const { groupName, side, compaction, dockOrder, floatingX, floatingY } = state;
     const result = { groupName, side, compaction, dockOrder, floatingX, floatingY,
         showLabels: state.showLabels === true };
-    if (Number.isFinite(state.labelWidth) && state.labelWidth >= 176 && state.labelWidth <= 480)
+    if (Number.isFinite(state.labelWidth) && state.labelWidth >= 96 && state.labelWidth <= 480)
         result.labelWidth = state.labelWidth;
     return result;
 }
@@ -100,6 +100,25 @@ export function captureResize(root, index, pointerId) {
     const bounds = getBounds(root);
     root.setPointerCapture(pointerId);
     return { ...bounds, groupWidth: group.getBoundingClientRect().width / bounds.scaleX };
+}
+
+export function measureLabelWidths(root) {
+    const widths = {};
+    for (const group of root.querySelectorAll('.dxfer-tool-group-labeled')) {
+        // Measure intrinsic single-line content in the same scoped styles, without affecting layout.
+        const clone = group.cloneNode(true);
+        Object.assign(clone.style, {position:'absolute', visibility:'hidden', width:'max-content',
+            minWidth:'0', maxWidth:'none', left:'0', top:'0', pointerEvents:'none'});
+        clone.style.setProperty('width', 'max-content', 'important');
+        const strip = clone.querySelector('.dxfer-command-strip');
+        if (strip) strip.style.gridTemplateColumns = 'max-content';
+        for (const label of clone.querySelectorAll('.dxfer-icon-button-label')) label.style.whiteSpace = 'nowrap';
+        for (const button of clone.querySelectorAll('.dxfer-icon-button')) button.style.width = 'max-content';
+        group.parentElement.append(clone);
+        widths[group.dataset.paletteIndex] = Math.max(96, Math.ceil(clone.offsetWidth + 8));
+        clone.remove();
+    }
+    return widths;
 }
 
 export function observeLayout(root, host = window) {
