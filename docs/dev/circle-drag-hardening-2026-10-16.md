@@ -93,3 +93,16 @@ Underlying cause fixed: missing shared preview reference-measurement refresh.
 No saved documents or business records changed; no existing-record repair is
 needed for this transient-label defect. Previously damaged documents and unrelated
 solver failures still require separate diagnosis. No general engine replacement.
+
+## Parent Browser Evidence
+
+The actual Dev baseline reproduced the stale held label: radius geometry4 while
+`input[data-dimension-id="radius"]` still displayed `R3` and value3. Corrected
+local app passes all ten native-fixture cases, including visible held labelR4
+and value4 (mouse-coordinate tolerance0.000001 inch), release, Undo/Redo and native
+reopen/reedit. Driving values stay exact. Held canvas pixels, dimension anchors,
+welded peer endpoint, Fixed refusal/no Undo and untouched peer end are checked.
+Sixteen exports audit with zero errors/fixes. Parent reran1283core/606JS tests.
+The committed `circleDrag.browser.mjs` is replayable with the six native fixtures.
+No synthetic canvas hooks replace the actual DOM measurement/geometry checks.
+Installed Dev verification follows deployment; local passes alone do not claim it.
