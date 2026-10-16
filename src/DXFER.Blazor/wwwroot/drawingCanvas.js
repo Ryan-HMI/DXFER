@@ -8306,6 +8306,7 @@ export function applyGeometryDragPreview(document, selectionKey, dragStart, drag
     return null;
   }
 
+  refreshPreviewReferenceDimensions(previewDocument);
   previewDocument.bounds = computeEntityBounds(getDocumentEntities(previewDocument));
   return previewDocument;
 }
@@ -8507,6 +8508,24 @@ function previewDrivingDimensionsRemainSatisfied(document, requireMeasurable = f
       ? !requireMeasurable
       : Math.abs(Math.abs(measured) - Math.abs(expected)) <= WORLD_GEOMETRY_TOLERANCE;
   });
+}
+
+function refreshPreviewReferenceDimensions(document) {
+  const state = { document };
+  document.dimensions = getDocumentDimensions(document).map(dimension => {
+    if (isDrivingPreviewDimension(dimension) || getSketchItemState(dimension) === "suppressed") {
+      return dimension;
+    }
+
+    const measured = getPreviewDimensionMeasuredValue(state, dimension);
+    const previous = Number(readProperty(dimension, "value", "Value"));
+    if (!Number.isFinite(measured) || Math.abs(measured - previous) <= WORLD_GEOMETRY_TOLERANCE) {
+      return dimension;
+    }
+
+    return { ...dimension, value: measured, Value: measured };
+  });
+  document.Dimensions = document.dimensions;
 }
 
 /*
