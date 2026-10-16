@@ -675,7 +675,20 @@ function draw(state) {
       drawPersistentSplineTangentHandles(state, entity);
     }
     if (shouldShowPersistentCurveCenter(state, entity)) {
-      drawPointTarget(state, getEntityCenter(entity), { strokeStyle: "#66d9ff" });
+      const id = getEntityId(entity);
+      const selected = [...(state.selectedKeys || [])].some(key => key === id || String(key).startsWith(`${id}${POINT_KEY_SEPARATOR}`));
+      const color = selected ? "#66d9ff" : "#97a5b6";
+      const center = getEntityCenter(entity), point = worldToScreen(state, center);
+      context.save();
+      context.strokeStyle = color;
+      context.lineWidth = 1;
+      context.setLineDash([]);
+      context.beginPath();
+      context.moveTo(point.x - 6, point.y); context.lineTo(point.x + 6, point.y);
+      context.moveTo(point.x, point.y - 6); context.lineTo(point.x, point.y + 6);
+      context.stroke();
+      context.restore();
+      drawPointTarget(state, center, { strokeStyle: color });
     }
   }
 
@@ -1836,8 +1849,9 @@ function drawPersistentSplineTangentHandles(state, entity) {
 
 export function shouldShowPersistentCurveCenter(state, entity) {
   const id = getEntityId(entity);
-  if (!id || !["circle", "arc"].includes(getEntityKind(entity)) || !state?.selectedKeys) return false;
-  return [...state.selectedKeys].some(key => key === id || String(key).startsWith(`${id}${POINT_KEY_SEPARATOR}`));
+  const center = getEntityCenter(entity);
+  return Boolean(id && ["circle", "arc"].includes(getEntityKind(entity))
+    && center && Number.isFinite(center.x) && Number.isFinite(center.y));
 }
 
 export function shouldShowPersistentSplineHandles(state, entity) {
@@ -5750,6 +5764,10 @@ function commitSketchToolPoints(state, tool, points) {
   }
 
   const dimensionLocks = getSketchToolDimensionLocks(state.toolDraft);
+  const tangentReferenceKey = tool === "centercircle"
+    && state.hoveredTarget?.tangentReferenceKey
+    && sameOptionalWorldPoint(points[points.length - 1], state.hoveredTarget.point)
+    ? state.hoveredTarget.tangentReferenceKey : null;
   const postCommitState = getPostCommitSketchToolState(tool, points, state.sketchChainAutoTool);
   const nextTool = postCommitState.activeTool;
   const toolModeChanged = normalizeToolName(state.activeTool) !== nextTool;
@@ -5770,7 +5788,8 @@ function commitSketchToolPoints(state, tool, points) {
     tool,
     flattenPointCoordinates(points),
     dimensionLocks.keys,
-    dimensionLocks.values);
+    dimensionLocks.values,
+    tangentReferenceKey);
   if (toolModeChanged) {
     invokeDotNet(state, "OnSketchToolModeChanged", nextTool);
   }
@@ -6056,6 +6075,13 @@ export function findNearestTarget(state, screenPoint) {
     hitTestTolerance: HIT_TEST_TOLERANCE,
     edgeFallback: false
   });
+  if (getSketchCreationTool(state) === "centercircle") {
+    const tangentHit = getDynamicSketchSnapHit(state, screenPoint, nearestEdgeHit?.target);
+    if (tangentHit?.target.tangentReferenceKey
+      && (!immediateTarget || sameOptionalWorldPoint(getTargetWorldSnapPoint(immediateTarget), tangentHit.target.point))) {
+      return tangentHit.target;
+    }
+  }
   if (immediateTarget || constraintTool) {
     return immediateTarget;
   }
@@ -6366,7 +6392,8 @@ export function getDynamicSketchSnapHit(state, screenPoint, highlightedTarget = 
     const priority = Number(candidate.priority || 0);
     if (distance <= SNAP_POINT_TOLERANCE) {
       hits.push({
-        target: createDynamicPointTarget(candidate.label, candidate.point, candidate.guides),
+        target: { ...createDynamicPointTarget(candidate.label, candidate.point, candidate.guides),
+          ...(candidate.tangentReferenceKey ? { tangentReferenceKey: candidate.tangentReferenceKey } : {}) },
         distance,
         priority
       });
@@ -6608,6 +6635,10 @@ function getClosestLinearSegmentAtPoint(entity, point, preferredSegmentIndex = n
 }
 
 function addDynamicTangentSnapCandidates(candidates, state, tool, highlightedTarget = null, worldPoint = null) {
+  if (tool === "centercircle") {
+    addCenterCircleTangentSnapCandidates(candidates, state);
+    return;
+  }
   if (tool === "threepointcircle") {
     addThreePointCircleTangentSnapCandidates(candidates, state, highlightedTarget);
     return;
@@ -6638,6 +6669,40 @@ function addDynamicTangentSnapCandidates(candidates, state, tool, highlightedTar
         guides: [{ orientation: "segment", start: anchor, point: tangentPoints[index] }],
         priority: 8
       });
+    }
+  }
+}
+
+function addCenterCircleTangentSnapCandidates(candidates, state) {
+  if (state.toolDraft?.points?.length !== 1) return;
+  const center = state.toolDraft.points[0];
+  const add = (point, referenceKey, label) => {
+    if (distanceBetweenWorldPoints(center, point) <= WORLD_GEOMETRY_TOLERANCE) return;
+    candidates.push({ label: `circle-tangent-${label}`, point, tangentReferenceKey: referenceKey,
+      guides: [{ orientation: "segment", start: center, point }], priority: 10 });
+  };
+  for (const entity of getDocumentEntities(state.document)) {
+    const kind = getEntityKind(entity), id = getEntityId(entity);
+    if (kind === "line" || kind === "polyline") {
+      for (const segment of getLinearSegments(entity)) {
+        const delta = subtractPoints(segment.end, segment.start), lengthSquared = dotPoints(delta, delta);
+        if (lengthSquared <= WORLD_GEOMETRY_TOLERANCE ** 2) continue;
+        const parameter = dotPoints(subtractPoints(center, segment.start), delta) / lengthSquared;
+        if (parameter < 0 || parameter > 1) continue;
+        const point = { x: segment.start.x + parameter * delta.x, y: segment.start.y + parameter * delta.y };
+        const reference = Number.isInteger(segment.segmentIndex) ? `${id}|segment|${segment.segmentIndex}` : id;
+        add(point, reference, `${id}-${segment.segmentIndex ?? "line"}`);
+      }
+    } else if (kind === "circle" || kind === "arc") {
+      const peerCenter = getEntityCenter(entity), radius = getEntityRadius(entity);
+      const direction = peerCenter && normalizeWorldVector(subtractPoints(center, peerCenter));
+      if (!direction || !isFinitePositive(radius)) continue;
+      for (const sign of [1, -1]) {
+        const point = { x: peerCenter.x + sign * radius * direction.x, y: peerCenter.y + sign * radius * direction.y };
+        const angle = radiansToDegrees(Math.atan2(point.y - peerCenter.y, point.x - peerCenter.x));
+        if (kind === "arc" && !isAngleOnArc(angle, getEntityStartAngle(entity), getEntityEndAngle(entity))) continue;
+        add(point, id, `${id}-${sign}`);
+      }
     }
   }
 }

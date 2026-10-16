@@ -48,9 +48,9 @@ try {
     }, p);
     for (const kind of ['circle', 'arc']) {
         await load(kind); const before = native(await download());
-        await click([13, 14]); await move([19, 1]);
-        assert.ok(await centerPainted([10, 10]), `${kind} selected center visible without hover`);
-        await page.screenshot({ path: `${output}/${kind}-selected-center.png` });
+        await move([19, 1]);
+        assert.ok(await centerPainted([10, 10]), `${kind} center visible before selection or hover`);
+        await page.screenshot({ path: `${output}/${kind}-unselected-center.png` });
         await move([10, 10]); await page.mouse.down(); await move([11, 11]);
         assert.ok(await centerPainted([11, 11]), `${kind} center follows held preview`);
         await page.mouse.up(); await page.waitForTimeout(180);
@@ -74,7 +74,7 @@ try {
         await tool('Redo'); assert.deepEqual(native(await download()).entities, after.entities);
         await load(kind, saved); const reopened = native(await download(`${kind}-reopened`));
         assert.deepEqual(reopened.entities, after.entities); assert.deepEqual(reopened.constraints, after.constraints);
-        console.log(`${kind}: visible center, held drag, outgoing snap, automatic Tangent, history and native reopen pass`);
+        console.log(`${kind}: visible unselected center, direct center drag, outgoing snap, automatic Tangent, history and native reopen pass`);
     }
     assert.deepEqual(errors, []);
 } finally { await browser.close(); }

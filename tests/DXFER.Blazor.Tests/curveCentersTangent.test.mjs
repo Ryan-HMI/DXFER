@@ -10,13 +10,13 @@ function snapState(entity, start = p(13, 14)) {
         view: { scale: 20, offsetX: 0, offsetY: 500 } };
 }
 for (const kind of ['circle', 'arc']) {
-    test(`${kind} center visibility is tied to selection, not hovering`, () => {
+    test(`${kind} center is discoverable before selection and persists after deselection`, () => {
         const entity = curve(kind), state = { selectedKeys: new Set() };
-        assert.equal(shouldShowPersistentCurveCenter(state, entity), false);
+        assert.equal(shouldShowPersistentCurveCenter(state, entity), true);
         state.selectedKeys.add('curve'); assert.equal(shouldShowPersistentCurveCenter(state, entity), true);
         state.selectedKeys = new Set(['curve|point|quadrant-0|15|10']);
         assert.equal(shouldShowPersistentCurveCenter(state, entity), true);
-        state.selectedKeys.clear(); assert.equal(shouldShowPersistentCurveCenter(state, entity), false);
+        state.selectedKeys.clear(); assert.equal(shouldShowPersistentCurveCenter(state, entity), true);
     });
     for (const direction of [1, -1]) test(`${kind} outgoing tangent direction ${direction}`, () => {
         const state = snapState(curve(kind));
@@ -63,5 +63,5 @@ for (const kind of ['circle', 'arc']) test(`registered canvas paints selected ${
     const markers = () => calls.filter(c => c[0] === 'arc' && Math.abs(c[1] - center.x) < 1e-7
         && Math.abs(c[2] - center.y) < 1e-7 && c[3] === 3.5);
     assert.ok(markers().length > 0);
-    calls.length = 0; instance.clearSelection(); assert.equal(markers().length, 0);
+    calls.length = 0; instance.clearSelection(); assert.ok(markers().length > 0);
 });
