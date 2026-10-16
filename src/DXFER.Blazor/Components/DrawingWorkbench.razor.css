@@ -19,6 +19,35 @@
     background: var(--dx-chrome, #0a0d12);
 }
 
+.dxfer-workbench,
+.dxfer-workbench ::deep * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--dx-border-strong, #687b90) var(--dx-panel, #10141b);
+}
+
+/* Fallback for engines without the standard scrollbar properties. */
+@supports not (scrollbar-color: auto) {
+    .dxfer-workbench ::deep ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+
+    .dxfer-workbench ::deep ::-webkit-scrollbar-track,
+    .dxfer-workbench ::deep ::-webkit-scrollbar-corner {
+        background: var(--dx-panel, #10141b);
+    }
+
+    .dxfer-workbench ::deep ::-webkit-scrollbar-thumb {
+        background: var(--dx-border-strong, #687b90);
+        border: 2px solid var(--dx-panel, #10141b);
+        border-radius: 4px;
+    }
+
+    .dxfer-workbench ::deep ::-webkit-scrollbar-thumb:hover {
+        background: var(--dx-muted, #97a5b6);
+    }
+}
+
 .dxfer-command-bar {
     grid-column: 1 / -1;
     grid-row: 2;

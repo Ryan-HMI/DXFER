@@ -11,6 +11,37 @@ const memoryStorage = (value = null) => ({ value, writes: 0,
   getItem(key) { assert.equal(key, storageKey); return this.value; },
   setItem(key, value) { assert.equal(key, storageKey); this.value = value; this.writes++; } });
 
+test('legacy untouched Cleanup and Grain migrate right without losing display preferences', () => {
+  const old = [state('Cleanup', {dockOrder:660, floatingX:72, floatingY:132, compaction:1, showLabels:true}),
+    state('Grain', {dockOrder:760, floatingX:96, floatingY:150})];
+  const storage = memoryStorage(encoded(old));
+  const migrated = old.map(s => ({...s, side:2}));
+  assert.deepEqual(loadLayout(old, storage), migrated);
+  assert.equal(storage.writes, 0);
+  saveLayout(migrated, storage);
+  assert.equal(JSON.parse(storage.value).dockingVersion, 1);
+  assert.deepEqual(loadLayout(old, storage), migrated);
+  // An intentional move back to the old left coordinates must survive subsequent reloads.
+  saveLayout(old, storage);
+  assert.deepEqual(loadLayout(migrated, storage), old);
+});
+
+test('legacy moved, reordered, floating and other palettes never migrate', () => {
+  const original = state('Cleanup', {dockOrder:660, floatingX:72, floatingY:132});
+  for (const change of [{side:0}, {side:2}, {dockOrder:500}, {floatingX:80}, {floatingY:200}, {groupName:'Sketch'}]) {
+    const moved = {...original, ...change};
+    assert.deepEqual(restoreLayout(encoded([moved]), [original, state('Sketch')]).find(s=>s.groupName===moved.groupName), moved);
+  }
+});
+
+test('restricted saves migrate inactive default groups without losing inactive custom positions', () => {
+  const cleanup = state('Cleanup', {dockOrder:660, floatingX:72, floatingY:132});
+  const grain = state('Grain', {side:0, dockOrder:760, floatingX:700, floatingY:150});
+  const storage = memoryStorage(encoded([cleanup, grain]));
+  saveLayout([state('View')], storage);
+  assert.deepEqual(loadLayout([cleanup, grain], storage), [{...cleanup, side:2}, grain]);
+});
+
 test('drag bounds use current canvas area and display scale, not fixed desktop width', () => {
   const root = {offsetWidth: 984, offsetHeight: 600,
     getBoundingClientRect: () => ({left: 20, top: 48, width: 1230, height: 750})};

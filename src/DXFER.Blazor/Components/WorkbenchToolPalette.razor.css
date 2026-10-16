@@ -8,19 +8,19 @@
 }
 
 .dxfer-workbench-tool-palette:has(.dxfer-tool-dock-zone-left .dxfer-tool-group) {
-    --dxfer-left-dock-width: 10.25rem;
+    --dxfer-left-dock-width: calc(10.25rem + 12px);
 }
 
 .dxfer-workbench-tool-palette:has(.dxfer-tool-dock-zone-right .dxfer-tool-group) {
-    --dxfer-right-dock-width: 10.25rem;
+    --dxfer-right-dock-width: calc(10.25rem + 12px);
 }
 
 .dxfer-workbench-tool-palette:has(.dxfer-tool-dock-zone-left .dxfer-tool-group-labeled) {
-    --dxfer-left-dock-width: 15.25rem;
+    --dxfer-left-dock-width: calc(15.25rem + 12px);
 }
 
 .dxfer-workbench-tool-palette:has(.dxfer-tool-dock-zone-right .dxfer-tool-group-labeled) {
-    --dxfer-right-dock-width: 15.25rem;
+    --dxfer-right-dock-width: calc(15.25rem + 12px);
 }
 
 .dxfer-workbench-tool-palette-dragging {
@@ -60,6 +60,7 @@
     gap: 0.35rem;
     overflow-x: hidden;
     overflow-y: auto;
+    scrollbar-gutter: stable;
     padding: 0.35rem;
 }
 

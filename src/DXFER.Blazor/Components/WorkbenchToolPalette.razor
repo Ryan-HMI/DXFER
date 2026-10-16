@@ -104,7 +104,7 @@
             _groupDockStates[group.Name] = new ToolGroupDockState
             {
                 GroupName = group.Name,
-                Side = ToolGroupDockSide.Left,
+                Side = group.Name is "Cleanup" or "Grain" ? ToolGroupDockSide.Right : ToolGroupDockSide.Left,
                 Compaction = ToolGroupCompaction.Expanded,
                 DockOrder = 60 + index * 100,
                 FloatingX = 24 + (index % 4) * 24,
@@ -125,7 +125,7 @@
             if (_layoutModule is null)
             {
                 _layoutModule = await JsRuntime.InvokeAsync<IJSObjectReference>(
-                    "import", "./_content/DXFER.Blazor/paletteLayout.js?v=20261015-compact-density");
+                    "import", "./_content/DXFER.Blazor/paletteLayout.js?v=20261016-right-defaults");
                 if (_disposed)
                 {
                     await _layoutModule.DisposeAsync();

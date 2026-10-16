@@ -18,6 +18,17 @@ public sealed class WorkbenchPaletteLifecycleTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Fact]
+    public async Task CleanupAndGrainDefaultRightWhileOtherGroupsStayLeft()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Render("View", "Sketch", "Modify", "Transform", "Pattern", "Constraints", "Cleanup", "Grain");
+        fixture.State("Cleanup")["side"]!.GetValue<int>().Should().Be(2);
+        fixture.State("Grain")["side"]!.GetValue<int>().Should().Be(2);
+        fixture.State("Sketch")["side"]!.GetValue<int>().Should().Be(1);
+        fixture.State("View")["side"]!.GetValue<int>().Should().Be(1);
+    }
+
+    [Fact]
     public async Task EmptyFirstRenderAndLaterGroupsRestoreEachIdentityOnlyOnce()
     {
         await using var fixture = new Fixture();

@@ -2,6 +2,18 @@ export const storageKey = 'dxfer.paletteLayout.v1';
 const maxGroups = 128;
 const maxLength = 65536;
 const densityVersion = 2;
+const dockingVersion = 1;
+
+function migrateDock(state, version) {
+    if (version === dockingVersion) return state;
+    const index = state.groupName === 'Cleanup' ? 6 : state.groupName === 'Grain' ? 7 : -1;
+    // Previous saves included untouched defaults. Preserve any evidence of a moved palette.
+    if (index >= 0 && state.side === 1 && state.dockOrder === 60 + index * 100
+        && state.floatingX === 24 + (index % 4) * 24 && state.floatingY === 24 + index * 18) {
+        return {...state, side: 2};
+    }
+    return state;
+}
 
 function validState(state) {
     return state && typeof state.groupName === 'string'
@@ -31,7 +43,7 @@ function storedStates(json) {
                 states.delete(state.groupName);
             } else {
                 // Old releases saved default-on labels indistinguishably from explicit choices.
-                states.set(state.groupName, copyState({...state,
+                states.set(state.groupName, copyState({...migrateDock(state, data.dockingVersion),
                     showLabels: data.densityVersion === densityVersion && state.showLabels === true}));
                 seen.add(state.groupName);
             }
@@ -60,7 +72,7 @@ export function saveLayout(groups, storage) {
         const stored = storedStates(target.getItem(storageKey));
         for (const state of groups) stored.set(state.groupName, copyState(state));
         if (stored.size > maxGroups) return false;
-        const json = JSON.stringify({ version: 1, densityVersion, groups: [...stored.values()] });
+        const json = JSON.stringify({ version: 1, densityVersion, dockingVersion, groups: [...stored.values()] });
         if (json.length > maxLength) return false;
         target.setItem(storageKey, json);
         return true;
