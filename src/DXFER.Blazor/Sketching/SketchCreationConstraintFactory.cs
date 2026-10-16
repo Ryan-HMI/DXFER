@@ -49,7 +49,8 @@ public static class SketchCreationConstraintFactory
         string toolName,
         IReadOnlyList<DrawingEntity> existingEntities,
         IReadOnlyList<DrawingEntity> createdEntities,
-        Func<SketchConstraintKind, string> createConstraintId)
+        Func<SketchConstraintKind, string> createConstraintId,
+        string? tangentReferenceKey = null)
     {
         ArgumentNullException.ThrowIfNull(existingEntities);
         ArgumentNullException.ThrowIfNull(createdEntities);
@@ -60,7 +61,59 @@ public static class SketchCreationConstraintFactory
         AddPerpendicularSnapConstraints(constraints, existingEntities, createdEntities, createConstraintId);
         AddTangentArcConstraints(constraints, existingEntities, createdEntities, createConstraintId);
         AddInsertedLineTangentConstraints(constraints, existingEntities, createdEntities, createConstraintId);
+        if (NormalizeToolName(toolName) == "centercircle" && tangentReferenceKey is not null)
+        {
+            AddExplicitCircleTangentConstraint(constraints, existingEntities, createdEntities, tangentReferenceKey, createConstraintId);
+        }
         return constraints;
+    }
+
+    private static void AddExplicitCircleTangentConstraint(
+        ICollection<SketchConstraint> constraints,
+        IReadOnlyList<DrawingEntity> existingEntities,
+        IReadOnlyList<DrawingEntity> createdEntities,
+        string targetKey,
+        Func<SketchConstraintKind, string> createConstraintId)
+    {
+        if (createdEntities.Count != 1 || createdEntities[0] is not CircleEntity circle
+            || !IsFinitePoint(circle.Center) || !double.IsFinite(circle.Radius) || circle.Radius <= GeometryTolerance
+            || !SketchReference.TryParse(targetKey, out var reference) || !reference.IsEntity
+            || reference.EntityId == circle.Id.Value)
+        {
+            return;
+        }
+
+        var target = existingEntities.FirstOrDefault(entity => entity.Id.Value == reference.EntityId);
+        if (target is null || reference.SegmentIndex.HasValue && target is not PolylineEntity) return;
+        var existing = new DrawingDocument(existingEntities);
+        if (SketchReferenceResolver.TryGetLine(existing, reference.ToString(), out var line))
+        {
+            if (!TryGetFiniteTangentContact(line, circle.Center, circle.Radius, out _)) return;
+        }
+        else
+        {
+            if (reference.SegmentIndex.HasValue || target is not (CircleEntity or ArcEntity)) return;
+            var (center, radius) = target is CircleEntity peer
+                ? (peer.Center, peer.Radius)
+                : (((ArcEntity)target).Center, ((ArcEntity)target).Radius);
+            if (!IsFinitePoint(center) || !double.IsFinite(radius) || radius <= GeometryTolerance) return;
+            var distance = Distance(center, circle.Center);
+            if (!double.IsFinite(distance) || distance <= GeometryTolerance) return;
+            var x = (circle.Center.X - center.X) / distance;
+            var y = (circle.Center.Y - center.Y) / distance;
+            // Internal tangency can contact either axial side of the existing curve.
+            var contacts = new[] { new Point2(center.X + radius * x, center.Y + radius * y),
+                new Point2(center.X - radius * x, center.Y - radius * y) };
+            if (!contacts.Any(contact => IsFinitePoint(contact)
+                    && Math.Abs(Distance(contact, circle.Center) - circle.Radius) <= GeometryTolerance
+                    && (target is not ArcEntity arc || IsContactOnArc(arc, contact)))) return;
+        }
+
+        var keys = new[] { reference.ToString(), circle.Id.Value };
+        var validation = new SketchConstraint("tangent-validation", SketchConstraintKind.Tangent, keys);
+        if (SketchConstraintService.ValidateConstraint(new DrawingDocument(existingEntities.Concat(createdEntities)), validation)
+                .State != SketchConstraintState.Satisfied) return;
+        AddConstraintIfMissing(constraints, SketchConstraintKind.Tangent, createConstraintId, keys);
     }
 
     private static void AddRectangleConstraints(
