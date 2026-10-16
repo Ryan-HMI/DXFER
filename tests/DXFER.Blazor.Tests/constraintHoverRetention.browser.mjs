@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import {readFile,mkdir} from 'node:fs/promises';
+const {chromium,expect}=await import(process.env.PLAYWRIGHT_MODULE??'playwright/test');
+const url=process.env.DXFER_QA_URL??'http://127.0.0.1:5037';
+assert.ok(['localhost','127.0.0.1','dxferdev.sync.harrisonmetals.com'].includes(new URL(url).hostname));
+const output='/tmp/dxfer-constraint-hover-evidence';await mkdir(output,{recursive:true});
+const browser=await chromium.launch({headless:true});
+const native=text=>{const l=text.trim().split(/\r?\n/);let h='';for(let i=0;i<l.length;i+=2)if(l[i].trim()==='310')h+=l[i+1].trim();return JSON.parse(Buffer.from(h,'hex'));};
+try{
+ const page=await browser.newPage({viewport:{width:1440,height:1000},extraHTTPHeaders:{'X-DXFER-API-Key':process.env.DXFER_QA_API_KEY}});
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(url);await page.waitForFunction(()=>document.querySelector('input[type=file]')?._blazorInputFileNextFileId!==undefined);
+ const build=await page.locator('.app-brand').getAttribute('title');
+ if(process.env.DXFER_EXPECTED_REVISION)assert.ok(build.includes(process.env.DXFER_EXPECTED_REVISION),build);
+ const canvas=page.locator('canvas.drawing-canvas');
+ const tool=async name=>{await page.getByRole('button',{name,exact:true}).click();await page.waitForTimeout(180);};
+ const download=async()=>{const pending=page.waitForEvent('download');await tool('Open application menu');await page.getByRole('button',{name:'File',exact:true}).hover();await tool('Download DXF');return native(await readFile(await(await pending).path(),'utf8'));};
+ await page.locator('input[type=file]').setInputFiles({name:'hover-test.dxf',mimeType:'application/dxf',buffer:await readFile(new URL('./fixtures/drag-matrix/tangent-slide-rectangle.dxf',import.meta.url))});
+ await expect(canvas).not.toHaveAttribute('data-entity-count','0');await tool('Fit extents');
+ const before=await download();
+ const screen=p=>canvas.evaluate((c,p)=>{const d=c.dataset,r=c.getBoundingClientRect();return{x:r.left+p[0]*+d.scale+ +d.offsetX,y:r.top-p[1]*+d.scale+ +d.offsetY};},p);
+ const center=await screen([10,17.5]),contact=await screen([10,10]),glyph={x:contact.x,y:contact.y-26};
+ const pixels=()=>canvas.evaluate((c,p)=>{const r=c.getBoundingClientRect();return Array.from(c.getContext('2d').getImageData(Math.round(p.x-r.left)-7,Math.round(p.y-r.top)-7,14,14).data);},glyph);
+ await page.mouse.move(10,10);await page.waitForTimeout(3300);const hidden=await pixels();
+ await page.mouse.move(center.x,center.y);await page.waitForTimeout(100);const shown=await pixels();assert.notDeepEqual(shown,hidden);
+ await page.mouse.move(10,10);await page.waitForTimeout(1200);assert.deepEqual(await pixels(),shown);
+ await page.waitForTimeout(1500);const fading=await pixels();assert.notDeepEqual(fading,hidden);assert.notDeepEqual(fading,shown);
+ await page.screenshot({path:`${output}/fading.png`});
+ await page.waitForTimeout(650);assert.deepEqual(await pixels(),hidden);
+ // Crossing the empty gap to a glyph after leaving its geometry must still be possible.
+ await page.mouse.move(center.x,center.y);await page.mouse.move(10,10);await page.waitForTimeout(1100);
+ await page.mouse.move(glyph.x,glyph.y);await expect(canvas).toHaveAttribute('data-hovered-kind','constraint');
+ await page.waitForTimeout(3300);assert.notDeepEqual(await pixels(),hidden);
+ await page.mouse.click(glyph.x,glyph.y);await page.mouse.move(10,10);await page.waitForTimeout(3300);
+ assert.notDeepEqual(await pixels(),hidden);await page.screenshot({path:`${output}/selected-after-delay.png`});
+ await page.keyboard.press('Delete');await page.waitForTimeout(300);
+ const deleted=await download();assert.equal(deleted.constraints.length,before.constraints.length-1);
+ assert.deepEqual(deleted.entities,before.entities);assert.deepEqual(deleted.dimensions,before.dimensions);
+ await tool('Undo');assert.deepEqual((await download()).constraints,before.constraints);
+ await tool('Redo');assert.deepEqual((await download()).constraints,deleted.constraints);
+ assert.deepEqual(errors,[]);
+ console.log('PASS: timed full-opacity hold/fade/expiry without pointer motion; delayed hover and selected pin; delete only constraint, Undo/Redo, unchanged geometry/dimensions. Build:',build);
+}finally{await browser.close();}

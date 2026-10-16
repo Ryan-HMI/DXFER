@@ -146,6 +146,8 @@ const SKETCH_CHAIN_TOGGLE_REARM_TOLERANCE = SNAP_POINT_TOLERANCE + 5;
 const SKETCH_CHAIN_DIMENSION_SUPPRESS_TOLERANCE = SNAP_POINT_TOLERANCE * 3;
 const CONSTRAINT_GLYPH_SIZE = 16;
 const CONSTRAINT_GLYPH_GAP = 4;
+const CONSTRAINT_HOVER_HOLD_MS = 2500;
+const CONSTRAINT_HOVER_FADE_MS = 500;
 const CONSTRAINT_GROUP_HIT_PADDING = 4;
 const CONSTRAINT_LEADER_MIN_DISTANCE = 10;
 const CONSTRAINT_DEFAULT_OFFSET_DISTANCE = 26;
@@ -260,6 +262,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
       pruneInteractionState(state, true);
       pruneConstraintGroupOffsets(state);
       if (fitToDocument) {
+        clearConstraintHoverRetention(state);
         fitToExtents(state);
       }
       updateDebugAttributes(state);
@@ -353,6 +356,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
 
     dispose() {
       state.disposed = true;
+      clearConstraintHoverRetention(state);
       state.canvas.removeEventListener("pointermove", onPointerMove);
       state.canvas.removeEventListener("pointerdown", onPointerDown);
       state.canvas.removeEventListener("pointerup", onPointerUp);
@@ -3308,6 +3312,7 @@ function drawConstraintGlyphGroup(state, group) {
   const { context } = state;
   const dragging = state.constraintGroupDrag && state.constraintGroupDrag.groupKey === group.key;
   context.save();
+  context.globalAlpha *= group.hoverOpacity ?? 1;
   if (dragging) {
     context.shadowColor = "rgba(14, 165, 233, 0.45)";
     context.shadowBlur = 10;
@@ -3357,13 +3362,56 @@ function getConstraintGlyphItemPoint(group, index) {
   };
 }
 
-export function getVisibleConstraintGlyphGroups(state) {
+export function getVisibleConstraintGlyphGroups(state, now = performance.now()) {
   const groups = getConstraintGlyphGroups(state);
+  const keys = new Set(groups.map(group => group.key));
+  for (const [key, deadline] of state.constraintHoverDeadlines ?? []) {
+    if (!keys.has(key) || deadline <= now) state.constraintHoverDeadlines.delete(key);
+  }
   if (state.showAllConstraints) {
     return groups;
   }
 
-  return groups.filter(group => isConstraintGroupRelatedToTarget(group, state.hoveredTarget));
+  return groups.flatMap(group => {
+    const pinned = isConstraintGroupRelatedToTarget(group, state.hoveredTarget)
+      || group.constraints.some(constraint => state.selectedKeys?.has(`${CONSTRAINT_KEY_PREFIX}${getSketchItemId(constraint)}`))
+      || state.constraintGroupDrag?.groupKey === group.key;
+    const deadline = state.constraintHoverDeadlines?.get(group.key) ?? 0;
+    if (pinned) return [{ ...group, hoverOpacity: 1 }];
+    return deadline > now
+      ? [{ ...group, hoverOpacity: Math.min(1, (deadline - now) / CONSTRAINT_HOVER_FADE_MS) }]
+      : [];
+  });
+}
+
+export function retainDepartedConstraintGroups(state, previousTarget, nextTarget, now = performance.now()) {
+  if (state.disposed || state.showAllConstraints || !previousTarget) return;
+  for (const group of getConstraintGlyphGroups(state)) {
+    if (isConstraintGroupRelatedToTarget(group, previousTarget)
+      && !isConstraintGroupRelatedToTarget(group, nextTarget)) {
+      state.constraintHoverDeadlines ??= new Map();
+      state.constraintHoverDeadlines.set(group.key, now + CONSTRAINT_HOVER_HOLD_MS + CONSTRAINT_HOVER_FADE_MS);
+    }
+  }
+}
+
+function clearConstraintHoverRetention(state) {
+  if (state.constraintHoverTimer != null) clearTimeout(state.constraintHoverTimer);
+  state.constraintHoverTimer = null;
+  state.constraintHoverDeadlines?.clear();
+}
+
+function scheduleConstraintHoverFade(state) {
+  if (state.constraintHoverTimer != null) clearTimeout(state.constraintHoverTimer);
+  state.constraintHoverTimer = null;
+  if (state.disposed || !state.constraintHoverDeadlines?.size || typeof window === "undefined") return;
+  const nextFade = Math.min(...state.constraintHoverDeadlines.values()) - CONSTRAINT_HOVER_FADE_MS;
+  state.constraintHoverTimer = setTimeout(() => {
+    state.constraintHoverTimer = null;
+    if (state.disposed) return;
+    draw(state);
+    scheduleConstraintHoverFade(state);
+  }, Math.max(16, nextFade - performance.now()));
 }
 
 export function applyConstraintVisibilityState(state, visible) {
@@ -3376,6 +3424,7 @@ export function applyConstraintVisibilityState(state, visible) {
   state.showAllConstraints = nextVisible;
 
   if (changed) {
+    clearConstraintHoverRetention(state);
     if (state.constraintGroupOffsets && typeof state.constraintGroupOffsets.clear === "function") {
       state.constraintGroupOffsets.clear();
     }
@@ -12613,7 +12662,9 @@ export function setHoveredTarget(state, target) {
     return false;
   }
 
+  retainDepartedConstraintGroups(state, previousTarget, target);
   state.hoveredTarget = target;
+  scheduleConstraintHoverFade(state);
   rememberAcquiredSnapPoint(state, target);
   if (previousNotifyKey !== nextNotifyKey) {
     invokeDotNet(state, "OnEntityHovered", nextNotifyKey);
@@ -12714,6 +12765,7 @@ function pruneInteractionState(state, removePointTargets = false) {
 }
 
 function clearInteractionState(state) {
+  clearConstraintHoverRetention(state);
   cancelGeometryDrag(state);
   state.powerTrimDrag = null;
   state.constraintGroupDrag = null;
