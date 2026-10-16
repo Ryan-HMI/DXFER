@@ -2696,6 +2696,43 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         return DrawingPrepService.TryGetMeasurement(_document, wholeEntityIds, out measurement);
     }
 
+    private MeasurementSpan? ViewportMeasurement
+    {
+        get
+        {
+            if (_activeTool != WorkbenchTool.Measure) return null;
+            var keys = _selectedEntityIds.ToList();
+            if (keys.Count == 1 && _hoveredEntityId is { } hovered && !keys.Contains(hovered)) keys.Add(hovered);
+            if (keys.Count == 2)
+            {
+                var first = ResolveMeasurementEntity(keys[0]);
+                var second = ResolveMeasurementEntity(keys[1]);
+                if (first is not null && second is not null
+                    && MeasurementService.TryGetShortestSpan(first, second, out var span)) return span;
+            }
+            if (keys.Count == 1 && ResolveMeasurementEntity(keys[0]) is LineEntity line)
+                return new MeasurementSpan(line.Start, line.End);
+            return null;
+        }
+    }
+
+    private DrawingEntity? ResolveMeasurementEntity(string key)
+    {
+        if (TryGetPointFromSelectionKey(key, out var point)) return new PointEntity(EntityId.Create("measurement-point"), point);
+        if (TryParseSegmentSelectionKey(key, out var id, out var index))
+        {
+            IReadOnlyList<Point2>? points = FindEntity(id) switch
+            {
+                PolylineEntity polyline => polyline.Vertices,
+                PolygonEntity polygon => EnsureClosedPath(polygon.GetVertices()),
+                _ => null
+            };
+            if (points is not null && index >= 0 && index + 1 < points.Count)
+                return new LineEntity(EntityId.Create("measurement-segment"), points[index], points[index + 1]);
+        }
+        return FindEntity(key);
+    }
+
     private IReadOnlyList<LiveReadoutItem> BuildLiveMeasurementReadouts()
     {
         var items = new List<LiveReadoutItem>
@@ -2709,6 +2746,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         if (_activeTool is { } activeTool)
         {
             items.Add(new LiveReadoutItem("Tool", ActiveToolLabel));
+        }
+
+        if (ViewportMeasurement is { } span)
+        {
+            AddPointDeltaReadouts(items, span.Start, span.End);
+            if (span.Approximate) items.Add(new LiveReadoutItem("Accuracy", "Approximate"));
+            return items;
         }
 
         if (TryGetTwoSelectedPoints(out var firstPoint, out var secondPoint))

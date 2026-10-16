@@ -289,6 +289,12 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
       draw(state);
     },
 
+    setMeasurement(measurement, units) {
+      state.measurement = measurement;
+      state.measurementUnits = units;
+      draw(state);
+    },
+
     setPolarSnapIncrementDegrees(incrementDegrees) {
       state.polarSnapIncrementDegrees = normalizePolarSnapIncrement(incrementDegrees);
       updateDebugAttributes(state);
@@ -356,6 +362,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
 
     dispose() {
       state.disposed = true;
+      state.measurementFeedback?.remove();
       clearConstraintHoverRetention(state);
       state.canvas.removeEventListener("pointermove", onPointerMove);
       state.canvas.removeEventListener("pointerdown", onPointerDown);
@@ -740,6 +747,7 @@ function draw(state) {
 
   const constraintGlyphGroups = getVisibleConstraintGlyphGroups(state);
   drawConstraintGlyphGroups(state, constraintGlyphGroups);
+  drawMeasurementFeedback(state);
   const persistentDimensions = getPersistentDimensionDescriptors(state);
   drawPersistentDimensions(state, persistentDimensions);
   updatePersistentDimensionInputs(state, persistentDimensions);
@@ -6003,7 +6011,7 @@ function handleDoubleClick(state, event) {
   event.preventDefault();
 }
 
-function fitToExtents(state) {
+function getClearCanvasViewport(state) {
   const size = getCanvasCssSize(state);
   const canvasRect = state.canvas.getBoundingClientRect();
   const workbench = state.canvas.closest?.(".dxfer-workbench");
@@ -6012,7 +6020,12 @@ function fitToExtents(state) {
     const r = panel.getBoundingClientRect();
     return { x: r.left - canvasRect.left, y: r.top - canvasRect.top, width: r.width, height: r.height };
   });
-  const viewport = getUnobscuredViewport(size, occlusions);
+  return getUnobscuredViewport(size, occlusions);
+}
+
+function fitToExtents(state) {
+  const size = getCanvasCssSize(state);
+  const viewport = getClearCanvasViewport(state);
   if (!viewport) return;
   const view = getFitViewForDocument(state.document, size, viewport);
 
@@ -6020,6 +6033,64 @@ function fitToExtents(state) {
   state.view.offsetX = view.offsetX;
   state.view.offsetY = view.offsetY;
   updateDebugAttributes(state);
+}
+
+export function getMeasurementFeedback(state) {
+  const span = state.measurement;
+  if (state.activeTool !== "measure" || !span ||
+      ![span.start?.x, span.start?.y, span.end?.x, span.end?.y].every(Number.isFinite)) return null;
+  const dx = span.end.x - span.start.x, dy = span.end.y - span.start.y;
+  return { start: worldToScreen(state, span.start), end: worldToScreen(state, span.end),
+    deltaX: dx, deltaY: dy, distance: Math.hypot(dx, dy), approximate: span.approximate === true };
+}
+
+function drawMeasurementFeedback(state) {
+  const measurement = getMeasurementFeedback(state);
+  if (!measurement || !state.dimensionOverlay) {
+    if (state.measurementFeedback) state.measurementFeedback.hidden = true;
+    return;
+  }
+  const {context} = state;
+  const {start, end} = measurement;
+  const corner = {x:end.x, y:start.y};
+  context.save();
+  context.lineWidth = 1.5;
+  context.setLineDash([5, 4]);
+  for (const [a, b, color] of [[start,corner,"#ff8790"],[corner,end,"#72d9ad"],[start,end,"#ffd078"]]) {
+    context.strokeStyle = color;
+    context.beginPath(); context.moveTo(a.x,a.y); context.lineTo(b.x,b.y); context.stroke();
+  }
+  context.setLineDash([]);
+  context.fillStyle = "#ffd078";
+  for (const point of [start,end]) {context.beginPath();context.arc(point.x,point.y,3,0,Math.PI*2);context.fill();}
+  context.restore();
+
+  if (!state.measurementFeedback) {
+    const panel = document.createElement("div");
+    panel.className = "drawing-measurement-feedback";
+    panel.setAttribute("role", "status");
+    panel.setAttribute("aria-label", "Viewport measurement");
+    for (let i=0;i<3;i++) {
+      const row=document.createElement("div");
+      row.append(document.createElement("span"),document.createElement("strong"));
+      panel.append(row);
+    }
+    state.dimensionOverlay.append(panel);
+    state.measurementFeedback = panel;
+  }
+  const panel = state.measurementFeedback;
+  panel.hidden = false;
+  const units = state.measurementUnits === "Unspecified" ? "units" : state.measurementUnits;
+  const format = value => `${Number(value.toFixed(5))} ${units}`;
+  const rows = [["Delta X",measurement.deltaX],["Delta Y",measurement.deltaY],
+    [measurement.approximate ? "Approx. shortest" : "Shortest",measurement.distance]];
+  rows.forEach(([label,value],i)=>{
+    panel.children[i].children[0].textContent=label;
+    panel.children[i].children[1].textContent=format(value);
+  });
+  const viewport = getClearCanvasViewport(state) ?? {x:0,y:0,...getCanvasCssSize(state)};
+  panel.style.left = `${Math.max(viewport.x+8,Math.min(end.x+18,viewport.x+viewport.width-panel.offsetWidth-8))}px`;
+  panel.style.top = `${Math.max(viewport.y+8,Math.min(end.y+18,viewport.y+viewport.height-panel.offsetHeight-8))}px`;
 }
 
 export function getFitViewForDocument(document, size, viewport = null) {

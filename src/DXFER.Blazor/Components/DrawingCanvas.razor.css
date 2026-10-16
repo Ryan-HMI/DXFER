@@ -66,6 +66,35 @@
     pointer-events: none;
 }
 
+::deep .drawing-measurement-feedback {
+    position: absolute;
+    width: 218px;
+    box-sizing: border-box;
+    padding: 7px 9px;
+    background: var(--dx-panel, #10141b);
+    border: 1px solid var(--dx-border-strong, #687b90);
+    border-radius: 4px;
+    box-shadow: 0 3px 12px #0006;
+    pointer-events: none;
+    font: 12px/1.5 "Segoe UI", system-ui, sans-serif;
+}
+
+::deep .drawing-measurement-feedback > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+::deep .drawing-measurement-feedback strong {
+    font-weight: 500;
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
+
+::deep .drawing-measurement-feedback > div:nth-child(1) { color: #ff8790; }
+::deep .drawing-measurement-feedback > div:nth-child(2) { color: #72d9ad; }
+::deep .drawing-measurement-feedback > div:nth-child(3) { color: #ffd078; }
+
 ::deep .drawing-dimension-input {
     position: absolute;
     z-index: 5;

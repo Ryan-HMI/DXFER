@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261016-constraint-hover-grace";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261016-measure-feedback";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -19,6 +19,14 @@ public partial class DrawingCanvas : IAsyncDisposable
     private WorkbenchTool? _renderedActiveTool;
     private int _renderedSelectionResetToken;
     private int _renderedDocumentFitToken = -1;
+    private MeasurementSpan? _renderedMeasurement;
+    private string? _renderedMeasurementUnits;
+
+    [Parameter]
+    public MeasurementSpan? Measurement { get; set; }
+
+    [Parameter]
+    public string MeasurementUnits { get; set; } = "Unspecified";
 
     [Inject]
     private IJSRuntime JsRuntime { get; set; } = default!;
@@ -134,6 +142,7 @@ public partial class DrawingCanvas : IAsyncDisposable
             await SetConstraintVisibilityAsync();
             await SetGrainDirectionAsync();
             await SetConstructionModeAsync();
+            await SetMeasurementAsync();
         }
     }
 
@@ -155,6 +164,15 @@ public partial class DrawingCanvas : IAsyncDisposable
         await SetConstraintVisibilityAsync();
         await SetGrainDirectionAsync();
         await SetConstructionModeAsync();
+        await SetMeasurementAsync();
+    }
+
+    private async Task SetMeasurementAsync()
+    {
+        if (_canvasInstance is null || (_renderedMeasurement == Measurement && _renderedMeasurementUnits == MeasurementUnits)) return;
+        _renderedMeasurement = Measurement;
+        _renderedMeasurementUnits = MeasurementUnits;
+        await _canvasInstance.InvokeVoidAsync("setMeasurement", Measurement, MeasurementUnits);
     }
 
     public ValueTask FocusAsync() => _canvas.FocusAsync(preventScroll: true);

@@ -80,11 +80,19 @@ public static class MeasurementService
         DrawingEntity second,
         out MeasurementResult measurement)
     {
+        var found = TryGetShortestSpan(first, second, out var span);
+        measurement = span.Result;
+        return found;
+    }
+
+    public static bool TryGetShortestSpan(DrawingEntity first, DrawingEntity second, out MeasurementSpan span)
+    {
         ArgumentNullException.ThrowIfNull(first);
         ArgumentNullException.ThrowIfNull(second);
 
-        if (TryMeasureExactShortestDistance(first, second, out measurement))
+        if (TryMeasureExactShortestDistance(first, second, out var exact))
         {
+            span = new MeasurementSpan(exact.First, exact.Second);
             return true;
         }
 
@@ -92,7 +100,7 @@ public static class MeasurementService
         var secondSegments = GetDistanceSegments(second).ToArray();
         if (firstSegments.Length == 0 || secondSegments.Length == 0)
         {
-            measurement = default;
+            span = default;
             return false;
         }
 
@@ -112,7 +120,9 @@ public static class MeasurementService
             }
         }
 
-        measurement = Measure(best.First, best.Second);
+        span = new MeasurementSpan(best.First, best.Second,
+            first is CircleEntity or ArcEntity or EllipseEntity or SplineEntity
+            || second is CircleEntity or ArcEntity or EllipseEntity or SplineEntity);
         return double.IsFinite(bestDistance);
     }
 
@@ -207,11 +217,11 @@ public static class MeasurementService
     private static bool TryMeasureExactShortestDistance(
         DrawingEntity first,
         DrawingEntity second,
-        out MeasurementResult measurement)
+        out ClosestPointPair measurement)
     {
         if (first is PointEntity firstPoint && second is PointEntity secondPoint)
         {
-            measurement = Measure(firstPoint.Location, secondPoint.Location);
+            measurement = new ClosestPointPair(firstPoint.Location, secondPoint.Location);
             return true;
         }
 
@@ -249,13 +259,13 @@ public static class MeasurementService
         return false;
     }
 
-    private static MeasurementResult MeasurePointToCircle(Point2 point, CircleEntity circle, bool invert)
+    private static ClosestPointPair MeasurePointToCircle(Point2 point, CircleEntity circle, bool invert)
     {
         var circlePoint = ClosestPointOnCircle(point, circle);
-        return invert ? Measure(circlePoint, point) : Measure(point, circlePoint);
+        return invert ? new(circlePoint, point) : new(point, circlePoint);
     }
 
-    private static MeasurementResult MeasureCircleToCircle(CircleEntity first, CircleEntity second)
+    private static ClosestPointPair MeasureCircleToCircle(CircleEntity first, CircleEntity second)
     {
         var dx = second.Center.X - first.Center.X;
         var dy = second.Center.Y - first.Center.Y;
@@ -264,7 +274,7 @@ public static class MeasurementService
         {
             var firstPoint = new Point2(first.Center.X + first.Radius, first.Center.Y);
             var secondPoint = new Point2(second.Center.X + second.Radius, second.Center.Y);
-            return Measure(firstPoint, secondPoint);
+            return new(firstPoint, secondPoint);
         }
 
         var unitX = dx / centerDistance;
@@ -272,7 +282,7 @@ public static class MeasurementService
         var externalGap = centerDistance - first.Radius - second.Radius;
         if (externalGap >= 0)
         {
-            return Measure(
+            return new(
                 new Point2(first.Center.X + unitX * first.Radius, first.Center.Y + unitY * first.Radius),
                 new Point2(second.Center.X - unitX * second.Radius, second.Center.Y - unitY * second.Radius));
         }
@@ -281,25 +291,52 @@ public static class MeasurementService
         if (innerGap >= 0)
         {
             var firstSign = first.Radius >= second.Radius ? 1.0 : -1.0;
-            return Measure(
+            return new(
                 new Point2(first.Center.X + unitX * first.Radius * firstSign, first.Center.Y + unitY * first.Radius * firstSign),
                 new Point2(second.Center.X + unitX * second.Radius * firstSign, second.Center.Y + unitY * second.Radius * firstSign));
         }
 
-        return default;
+        var along = (first.Radius * first.Radius - second.Radius * second.Radius + centerDistance * centerDistance) / (2 * centerDistance);
+        var height = Math.Sqrt(Math.Max(0, first.Radius * first.Radius - along * along));
+        var intersection = new Point2(first.Center.X + along * unitX - height * unitY,
+            first.Center.Y + along * unitY + height * unitX);
+        return new(intersection, intersection);
     }
 
-    private static MeasurementResult MeasureLineToCircle(Point2 start, Point2 end, CircleEntity circle, bool invert)
+    private static ClosestPointPair MeasureLineToCircle(Point2 start, Point2 end, CircleEntity circle, bool invert)
     {
         var linePoint = ClosestPointOnSegment(circle.Center, new DistanceSegment(start, end));
         var centerDistance = Measure(circle.Center, linePoint).Distance;
         if (centerDistance <= circle.Radius + GeometryTolerance)
         {
-            return default;
+            var far = Measure(circle.Center, start).Distance >= Measure(circle.Center, end).Distance ? start : end;
+            if (Measure(circle.Center, far).Distance < circle.Radius)
+            {
+                var boundary = ClosestPointOnCircle(far, circle);
+                return invert ? new(boundary, far) : new(far, boundary);
+            }
+
+            // The segment crosses the circumference. Keep the actual contact for viewport guides.
+            var dx = end.X - start.X;
+            var dy = end.Y - start.Y;
+            var lengthSquared = dx * dx + dy * dy;
+            if (lengthSquared > 0)
+            {
+                var projection = ((circle.Center.X - start.X) * dx + (circle.Center.Y - start.Y) * dy) / lengthSquared;
+                var foot = new Point2(start.X + projection * dx, start.Y + projection * dy);
+                var offset = Math.Sqrt(Math.Max(0, circle.Radius * circle.Radius - Math.Pow(Measure(circle.Center, foot).Distance, 2)) / lengthSquared);
+                var t = projection - offset;
+                if (t < 0 || t > 1) t = projection + offset;
+                if (t >= 0 && t <= 1)
+                {
+                    var contact = new Point2(start.X + t * dx, start.Y + t * dy);
+                    return new(contact, contact);
+                }
+            }
         }
 
         var circlePoint = ClosestPointOnCircle(linePoint, circle);
-        return invert ? Measure(circlePoint, linePoint) : Measure(linePoint, circlePoint);
+        return invert ? new(circlePoint, linePoint) : new(linePoint, circlePoint);
     }
 
     private static Point2 ClosestPointOnCircle(Point2 point, CircleEntity circle)
