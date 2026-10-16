@@ -31,7 +31,58 @@ public static class SketchGeometryDragService
             status = "Drag would move fixed geometry. Geometry unchanged.";
             return false;
         }
+        if (accepted)
+        {
+            nextDocument = FollowDimensionAnchors(document, nextDocument);
+        }
         return accepted;
+    }
+
+    private static DrawingDocument FollowDimensionAnchors(DrawingDocument original, DrawingDocument candidate)
+    {
+        var originals = original.Dimensions.ToDictionary(dimension => dimension.Id, StringComparer.Ordinal);
+        var dimensions = candidate.Dimensions.Select(dimension =>
+        {
+            if (!originals.TryGetValue(dimension.Id, out var before) || !before.Anchor.HasValue)
+                return dimension;
+            var shifts = new List<Point2>();
+            foreach (var key in before.ReferenceKeys)
+            {
+                if (!TryGetDimensionReferenceLocation(original, key, out var from)
+                    || !TryGetDimensionReferenceLocation(candidate, key, out var to))
+                    return dimension;
+                shifts.Add(new Point2(to.X - from.X, to.Y - from.Y));
+            }
+            if (shifts.Count == 0) return dimension;
+            var anchor = Add(before.Anchor.Value, new Point2(shifts.Average(p => p.X), shifts.Average(p => p.Y)));
+            return new SketchDimension(dimension.Id, dimension.Kind, dimension.ReferenceKeys,
+                dimension.Value, anchor, dimension.IsDriving);
+        }).ToArray();
+        return new DrawingDocument(candidate.Entities, dimensions, candidate.Constraints, candidate.Metadata);
+    }
+
+    private static bool TryGetDimensionReferenceLocation(DrawingDocument document, string key, out Point2 point)
+    {
+        point = default;
+        if (SketchDimensionSolverService.TryResolveDimensionPoint(document.Entities, key, out point)) return true;
+        if (!SketchReference.TryParse(key, out var reference)) return false;
+        var entities = document.Entities;
+        if (SketchGeometryEditor.TryGetLine(entities, reference, out _, out var line))
+        {
+            point = new Point2((line.Start.X + line.End.X) / 2, (line.Start.Y + line.End.Y) / 2);
+            return true;
+        }
+        if (!reference.IsEntity || !SketchGeometryEditor.TryGetEntity(entities, reference, out _, out var entity)) return false;
+        point = entity switch
+        {
+            CircleEntity circle => circle.Center,
+            ArcEntity arc => arc.Center,
+            EllipseEntity ellipse => ellipse.Center,
+            PolygonEntity polygon => polygon.Center,
+            _ => new Point2((entity.GetBounds().MinX + entity.GetBounds().MaxX) / 2,
+                (entity.GetBounds().MinY + entity.GetBounds().MaxY) / 2)
+        };
+        return true;
     }
 
     private static bool FixedReferencesRemainUnchanged(DrawingDocument original, DrawingDocument candidate)

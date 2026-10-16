@@ -3332,7 +3332,7 @@ test("geometry drag preview applies free motion for point-to-line distance dimen
     { x: 8, y: 7 });
 
   assert.deepEqual(preview.entities[1].points, [{ x: 3, y: 5 }, { x: 13, y: 5 }]);
-  assert.deepEqual(preview.dimensions[0].anchor, { x: 8, y: 2.5 });
+  assert.deepEqual(preview.dimensions[0].anchor, { x: 6.5, y: 2.5 });
 });
 
 test("geometry drag preview translates an arc with a driving sweep dimension", () => {

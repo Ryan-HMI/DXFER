@@ -217,6 +217,11 @@ public static class SketchCommandFactory
 
         foreach (var key in orderedKeys)
         {
+            if (key == SketchReference.OriginKey)
+            {
+                selections.Add(new SketchSelection(key, new Point2(0, 0), new Point2(0, 0), null, null, null));
+                continue;
+            }
             if (TryCreateCanvasPointSelection(document, key, out var canvasPointSelection))
             {
                 selections.Add(canvasPointSelection);

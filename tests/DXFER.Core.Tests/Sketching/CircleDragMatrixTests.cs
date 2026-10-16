@@ -81,7 +81,7 @@ public sealed class CircleDragMatrixTests
         next.Dimensions.Single(d => d.Id == "radius").Value.Should().Be(3);
         var peer = next.Dimensions.Single(d => d.Id == "peer-length");
         peer.Value.Should().BeApproximately(Math.Sqrt(10), 1e-8);
-        peer.Anchor.Should().Be(new Point2(-1, -1));
+        peer.Anchor.Should().Be(new Point2(-0.5, -0.5));
         peer.IsDriving.Should().BeFalse();
     }
 

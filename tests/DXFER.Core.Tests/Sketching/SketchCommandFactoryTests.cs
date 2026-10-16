@@ -8,6 +8,25 @@ namespace DXFER.Core.Tests.Sketching;
 
 public sealed class SketchCommandFactoryTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BuildsOriginDimensionAndCoincidentWithoutSyntheticEntity(bool reversed)
+    {
+        var document = new DrawingDocument(new DrawingEntity[] {
+            new LineEntity(EntityId.Create("line"), new(3, 4), new(6, 4))
+        });
+        var keys = reversed ? new[] { "line:start", "$origin:center" } : new[] { "$origin:center", "line:start" };
+        SketchCommandFactory.TryBuildDimension(document, keys, "distance", out var dimension, out var status)
+            .Should().BeTrue(status);
+        dimension.Value.Should().Be(5);
+        dimension.ReferenceKeys.Should().Equal(keys);
+        SketchCommandFactory.TryBuildConstraint(document, keys, SketchConstraintKind.Coincident, "join",
+            out var constraint, out status).Should().BeTrue(status);
+        constraint.ReferenceKeys.Should().Equal(keys);
+        document.Entities.Should().ContainSingle();
+    }
+
     [Fact]
     public void BuildsLinearDimensionFromSelectedLine()
     {

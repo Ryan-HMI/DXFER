@@ -95,6 +95,7 @@ function getTargetEntityKind(target) {
 }
 
 function isEditableConstraintPointTarget(target, kind) {
+  if (target.kind === "point" && target.key === "$origin:center") return true;
   if (target.kind === "entity" && kind === "point") {
     return true;
   }

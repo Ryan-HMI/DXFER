@@ -74,7 +74,7 @@ import {
   isPanPointerDownForTool,
   isTargetEligibleForConstraintTool,
   shouldDrawSelectionTargetOverlay
-} from "./canvas/targets.js";
+} from "./canvas/targets.js?v=20261016-origin";
 import {
   CONSTRAINT_KEY_PREFIX,
   POINT_KEY_SEPARATOR,
@@ -658,6 +658,8 @@ function draw(state) {
 
   if (state.showOriginAxes) {
     drawOriginAxes(state, size);
+  } else if (canPickOrigin(state)) {
+    drawPointTarget(state, { x: 0, y: 0 }, { strokeStyle: "#97a5b6", lineWidth: 1.5 });
   }
 
   const entities = getDocumentEntities(state.document);
@@ -4979,7 +4981,7 @@ function handlePointerUp(state, event) {
 }
 
 function canStartGeometryDrag(state, target) {
-  if (!target || target.dynamic || state.activeTool !== "select") {
+  if (!target || target.dynamic || target.entityId === "$origin" || state.activeTool !== "select") {
     return false;
   }
 
@@ -5979,7 +5981,16 @@ function getSketchWorldPoint(state, screenPoint, target = state.hoveredTarget, e
 
 export function findNearestTarget(state, screenPoint) {
   const constraintTool = getConstraintTool(state);
-  const { nearestPointHit, nearestEdgeHit } = getNearestEntityHits(state, screenPoint, constraintTool);
+  let { nearestPointHit, nearestEdgeHit } = getNearestEntityHits(state, screenPoint, constraintTool);
+  if (canPickOrigin(state)) {
+    const distance = distanceBetweenScreenPoints(screenPoint, worldToScreen(state, { x: 0, y: 0 }));
+    const selected = [...(state.selectedKeys || []), ...(state.dimensionDraft?.selectionKeys || [])];
+    const pointAlreadySelected = (constraintTool || isDimensionTool(state)) && nearestPointHit && selected.includes(nearestPointHit.target.key)
+      && Math.hypot(nearestPointHit.target.point.x, nearestPointHit.target.point.y) < 1e-9;
+    if (distance <= SNAP_POINT_TOLERANCE && (!nearestPointHit || nearestPointHit.distance > SNAP_POINT_TOLERANCE || pointAlreadySelected)) {
+      nearestPointHit = { target: createOriginTarget(), distance };
+    }
+  }
 
   const immediateTarget = resolveNearestTargetHit({
     nearestPointHit,
@@ -7965,6 +7976,17 @@ function createPointTarget(entity, label, point) {
   };
 }
 
+function createOriginTarget() {
+  return { kind: "point", key: "$origin:center", entityId: "$origin", entity: null,
+    label: "Origin", point: { x: 0, y: 0 } };
+}
+
+function canPickOrigin(state) {
+  const tool = normalizeToolName(state.activeTool);
+  return tool === "select" || isDimensionTool(state)
+    || ["coincident", "horizontal", "vertical", "midpoint"].includes(tool);
+}
+
 function createDimensionTarget(dimension) {
   if (!dimension || !dimension.id) {
     return null;
@@ -8012,6 +8034,7 @@ function withSnapPoint(target, snapPoint) {
 }
 
 function resolveSelectionTarget(state, key) {
+  if (key === "$origin:center") return createOriginTarget();
   const pointTarget = parsePointTargetKey(state, key);
   if (pointTarget) {
     return pointTarget;
@@ -8307,6 +8330,7 @@ export function applyGeometryDragPreview(document, selectionKey, dragStart, drag
   }
 
   refreshPreviewReferenceDimensions(previewDocument);
+  followPreviewDimensionAnchors(document, previewDocument);
   previewDocument.bounds = computeEntityBounds(getDocumentEntities(previewDocument));
   return previewDocument;
 }
@@ -9948,7 +9972,7 @@ function propagatePreviewTangentConstraint(originalDocument, previewDocument, fi
 }
 
 function getPreviewFixedReferenceKeys(document) {
-  const fixedReferences = new Set();
+  const fixedReferences = new Set(["$origin", "$origin:center"]);
   for (const constraint of getDocumentConstraints(document)) {
     if (getSketchConstraintKind(constraint) !== "fix" || getSketchItemState(constraint) === "suppressed") {
       continue;
@@ -10454,6 +10478,7 @@ function getPreviewCircleLike(document, reference) {
 }
 
 function getPreviewReferencePoint(document, reference) {
+  if (reference.entityId === "$origin" && reference.target === "center" && !Number.isInteger(reference.segmentIndex)) return { x: 0, y: 0 };
   const entity = findCanvasDocumentEntity(document, reference.entityId);
   if (!entity) {
     return null;
@@ -10520,6 +10545,7 @@ function getPreviewReferencePoint(document, reference) {
 }
 
 function setPreviewReferencePoint(document, reference, point) {
+  if (reference.entityId === "$origin") return false;
   const entity = findCanvasDocumentEntity(document, reference.entityId);
   if (!entity || !point) {
     return false;
@@ -11309,6 +11335,40 @@ function translatePreviewDimensionAnchorsForDrag(document, selectionKey, delta) 
     document,
     new Set([translatedEntityId]),
     delta);
+}
+
+function followPreviewDimensionAnchors(original, candidate) {
+  const originals = new Map(getDocumentDimensions(original).map(d => [getSketchItemId(d), d]));
+  candidate.dimensions = getDocumentDimensions(candidate).map(dimension => {
+    const before = originals.get(getSketchItemId(dimension));
+    const anchor = before && readPoint(readProperty(before, "anchor", "Anchor"));
+    const keys = before && getSketchReferenceKeys(before);
+    if (!anchor || !keys?.length) return dimension;
+    const shifts = keys.map(key => {
+      const from = getDimensionReferenceLocation(original, key);
+      const to = getDimensionReferenceLocation(candidate, key);
+      return from && to ? subtractPoints(to, from) : null;
+    });
+    if (shifts.some(shift => !shift)) return dimension;
+    const next = { x: anchor.x + shifts.reduce((sum, p) => sum + p.x, 0) / shifts.length,
+      y: anchor.y + shifts.reduce((sum, p) => sum + p.y, 0) / shifts.length };
+    return { ...dimension, anchor: next, Anchor: next };
+  });
+}
+
+function getDimensionReferenceLocation(document, key) {
+  const state = { document };
+  const point = resolveSketchReferencePoint(state, key);
+  if (point) return point;
+  const line = resolveSketchLineReference(state, key);
+  if (line) return midpoint(line.start, line.end);
+  const reference = parseSketchReference(key);
+  const entity = reference?.target === "entity" && findCanvasDocumentEntity(document, reference.entityId);
+  if (!entity) return null;
+  const center = getEntityCenter(entity);
+  if (center) return center;
+  const bounds = computeEntityBounds([entity]);
+  return bounds ? { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 } : null;
 }
 
 function translatePreviewDimensionAnchorsForEntityIds(document, entityIds, delta) {
@@ -13484,6 +13544,7 @@ export function getSketchDiagnosticEntityIds(document) {
 }
 
 function resolveSketchReferencePoint(state, referenceKey) {
+  if (referenceKey === "$origin:center") return { x: 0, y: 0 };
   const pointTarget = parsePointTargetKey(state, String(referenceKey || ""));
   if (pointTarget) {
     if (getEntityKind(pointTarget.entity) === "spline") {

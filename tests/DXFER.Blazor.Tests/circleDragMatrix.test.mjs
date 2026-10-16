@@ -115,7 +115,7 @@ for (const reverse of [false, true]) {
         assert.ok(next);
         assert.equal(next.dimensions[0].value, 3, 'driving radius is not rewritten');
         assert.ok(Math.abs(next.dimensions[1].value - Math.sqrt(10)) < 1e-8);
-        assert.deepEqual(next.dimensions[1].anchor, p(-1, -1));
+        assert.deepEqual(next.dimensions[1].anchor, p(-0.5, -0.5));
         assert.deepEqual(original, before);
     });
 }

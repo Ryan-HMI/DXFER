@@ -772,7 +772,7 @@ public sealed class SketchGeometryDragServiceTests
         next.Entities.Should().Equal(
             new LineEntity(EntityId.Create("base"), new Point2(0, 0), new Point2(10, 0)),
             new LineEntity(EntityId.Create("offset"), new Point2(3, 5), new Point2(13, 5)));
-        next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(8, 2.5));
+        next.Dimensions.Should().ContainSingle().Which.Anchor.Should().Be(new Point2(6.5, 2.5));
         next.Dimensions.Should().OnlyContain(dimension => SketchDimensionSolverService.IsDimensionSatisfied(next, dimension));
     }
 

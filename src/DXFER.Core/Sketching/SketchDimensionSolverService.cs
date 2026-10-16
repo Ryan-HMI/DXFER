@@ -680,7 +680,7 @@ public static class SketchDimensionSolverService
         return true;
     }
 
-    private static bool TryResolveDimensionPoint(
+    internal static bool TryResolveDimensionPoint(
         IReadOnlyList<DrawingEntity> entities,
         string referenceKey,
         out Point2 point)
