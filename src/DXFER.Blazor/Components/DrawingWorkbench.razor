@@ -13,6 +13,11 @@
     <main class="dxfer-canvas-panel">
         <DrawingCanvas @ref="_canvas"
                        Document="_document"
+                       CornerPreview="CornerPreview"
+                       CornerHandle="@(CornerPreview is not null && _cornerPreviewHandle is not null ? new CanvasPointDto(_cornerPreviewHandle.Value.X, _cornerPreviewHandle.Value.Y) : null)"
+                       CornerSize="GetCornerModifyDistance()"
+                       CornerSizeChanged="OnCornerSizeDragged"
+                       CornerApplyRequested="CommitCornerPreview"
                        ShowToolbar="false"
                        DocumentFitToken="_documentFitToken"
                        ActiveTool="_activeTool"
@@ -70,6 +75,10 @@
                 }
             </dl>
             <footer class="dxfer-operation-actions">
+                @if (IsCornerModifyToolActive)
+                {
+                    <button type="button" class="dxfer-exit-tool" disabled="@(CornerPreview is null)" @onclick="CommitCornerPreview">Apply</button>
+                }
                 <button type="button" class="dxfer-exit-tool" title="Exit current tool" @onclick="ExitInspectorTool">
                     <CadIcon Name="CadIconName.Close" />
                     <span>Exit tool</span>
@@ -99,6 +108,7 @@
             @if (IsCornerModifyToolActive)
             {
                 @CornerSizeControl
+                <button type="button" class="dxfer-exit-tool" disabled="@(CornerPreview is null)" @onclick="CommitCornerPreview">Apply</button>
             }
             @if (HasOperationInspector)
             {
@@ -135,7 +145,7 @@
 </div>
 
 @code {
-    private RenderFragment CornerSizeControl => @<label class="dxfer-corner-size-control">
+    private RenderFragment CornerSizeControl => @<label class="dxfer-corner-size-control" @onkeydown="HandleInspectorKeyDown" @onkeydown:stopPropagation="true">
         <span>@CornerModifyDistanceLabel <span class="dxfer-input-units">(@DocumentUnitsText)</span></span>
         <input type="number" min="0" step="0.1" value="@CornerModifyDistanceValue"
                aria-label="@($"{ActiveToolLabel} size ({DocumentUnitsText})")"

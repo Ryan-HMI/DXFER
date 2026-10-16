@@ -138,8 +138,9 @@ test("fillet and chamfer are modal tools that do not require valid preselection"
   assert.match(workbenchCode, /Command\(WorkbenchCommandId\.Fillet,\s*WorkbenchTool\.Fillet,\s*CadIconName\.Fillet,\s*"Fillet"\)/);
   assert.match(workbenchCode, /Command\(WorkbenchCommandId\.Chamfer,\s*WorkbenchTool\.Chamfer,\s*CadIconName\.Chamfer,\s*"Chamfer"\)/);
   assert.doesNotMatch(workbenchCode, /CanFilletOrChamferSelectedLines/);
-  assert.match(workbenchCode, /TryApplyCornerModifyTool\(commandId, keepModal: false\)/);
-  assert.match(workbenchCode, /TryGetCornerModifyCommand\(_activeTool, out var commandId\)/);
+  assert.doesNotMatch(workbenchCode, /TryApplyCornerModifyTool\(commandId, keepModal: false\)/);
+  assert.match(workbenchCode, /BuildCornerEdit\(command, keepModal: true, previewOnly: true\)/);
+  assert.match(workbenchMarkup, /disabled="@\(CornerPreview is null\)" @onclick="CommitCornerPreview"/);
   assert.match(workbenchMarkup, /dxfer-corner-size-control/);
   assert.match(workbenchCode, /OnCornerModifyDistanceChanged/);
   assert.match(workbenchCode, /AddGeneratedCornerModifyDimension\(commandId, _document, nextDocument, distance\)/);

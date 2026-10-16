@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261016-shared-constraint-icons";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261016-interactive-corners";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -21,6 +21,8 @@ public partial class DrawingCanvas : IAsyncDisposable
     private int _renderedDocumentFitToken = -1;
     private MeasurementSpan? _renderedMeasurement;
     private string? _renderedMeasurementUnits;
+    private DrawingDocument? _renderedCornerPreview;
+    private double _renderedCornerSize = double.NaN;
 
     [Parameter]
     public MeasurementSpan? Measurement { get; set; }
@@ -33,6 +35,34 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public DrawingDocument? Document { get; set; }
+
+    [Parameter] public DrawingDocument? CornerPreview { get; set; }
+    [Parameter] public CanvasPointDto? CornerHandle { get; set; }
+    [Parameter] public double CornerSize { get; set; }
+    [Parameter] public Action<double>? CornerSizeChanged { get; set; }
+    [Parameter] public Action? CornerApplyRequested { get; set; }
+
+    [JSInvokable]
+    public Task OnCornerSizeChanged(double value)
+    {
+        CornerSizeChanged?.Invoke(value);
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnCornerApplyRequested()
+    {
+        CornerApplyRequested?.Invoke();
+        return Task.CompletedTask;
+    }
+
+    private async Task SetCornerPreviewAsync()
+    {
+        if (_canvasInstance is null || (ReferenceEquals(_renderedCornerPreview, CornerPreview) && _renderedCornerSize == CornerSize)) return;
+        _renderedCornerPreview = CornerPreview;
+        _renderedCornerSize = CornerSize;
+        await _canvasInstance.InvokeVoidAsync("setCornerPreview", CornerPreview is null ? null : CanvasDocumentDto.FromDocument(CornerPreview), CornerHandle, CornerSize);
+    }
 
     [Parameter]
     public bool ShowToolbar { get; set; } = true;
@@ -143,6 +173,7 @@ public partial class DrawingCanvas : IAsyncDisposable
             await SetGrainDirectionAsync();
             await SetConstructionModeAsync();
             await SetMeasurementAsync();
+            await SetCornerPreviewAsync();
         }
     }
 
@@ -165,6 +196,7 @@ public partial class DrawingCanvas : IAsyncDisposable
         await SetGrainDirectionAsync();
         await SetConstructionModeAsync();
         await SetMeasurementAsync();
+        await SetCornerPreviewAsync();
     }
 
     private async Task SetMeasurementAsync()

@@ -706,8 +706,16 @@
 }
 
 .dxfer-operation-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
     border-top: 1px solid var(--dx-border, #242d39);
     padding: 0.5rem;
+}
+
+.dxfer-exit-tool:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 .dxfer-exit-tool {

@@ -18,6 +18,78 @@ public sealed class WorkbenchCornerIntentTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InteractivePreviewRecomputesWithoutHistoryAndCancelDiscards(bool fillet)
+    {
+        using var services = new ServiceCollection().BuildServiceProvider();
+        await using var renderer = new TestRenderer(services);
+        var workbench = Create();
+        renderer.Attach(workbench);
+        var original = Document("reference");
+        Set(workbench, "_document", original);
+        await renderer.Dispatcher.InvokeAsync(() =>
+        {
+            Set(workbench, "_activeTool", fillet ? WorkbenchTool.Fillet : WorkbenchTool.Chamfer);
+            SelectCorner(workbench);
+            var first = Get<DrawingDocument>(workbench, "_cornerPreview");
+            first.Dimensions.Single(d => d.Id == "length").Value.Should().BeApproximately(8, 1e-10);
+            Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
+            Get<Stack<DrawingDocument>>(workbench, "_undoStack").Should().BeEmpty();
+            foreach (var invalid in new[] { "0", "-1", "", "NaN", "100" })
+            {
+                Invoke(workbench, "OnCornerModifyDistanceChanged", new ChangeEventArgs { Value = invalid });
+                Get<DrawingDocument?>(workbench, "_cornerPreview").Should().BeNull();
+                Invoke(workbench, "CommitCornerPreview");
+                Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
+                Get<Stack<DrawingDocument>>(workbench, "_undoStack").Should().BeEmpty();
+            }
+            Invoke(workbench, "OnCornerSizeDragged", 3.0);
+            Get<DrawingDocument>(workbench, "_cornerPreview").Dimensions.Single(d => d.Id == "length").Value.Should().BeApproximately(7, 1e-10);
+            Invoke(workbench, "OnToolCanceled");
+            Get<DrawingDocument?>(workbench, "_cornerPreview").Should().BeNull();
+            Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
+            Get<Stack<DrawingDocument>>(workbench, "_undoStack").Should().BeEmpty();
+
+            Set(workbench, "_activeTool", fillet ? WorkbenchTool.Fillet : WorkbenchTool.Chamfer);
+            Invoke(workbench, "RefreshCornerPreview");
+            Invoke(workbench, "CommitCornerPreview");
+            Get<Stack<DrawingDocument>>(workbench, "_undoStack").Should().HaveCount(1);
+            var committed = Get<DrawingDocument>(workbench, "_document");
+            committed.Dimensions.Single(d => d.Id == "length").Value.Should().BeApproximately(7, 1e-10);
+            Invoke(workbench, "UndoLastDocumentChange");
+            Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
+            Invoke(workbench, "RedoLastDocumentChange");
+            Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(committed);
+            var reopened = DxfDocumentReader.Read(DxfDocumentWriter.Write(committed, new DxfWriteOptions(IncludeNativeDocument: true)));
+            reopened.Entities.Should().BeEquivalentTo(committed.Entities);
+            reopened.Dimensions.Should().BeEquivalentTo(committed.Dimensions);
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InteractiveConflictingPreviewCannotCommit(bool fillet)
+    {
+        using var services = new ServiceCollection().BuildServiceProvider();
+        await using var renderer = new TestRenderer(services);
+        var workbench = Create();
+        renderer.Attach(workbench);
+        var original = Document("driving");
+        Set(workbench, "_document", original);
+        await renderer.Dispatcher.InvokeAsync(() =>
+        {
+            Set(workbench, "_activeTool", fillet ? WorkbenchTool.Fillet : WorkbenchTool.Chamfer);
+            SelectCorner(workbench);
+            Get<DrawingDocument?>(workbench, "_cornerPreview").Should().BeNull();
+            Invoke(workbench, "CommitCornerPreview");
+            Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
+            Get<Stack<DrawingDocument>>(workbench, "_undoStack").Should().BeEmpty();
+        });
+    }
+
+    [Theory]
     [InlineData(false, "driving")]
     [InlineData(true, "driving")]
     [InlineData(false, "fixed")]

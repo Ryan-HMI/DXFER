@@ -119,6 +119,7 @@ try {
     await inspector.waitFor();
     await input.fill('2');
     await clickCorner();
+    await page.getByRole('button', {name: 'Apply', exact: true}).click();
     await state('Modified');
     await page.getByRole('button', {name: 'Exit tool', exact: true}).click();
     await state('Modified');

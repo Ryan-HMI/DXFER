@@ -296,6 +296,16 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
       draw(state);
     },
 
+    setCornerPreview(document, handle, value) {
+      state.cornerPreview = document ? { document, handle, value } : null;
+      state.canvas.dataset.cornerPreview = document ? "true" : "false";
+      if (!document) {
+        state.canvas.style.cursor = "";
+        state.canvas.removeAttribute("title");
+      }
+      draw(state);
+    },
+
     setPolarSnapIncrementDegrees(incrementDegrees) {
       state.polarSnapIncrementDegrees = normalizePolarSnapIncrement(incrementDegrees);
       updateDebugAttributes(state);
@@ -674,7 +684,7 @@ function draw(state) {
     drawPointTarget(state, { x: 0, y: 0 }, { strokeStyle: "#97a5b6", lineWidth: 1.5 });
   }
 
-  const entities = getDocumentEntities(state.document);
+  const entities = getDocumentEntities(state.cornerPreview?.document || state.document);
   const diagnosticEntityIds = getSketchDiagnosticEntityIds(state.document);
   for (const entity of entities) {
     const affectedByDiagnostics = diagnosticEntityIds.has(getEntityId(entity));
@@ -704,7 +714,7 @@ function draw(state) {
     }
   }
 
-  for (const selectedKey of state.selectedKeys) {
+  for (const selectedKey of state.cornerPreview ? [] : state.selectedKeys) {
     const target = resolveSelectionTarget(state, selectedKey);
     if (target && shouldDrawSelectionTargetOverlay(target) && !isDimensionTargetBeingEdited(state, target)) {
       const isActive = selectedKey === state.activeSelectionKey;
@@ -721,7 +731,7 @@ function draw(state) {
   drawInferenceGuides(state, size);
 
   const powerTrimHoverMode = getPowerTrimHoverModeForState(state);
-  if (state.hoveredTarget
+  if (!state.cornerPreview && state.hoveredTarget
     && shouldDrawSelectionTargetOverlay(state.hoveredTarget)
     && !isDimensionTargetBeingEdited(state, state.hoveredTarget)) {
     const isSelected = state.selectedKeys.has(state.hoveredTarget.key);
@@ -763,6 +773,23 @@ function draw(state) {
   }
   drawDimensionToolPreview(state);
   drawGrainDirection(state, size);
+
+  if (state.cornerPreview?.handle) {
+    const point = worldToScreen(state, state.cornerPreview.handle);
+    state.canvas.dataset.cornerHandleX = String(point.x);
+    state.canvas.dataset.cornerHandleY = String(point.y);
+    context.save();
+    context.setLineDash([]);
+    context.fillStyle = "#66d9ff";
+    context.strokeStyle = "#17232e";
+    context.lineWidth = 2;
+    context.fillRect(point.x - 6, point.y - 6, 12, 12);
+    context.strokeRect(point.x - 6, point.y - 6, 12, 12);
+    context.restore();
+  } else {
+    delete state.canvas.dataset.cornerHandleX;
+    delete state.canvas.dataset.cornerHandleY;
+  }
 
   context.restore();
 }
@@ -4611,6 +4638,19 @@ function handlePointerMove(state, event) {
   const screenPoint = getPointerScreenPoint(state, event);
   state.pointerScreenPoint = screenPoint;
 
+  if (state.cornerDrag?.pointerId === event.pointerId) {
+    updateCornerDrag(state, screenPoint);
+    event.preventDefault();
+    return;
+  }
+
+  if (state.cornerPreview?.handle) {
+    const overHandle = distanceBetweenScreenPoints(screenPoint, worldToScreen(state, state.cornerPreview.handle)) <= 14;
+    state.canvas.style.cursor = overHandle ? "ew-resize" : "";
+    if (overHandle) state.canvas.title = "Drag horizontally to adjust corner size";
+    else state.canvas.removeAttribute("title");
+  }
+
   if (state.panning && state.lastPointerScreen) {
     state.view.offsetX += screenPoint.x - state.lastPointerScreen.x;
     state.view.offsetY += screenPoint.y - state.lastPointerScreen.y;
@@ -4832,6 +4872,12 @@ function handlePointerDown(state, event) {
   }
 
   if (isPrimaryPointerButton(event)) {
+    if (state.cornerPreview?.handle && distanceBetweenScreenPoints(screenPoint, worldToScreen(state, state.cornerPreview.handle)) <= 14) {
+      state.cornerDrag = { pointerId: event.pointerId, startX: screenPoint.x, value: state.cornerPreview.value, scale: state.view.scale };
+      state.clickCandidate = null;
+      event.preventDefault();
+      return;
+    }
     const constraintGroupHit = state.activeTool === "select"
       ? getConstraintGlyphGroupHit(state, screenPoint)
       : null;
@@ -4872,6 +4918,14 @@ function handlePointerUp(state, event) {
 
   const screenPoint = getPointerScreenPoint(state, event);
   state.pointerScreenPoint = screenPoint;
+
+  if (state.cornerDrag?.pointerId === event.pointerId) {
+    updateCornerDrag(state, screenPoint);
+    state.cornerDrag = null;
+    releasePointer(state.canvas, event.pointerId);
+    event.preventDefault();
+    return;
+  }
 
   if (state.panning) {
     state.panning = false;
@@ -5797,6 +5851,10 @@ function commitSketchToolPoints(state, tool, points) {
 }
 
 function handlePointerCancel(state, event) {
+  if (state.cornerDrag) {
+    invokeDotNet(state, "OnCornerSizeChanged", state.cornerDrag.value);
+    state.cornerDrag = null;
+  }
   cancelGeometryDrag(state);
   state.powerTrimDrag = null;
   state.constraintGroupDrag = null;
@@ -5841,6 +5899,11 @@ function handleKeyDown(state, event) {
   }
 
   const activeTool = normalizeToolName(state.activeTool);
+  if (event.key === "Enter" && state.cornerPreview && !event.repeat) {
+    invokeDotNet(state, "OnCornerApplyRequested");
+    event.preventDefault();
+    return;
+  }
   if (event.key === "Escape" && activeTool !== "select") {
     cancelActiveTool(state);
     event.preventDefault();
@@ -5860,6 +5923,8 @@ function cancelActiveTool(state) {
   }
 
   state.activeTool = "select";
+  state.cornerDrag = null;
+  state.cornerPreview = null;
   state.toolDraft = createEmptyToolDraft();
   state.powerTrimDrag = null;
   state.sketchChainContext = null;
@@ -5874,6 +5939,12 @@ function cancelActiveTool(state) {
   updateDebugAttributes(state);
   draw(state);
   return true;
+}
+
+function updateCornerDrag(state, screenPoint) {
+  const drag = state.cornerDrag;
+  const value = drag.value + (screenPoint.x - drag.startX) / drag.scale;
+  invokeDotNet(state, "OnCornerSizeChanged", value);
 }
 
 function handleWheel(state, event) {

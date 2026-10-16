@@ -81,6 +81,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private bool _focusInspectorToggleAfterRender;
     private bool _focusCanvasAfterRender;
     private CornerModifyEqualChain? _cornerModifyEqualChain;
+    private DrawingDocument? _cornerPreview;
+    private DrawingDocument? _cornerPreviewSource;
+    private Point2? _cornerPreviewHandle;
+    private DrawingDocument? CornerPreview => IsCornerModifyToolActive && ReferenceEquals(_cornerPreviewSource, _document) ? _cornerPreview : null;
     private PendingCircleSplit? _pendingCircleSplit;
     private readonly HashSet<string> _selectedEntityIds = new(StringComparer.Ordinal);
     private readonly Stack<DrawingDocument> _undoStack = new();
@@ -480,6 +484,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private void HandleInspectorKeyDown(KeyboardEventArgs args)
     {
         if (args.Key == "Escape") ExitInspectorTool();
+        else if (args.Key == "Enter" && IsCornerModifyToolActive) CommitCornerPreview();
     }
 
     private bool IsParametricCommandActive =>
@@ -912,16 +917,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchCommandId.Fillet:
             case WorkbenchCommandId.Chamfer:
                 await SyncSelectionFromCanvasAsync();
-                if (TryApplyCornerModifyTool(commandId, keepModal: false))
-                {
-                    break;
-                }
-
                 if (TryGetCornerModifyTool(commandId, out var cornerTool))
                 {
                     ActivateTool(
                         cornerTool,
                         $"{FormatCommandName(commandId)} active. Select two converging edges, or one vertex with exactly two adjacent edges. Esc to cancel.");
+                    RefreshCornerPreview();
                 }
 
                 break;
@@ -1277,6 +1278,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void OnToolCanceled()
     {
+        ClearCornerPreview();
         _solveFailureStatus = null;
         if (_activeTool is null)
         {
@@ -1291,6 +1293,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void ActivateTool(WorkbenchTool tool, string status)
     {
+        ClearCornerPreview();
         _solveFailureStatus = null;
         if (tool != WorkbenchTool.SplitAtPoint)
         {
@@ -1576,7 +1579,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         return true;
     }
 
-    private bool TryApplyCornerModifyTool(WorkbenchCommandId commandId, bool keepModal)
+    private bool TryApplyCornerModifyTool(WorkbenchCommandId commandId, bool keepModal) =>
+        BuildCornerEdit(commandId, keepModal, previewOnly: false);
+
+    private bool BuildCornerEdit(WorkbenchCommandId commandId, bool keepModal, bool previewOnly)
     {
         if (!TryGetCornerModifyTool(commandId, out var tool))
         {
@@ -1630,7 +1636,35 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return false;
         }
 
+        var previousChain = _cornerModifyEqualChain;
         nextDocument = AddGeneratedCornerModifyDimension(commandId, _document, nextDocument, distance);
+        if (nextDocument.Constraints.Any(c => c.State == SketchConstraintState.Unsatisfied && !_document.Constraints.Any(old => old.Id == c.Id && old.State == c.State))
+            || nextDocument.Dimensions.Any(d => d.IsDriving && SketchDimensionSolverService.GetDimensionState(nextDocument, d) == SketchConstraintState.Unsatisfied))
+        {
+            _cornerModifyEqualChain = previousChain;
+            _status = $"{FormatCommandName(commandId)} conflicts with driving intent. Geometry unchanged.";
+            return false;
+        }
+
+        if (previewOnly)
+        {
+            _cornerModifyEqualChain = previousChain;
+            _cornerPreview = nextDocument;
+            _cornerPreviewSource = _document;
+            var ids = _document.Entities.Select(entity => entity.Id.Value).ToHashSet(StringComparer.Ordinal);
+            var added = nextDocument.Entities.FirstOrDefault(entity => !ids.Contains(entity.Id.Value) && entity is ArcEntity)
+                ?? nextDocument.Entities.LastOrDefault(entity => !ids.Contains(entity.Id.Value) && entity is LineEntity);
+            _cornerPreviewHandle = added switch
+            {
+                ArcEntity arc => PointOnCircle(arc.Center, arc.Radius, arc.StartAngleDegrees + GetPositiveSweepDegrees(arc.StartAngleDegrees, arc.EndAngleDegrees) / 2),
+                LineEntity line => new Point2((line.Start.X + line.End.X) / 2, (line.Start.Y + line.End.Y) / 2),
+                _ => null
+            };
+            _status = $"{FormatCommandName(commandId)} preview at {FormatNumber(distance)}.";
+            return true;
+        }
+
+        ClearCornerPreview();
         var appliedStatus = $"{FormatCommandName(commandId)} applied at {FormatNumber(distance)}.";
         ApplyDocumentChange(nextDocument, appliedStatus);
         if (keepModal)
@@ -1805,6 +1839,33 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private double GetCornerModifyDistance() =>
         _cornerModifyDistance ?? GetDefaultCornerDistance();
 
+    private void ClearCornerPreview()
+    {
+        _cornerPreview = null;
+        _cornerPreviewSource = null;
+        _cornerPreviewHandle = null;
+    }
+
+    private void RefreshCornerPreview()
+    {
+        ClearCornerPreview();
+        if (TryGetCornerModifyCommand(_activeTool, out var command))
+            BuildCornerEdit(command, keepModal: true, previewOnly: true);
+    }
+
+    private void CommitCornerPreview()
+    {
+        if (CornerPreview is not null && TryGetCornerModifyCommand(_activeTool, out var command))
+            TryApplyCornerModifyTool(command, keepModal: true);
+    }
+
+    private void OnCornerSizeDragged(double value)
+    {
+        if (!IsCornerModifyToolActive) return;
+        OnCornerModifyDistanceChanged(new ChangeEventArgs { Value = value.ToString("G12", CultureInfo.InvariantCulture) });
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     private void OnCornerModifyDistanceChanged(ChangeEventArgs args)
     {
         var valueText = Convert.ToString(args.Value, CultureInfo.InvariantCulture) ?? string.Empty;
@@ -1815,6 +1876,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             || value <= 0)
         {
             _cornerModifyDistanceInvalid = true;
+            ClearCornerPreview();
             _status = $"{ActiveToolLabel} size must be a positive number.";
             return;
         }
@@ -1823,6 +1885,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _cornerModifyDistance = value;
         ResetCornerModifyEqualChain();
         _status = $"{ActiveToolLabel} size set to {FormatNumber(value)}.";
+        RefreshCornerPreview();
     }
 
     private static double GetPositiveSweepDegrees(double startAngleDegrees, double endAngleDegrees)
@@ -2646,12 +2709,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        if (_selectedEntityIds.Count > 0
-            && TryGetCornerModifyCommand(_activeTool, out var commandId)
-            && TryApplyCornerModifyTool(commandId, keepModal: true))
-        {
-            return;
-        }
+        if (IsCornerModifyToolActive) RefreshCornerPreview();
 
         _ = InvokeAsync(StateHasChanged);
     }
