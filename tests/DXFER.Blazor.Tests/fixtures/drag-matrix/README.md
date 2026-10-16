@@ -3,6 +3,15 @@
 Native DXF files generated with `DxfDocumentWriter` and `IncludeNativeDocument: true`.
 All coordinates and dimensions are inches. No manufacturing artifacts are used.
 
+- `arc-weld-free` / `arc-weld-fixed`: arc center(0,0), R3, angles0/90,
+  driving radius3/sweep90, end welded to line(0,3)-(-2,3). Drag end to(1,4):
+  free arc translates center to(1,1) with welded line start(1,4), retaining
+  radius/sweep. Fix line:start refuses unchanged. Reopen free and drag to(2,5).
+- `arc-radius-anchor`: same arc with driving radius3 and Fix center. Shift-drag
+  end onto center must refuse undefined direction with no Undo. Shift-drag to
+  (3,3) recovers sweep45, preserving center/radius. Undo/Redo and native reopen
+  preserve the edit; Shift-drag endpoint back to(0,3) restores sweep90.
+
 - `equal-rectangle`: closed polyline (0,0),(11,0),(11,12.5),(0,12.5),(0,0),
   H/V, closure, Equal/Parallel opposite short edges and Perpendicular adjacent
   edges. Bottom edge driving11. Add top driving11: redundant explanation.

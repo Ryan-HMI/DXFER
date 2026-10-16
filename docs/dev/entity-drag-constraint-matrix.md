@@ -28,9 +28,9 @@ For every entity and grip, classify the requested drag into allowed degrees of f
 | Polyline | whole polyline, segment midpoint, segment, blocked vertex component | vertices | PARTIAL indexed horizontal/linear dimensions app-verified | PARTIAL line/polyline/point weld | PARTIAL | PARTIAL | PARTIAL | USER-FAILED |
 | Polygon | center, side midpoint, whole polygon | radius/apothem or vertex where supported | OPEN | OPEN | PARTIAL | PARTIAL | APP-VERIFIED for center/mid/whole | USER-FAILED |
 | Circle | center | circumference/quadrant radius | PARTIAL driving radius-dimension edge drag auto-passed | OPEN | PARTIAL | PARTIAL | APP-VERIFIED for center/circumference | USER-FAILED |
-| Arc | center or whole arc where supported | start, end, perimeter radius/sweep | PARTIAL arc sweep-dimension translation auto-passed | OPEN | PARTIAL | PARTIAL | OPEN | USER-FAILED |
+| Arc | center or whole arc where supported | start, end, perimeter radius/sweep | PARTIAL driving radius/sweep and fixed-center Shift sweep app-verified | PARTIAL arc-end/line-start weld and Fixed refusal | PARTIAL | PARTIAL | APP-VERIFIED bounded fixtures | USER-FAILED |
 | Ellipse | center or whole ellipse | major/minor quadrant axes | PARTIAL driving major-axis drag auto-passed | OPEN | PARTIAL | PARTIAL | OPEN | USER-FAILED |
-| Spline | whole spline | fit points, control points, endpoint tangent handles | OPEN | OPEN | PARTIAL | PARTIAL | APP-VERIFIED for edit handles | USER-FAILED |
+| Spline | whole spline | fit points, control points, endpoint tangent handles | PARTIAL live indexed span/Fixed cases independently accepted on3547ab4 | OPEN | PARTIAL | PARTIAL | APP-VERIFIED for edit handles | USER-FAILED |
 | Point | point location | N/A | OPEN | OPEN | PARTIAL | PARTIAL | OPEN | OPEN |
 | Dimension | anchor | value edit through input | PARTIAL skip synthetic value commits | N/A | PARTIAL | PARTIAL | APP-VERIFIED for anchor skip-commit | USER-FAILED |
 | Constraint glyph/reference | glyph anchor where supported | reference-driven geometry through solver | PARTIAL Fix/Equal/Concentric/Midpoint/Tangent auto-passed | PARTIAL coincident/axis/relation plus driven constraint propagation | PARTIAL | PARTIAL | OPEN | USER-FAILED |
@@ -45,7 +45,7 @@ For every entity and grip, classify the requested drag into allowed degrees of f
 | DRAG-POLYLINE-001 | Drag one vertex of a partially dimensioned polyline segment. | Only allowed free geometry changes; constrained dimension component stays satisfied. | APP-VERIFIED bounded horizontal-width/fixed-endpoint fixture AND actual toolbar-created LinearDistance 10 L-shape, history/native reopen/reedit. Stale click-coordinate validation fixed; old corrupted fixture shows failure without auto-repair. Closed aliases/coupled dimensions remain open. |
 | DRAG-POLYGON-001 | Drag a dimensioned polygon center, midpoint, and whole entity. | Polygon translates, radius/count dimensions remain satisfied, anchors travel. | PARTIAL |
 | DRAG-CIRCLE-001 | Drag a dimensioned circle center and circumference. | Center drag translates with dimensions; circumference drag changes radius only when driving dimensions allow it. | PARTIAL AUTO-PASSED: circumference drag with a driving radius dimension translates the circle and dimension anchor while preserving radius. |
-| DRAG-ARC-001 | Drag dimensioned arc endpoint and perimeter. | Radius/sweep changes only when driving dimensions and constraints allow them. | PARTIAL AUTO-PASSED: endpoint drag against a driving arc sweep dimension translates the arc and dimension anchor instead of breaking the sweep. |
+| DRAG-ARC-001 | Drag dimensioned arc endpoint and perimeter. | Radius/sweep changes only when driving dimensions and constraints allow them. | APP-VERIFIED bounded radius3/sweep90 welded-line translation, Fixed-peer refusal, fixed-center Shift sweep and zero-direction refusal/recovery; held-pointer/release/history/native reopen/reedit. Core/preview reversed order and near-zero tests pass. See arc-drag-direction-2026-10-15.md. Broader coupled arcs remain open. |
 | DRAG-ELLIPSE-001 | Drag dimensioned ellipse center and major/minor quadrants. | Center translates with dimensions; axis grips change only allowed axis degrees of freedom. | PARTIAL AUTO-PASSED: major-axis drag with a driving axis dimension translates the ellipse and dimension anchor while preserving axis length. |
 | DRAG-SPLINE-001 | Drag dimensioned spline fit/control/tangent handles. | Preserve driving intent through a supported movement or refuse unchanged. | APP-VERIFIED bounded indexed fit/control/tangent span preservation through translation, Fixed refusal, held-pointer/release/history/native reopen/reedit. See dimensioned-spline-references-2026-10-15.md. Arbitrary coupled spline solving remains open. |
 | DRAG-COINCIDENT-001 | Drag coincident endpoints across mixed entities. | Preview and release keep references welded. | APP-VERIFIED dimensioned line -> polyline -> point weld, fixed-peer refusal; normal/reversed order in core/preview. Other mixed families remain open. |
@@ -58,6 +58,13 @@ Prior PowerTrim driving-value protection is accepted independently on reported
 `0eca667`: Trim/Extend/Split driving 10 refuse unchanged/no Undo; reference
 fixtures update measurements, with history/native reopen and clean DXF audits.
 That acceptance is retained, not put back on the open drag backlog.
+
+Flux independently accepted all six spline fit/control/tangent free/Fixed
+fixtures on3547ab4, plus Equal-opposite-edge rectangle conflict/recovery,
+Undo/Redo and native reopen/reedit. Held-pointer evidence remains owner-only.
+The separate redundant-versus-conflicting diagnostic correction is installed
+on Dev da62081 with actual browser history/reopen verification. These are
+bounded acceptances, not a blanket pass of the entity coverage table.
 
 The next Equal/Midpoint/Tangent + Fixed results and concrete fixtures are in
 `live-polyline-references-2026-10-15.md`. Fixed-midpoint symmetric endpoint

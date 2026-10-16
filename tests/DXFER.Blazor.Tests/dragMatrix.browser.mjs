@@ -36,6 +36,11 @@ try {
         await expect(canvas).not.toHaveAttribute('data-entity-count','0');
         await page.getByRole('button',{name:'Fit extents',exact:true}).click();
         await page.waitForTimeout(120);
+        if(name.startsWith('arc-')) {
+            const rect=await canvas.boundingBox();
+            await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);
+            await page.mouse.wheel(0,500);await page.waitForTimeout(180);
+        }
     };
     const screen=([x,y])=>canvas.evaluate((c,p)=>{
         const d=c.dataset,r=c.getBoundingClientRect();
@@ -71,7 +76,52 @@ try {
         await page.screenshot({path:`${output}/${label}-released.png`});
         return preview;
     };
-    if(process.env.DXFER_MATRIX_ONLY_SPLINE || process.env.DXFER_MATRIX_ONLY_DIAGNOSTICS) process.env.DXFER_MATRIX_ONLY_CLICKED='1';
+    if(process.env.DXFER_MATRIX_ONLY_SPLINE || process.env.DXFER_MATRIX_ONLY_DIAGNOSTICS || process.env.DXFER_MATRIX_ONLY_ARC) process.env.DXFER_MATRIX_ONLY_CLICKED='1';
+    if(!process.env.DXFER_MATRIX_ONLY_CLICKED || process.env.DXFER_MATRIX_ONLY_ARC) {
+        const arcPaint=(x,y,end=90)=>({points:[end/3,end*2/3].map(a=>[x+3*Math.cos(a*Math.PI/180),y+3*Math.sin(a*Math.PI/180)])});
+        for(const locked of [false,true]) {
+            const name=locked?'arc-weld-fixed':'arc-weld-free';
+            await load(name);const original=snapshot(await download());
+            await drag([0,3],[1,4],name,arcPaint(locked?0:1,locked?0:1));
+            const file=await download(),next=snapshot(file);
+            assert.deepEqual(next.dimensions.map(({anchor,...intent})=>intent),original.dimensions.map(({anchor,...intent})=>intent));
+            next.dimensions.forEach((d,i)=>{
+                close(d.anchor.x,original.dimensions[i].anchor.x+(locked?0:1));
+                close(d.anchor.y,original.dimensions[i].anchor.y+(locked?0:1));
+            });
+            if(locked) {
+                assert.deepEqual(next.entities,original.entities);
+                await expect(page.getByRole('button',{name:'Undo',exact:true})).toBeDisabled();
+            } else {
+                close(next.entities[0].center.x,1);close(next.entities[0].center.y,1);
+                close(next.entities[0].radius,3);close(next.entities[0].endAngleDegrees,90);
+                close(next.entities[1].start.x,1);close(next.entities[1].start.y,4);
+                assert.ok(next.constraints.every(c=>c.state==='Satisfied'));
+                await page.getByRole('button',{name:'Undo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,original.entities);
+                await page.getByRole('button',{name:'Redo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,next.entities);
+                await load(`${name}-reopen`,file);assert.deepEqual(snapshot(await download()).entities,next.entities);
+                await drag([1,4],[2,5],`${name}-reedit`,arcPaint(2,2));
+                const edited=snapshot(await download());close(edited.entities[0].center.x,2);close(edited.entities[1].start.y,5);
+            }
+            console.log('PASS arc radius/sweep weld preview/release/history/reopen:',name);
+        }
+        await load('arc-radius-anchor');const original=snapshot(await download());
+        await page.keyboard.down('Shift');
+        await drag([0,3],[0,0],'arc-zero-direction',arcPaint(0,0));
+        await page.keyboard.up('Shift');
+        await expect(page.getByRole('status')).toContainText('direction away from its center');
+        assert.deepEqual(snapshot(await download()).entities,original.entities);
+        await expect(page.getByRole('button',{name:'Undo',exact:true})).toBeDisabled();
+        await page.keyboard.down('Shift');await drag([0,3],[3,3],'arc-sweep-recovery',arcPaint(0,0,45));await page.keyboard.up('Shift');
+        const file=await download(),next=snapshot(file);close(next.entities[0].endAngleDegrees,45);close(next.entities[0].radius,3);
+        assert.deepEqual(next.entities[0].center,original.entities[0].center);assert.deepEqual(next.dimensions,original.dimensions);
+        await page.getByRole('button',{name:'Undo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,original.entities);
+        await page.getByRole('button',{name:'Redo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,next.entities);
+        await load('arc-sweep-reopened',file);assert.deepEqual(snapshot(await download()).entities,next.entities);
+        await page.keyboard.down('Shift');await drag([Math.sqrt(4.5),Math.sqrt(4.5)],[0,3],'arc-sweep-reedit',arcPaint(0,0));await page.keyboard.up('Shift');
+        close(snapshot(await download()).entities[0].endAngleDegrees,90);
+        console.log('PASS arc undefined-direction refusal, Shift sweep recovery/history/reopen/reedit');
+    }
     for(const name of (process.env.DXFER_MATRIX_ONLY_CLICKED ? [] : ['line-fixed','weld-fixed','line-free','line-anchor','poly-anchor','weld-free'])) {
         await load(name);
         const original=snapshot(await download());

@@ -10886,9 +10886,14 @@ function applyPreviewPointDrag(document, entity, label, delta, dragEnd, constrai
     }
 
     if (kind === "arc" && (normalizedLabel === "start" || normalizedLabel === "end")) {
+      const directionLength = distanceBetweenWorldPoints(center, dragEnd);
+      if (!Number.isFinite(directionLength) || directionLength <= WORLD_GEOMETRY_TOLERANCE) {
+        return false;
+      }
+
       const radius = constrainToCurrentVector
         ? getEntityRadius(entity)
-        : distanceBetweenWorldPoints(center, dragEnd);
+        : directionLength;
       if (radius <= WORLD_GEOMETRY_TOLERANCE) {
         return false;
       }

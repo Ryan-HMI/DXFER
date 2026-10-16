@@ -2053,9 +2053,14 @@ public static class SketchGeometryDragService
             return false;
         }
 
-        var radius = constrainToCurrentVector
-            ? arc.Radius
-            : SketchGeometryEditor.Distance(arc.Center, dragEnd);
+        var directionLength = SketchGeometryEditor.Distance(arc.Center, dragEnd);
+        if (!double.IsFinite(directionLength) || directionLength <= SketchGeometryEditor.Tolerance)
+        {
+            status = "Arc endpoint needs a direction away from its center. Geometry unchanged.";
+            return false;
+        }
+
+        var radius = constrainToCurrentVector ? arc.Radius : directionLength;
         if (radius <= SketchGeometryEditor.Tolerance)
         {
             status = "Arc radius must stay positive.";
