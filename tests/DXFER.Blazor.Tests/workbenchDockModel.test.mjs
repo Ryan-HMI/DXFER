@@ -98,8 +98,9 @@ test("left and right collapsed groups keep the header and hide only the command 
 });
 
 test("side docked groups use compact four-column icons with even padding", () => {
-  assert.match(paletteCss, /--dxfer-left-dock-width:\s*10\.25rem/);
-  assert.match(paletteCss, /--dxfer-right-dock-width:\s*10\.25rem/);
+  assert.match(paletteCss, /--dxfer-left-dock-width:\s*calc\(10\.25rem \+ 12px\)/);
+  assert.match(paletteCss, /--dxfer-right-dock-width:\s*calc\(10\.25rem \+ 12px\)/);
+  assert.match(paletteCss, /scrollbar-gutter:\s*stable/);
   assert.match(paletteCss, /\.dxfer-tool-dock-zone-left,[\s\S]*\.dxfer-tool-dock-zone-right\s*\{[^}]*overflow-x:\s*hidden;[\s\S]*overflow-y:\s*auto;/s);
   assert.match(paletteCss, /\.dxfer-tool-group-left\.dxfer-tool-group-expanded,[\s\S]*\.dxfer-tool-group-right\.dxfer-tool-group-expanded\s*\{[^}]*width:\s*9\.5rem;/s);
   assert.match(paletteCss, /\.dxfer-tool-section-summary\s*\{[^}]*padding:\s*4px;/s);
@@ -176,7 +177,7 @@ test("tool palette host overlays the canvas without owning a layout column", () 
 });
 
 test("top and bottom dock zones reserve side dock width instead of overlapping side stacks", () => {
-  assert.match(paletteCss, /--dxfer-left-dock-width:\s*10\.25rem/);
+  assert.match(paletteCss, /--dxfer-left-dock-width:\s*calc\(10\.25rem \+ 12px\)/);
   assert.match(paletteCss, /--dxfer-horizontal-dock-preview-height:\s*4\.35rem/);
   assert.match(paletteCss, /\.dxfer-tool-dock-zone-top,[\s\S]*left:\s*var\(--dxfer-left-dock-width\);[\s\S]*right:\s*var\(--dxfer-right-dock-width\);/);
   assert.match(paletteCss, /\.dxfer-tool-dock-zone-top,[\s\S]*min-height:\s*var\(--dxfer-horizontal-dock-preview-height\);/);

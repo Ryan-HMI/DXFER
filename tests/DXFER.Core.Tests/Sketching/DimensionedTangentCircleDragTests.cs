@@ -102,6 +102,31 @@ public sealed class DimensionedTangentCircleDragTests
         Native(next).Should().Be(before);
     }
 
+    [Fact]
+    public void CenterPositionDimensionStillBlocksSlideAndRemovingItRestoresFreedom()
+    {
+        var (free, _, _) = FixedLineDocument("horizontal", false, SketchDimensionKind.Diameter);
+        var locked = new DrawingDocument(free.Entities, free.Dimensions.Append(
+            new SketchDimension("center-x", SketchDimensionKind.HorizontalDistance,
+                new[] { SketchReference.OriginKey, "circle:center" }, 10, isDriving: true)), free.Constraints);
+        Drag(locked, "center", new(3, 2), out var unchanged, out _).Should().BeFalse();
+        unchanged.Should().BeSameAs(locked);
+        Drag(free, "center", new(3, 2), out var moved, out var status).Should().BeTrue(status);
+        AssertSlide(free, moved, new(13, 7.5));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1e-10)]
+    public void NegligibleAlongEdgeMovementDoesNotCreateAnEdit(double along)
+    {
+        var (original, _, _) = FixedLineDocument("horizontal", false, SketchDimensionKind.Diameter);
+        Drag(original, "center", new(along, 2), out var next, out _).Should().BeFalse();
+        next.Should().BeSameAs(original);
+        Drag(original, "center", new(.0001, 2), out next, out var status).Should().BeTrue(status);
+        AssertSlide(original, next, new(10.0001, 7.5));
+    }
+
     private static DrawingDocument RectangleDocument(bool reverse)
     {
         var entities = new DrawingEntity[]

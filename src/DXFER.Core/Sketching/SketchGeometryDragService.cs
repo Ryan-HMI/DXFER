@@ -199,6 +199,17 @@ public static class SketchGeometryDragService
             return false;
         }
 
+        // Resolve a sized circle's perimeter gesture before tangency can restore its
+        // old radius and hide the requested movement as an apparently unchanged edit.
+        if (IsCircleTranslationDrag(document, selectionKey)
+            && !DrivingDimensionsRemainSatisfied(entities, document.Dimensions, document.Constraints))
+        {
+            if (TryApplyDimensionPreservingSelectionTranslation(document, selectionKey, delta, out nextDocument, out status))
+                return true;
+            status = "Drag could not satisfy the driving dimensions with the supported movement. Geometry unchanged.";
+            return false;
+        }
+
         SketchConstraintPropagationService.PropagateFromChanges(originalEntities, entities, document.Constraints, fixedReferences);
         if (!DrivingDimensionsRemainSatisfied(entities, document.Dimensions, document.Constraints))
         {
@@ -228,6 +239,14 @@ public static class SketchGeometryDragService
             document.Metadata);
         if (draggedDocument.Constraints.Any(constraint => constraint.State == SketchConstraintState.Unsatisfied))
         {
+            if (IsCircleTranslationDrag(document, selectionKey)
+                && TryGetSelectedEntityId(document, selectionKey, out var constrainedEntityId)
+                && TryApplyDimensionPreservingProjectedSelectionTranslation(
+                    document, constrainedEntityId, delta, out nextDocument, out status))
+            {
+                return true;
+            }
+
             status = "Drag could not satisfy the active constraints. Geometry unchanged.";
             return false;
         }
@@ -241,6 +260,18 @@ public static class SketchGeometryDragService
         draggedDocument = AddCoincidentConstraintForSnappedPointDrag(draggedDocument, selectionKey, ref status);
         nextDocument = draggedDocument;
         return true;
+    }
+
+    private static bool IsCircleTranslationDrag(DrawingDocument document, string selectionKey)
+    {
+        if (!TryGetSelectedEntityId(document, selectionKey, out var entityId)
+            || !document.Entities.Any(entity => entity.Id.Value == entityId && entity is CircleEntity)) return false;
+        if (SketchReference.TryParseCanvasPointCoordinates(selectionKey, out _, out var label, out _)
+            && label == "center") return true;
+        // A free radius grip is still a resize request, not an implicit center move.
+        return document.Dimensions.Any(dimension => dimension.IsDriving
+            && dimension.Kind is SketchDimensionKind.Radius or SketchDimensionKind.Diameter
+            && DimensionReferencesEntity(dimension, entityId));
     }
 
     private static bool TryApplyAnchoredDimensionDrag(
@@ -392,6 +423,30 @@ public static class SketchGeometryDragService
         string entityId,
         Point2 delta)
     {
+        // Tangency removes normal movement, not the circle's along-edge freedom.
+        // Use the original edge, then validate the complete candidate as usual.
+        if (document.Entities.Any(entity => entity.Id.Value == entityId && entity is CircleEntity))
+        {
+            foreach (var constraint in document.Constraints)
+            {
+                if (constraint.Kind != SketchConstraintKind.Tangent
+                    || constraint.State == SketchConstraintState.Suppressed
+                    || constraint.ReferenceKeys.Count != 2
+                    || !constraint.ReferenceKeys.Any(key => SketchReference.TryParse(key, out var reference)
+                        && reference.IsEntity && reference.EntityId == entityId)) continue;
+
+                foreach (var key in constraint.ReferenceKeys)
+                {
+                    if (SketchReference.TryParse(key, out var reference) && reference.EntityId != entityId
+                        && SketchGeometryEditor.TryGetLine(document.Entities, reference, out _, out var line)
+                        && SketchGeometryEditor.TryGetLineDirection(line, out _, out _, out _))
+                    {
+                        yield return ProjectDeltaOntoLine(delta, line.Start, line.End);
+                    }
+                }
+            }
+        }
+
         foreach (var dimension in document.Dimensions)
         {
             if (!dimension.IsDriving
