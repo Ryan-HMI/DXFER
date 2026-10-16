@@ -8338,7 +8338,17 @@ export function applyGeometryDragPreview(document, selectionKey, dragStart, drag
   propagatePreviewConstraints(document, previewDocument);
   if (!previewConstraintsRemainSatisfied(document, previewDocument)
     || !previewDrivingDimensionsRemainSatisfied(previewDocument, true)) {
-    return null;
+    if (!isCirclePreviewTranslationDrag(document, selectionKey)) {
+      return null;
+    }
+
+    const projectedCandidate = getDimensionPreservingPreviewTranslationCandidate(
+      document, getSelectedPreviewEntityId(document, selectionKey), delta);
+    if (!projectedCandidate) {
+      return null;
+    }
+
+    copyPreviewDocumentGeometry(previewDocument, projectedCandidate);
   }
 
   refreshPreviewReferenceDimensions(previewDocument);
@@ -8446,7 +8456,36 @@ function getAnchoredDimensionPreview(originalDocument, editCandidate, selectionK
     && previewDrivingDimensionsRemainSatisfied(candidate) ? candidate : null;
 }
 
+function isCirclePreviewTranslationDrag(document, selectionKey) {
+  const entityId = getSelectedPreviewEntityId(document, selectionKey);
+  if (getEntityKind(findCanvasDocumentEntity(document, entityId)) !== "circle") {
+    return false;
+  }
+
+  const grip = parsePointSelectionKey(selectionKey);
+  return grip?.label === "center" || getDocumentDimensions(document).some(dimension =>
+    isDrivingPreviewDimension(dimension) && getSketchItemState(dimension) !== "suppressed"
+    && ["radius", "diameter"].includes(String(readProperty(dimension, "kind", "Kind") || "").toLowerCase())
+    && dimensionReferencesPreviewEntity(dimension, entityId));
+}
+
 function getDimensionPreservingPreviewTranslationCandidate(originalDocument, entityId, delta) {
+  const entity = findCanvasDocumentEntity(originalDocument, entityId);
+  const isCircle = getEntityKind(entity) === "circle";
+  const projectedDeltas = [];
+  if (isCircle) {
+    for (const constraint of getDocumentConstraints(originalDocument)) {
+      if (getSketchConstraintKind(constraint) !== "tangent" || getSketchItemState(constraint) === "suppressed") {
+        continue;
+      }
+
+      const pair = getPreviewLineAndCircleLikeReferences(originalDocument, constraint);
+      if (pair && StringComparer(pair.circleReference.entityId, entityId)) {
+        projectedDeltas.push(projectWorldDeltaOntoLine(delta, pair.line.start, pair.line.end));
+      }
+    }
+  }
+
   for (const dimension of getDocumentDimensions(originalDocument)) {
     if (!isDrivingPreviewDimension(dimension)
       || String(readProperty(dimension, "kind", "Kind") || "").toLowerCase() !== "pointtolinedistance"
@@ -8454,7 +8493,10 @@ function getDimensionPreservingPreviewTranslationCandidate(originalDocument, ent
       continue;
     }
 
-    const projectedDelta = getPointToLineFreePreviewTranslationDelta(originalDocument, dimension, entityId, delta);
+    projectedDeltas.push(getPointToLineFreePreviewTranslationDelta(originalDocument, dimension, entityId, delta));
+  }
+
+  for (const projectedDelta of projectedDeltas) {
     if (!projectedDelta || Math.hypot(projectedDelta.x, projectedDelta.y) <= WORLD_GEOMETRY_TOLERANCE) {
       continue;
     }
@@ -8465,7 +8507,15 @@ function getDimensionPreservingPreviewTranslationCandidate(originalDocument, ent
     }
 
     translatePreviewDimensionAnchorsForReferencedEntity(candidate, entityId, projectedDelta);
-    if (!previewDrivingDimensionsRemainSatisfied(candidate)) {
+    propagatePreviewConstraints(originalDocument, candidate);
+    if (!previewConstraintsRemainSatisfied(originalDocument, candidate)
+      || !previewDrivingDimensionsRemainSatisfied(candidate, true)) {
+      continue;
+    }
+
+    const movedEntity = findCanvasDocumentEntity(candidate, entityId);
+    if (isCircle && (getEntityRadius(movedEntity) !== getEntityRadius(entity)
+      || distanceBetweenWorldPoints(getEntityCenter(entity), getEntityCenter(movedEntity)) <= WORLD_GEOMETRY_TOLERANCE)) {
       continue;
     }
 
