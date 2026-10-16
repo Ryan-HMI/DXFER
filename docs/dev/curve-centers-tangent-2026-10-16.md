@@ -44,4 +44,11 @@ length stays 10 and label moves to `(5.2,1.4)`. Release, Undo/Redo and native re
 preserve that placement. Origin/partial-line cases were rerun successfully.
 
 Evidence: `/tmp/dxfer-centers-tangent-evidence`, `/tmp/dxfer-origin-evidence`.
-Deployment and independent Flux acceptance are not claimed by local checks.
+## Installed verification
+
+Dev `ee08d481744e3d1377f112ddc97bb265791cb14d` installed. Both actual public
+browser suites identify that exact build and pass all checks above. Four assemblies
+and served canvas/targets JS match publish. Ten runtime settings unchanged, health
+200, anonymous root 302; normal Google sign-in and disabled Sync callbacks retained.
+Production/Test runtime PIDs unchanged. Independent Flux follow-on replay requested,
+not claimed accepted. His bounded origin/partial-width acceptance on 290bd59 is retained.
