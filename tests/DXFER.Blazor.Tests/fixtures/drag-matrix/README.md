@@ -19,6 +19,9 @@ All coordinates and dimensions are inches. No manufacturing artifacts are used.
 - `poly-clicks-corrupt`: saved vertices (0,0),(10,2),(10,6), driving length10
   with original clicked-vertex coordinates in its references. Reopen must show
   an unsatisfied dimension without changing geometry or driving intent.
+- `mid-anchor`: line(0,0)-(10,0), Midpoint marker(5,0), Fix marker. End drag
+  toward(8,2) gives start(2,-2), end(8,2), marker unchanged.
+- `mid-locked`: same, plus Fix line:start. The same drag refuses unchanged.
 
 `dragMatrix.browser.mjs` drives actual mouse preview/release, compares preview
 endpoints with exported native geometry, tests Undo/Redo, downloads/reopens,

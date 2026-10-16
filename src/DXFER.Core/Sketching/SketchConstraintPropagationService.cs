@@ -226,6 +226,23 @@ internal static class SketchConstraintPropagationService
             return TrySetPointAndReport(entities, pointReference, SketchGeometryEditor.Midpoint(line));
         }
 
+        if (lineChanged && !pointChanged && fixedReferences.IsFixed(pointReference)
+            && SketchGeometryEditor.TryGetLine(originalEntities, lineReference, out _, out var originalLine))
+        {
+            var startChanged = !SketchGeometryEditor.AreClose(originalLine.Start, line.Start);
+            var endChanged = !SketchGeometryEditor.AreClose(originalLine.End, line.End);
+            // An endpoint edit about a fixed midpoint drives the opposite free endpoint.
+            // Two changed endpoints do not identify a unique driver here.
+            if (startChanged != endChanged)
+            {
+                var peer = new SketchReference(lineReference.EntityId,
+                    startChanged ? SketchReferenceTarget.End : SketchReferenceTarget.Start, lineReference.SegmentIndex);
+                var driver = startChanged ? line.Start : line.End;
+                if (fixedReferences.CanMovePoint(peer) && !SketchGeometryEditor.AreClose(driver, point))
+                    return TrySetPointAndReport(entities, peer, new Point2(2 * point.X - driver.X, 2 * point.Y - driver.Y));
+            }
+        }
+
         if (pointChanged && !lineChanged && fixedReferences.CanMoveWholeLine(lineReference))
         {
             return TryTranslateLineToMidpointAndReport(entities, lineReference, line, point);

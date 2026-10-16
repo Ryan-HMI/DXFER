@@ -42,7 +42,7 @@ Fixtures are in `FixedPeerCombinationMatrixTests.cs` and
 |---|---|---|---|
 | Equal moving/fixed R3 circles, moving circle Tangent to horizontal line | Center (0,0) -> (2,.0001), fixed peer unchanged, tangent line follows | Radius 3 -> 5 with fixed equal peer refuses | Remove Fix: both radii 5, line tangent; all 6 relation orders pass |
 | Fixed line y=3, tangent circle center(0,0) R3 | Center -> (0,1) gives R2 | With driving diameter6, same displacement refuses | Radius-free positive control; both orders pass |
-| Midpoint line(0,0)-(10,0), Fixed marker(5,0) | Free-marker endpoint -> (12,4) gives marker(6,2) | Fixed-marker endpoint drag currently unsupported, geometry unchanged; a symmetric solution exists | Removing Fix succeeds; both orders pass. This is a solver limitation, not inconsistency |
+| Midpoint line(0,0)-(10,0), Fixed marker(5,0) | Endpoint -> (12,4) gives opposite end(-2,-4), marker unchanged | Fix opposite endpoint too: refusal unchanged; collapse targets refuse | Symmetric recovery implemented in the follow-up below; both orders pass |
 
 Flux separately reports rectangle short-edge edits/conflict/recovery/history and
 fixed tangent-line/diameter center-position controls passing on 7a47210. Preserve
@@ -53,3 +53,27 @@ that evidence; do not substitute the above unit tests for its remaining replay.
 No business records or manufacturing files were repaired. Previously corrupted
 geometry now needs explicit user review, Undo, or a verified original. Do not
 automatically reconstruct the intended shape from a dimension label alone.
+
+## Fixed Midpoint Follow-Up
+
+The fixed-marker limitation above was reproduced with failing core and preview
+tests before the follow-up. Constraint propagation now mirrors the opposite free
+endpoint about the fixed midpoint when exactly one endpoint changed. Two changed
+endpoints do not identify a unique driver; no arbitrary solution is invented.
+Shared driving-dimension/constraint validation and original Fixed guards remain.
+
+- Core and preview test both relation orders, start/end drags, near-collapse
+  refusal/recovery and near-degenerate valid movement.
+- A fixed Equal-length peer permits a compatible 90-degree rotation about the
+  fixed midpoint in both tested orders. This does not claim arbitrary coupled
+  length projection is supported.
+- Existing negative tests now also fix the opposite endpoint, making the fixture
+  genuinely incompatible instead of expecting rejection of a valid movement.
+- `mid-anchor.dxf` and `mid-locked.dxf` provide actual-canvas fixtures for preview,
+  release, unchanged/no-Undo refusal, history/native reopen and repeated edits.
+
+Independent Flux acceptance: a96a5de covers committed anchored line/polyline/weld
+behavior, history/reopen/reedit, IDs and clean DXF audits. Held-pointer preview
+remains owner-verified, not independently claimed. 678a2ca independently closes
+the exact stale-vertex L-shape case, repeated same-ID 10/12/9 edits, and red
+warning on unchanged old corrupt geometry. No overall solver acceptance claimed.

@@ -1541,7 +1541,7 @@ public sealed class SketchGeometryDragServiceTests
     }
 
     [Fact]
-    public void DraggingMidpointLineCannotLeaveFixedPointBehind()
+    public void DraggingMidpointLineCannotLeaveFixedPointAndFixedStartBehind()
     {
         var document = new DrawingDocument(
             new DrawingEntity[]
@@ -1551,7 +1551,8 @@ public sealed class SketchGeometryDragServiceTests
             }, Array.Empty<SketchDimension>(), new[]
             {
                 new SketchConstraint("midpoint", SketchConstraintKind.Midpoint, new[] { "line", "marker" }, SketchConstraintState.Satisfied),
-                new SketchConstraint("fix", SketchConstraintKind.Fix, new[] { "marker" }, SketchConstraintState.Satisfied)
+                new SketchConstraint("fix", SketchConstraintKind.Fix, new[] { "marker" }, SketchConstraintState.Satisfied),
+                new SketchConstraint("fix-start", SketchConstraintKind.Fix, new[] { "line:start" }, SketchConstraintState.Satisfied)
             });
 
         SketchGeometryDragService.TryApplyDrag(document, "line|point|end|10|0",

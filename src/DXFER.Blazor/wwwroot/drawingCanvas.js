@@ -9821,6 +9821,21 @@ function propagatePreviewMidpointConstraint(originalDocument, previewDocument, f
     return trySetPreviewPoint(previewDocument, references.pointReference, midpoint(references.line.start, references.line.end));
   }
 
+  if (lineChanged && !pointChanged && isPreviewReferenceFixed(fixedReferences, references.pointReference)) {
+    const before = resolveSketchLineReference({ document: originalDocument }, sketchReferenceToKey(references.lineReference));
+    if (before) {
+      const startChanged = distanceBetweenWorldPoints(before.start, references.line.start) > WORLD_GEOMETRY_TOLERANCE;
+      const endChanged = distanceBetweenWorldPoints(before.end, references.line.end) > WORLD_GEOMETRY_TOLERANCE;
+      if (startChanged !== endChanged) {
+        const peer = { ...references.lineReference, target: startChanged ? "end" : "start" };
+        const driver = startChanged ? references.line.start : references.line.end;
+        if (canMovePreviewPoint(fixedReferences, peer) && distanceBetweenWorldPoints(driver, references.point) > WORLD_GEOMETRY_TOLERANCE) {
+          return trySetPreviewPoint(previewDocument, peer, { x: 2 * references.point.x - driver.x, y: 2 * references.point.y - driver.y });
+        }
+      }
+    }
+  }
+
   if (pointChanged && !lineChanged && canMovePreviewWholeLine(fixedReferences, references.lineReference)) {
     const currentMidpoint = midpoint(references.line.start, references.line.end);
     return tryTranslatePreviewLineToMidpoint(previewDocument, references.lineReference, references.line, {

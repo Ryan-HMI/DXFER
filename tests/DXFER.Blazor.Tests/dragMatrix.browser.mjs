@@ -88,6 +88,29 @@ try {
         const edited=snapshot(await download());assert.notDeepEqual(edited.entities,after.entities);assert.equal(edited.dimensions[0].value,10);
         console.log('PASS preview/release, history, native reopen and reedit:',name);
     }
+    if(!process.env.DXFER_MATRIX_ONLY_CLICKED) for(const name of ['mid-locked','mid-anchor']) {
+        await load(name);
+        const original=snapshot(await download());
+        const preview=await drag([10,0],[8,2],name);
+        const file=await download(),next=snapshot(file);
+        if(name==='mid-locked') {
+            assert.deepEqual(next.entities,original.entities);assert.deepEqual(next.constraints,original.constraints);
+            close(preview[0].x,0);close(preview[0].y,0);close(preview[1].x,10);close(preview[1].y,0);
+            await expect(page.getByRole('button',{name:'Undo',exact:true})).toBeDisabled();
+        } else {
+            const line=next.entities[0];close(line.start.x,2);close(line.start.y,-2);close(line.end.x,8);close(line.end.y,2);
+            close(preview[0].x,line.start.x);close(preview[0].y,line.start.y);close(preview[1].x,line.end.x);close(preview[1].y,line.end.y);
+            assert.deepEqual(next.entities[1],original.entities[1]);assert.ok(next.constraints.every(c=>c.state==='Satisfied'));
+            await page.getByRole('button',{name:'Undo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,original.entities);
+            await page.getByRole('button',{name:'Redo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,next.entities);
+            await load('mid-anchor-reopen',file);
+            assert.deepEqual(snapshot(await download()).entities,next.entities);
+            await drag([8,2],[7,1],'mid-anchor-reedit');
+            const reedited=snapshot(await download());close(reedited.entities[0].start.x,3);close(reedited.entities[0].start.y,-1);
+            assert.deepEqual(reedited.entities[1],original.entities[1]);
+        }
+        console.log('PASS fixed midpoint preview/release, refusal or history/reopen/reedit:',name);
+    }
     const rawPolyline=[0,'SECTION',2,'HEADER',9,'$ACADVER',1,'AC1015',9,'$INSUNITS',70,1,0,'ENDSEC',
         0,'SECTION',2,'ENTITIES',0,'LWPOLYLINE',8,0,90,3,70,0,10,0,20,0,10,10,20,0,10,10,20,6,0,'ENDSEC',0,'EOF'].join('\n');
     await load('poly-clicks',rawPolyline);

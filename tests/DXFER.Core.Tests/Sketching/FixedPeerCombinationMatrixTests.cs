@@ -64,17 +64,23 @@ public sealed class FixedPeerCombinationMatrixTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void FixedMidpointEndpointRecoveryIsUnsupportedButDoesNotCorruptGeometry(bool reverse)
+    public void FixedMidpointEndpointRecoveryMovesOppositeEndUnlessThatEndIsFixed(bool reverse)
     {
         var constraints = new[] { C("mid", SketchConstraintKind.Midpoint, "line", "marker"), C("fix", SketchConstraintKind.Fix, "marker") };
         var original = new DrawingDocument(new DrawingEntity[] {
             new LineEntity(EntityId.Create("line"), new(0, 0), new(10, 0)), new PointEntity(EntityId.Create("marker"), new(5, 0)) },
             Array.Empty<SketchDimension>(), reverse ? constraints.Reverse() : constraints);
-        // A symmetric opposite-end movement exists, but this propagation path does not implement it.
         SketchGeometryDragService.TryApplyDrag(original, "line|point|end|10|0", new(10, 0), new(12, 4), false,
-            out var rejected, out var status).Should().BeFalse();
-        rejected.Should().BeSameAs(original);
-        status.Should().Contain("could not satisfy").And.Contain("Geometry unchanged");
+            out var moved, out var status).Should().BeTrue(status);
+        ((LineEntity)moved.Entities[0]).Start.Should().Be(new Point2(-2, -4));
+        ((LineEntity)moved.Entities[0]).End.Should().Be(new Point2(12, 4));
+        moved.Entities[1].Should().Be(original.Entities[1]);
+        moved.Constraints.Should().OnlyContain(c => c.State == SketchConstraintState.Satisfied);
+        var restricted = new DrawingDocument(original.Entities, original.Dimensions,
+            original.Constraints.Append(C("fix-start", SketchConstraintKind.Fix, "line:start")));
+        SketchGeometryDragService.TryApplyDrag(restricted, "line|point|end|10|0", new(10, 0), new(12, 4), false,
+            out var rejected, out status).Should().BeFalse();
+        rejected.Should().BeSameAs(restricted);
         var free = new DrawingDocument(original.Entities, original.Dimensions, constraints.Take(1));
         SketchGeometryDragService.TryApplyDrag(free, "line|point|end|10|0", new(10, 0), new(12, 4), false,
             out var next, out status).Should().BeTrue(status);
@@ -83,4 +89,46 @@ public sealed class FixedPeerCombinationMatrixTests
     }
 
     private static SketchConstraint C(string id, SketchConstraintKind kind, params string[] keys) => new(id, kind, keys);
+
+    [Theory]
+    [InlineData(5, 0, false)]
+    [InlineData(5.000000001, 0, false)]
+    [InlineData(5.0001, 0.0001, true)]
+    [InlineData(8, -2, true)]
+    public void FixedMidpointNearCollapsePreservesGeometryAndRecovers(double x, double y, bool accepted)
+    {
+        var original = new DrawingDocument(new DrawingEntity[] {
+            new LineEntity(EntityId.Create("line"), new(0, 0), new(10, 0)), new PointEntity(EntityId.Create("marker"), new(5, 0)) },
+            Array.Empty<SketchDimension>(), new[] { C("mid", SketchConstraintKind.Midpoint, "line", "marker"), C("fix", SketchConstraintKind.Fix, "marker") });
+        SketchGeometryDragService.TryApplyDrag(original, "line|point|end|10|0", new(10, 0), new(x, y), false,
+            out var next, out var status).Should().Be(accepted, status);
+        if (!accepted) next.Should().BeSameAs(original);
+        else
+        {
+            next.Entities[1].Should().Be(original.Entities[1]);
+            var line = (LineEntity)next.Entities[0];
+            ((line.Start.X + line.End.X) / 2).Should().BeApproximately(5, 1e-9);
+            ((line.Start.Y + line.End.Y) / 2).Should().BeApproximately(0, 1e-9);
+        }
+        SketchGeometryDragService.TryApplyDrag(original, "line|point|start|0|0", new(0, 0), new(2, 2), false,
+            out var recovered, out status).Should().BeTrue(status);
+        ((LineEntity)recovered.Entities[0]).End.Should().Be(new Point2(8, -2));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FixedMidpointAndEqualFixedLinePermitCompatibleRotation(bool reverse)
+    {
+        var constraints = new[] { C("mid", SketchConstraintKind.Midpoint, "line", "marker"), C("fix", SketchConstraintKind.Fix, "marker"),
+            C("equal", SketchConstraintKind.Equal, "line", "peer"), C("fix-peer", SketchConstraintKind.Fix, "peer") };
+        var original = new DrawingDocument(new DrawingEntity[] {
+            new LineEntity(EntityId.Create("line"), new(0, 0), new(10, 0)), new PointEntity(EntityId.Create("marker"), new(5, 0)),
+            new LineEntity(EntityId.Create("peer"), new(0, 10), new(10, 10)) }, Array.Empty<SketchDimension>(), reverse ? constraints.Reverse() : constraints);
+        SketchGeometryDragService.TryApplyDrag(original, "line|point|end|10|0", new(10, 0), new(5, 5), false,
+            out var next, out var status).Should().BeTrue(status);
+        ((LineEntity)next.Entities[0]).Start.Should().Be(new Point2(5, -5));
+        next.Entities[1].Should().Be(original.Entities[1]);next.Entities[2].Should().Be(original.Entities[2]);
+        next.Constraints.Should().OnlyContain(c => c.State == SketchConstraintState.Satisfied);
+    }
 }

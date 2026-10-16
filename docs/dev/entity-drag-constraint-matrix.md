@@ -61,5 +61,6 @@ That acceptance is retained, not put back on the open drag backlog.
 
 The next Equal/Midpoint/Tangent + Fixed results and concrete fixtures are in
 `live-polyline-references-2026-10-15.md`. Fixed-midpoint symmetric endpoint
-recovery is currently unsupported, not mathematically inconsistent. Do not mark
-that limitation passed merely because refusal preserves geometry.
+recovery is now implemented and has paired valid/incompatible fixtures. Arbitrary
+coupled projection and cases without a unique changed endpoint remain outside
+that bounded solve. Do not equate safe refusal with mathematical inconsistency.

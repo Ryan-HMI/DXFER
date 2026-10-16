@@ -50,9 +50,9 @@ test("Concentric plus fixed center rejects partial circle movement", () => {
   assertRejected(document, "moving|point|center|0|0", point(0, 0), point(2, 1));
 });
 
-test("Midpoint plus fixed point rejects partial line movement", () => {
+test("Midpoint plus fixed point and fixed start rejects partial line movement", () => {
   const document = documentOf([line("moving", point(0, 0), point(4, 0)), { id: "fixed", kind: "point", points: [point(2, 0)] }],
-    [constraint("midpoint", "fixed", "moving"), constraint("fix", "fixed")]);
+    [constraint("midpoint", "fixed", "moving"), constraint("fix", "fixed"), constraint("fix", "moving:start")]);
   assertRejected(document, "moving|point|end|4|0", point(4, 0), point(6, 0));
 });
 

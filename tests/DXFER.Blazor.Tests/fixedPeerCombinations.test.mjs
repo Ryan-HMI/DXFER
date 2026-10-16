@@ -25,11 +25,31 @@ for(const reverse of [false,true]) {
         const restricted={...original,dimensions:[{id:'diameter',kind:'diameter',referenceKeys:['circle'],value:6,isDriving:true,anchor:p(4,0)}]};
         assert.equal(applyGeometryDragPreview(restricted,'circle|point|center|0|0',p(0,0),p(0,1)),null);
     });
-    test(`Fixed midpoint symmetric-end solve remains unsupported reverse=${reverse}`,()=>{
+    test(`Fixed midpoint symmetric-end solve and fixed-end refusal reverse=${reverse}`,()=>{
         const constraints=[c('mid','midpoint','line','marker'),c('fix','fix','marker')];
         const original={entities:[line('line',p(0,0),p(10,0)),{id:'marker',kind:'point',points:[p(5,0)]}],dimensions:[],constraints:reverse?constraints.reverse():constraints};
-        assert.equal(applyGeometryDragPreview(original,'line|point|end|10|0',p(10,0),p(12,4)),null);
+        const moved=applyGeometryDragPreview(original,'line|point|end|10|0',p(10,0),p(12,4));
+        assert.ok(moved);assert.deepEqual(moved.entities[0].points,[p(-2,-4),p(12,4)]);assert.deepEqual(moved.entities[1].points,[p(5,0)]);
+        const restricted={...original,constraints:[...original.constraints,c('fix-start','fix','line:start')]};
+        assert.equal(applyGeometryDragPreview(restricted,'line|point|end|10|0',p(10,0),p(12,4)),null);
         const next=applyGeometryDragPreview({...original,constraints:constraints.filter(x=>x.kind!=='fix')},'line|point|end|10|0',p(10,0),p(12,4));
         assert.ok(next);assert.deepEqual(next.entities[1].points,[p(6,2)]);
     });
 }
+for(const [x,y,accepted] of [[5,0,false],[5.000000001,0,false],[5.0001,.0001,true],[8,-2,true]])test(`midpoint near collapse ${x},${y}`,()=>{
+    const original={entities:[line('line',p(0,0),p(10,0)),{id:'marker',kind:'point',points:[p(5,0)]}],dimensions:[],
+        constraints:[c('mid','midpoint','line','marker'),c('fix','fix','marker')]};
+    const next=applyGeometryDragPreview(original,'line|point|end|10|0',p(10,0),p(x,y));
+    assert.equal(Boolean(next),accepted);
+    if(next){const [a,b]=next.entities[0].points;assert.ok(Math.abs((a.x+b.x)/2-5)<1e-9);assert.ok(Math.abs((a.y+b.y)/2)<1e-9);}
+    const recovered=applyGeometryDragPreview(original,'line|point|start|0|0',p(0,0),p(2,2));
+    assert.ok(recovered);assert.deepEqual(recovered.entities[0].points[1],p(8,-2));
+});
+for(const reverse of [false,true])test(`midpoint Equal fixed-line compatible rotation reverse=${reverse}`,()=>{
+    const constraints=[c('mid','midpoint','line','marker'),c('fix','fix','marker'),c('equal','equal','line','peer'),c('fix-peer','fix','peer')];
+    const original={entities:[line('line',p(0,0),p(10,0)),{id:'marker',kind:'point',points:[p(5,0)]},line('peer',p(0,10),p(10,10))],
+        dimensions:[],constraints:reverse?constraints.reverse():constraints};
+    const next=applyGeometryDragPreview(original,'line|point|end|10|0',p(10,0),p(5,5));
+    assert.ok(next);assert.deepEqual(next.entities[0].points,[p(5,-5),p(5,5)]);
+    assert.deepEqual(next.entities[1].points,original.entities[1].points);assert.deepEqual(next.entities[2].points,original.entities[2].points);
+});
