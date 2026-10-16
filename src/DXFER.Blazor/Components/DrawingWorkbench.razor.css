@@ -628,6 +628,44 @@
     overflow: hidden;
 }
 
+.dxfer-information-panel {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    background: var(--dx-panel, #10141b);
+    border-left: 1px solid var(--dx-border, #242d39);
+    display: flex;
+    flex-direction: column;
+}
+
+.dxfer-information-panel .dxfer-operation-inspector {
+    flex: 0 0 auto;
+    max-height: 55%;
+    border-left: 0;
+    border-bottom: 1px solid var(--dx-border, #242d39);
+}
+
+.dxfer-layers { min-width: 0; min-height: 0; display: flex; flex-direction: column; flex: 1 0 240px; }
+.dxfer-layer-list { overflow: auto; min-height: 66px; max-height: 50vh; padding: 4px; }
+.dxfer-layer-row { display: grid; grid-template-columns: 28px 28px 24px minmax(0, 1fr) 28px; gap: 2px; align-items: center; min-height: 32px; }
+.dxfer-layer-row.selected { background: var(--dx-raised, #151b24); outline: 1px solid var(--dx-border-strong, #687b90); }
+.dxfer-layer-row button, .dxfer-layer-tools button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 4px; color: var(--dx-text, #f4f7fb); background: transparent; border: 0; border-radius: 3px; cursor: pointer; }
+.dxfer-layer-row button:hover:not(:disabled), .dxfer-layer-tools button:hover:not(:disabled) { background: var(--dx-border, #242d39); }
+.dxfer-layer-row button:focus-visible, .dxfer-layer-tools button:focus-visible { outline: 2px solid var(--dx-accent, #66d9ff); }
+.dxfer-layer-row button:disabled, .dxfer-layer-tools button:disabled { opacity: .35; cursor: not-allowed; }
+.dxfer-layer-row input[type=color] { width: 22px; height: 24px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.dxfer-layer-row .dxfer-layer-name { display: block; width: 100%; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
+.dxfer-layer-count { text-align: right; font-size: 11px; color: var(--dx-muted, #97a5b6); }
+.dxfer-layer-tools { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.dxfer-layer-details { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 10px; border-top: 1px solid var(--dx-border, #242d39); }
+.dxfer-layer-details label { min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.dxfer-layer-details input:not([type=radio]) { box-sizing: border-box; width: 100%; min-width: 0; height: 28px; background: var(--dx-input, #07090d); color: var(--dx-text, #f4f7fb); border: 1px solid var(--dx-border-strong, #687b90); border-radius: 3px; padding: 4px; }
+.dxfer-layer-details > button { align-self: end; }
+.dxfer-layer-details .dxfer-layer-current { grid-column: 1 / -1; flex-direction: row; align-items: center; }
+.dxfer-layer-details p { grid-column: 1 / -1; font-size: 12px; color: var(--dx-danger, #ff6c7c); margin: 0; overflow-wrap: anywhere; }
+
 .dxfer-operation-heading {
     display: flex;
     align-items: center;

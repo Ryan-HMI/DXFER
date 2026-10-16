@@ -20,6 +20,10 @@ public static class DxfDocumentReader
         var entities = new List<DrawingEntity>();
         var entityStyles = new Dictionary<string, DxfEntityStyle>(StringComparer.Ordinal);
         var layerStyles = ReadLayerStyles(pairs);
+        var currentLayer = "0";
+        for (var i = 0; i + 1 < pairs.Length; i++)
+            if (pairs[i].Code == 9 && pairs[i].Value == "$CLAYER" && pairs[i + 1].Code == 8 && layerStyles.ContainsKey(pairs[i + 1].Value))
+                currentLayer = pairs[i + 1].Value;
         var unsupportedEntityCounts = new SortedDictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var generatedId = 1;
         var section = "ENTITIES";
@@ -163,7 +167,9 @@ public static class DxfDocumentReader
                 .Where(warning => units == DrawingUnits.Unspecified || warning.Code != "missing-units")
                 .Concat(cutWarnings).ToArray(),
             UnsupportedEntityCounts = unsupportedEntityCounts,
-            EntityStyles = entityStyles
+            EntityStyles = entityStyles,
+            Layers = layerStyles,
+            ActiveLayerName = currentLayer
         };
 
         var imported = new DrawingDocument(
@@ -283,7 +289,10 @@ public static class DxfDocumentReader
             styles[layerName] = new DxfEntityStyle(
                 layerName,
                 NormalizeLineTypeName(ReadString(layerPairs, 6), layerName),
-                TryReadInt(layerPairs, 62, out var colorNumber) ? colorNumber : null);
+                TryReadInt(layerPairs, 62, out var colorNumber) ? Math.Abs(colorNumber) : null,
+                TryReadInt(layerPairs, 420, out var trueColor) ? trueColor : null,
+                colorNumber < 0 || TryReadInt(layerPairs, 70, out var hiddenFlags) && (hiddenFlags & 1) != 0,
+                TryReadInt(layerPairs, 70, out var lockFlags) && (lockFlags & 4) != 0);
             index = nextIndex - 1;
         }
 
@@ -299,6 +308,7 @@ public static class DxfDocumentReader
         var layerName = ReadString(entityPairs, 8);
         var lineTypeName = ReadString(entityPairs, 6);
         var colorNumber = TryReadInt(entityPairs, 62, out var entityColorNumber) ? entityColorNumber : (int?)null;
+        var trueColor = TryReadInt(entityPairs, 420, out var entityTrueColor) ? entityTrueColor : (int?)null;
 
         DxfEntityStyle? layerStyle = null;
         if (!string.IsNullOrWhiteSpace(layerName))
@@ -310,7 +320,7 @@ public static class DxfDocumentReader
         var resolvedColorNumber = colorNumber ?? layerStyle?.ColorNumber;
         if (string.IsNullOrWhiteSpace(layerName) &&
             string.IsNullOrWhiteSpace(resolvedLineType) &&
-            resolvedColorNumber is null)
+            resolvedColorNumber is null && trueColor is null)
         {
             return;
         }
@@ -318,7 +328,8 @@ public static class DxfDocumentReader
         entityStyles[entityId.Value] = new DxfEntityStyle(
             string.IsNullOrWhiteSpace(layerName) ? null : layerName.Trim(),
             resolvedLineType,
-            resolvedColorNumber);
+            resolvedColorNumber,
+            trueColor);
     }
 
     private static bool TryReadEntityPairs(

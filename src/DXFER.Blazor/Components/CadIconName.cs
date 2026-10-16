@@ -79,5 +79,11 @@ public enum CadIconName
     GrainVector,
     RemoveDuplicates,
     Menu,
+    Eye,
+    EyeOff,
+    Lock,
+    Unlock,
+    Plus,
+    SelectLayer,
     Close
 }

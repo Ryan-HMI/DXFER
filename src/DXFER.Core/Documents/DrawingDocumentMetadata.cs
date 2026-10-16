@@ -25,6 +25,11 @@ public sealed record DrawingDocumentMetadata
 
     public IReadOnlyDictionary<string, DxfEntityStyle> EntityStyles { get; init; } =
         new Dictionary<string, DxfEntityStyle>(StringComparer.Ordinal);
+
+    public IReadOnlyDictionary<string, DxfEntityStyle> Layers { get; init; } =
+        new Dictionary<string, DxfEntityStyle>(StringComparer.OrdinalIgnoreCase);
+
+    public string ActiveLayerName { get; init; } = "0";
 }
 
 public enum DrawingUnits

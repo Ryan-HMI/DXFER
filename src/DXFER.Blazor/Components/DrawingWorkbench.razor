@@ -1,5 +1,6 @@
 @namespace DXFER.Blazor.Components
 @using Microsoft.AspNetCore.Components.Routing
+@using DXFER.Core.Operations
 
 <NavigationLock ConfirmExternalNavigation="HasUnsavedChanges"
                 OnBeforeInternalNavigation="ConfirmNavigationAsync" />
@@ -48,6 +49,9 @@
                        DeleteSelectionRequested="DeleteSelectedGeometry" />
     </main>
 
+    @if (EnableFullEditing)
+    {
+    <aside class="dxfer-information-panel" aria-label="Drawing information">
     @if (IsOperationInspectorVisible)
     {
         <aside class="dxfer-operation-inspector" aria-label="Active operation" @onkeydown="HandleInspectorKeyDown">
@@ -85,6 +89,45 @@
                 </button>
             </footer>
         </aside>
+    }
+        <section class="dxfer-layers" aria-label="Layers">
+            <header class="dxfer-operation-heading">
+                <h2>Layers</h2>
+                <div class="dxfer-layer-tools">
+                    <button type="button" title="Add layer" aria-label="Add layer" disabled="@LayersReadOnly" @onclick="AddLayer"><CadIcon Name="CadIconName.Plus" /></button>
+                    <button type="button" title="@(_layersCollapsed ? "Expand layers" : "Collapse layers")" aria-label="@(_layersCollapsed ? "Expand layers" : "Collapse layers")" aria-expanded="@(_layersCollapsed ? "false" : "true")" @onclick="() => _layersCollapsed = !_layersCollapsed"><CadIcon Name="@(_layersCollapsed ? CadIconName.ChevronDown : CadIconName.ChevronUp)" /></button>
+                </div>
+            </header>
+            @if (!_layersCollapsed)
+            {
+                <div class="dxfer-layer-list">
+                @foreach (var pair in Layers)
+                {
+                    var name = pair.Key;
+                    var layer = pair.Value;
+                    <div class="dxfer-layer-row @(SelectedLayerName == name ? "selected" : "")" @key="name" data-layer="@name">
+                        <button type="button" title="@(layer.IsHidden ? "Show layer" : "Hide layer")" aria-label="@($"{(layer.IsHidden ? "Show" : "Hide")} layer {name}")" disabled="@LayersReadOnly" @onclick="() => ToggleLayerVisible(name)"><CadIcon Name="@(layer.IsHidden ? CadIconName.EyeOff : CadIconName.Eye)" /></button>
+                        <button type="button" title="@(layer.IsLocked ? "Unlock layer" : "Lock layer")" aria-label="@($"{(layer.IsLocked ? "Unlock" : "Lock")} layer {name}")" disabled="@LayersReadOnly" @onclick="() => ToggleLayerLock(name)"><CadIcon Name="@(layer.IsLocked ? CadIconName.Lock : CadIconName.Unlock)" /></button>
+                        <input type="color" value="@DrawingLayerService.Color(layer)" title="@($"Layer color: {name}")" aria-label="@($"Layer color {name}")" disabled="@LayersReadOnly" @onchange="e => ChangeLayerColor(name, e)" />
+                        <button type="button" class="dxfer-layer-name" title="@name" aria-label="@($"Layer {name}")" aria-pressed="@(SelectedLayerName == name ? "true" : "false")" @onclick="() => PickLayer(name)">@name</button>
+                        <span class="dxfer-layer-count" title="Entity count">@LayerCount(name)</span>
+                    </div>
+                }
+                </div>
+                <div class="dxfer-layer-details" @onkeydown:stopPropagation="true">
+                    <label>Layer name<input aria-label="Layer name" value="@(_selectedLayerName == SelectedLayerName ? _layerNameInput : SelectedLayerName)" @oninput="e => _layerNameInput = e.Value?.ToString() ?? string.Empty" disabled="@(LayersReadOnly || SelectedLayerName == "0")" /></label>
+                    <button type="button" class="dxfer-exit-tool" disabled="@(LayersReadOnly || SelectedLayerName == "0")" @onclick="RenameLayer">Rename</button>
+                    <div class="dxfer-layer-tools">
+                        <button type="button" title="Select all on layer" aria-label="Select all on layer" disabled="@(SelectedLayer.IsHidden || SelectedLayer.IsLocked || LayerCount(SelectedLayerName) == 0)" @onclick="SelectLayerEntities"><CadIcon Name="CadIconName.SelectLayer" /></button>
+                        <button type="button" title="Move selection to layer" aria-label="Move selection to layer" disabled="@(LayersReadOnly || _selectedEntityIds.Count == 0 || SelectedLayer.IsHidden || SelectedLayer.IsLocked)" @onclick="MoveToLayer"><CadIcon Name="CadIconName.Move" /></button>
+                        <button type="button" title="Delete empty layer" aria-label="Delete empty layer" disabled="@(LayersReadOnly || SelectedLayerName == "0" || SelectedLayerName == _document.Metadata.ActiveLayerName || LayerCount(SelectedLayerName) != 0)" @onclick="DeleteLayer"><CadIcon Name="CadIconName.Delete" /></button>
+                    </div>
+                    <label class="dxfer-layer-current"><input type="radio" name="current-layer" aria-label="Use as current drawing layer" checked="@(SelectedLayerName == _document.Metadata.ActiveLayerName)" disabled="@(LayersReadOnly || SelectedLayer.IsHidden || SelectedLayer.IsLocked)" @onchange="SetCurrentLayer" />Current drawing layer</label>
+                    @if (_layerError is not null) { <p role="alert">@_layerError</p> }
+                </div>
+            }
+        </section>
+    </aside>
     }
 
     @if (IsSyncLaunch)

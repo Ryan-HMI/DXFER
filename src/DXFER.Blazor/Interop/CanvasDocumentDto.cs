@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
 using DXFER.Core.Sketching;
+using DXFER.Core.Operations;
 
 namespace DXFER.Blazor.Interop;
 
@@ -19,10 +20,20 @@ public sealed record CanvasDocumentDto(
 
     public static CanvasDocumentDto FromDocument(DrawingDocument document)
     {
-        var bounds = document.GetBounds();
-        var entities = document.Entities.Select(entity => FromEntity(entity, document.Metadata)).ToArray();
-        var dimensions = document.Dimensions.Select(dimension => FromDimension(document, dimension)).ToArray();
-        var constraints = document.Constraints.Select(FromConstraint).ToArray();
+        var layers = DrawingLayerService.GetLayers(document);
+        DxfEntityStyle Layer(DrawingEntity entity) => layers[DrawingLayerService.LayerName(document, entity.Id.Value)];
+        var visible = document.Entities.Where(e => !Layer(e).IsHidden).ToArray();
+        var bounds = new DrawingDocument(visible).GetBounds();
+        var entities = visible.Select(entity => FromEntity(entity, document.Metadata) with
+        {
+            LayerName = DrawingLayerService.LayerName(document, entity.Id.Value),
+            LayerColor = DrawingLayerService.Color(Layer(entity)),
+            IsLocked = Layer(entity).IsLocked
+        }).ToArray();
+        var hidden = document.Entities.Except(visible).Select(e => e.Id.Value).ToHashSet();
+        bool IsVisible(IReadOnlyList<string> references) => !references.Any(r => hidden.Contains(r.Split('|')[0]));
+        var dimensions = document.Dimensions.Where(d => IsVisible(d.ReferenceKeys)).Select(dimension => FromDimension(document, dimension)).ToArray();
+        var constraints = document.Constraints.Where(c => IsVisible(c.ReferenceKeys)).Select(FromConstraint).ToArray();
 
         return new CanvasDocumentDto(entities, FromBounds(bounds), dimensions, constraints);
     }
@@ -214,7 +225,10 @@ public sealed record CanvasEntityDto(
     [property: JsonPropertyName("splineKnots")] IReadOnlyList<double>? SplineKnots = null,
     [property: JsonPropertyName("splineWeights")] IReadOnlyList<double>? SplineWeights = null,
     [property: JsonPropertyName("startTangentControlPointIndex")] int? StartTangentControlPointIndex = null,
-    [property: JsonPropertyName("endTangentControlPointIndex")] int? EndTangentControlPointIndex = null);
+    [property: JsonPropertyName("endTangentControlPointIndex")] int? EndTangentControlPointIndex = null,
+    [property: JsonPropertyName("layerName")] string? LayerName = null,
+    [property: JsonPropertyName("layerColor")] string? LayerColor = null,
+    [property: JsonPropertyName("isLocked")] bool IsLocked = false);
 
 public sealed record CanvasPointDto(
     [property: JsonPropertyName("x")] double X,

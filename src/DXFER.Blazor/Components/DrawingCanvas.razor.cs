@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261016-shorter-hover";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261016-layers";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -147,6 +147,16 @@ public partial class DrawingCanvas : IAsyncDisposable
     protected HashSet<string> SelectedEntityIds { get; } = new(StringComparer.Ordinal);
 
     protected string? ActiveSelectionKey { get; private set; }
+
+    public async Task SelectEntitiesAsync(string[] ids)
+    {
+        SelectedEntityIds.Clear();
+        foreach (var id in ids) SelectedEntityIds.Add(id);
+        ActiveSelectionKey = ids.FirstOrDefault();
+        if (_canvasInstance is not null) await _canvasInstance.InvokeVoidAsync("selectEntities", (object)ids);
+        SelectionChanged?.Invoke(SelectedEntityIds);
+        ActiveSelectionChanged?.Invoke(ActiveSelectionKey);
+    }
 
     protected override async Task OnParametersSetAsync()
     {

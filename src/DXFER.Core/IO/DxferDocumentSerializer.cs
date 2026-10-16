@@ -130,7 +130,10 @@ public static class DxferDocumentSerializer
         var metadata = document.Metadata;
         Require(Enum.IsDefined(metadata.Units) && Enum.IsDefined(metadata.Mode), "Invalid document metadata.");
         Require(metadata.Warnings is not null && metadata.UnsupportedEntityCounts is not null
-            && metadata.EntityStyles is not null, "Invalid metadata collections.");
+            && metadata.EntityStyles is not null && metadata.Layers is not null, "Invalid metadata collections.");
+        Require(metadata.Layers!.All(p => DXFER.Core.Operations.DrawingLayerService.ValidName(p.Key)
+            && p.Value is not null && p.Value.TrueColor is not (< 0 or > 0xFFFFFF)), "Invalid layer metadata.");
+        Require(DXFER.Core.Operations.DrawingLayerService.ValidName(metadata.ActiveLayerName), "Invalid active layer.");
         Require(metadata.Warnings!.All(w => w is not null && !string.IsNullOrWhiteSpace(w.Code)
             && w.Message is not null && Enum.IsDefined(w.Severity)), "Invalid document warning.");
         Require(metadata.UnsupportedEntityCounts!.All(p => !string.IsNullOrWhiteSpace(p.Key) && p.Value >= 0)

@@ -23,7 +23,9 @@ public static class DxfDocumentWriter
         WritePair(builder, 0, "SECTION");
         WritePair(builder, 2, "HEADER");
         WritePair(builder, 9, "$ACADVER");
-        WritePair(builder, 1, "AC1015");
+        WritePair(builder, 1, document.Metadata.Layers.Values.Concat(document.Metadata.EntityStyles.Values).Any(s => s.TrueColor.HasValue) ? "AC1018" : "AC1015");
+        WritePair(builder, 9, "$CLAYER");
+        WritePair(builder, 8, document.Metadata.ActiveLayerName);
         WritePair(builder, 9, "$INSUNITS");
         WritePair(builder, 70, document.Metadata.Units switch
         {
@@ -134,6 +136,7 @@ public static class DxfDocumentWriter
             WritePair(builder, 0, "ENDTAB");
         }
 
+        includeGrainLayer &= !layerStyles.Any(s => string.Equals(s.LayerName, GrainLayerName, StringComparison.OrdinalIgnoreCase));
         WritePair(builder, 0, "TABLE");
         WritePair(builder, 2, "LAYER");
         WritePair(builder, 5, (handle++).ToString("X", CultureInfo.InvariantCulture));
@@ -152,8 +155,10 @@ public static class DxfDocumentWriter
             WritePair(builder, 100, "AcDbSymbolTableRecord");
             WritePair(builder, 100, "AcDbLayerTableRecord");
             WritePair(builder, 2, layerName);
-            WritePair(builder, 70, "0");
-            WritePair(builder, 62, (style.ColorNumber ?? 7).ToString(CultureInfo.InvariantCulture));
+            WritePair(builder, 70, style.IsLocked ? "4" : "0");
+            var color = Math.Clamp(Math.Abs(style.ColorNumber ?? 7), 1, 255);
+            WritePair(builder, 62, (style.IsHidden ? -color : color).ToString(CultureInfo.InvariantCulture));
+            if (style.TrueColor is { } trueColor) WritePair(builder, 420, trueColor.ToString(CultureInfo.InvariantCulture));
             WritePair(builder, 6, ResolveWritableLineTypeName(style));
         }
 
@@ -240,7 +245,7 @@ public static class DxfDocumentWriter
 
     private static IReadOnlyList<DxfEntityStyle> GetWritableLayerStyles(DrawingDocument document)
     {
-        var styles = new Dictionary<string, DxfEntityStyle>(StringComparer.OrdinalIgnoreCase);
+        var styles = new Dictionary<string, DxfEntityStyle>(DrawingLayerService.GetLayers(document), StringComparer.OrdinalIgnoreCase);
         foreach (var entity in document.Entities)
         {
             if (entity.IsConstruction)
@@ -255,7 +260,7 @@ public static class DxfDocumentWriter
             }
 
             var layerName = SanitizeSymbolName(style.LayerName);
-            styles[layerName] = style with
+            if (!styles.ContainsKey(layerName)) styles[layerName] = style with
             {
                 LayerName = layerName,
                 LineTypeName = ResolveWritableLineTypeName(style)
@@ -318,6 +323,7 @@ public static class DxfDocumentWriter
         {
             WritePair(builder, 62, colorNumber.ToString(CultureInfo.InvariantCulture));
         }
+        if (style.TrueColor is { } trueColor) WritePair(builder, 420, trueColor.ToString(CultureInfo.InvariantCulture));
     }
 
     private static string SanitizeSymbolName(string? value)

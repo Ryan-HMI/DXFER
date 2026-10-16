@@ -322,6 +322,15 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
       return Array.from(state.selectedKeys);
     },
 
+    selectEntities(ids) {
+      clearInteractionState(state);
+      const allowed = new Set(getDocumentEntities(state.document).filter(e => !e.isLocked).map(getEntityId));
+      state.selectedKeys = new Set(ids.filter(id => allowed.has(id)));
+      state.activeSelectionKey = Array.from(state.selectedKeys)[0] || null;
+      updateDebugAttributes(state);
+      draw(state);
+    },
+
     getActiveSelectionKey() {
       return state.activeSelectionKey || null;
     },
@@ -689,7 +698,7 @@ function draw(state) {
   for (const entity of entities) {
     const affectedByDiagnostics = diagnosticEntityIds.has(getEntityId(entity));
     drawEntity(state, entity, {
-      strokeStyle: affectedByDiagnostics ? "#ff6c7c" : entity.isConstruction ? "#97a5b6" : "#d3e1ed",
+      strokeStyle: affectedByDiagnostics ? "#ff6c7c" : entity.isConstruction ? "#97a5b6" : entity.layerColor || "#d3e1ed",
       lineWidth: affectedByDiagnostics ? 2.15 : entity.isConstruction ? 1.1 : 1.5,
       lineDash: getEntityRenderLineDash(entity, entity.isConstruction ? [8, 5] : [])
     });
@@ -6263,6 +6272,7 @@ function getNearestEntityHits(state, screenPoint, constraintTool = null, include
   const edgeHits = includeEdgeHits ? [] : null;
 
   for (const entity of getDocumentEntities(state.document)) {
+    if (entity.isLocked) continue;
     const pointHit = getEntityPointHit(state, entity, screenPoint);
     if (pointHit
       && (!constraintTool || isTargetEligibleForConstraintTool(constraintTool, pointHit.target))
@@ -6290,6 +6300,7 @@ function findNearestWholeEntityTarget(state, screenPoint) {
   let nearestDistance = Number.POSITIVE_INFINITY;
 
   for (const entity of getDocumentEntities(state.document)) {
+    if (entity.isLocked) continue;
     const target = createEntityTarget(entity);
     if (!target) {
       continue;
@@ -6312,6 +6323,7 @@ function findNearestSelectedSplineTarget(state, screenPoint) {
 function findNearestSplineTarget(state, screenPoint, selectedOnly = false) {
   let nearestHit = null;
   for (const entity of getDocumentEntities(state.document)) {
+    if (entity.isLocked) continue;
     const id = getEntityId(entity);
     if (!id || getEntityKind(entity) !== "spline" || getEntityFitPoints(entity).length < 2) {
       continue;
@@ -7330,6 +7342,7 @@ function getBoxSelectionTargets(state, rect, crossing) {
   const targets = [];
 
   for (const entity of getDocumentEntities(state.document)) {
+    if (entity.isLocked) continue;
     const target = createEntityTarget(entity);
     if (!target) {
       continue;
@@ -8598,8 +8611,17 @@ export function applyGeometryDragPreview(document, selectionKey, dragStart, drag
 
   refreshPreviewReferenceDimensions(previewDocument);
   followPreviewDimensionAnchors(document, previewDocument);
+  if (!layerProtectedGeometryUnchanged(document, previewDocument)) return null;
   previewDocument.bounds = computeEntityBounds(getDocumentEntities(previewDocument));
   return previewDocument;
+}
+
+export function layerProtectedGeometryUnchanged(before, after) {
+  const geometry = e => e ? JSON.stringify({kind: getEntityKind(e), points: getEntityPoints(e), center: getEntityCenter(e),
+    radius: getEntityRadius(e), start: getEntityStartAngle(e), end: getEntityEndAngle(e),
+    major: getEntityMajorAxisEndPoint(e), ratio: getEntityMinorRadiusRatio(e),
+    controls: getEntityControlPoints(e), fits: getEntityFitPoints(e), knots: e.splineKnots, weights: e.splineWeights}) : null;
+  return getDocumentEntities(before).filter(e => e.isLocked).every(e => geometry(e) === geometry(getDocumentEntities(after).find(n => getEntityId(n) === getEntityId(e))));
 }
 
 function applyDimensionAwareGeometryDragPreviewMutation(

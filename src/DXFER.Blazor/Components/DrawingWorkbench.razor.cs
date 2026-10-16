@@ -456,7 +456,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
     }
 
-    private string WorkbenchGridStyle => IsOperationInspectorVisible
+    private string WorkbenchGridStyle => EnableFullEditing || IsOperationInspectorVisible
         ? "--dxfer-inspector-width:18.5rem;"
         : "--dxfer-inspector-width:0px;";
 
@@ -1363,6 +1363,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         var normalization = DrawingNormalizationService.AutoNormalize(_document);
+        if (!DrawingLayerService.PreservesProtectedGeometry(_document, normalization.NormalizedDocument))
+        {
+            _status = "Show and unlock affected layers before normalizing. Geometry unchanged.";
+            return;
+        }
         _undoStack.Push(_document);
         _redoStack.Clear();
         _document = normalization.NormalizedDocument;
@@ -1633,7 +1638,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         var previousChain = _cornerModifyEqualChain;
         nextDocument = AddGeneratedCornerModifyDimension(commandId, _document, nextDocument, distance);
-        if (nextDocument.Constraints.Any(c => c.State == SketchConstraintState.Unsatisfied && !_document.Constraints.Any(old => old.Id == c.Id && old.State == c.State))
+        if (!DrawingLayerService.PreservesProtectedGeometry(_document, nextDocument)
+            || nextDocument.Constraints.Any(c => c.State == SketchConstraintState.Unsatisfied && !_document.Constraints.Any(old => old.Id == c.Id && old.State == c.State))
             || nextDocument.Dimensions.Any(d => d.IsDriving && SketchDimensionSolverService.GetDimensionState(nextDocument, d) == SketchConstraintState.Unsatisfied))
         {
             _cornerModifyEqualChain = previousChain;
@@ -2199,7 +2205,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         ApplyDocumentChange(nextDocument, status);
         _ = InvokeAsync(StateHasChanged);
-        return true;
+        return ReferenceEquals(_document, nextDocument);
     }
 
     private bool TryGetLineIdForSplitTarget(string targetKey, out string lineEntityId)
@@ -2334,6 +2340,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private void ApplyDocumentChange(DrawingDocument nextDocument, string status)
     {
         _solveFailureStatus = null;
+        if (!DrawingLayerService.PreservesProtectedGeometry(_document, nextDocument))
+        {
+            _status = "A hidden or locked layer would change. Geometry unchanged; show and unlock it first.";
+            return;
+        }
+        try { nextDocument = DrawingLayerService.AssignNewEntities(_document, nextDocument); }
+        catch (ArgumentException ex) { _status = ex.Message; return; }
         if (ReferenceEquals(_document, nextDocument))
         {
             _status = status;
