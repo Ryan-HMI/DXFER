@@ -3380,7 +3380,9 @@ export function getConstraintGlyphGroups(state) {
       continue;
     }
 
-    const anchor = getConstraintAnchorPoint(state, constraint);
+    const isTangent = getSketchItemKind(constraint) === "tangent";
+    const contact = isTangent ? getTangentContactPoint(state.document, constraint) : null;
+    const anchor = contact || getConstraintAnchorPoint(state, constraint);
     if (!anchor) {
       continue;
     }
@@ -3397,7 +3399,9 @@ export function getConstraintGlyphGroups(state) {
         constraints: [],
         referenceKeys: new Set(),
         anchor: { x: 0, y: 0 },
-        anchorCount: 0
+        anchorCount: 0,
+        isTangent,
+        hasContact: contact !== null
       };
       groupsByKey.set(key, group);
     }
@@ -3439,6 +3443,8 @@ function finalizeConstraintGlyphGroup(state, group) {
     referenceKeys: Array.from(group.referenceKeys),
     anchor,
     anchorScreenPoint,
+    isTangent: group.isTangent,
+    hasContact: group.hasContact,
     point,
     manualOffset: storedOffset !== null
   };
@@ -3451,7 +3457,10 @@ export function getConstraintGlyphLeader(group) {
     return null;
   }
 
-  if (!group.manualOffset) {
+  if (group.isTangent && !group.hasContact) {
+    return null;
+  }
+  if (!group.manualOffset && !group.hasContact) {
     return null;
   }
 
@@ -3488,7 +3497,8 @@ function getConstraintGroupKey(constraint) {
     .filter(key => key.length > 0)
     .sort();
   if (referenceKeys.length > 0) {
-    return `constraint-group:${referenceKeys.join("+")}`;
+    const kindSuffix = getSketchItemKind(constraint) === "tangent" ? ":tangent" : "";
+    return `constraint-group:${referenceKeys.join("+")}${kindSuffix}`;
   }
 
   const id = getSketchItemId(constraint);
@@ -3846,6 +3856,43 @@ function updateConstraintGroupDrag(state, screenPoint) {
     x: screenPoint.x - drag.anchorScreenPoint.x,
     y: screenPoint.y - drag.anchorScreenPoint.y
   });
+}
+
+function getTangentContactPoint(document, constraint) {
+  if (getSketchReferenceKeys(constraint).length !== 2) return null;
+  const onCurve = (curve, point) => {
+    if (!curve || !["circle", "arc"].includes(curve.kind)
+      || Math.abs(distanceBetweenWorldPoints(curve.center, point) - curve.radius) > WORLD_GEOMETRY_TOLERANCE) return false;
+    if (curve.kind === "circle") return true;
+    const angle = Math.atan2(point.y - curve.center.y, point.x - curve.center.x) * 180 / Math.PI;
+    return isAngleOnArc(angle, getEntityStartAngle(curve.entity), getEntityEndAngle(curve.entity));
+  };
+  const pair = getPreviewLineAndCircleLikeReferences(document, constraint);
+  if (pair) {
+    const dx = pair.line.end.x - pair.line.start.x;
+    const dy = pair.line.end.y - pair.line.start.y;
+    const length = Math.hypot(dx, dy);
+    if (length <= WORLD_GEOMETRY_TOLERANCE) return null;
+    const along = ((pair.circle.center.x - pair.line.start.x) * dx
+      + (pair.circle.center.y - pair.line.start.y) * dy) / length;
+    if (along < -WORLD_GEOMETRY_TOLERANCE || along > length + WORLD_GEOMETRY_TOLERANCE) return null;
+    const point = { x: pair.line.start.x + along * dx / length, y: pair.line.start.y + along * dy / length };
+    return onCurve(pair.circle, point) ? point : null;
+  }
+
+  const curves = getTwoPreviewCircleLikeReferences(document, constraint);
+  if (!curves) return null;
+  const distance = distanceBetweenWorldPoints(curves.first.center, curves.second.center);
+  if (distance <= WORLD_GEOMETRY_TOLERANCE) return null;
+  const ux = (curves.second.center.x - curves.first.center.x) / distance;
+  const uy = (curves.second.center.y - curves.first.center.y) / distance;
+  // Internal contact may lie on either side of the smaller circle's center.
+  for (const sign of [1, -1]) {
+    const point = { x: curves.first.center.x + sign * ux * curves.first.radius,
+      y: curves.first.center.y + sign * uy * curves.first.radius };
+    if (onCurve(curves.first, point) && onCurve(curves.second, point)) return point;
+  }
+  return null;
 }
 
 function getConstraintAnchorPoint(state, constraint) {
