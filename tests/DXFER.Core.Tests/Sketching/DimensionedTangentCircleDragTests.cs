@@ -51,6 +51,31 @@ public sealed class DimensionedTangentCircleDragTests
     }
 
     [Theory]
+    [InlineData(17, false)]
+    [InlineData(17, true)]
+    [InlineData(90, false)]
+    [InlineData(90, true)]
+    [InlineData(137, false)]
+    [InlineData(137, true)]
+    public void RotatedRectangleRetainsTheSameAlongEdgeFreedom(double degrees, bool reverse)
+    {
+        var source = RectangleDocument(reverse);
+        var angle = degrees * Math.PI / 180;
+        Point2 Rotate(Point2 p) => new(p.X * Math.Cos(angle) - p.Y * Math.Sin(angle),
+            p.X * Math.Sin(angle) + p.Y * Math.Cos(angle));
+        var entities = source.Entities.Select(entity => entity switch
+        {
+            LineEntity line => (DrawingEntity)(line with { Start = Rotate(line.Start), End = Rotate(line.End) }),
+            CircleEntity circle => circle with { Center = Rotate(circle.Center) },
+            _ => entity
+        });
+        var original = new DrawingDocument(entities, source.Dimensions, source.Constraints);
+        AssertSatisfied(original);
+        Drag(original, "center", Rotate(new(3, 2)), out var moved, out var status).Should().BeTrue(status);
+        AssertSlide(original, moved, Rotate(new(13, 17.5)));
+    }
+
+    [Theory]
     [MemberData(nameof(FixedLineCases))]
     public void MixedDragSlidesAlongFixedLineWithoutChangingRadialIntent(
         string orientation, string grip, bool reverse, SketchDimensionKind kind)
