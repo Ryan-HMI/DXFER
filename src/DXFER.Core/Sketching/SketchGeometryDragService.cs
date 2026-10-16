@@ -23,6 +23,55 @@ public static class SketchGeometryDragService
         out DrawingDocument nextDocument,
         out string status)
     {
+        var accepted = TryApplyDragCore(document, selectionKey, dragStart, dragEnd,
+            constrainToCurrentVector, out nextDocument, out status);
+        if (accepted && !FixedReferencesRemainUnchanged(document, nextDocument))
+        {
+            nextDocument = document;
+            status = "Drag would move fixed geometry. Geometry unchanged.";
+            return false;
+        }
+        return accepted;
+    }
+
+    private static bool FixedReferencesRemainUnchanged(DrawingDocument original, DrawingDocument candidate)
+    {
+        foreach (var constraint in original.Constraints.Where(c => c.Kind == SketchConstraintKind.Fix
+                     && c.State != SketchConstraintState.Suppressed))
+        {
+            foreach (var key in constraint.ReferenceKeys)
+            {
+                if (!SketchReference.TryParse(key, out var reference)) return false;
+                if (reference.Target != SketchReferenceTarget.Entity)
+                {
+                    if (!SketchGeometryEditor.TryGetPoint(original.Entities, reference, out var before)
+                        || !SketchGeometryEditor.TryGetPoint(candidate.Entities, reference, out var after)
+                        || !SketchGeometryEditor.AreClose(before, after)) return false;
+                }
+                else if (reference.SegmentIndex.HasValue)
+                {
+                    if (!SketchGeometryEditor.TryGetLine(original.Entities, reference, out _, out var before)
+                        || !SketchGeometryEditor.TryGetLine(candidate.Entities, reference, out _, out var after)
+                        || !SketchGeometryEditor.AreClose(before.Start, after.Start)
+                        || !SketchGeometryEditor.AreClose(before.End, after.End)) return false;
+                }
+                else if (!SketchGeometryEditor.TryGetEntity(original.Entities, reference, out _, out var before)
+                    || !SketchGeometryEditor.TryGetEntity(candidate.Entities, reference, out _, out var after)
+                    || !GeometryMatches(new[] { before }, new[] { after })) return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool TryApplyDragCore(
+        DrawingDocument document,
+        string selectionKey,
+        Point2 dragStart,
+        Point2 dragEnd,
+        bool constrainToCurrentVector,
+        out DrawingDocument nextDocument,
+        out string status)
+    {
         ArgumentNullException.ThrowIfNull(document);
 
         nextDocument = document;
@@ -85,7 +134,12 @@ public static class SketchGeometryDragService
                 return true;
             }
 
-            status = "Selected geometry is constrained by a driving dimension.";
+            if (TryApplyAnchoredDimensionDrag(document, entities, selectionKey, out nextDocument, out status))
+            {
+                return true;
+            }
+
+            status = "Drag could not satisfy the driving dimensions with the supported movement. Geometry unchanged.";
             return false;
         }
 
@@ -116,6 +170,62 @@ public static class SketchGeometryDragService
         return true;
     }
 
+    private static bool TryApplyAnchoredDimensionDrag(
+        DrawingDocument document,
+        DrawingEntity[] editedEntities,
+        string selectionKey,
+        out DrawingDocument nextDocument,
+        out string status)
+    {
+        nextDocument = document;
+        status = string.Empty;
+        if (!SketchReference.TryParseCanvasPointCoordinates(selectionKey, out var entityId, out var label, out _)
+            || !SketchGeometryEditor.TryFindEntity(document.Entities, entityId, out _, out var entity)
+            || entity is not (LineEntity or PolylineEntity)) return false;
+
+        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
+        var relevant = document.Dimensions.Where(d => d.IsDriving && d.ReferenceKeys.Any(key =>
+            SketchReference.TryParse(key, out var reference) && MatchesGrip(reference))).ToArray();
+        // Only a single anchored distance has an unambiguous analytic recovery here.
+        // Coupled dimensions still use the existing validated paths, never a guessed solve.
+        if (relevant.Length != 1) return false;
+        var dimension = relevant[0];
+        if (dimension.Kind is not (SketchDimensionKind.LinearDistance or SketchDimensionKind.HorizontalDistance or SketchDimensionKind.VerticalDistance)
+            || dimension.ReferenceKeys.Count != 2
+            || !SketchReference.TryParse(dimension.ReferenceKeys[0], out var first)
+            || !SketchReference.TryParse(dimension.ReferenceKeys[1], out var second)) return false;
+        var moving = MatchesGrip(first) ? first : second;
+        var anchor = MatchesGrip(first) ? second : first;
+        if (!fixedReferences.IsFixed(anchor) || !fixedReferences.CanMovePoint(moving)
+            || !SketchGeometryEditor.TryGetPoint(editedEntities, moving, out var movingPoint)
+            || !SketchGeometryEditor.TryGetPoint(editedEntities, anchor, out var anchorPoint)
+            || SketchGeometryEditor.Distance(movingPoint, anchorPoint) <= SketchGeometryEditor.Tolerance) return false;
+
+        var solved = SketchDimensionSolverService.ApplyDimension(
+            new DrawingDocument(editedEntities, document.Dimensions, document.Constraints, document.Metadata), dimension);
+        var candidate = BuildValidatedDragDocument(document, solved.Entities,
+            RefreshMeasuredReferenceDimensions(solved.Entities, document.Dimensions));
+        if (!DrivingDimensionsRemainSatisfied(candidate.Entities, candidate.Dimensions, candidate.Constraints)
+            || candidate.Constraints.Any(c => c.State == SketchConstraintState.Unsatisfied)
+            || GeometryMatches(document.Entities, candidate.Entities)) return false;
+        nextDocument = candidate;
+        status = "Moved endpoint along its dimension-preserving free direction.";
+        return true;
+
+        bool MatchesGrip(SketchReference reference)
+        {
+            if (reference.EntityId != entityId) return false;
+            if (entity is LineEntity)
+                return !reference.SegmentIndex.HasValue
+                    && ((label == "start" && reference.Target == SketchReferenceTarget.Start)
+                        || (label == "end" && reference.Target == SketchReferenceTarget.End));
+            return TryParseIndexedLabel(label, "vertex-", out var vertex)
+                && reference.SegmentIndex.HasValue
+                && reference.Target is SketchReferenceTarget.Start or SketchReferenceTarget.End
+                && reference.SegmentIndex.Value + (reference.Target == SketchReferenceTarget.End ? 1 : 0) == vertex;
+        }
+    }
+
     private static bool TryApplyDimensionPreservingSelectionTranslation(
         DrawingDocument document,
         string selectionKey,
@@ -138,6 +248,7 @@ public static class SketchGeometryDragService
         }
 
         var dimensions = TranslateDimensionAnchors(document.Dimensions, entityId, delta);
+        SketchConstraintPropagationService.PropagateFromChanges(document.Entities, entities, document.Constraints, fixedReferences);
         var candidate = BuildValidatedDragDocument(document, entities, dimensions);
         if (!DrivingDimensionsRemainSatisfied(candidate.Entities, candidate.Dimensions, candidate.Constraints)
             || candidate.Constraints.Any(constraint => constraint.State == SketchConstraintState.Unsatisfied)
@@ -186,6 +297,7 @@ public static class SketchGeometryDragService
             }
 
             var dimensions = TranslateDimensionAnchorsForReferencedEntity(document.Dimensions, entityId, projectedDelta);
+            SketchConstraintPropagationService.PropagateFromChanges(document.Entities, entities, document.Constraints, fixedReferences);
             var candidate = BuildValidatedDragDocument(document, entities, dimensions);
             if (!DrivingDimensionsRemainSatisfied(candidate.Entities, candidate.Dimensions, candidate.Constraints)
                 || candidate.Constraints.Any(constraint => constraint.State == SketchConstraintState.Unsatisfied)
@@ -2382,7 +2494,9 @@ public static class SketchGeometryDragService
         out string status)
     {
         var reference = new SketchReference(polyline.Id.Value, SketchReferenceTarget.Entity);
-        if (fixedReferences.IsWholeEntityFixed(reference))
+        if (fixedReferences.IsWholeEntityFixed(reference)
+            || Enumerable.Range(0, polyline.Vertices.Count).Any(index =>
+                !CanMovePolylineVertex(fixedReferences, polyline.Id.Value, index, polyline.Vertices.Count)))
         {
             status = "Polyline is constrained.";
             return false;

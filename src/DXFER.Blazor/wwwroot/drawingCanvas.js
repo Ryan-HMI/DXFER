@@ -8330,8 +8330,14 @@ function applyDimensionAwareGeometryDragPreviewMutation(
   }
 
   const translationCandidate = cloneCanvasDocument(originalDocument);
-  if (!translatePreviewEntityById(translationCandidate, translatedEntityId, delta)) {
-    return false;
+  if (!translatePreviewEntityById(translationCandidate, translatedEntityId, delta)
+    || !getDocumentConstraints(originalDocument).every(constraint => getSketchConstraintKind(constraint) !== "fix"
+      || getSketchItemState(constraint) === "suppressed"
+      || isPreviewConstraintSatisfied(originalDocument, translationCandidate, constraint))) {
+    const anchored = getAnchoredDimensionPreview(originalDocument, editCandidate, selectionKey);
+    if (!anchored) return false;
+    copyPreviewDocumentGeometry(previewDocument, anchored);
+    return true;
   }
 
   translatePreviewDimensionAnchorsForEntityIds(
@@ -8353,6 +8359,51 @@ function applyDimensionAwareGeometryDragPreviewMutation(
 
   copyPreviewDocumentGeometry(previewDocument, translationCandidate);
   return true;
+}
+
+function getAnchoredDimensionPreview(originalDocument, editCandidate, selectionKey) {
+  const grip = parsePointSelectionKey(selectionKey);
+  if (!grip) return null;
+  const entity = findCanvasDocumentEntity(originalDocument, grip.entityId);
+  const kind = getEntityKind(entity);
+  if (kind !== "line" && kind !== "polyline") return null;
+  const matches = reference => {
+    if (!reference || reference.entityId !== grip.entityId) return false;
+    if (kind === "line") return !Number.isInteger(reference.segmentIndex)
+      && ["start", "end"].includes(grip.label) && reference.target === grip.label;
+    const vertex = /^vertex-(\d+)$/.exec(grip.label);
+    return vertex && Number.isInteger(reference.segmentIndex)
+      && ["start", "end"].includes(reference.target)
+      && reference.segmentIndex + (reference.target === "end" ? 1 : 0) === Number(vertex[1]);
+  };
+  const relevant = getDocumentDimensions(originalDocument).filter(dimension => isDrivingPreviewDimension(dimension)
+    && getSketchReferenceKeys(dimension).some(key => matches(parseSketchReference(key))));
+  if (relevant.length !== 1) return null;
+  const dimension = relevant[0];
+  const dimensionKind = String(readProperty(dimension, "kind", "Kind") || "").toLowerCase();
+  const refs = getSketchReferenceKeys(dimension).map(parseSketchReference);
+  if (!["lineardistance", "horizontaldistance", "verticaldistance"].includes(dimensionKind)
+    || refs.length !== 2 || refs.some(r => !r)) return null;
+  const moving = matches(refs[0]) ? refs[0] : refs[1];
+  const anchor = matches(refs[0]) ? refs[1] : refs[0];
+  const fixed = getPreviewFixedReferenceKeys(originalDocument);
+  if (!isPreviewReferenceFixed(fixed, anchor) || !canMovePreviewPoint(fixed, moving)) return null;
+  const point = getPreviewReferencePoint(editCandidate, moving);
+  const origin = getPreviewReferencePoint(editCandidate, anchor);
+  const value = Math.abs(Number(readProperty(dimension, "value", "Value")));
+  if (!point || !origin || !Number.isFinite(value)) return null;
+  const dx = point.x - origin.x, dy = point.y - origin.y, length = Math.hypot(dx, dy);
+  if (length <= WORLD_GEOMETRY_TOLERANCE) return null;
+  const projected = dimensionKind === "lineardistance"
+    ? { x: origin.x + dx / length * value, y: origin.y + dy / length * value }
+    : dimensionKind === "horizontaldistance"
+      ? { x: origin.x + (dx < 0 ? -value : value), y: point.y }
+      : { x: point.x, y: origin.y + (dy < 0 ? -value : value) };
+  const candidate = cloneCanvasDocument(editCandidate);
+  if (!setPreviewReferencePoint(candidate, moving, projected)) return null;
+  propagatePreviewConstraints(originalDocument, candidate);
+  return previewConstraintsRemainSatisfied(originalDocument, candidate)
+    && previewDrivingDimensionsRemainSatisfied(candidate) ? candidate : null;
 }
 
 function getDimensionPreservingPreviewTranslationCandidate(originalDocument, entityId, delta) {
