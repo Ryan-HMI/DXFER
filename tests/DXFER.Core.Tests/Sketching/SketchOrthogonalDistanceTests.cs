@@ -295,8 +295,8 @@ public sealed class SketchOrthogonalDistanceTests
     [InlineData(true)]
     public void SnapshotOnlyCurveSamplesAreNotTreatedAsLiveConstraintReferences(bool spline)
     {
-        // Ellipse/spline sampled points are outside the legacy editable-point contract.
-        // Keep their existing measurement behavior, without inventing dependency identities.
+        // Unidentified spline samples cannot validate driving geometry from saved coordinates.
+        // Ellipse snapshot behavior is outside this spline-reference change.
         var id = EntityId.Create("curve");
         DrawingEntity curve = spline
             ? SplineEntity.FromFitPoints(id, new[] { new Point2(0, 0), new Point2(3, 4) })
@@ -310,7 +310,7 @@ public sealed class SketchOrthogonalDistanceTests
         }, Array.Empty<SketchConstraint>());
         var distance = Driving("distance", SketchDimensionKind.LinearDistance, 5, first, second);
 
-        SketchDimensionSolverService.IsDimensionSatisfied(document, distance).Should().BeTrue();
+        SketchDimensionSolverService.IsDimensionSatisfied(document, distance).Should().Be(!spline);
         document.Entities.Should().ContainSingle().Which.Should().BeSameAs(curve);
     }
 

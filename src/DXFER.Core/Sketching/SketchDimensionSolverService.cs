@@ -696,6 +696,11 @@ public static class SketchDimensionSolverService
             return SketchReferenceResolver.TryGetPolylineCanvasPoint(polyline, label, out point);
         }
 
+        if (entity is SplineEntity spline)
+        {
+            return SketchReferenceResolver.TryGetSplineCanvasPoint(spline, label, out point);
+        }
+
         point = storedPoint;
         return true;
     }

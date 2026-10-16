@@ -8148,9 +8148,12 @@ function resolveCurrentPointTargetPoint(entity, label, fallbackPoint) {
           || getPersistentSplineTangentHandlesForEntity(entity)[1]?.backward
           || fallbackPoint;
       }
+      return fallbackPoint;
     }
 
     const controlPoints = getEntityControlPoints(entity);
+    if (normalizedLabel === "start") return controlPoints[0] || fallbackPoint;
+    if (normalizedLabel === "end") return controlPoints[controlPoints.length - 1] || fallbackPoint;
     if (normalizedLabel === "tangent-start" || normalizedLabel === "tangent-end") {
       const handles = getPersistentSplineTangentHandlesForEntity(entity);
       return normalizedLabel === "tangent-start" ? handles[0]?.forward || fallbackPoint : handles[1]?.backward || fallbackPoint;
@@ -13456,6 +13459,9 @@ export function getSketchDiagnosticEntityIds(document) {
 function resolveSketchReferencePoint(state, referenceKey) {
   const pointTarget = parsePointTargetKey(state, String(referenceKey || ""));
   if (pointTarget) {
+    if (getEntityKind(pointTarget.entity) === "spline") {
+      return resolveCurrentPointTargetPoint(pointTarget.entity, pointTarget.label, null);
+    }
     if (getEntityKind(pointTarget.entity) === "polyline") {
       const label = /^(vertex|mid)-(\d+)$/i.exec(pointTarget.label);
       const points = getEntityPoints(pointTarget.entity);

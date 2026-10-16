@@ -29,6 +29,15 @@ All coordinates and dimensions are inches. No manufacturing artifacts are used.
   to(0,1): R2. Moving onto y3 refuses collapse; moving to(0,2) recovers with R1.
 - `tangent-diameter-fixed`: same plus driving diameter6. Center motion along X
   is valid; Y displacement refuses without changing circle, line or diameter.
+- `spline-control-free` / `spline-fit-free`: cubic controls or fit points
+  (0,0),(1,0),(3,1),(4,1), driving distance1 between indexed points0/1.
+  Drag point1 up1: supported dimension-preserving fallback translates the whole
+  spline, not just point1. Reopen and drag point2 down0.5: points0/1 stay put.
+- `spline-tangent-free`: same clamped cubic, driving distance0.25 from control0
+  to start tangent handle. Select endpoint to expose the square handle, then
+  drag it up0.5: whole spline translates while the driving span stays0.25.
+- `spline-*-fixed`: same fixtures with Fix whole spline. Corresponding drags
+  refuse without changing geometry, driving value or Undo history.
 
 `dragMatrix.browser.mjs` drives actual mouse preview/release, compares preview
 endpoints with exported native geometry, tests Undo/Redo, downloads/reopens,

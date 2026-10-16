@@ -33,11 +33,43 @@ public static class SketchReferenceResolver
         if (SketchReference.TryParseCanvasPointCoordinates(key, out var entityId, out var label, out point)
             && SketchGeometryEditor.TryFindEntity(document.Entities, entityId, out _, out var entity))
         {
-            return entity is not PolylineEntity polyline || TryGetPolylineCanvasPoint(polyline, label, out point);
+            if (entity is PolylineEntity polyline) return TryGetPolylineCanvasPoint(polyline, label, out point);
+            if (entity is SplineEntity spline) return TryGetSplineCanvasPoint(spline, label, out point);
+            return true;
         }
 
         point = default;
         return false;
+    }
+
+    internal static bool TryGetSplineCanvasPoint(SplineEntity spline, string label, out Point2 point)
+    {
+        point = default;
+        var fit = spline.FitPoints.Count >= 2;
+        var points = fit ? spline.FitPoints : spline.ControlPoints;
+        var prefix = fit ? "fit-" : "control-";
+        var index = label.ToLowerInvariant() switch { "start" => 0, "end" => points.Count - 1, _ => -1 };
+        if (label.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            && !int.TryParse(label[prefix.Length..], NumberStyles.None, CultureInfo.InvariantCulture, out index)) return false;
+        if (index >= 0 && index < points.Count)
+        {
+            point = points[index];
+            return true;
+        }
+        var start = StringComparer.OrdinalIgnoreCase.Equals(label, "tangent-start");
+        if (!start && !StringComparer.OrdinalIgnoreCase.Equals(label, "tangent-end")) return false;
+        if (fit)
+        {
+            var handle = start ? spline.StartTangentHandle : spline.EndTangentHandle;
+            if (handle is not { } current) return false;
+            point = current;
+            return true;
+        }
+        if (spline.GetTangentControlPointIndex(start) is not { } adjacent) return false;
+        var endpoint = points[start ? 0 : points.Count - 1];
+        point = new Point2(endpoint.X + (points[adjacent].X - endpoint.X) * 0.25,
+            endpoint.Y + (points[adjacent].Y - endpoint.Y) * 0.25);
+        return true;
     }
 
     internal static bool TryGetPolylineCanvasPoint(PolylineEntity polyline, string label, out Point2 point)

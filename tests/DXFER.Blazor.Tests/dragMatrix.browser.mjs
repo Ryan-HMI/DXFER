@@ -51,24 +51,27 @@ try {
         await page.mouse.move(a.x,a.y);await page.waitForTimeout(80);
         await expect(canvas).toHaveAttribute('data-hovered-kind','point');
         await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:12});await page.waitForTimeout(100);
+        await page.screenshot({path:`${output}/${label}-preview.png`});
         if(previewCircle) {
             const painted=await canvas.evaluate((c,circle)=>{
                 const d=c.dataset,ctx=c.getContext('2d'),ratio=c.width/c.clientWidth;
-                return [0.61,2.11].map(angle=>{
-                    const x=Math.round(((circle.x+Math.cos(angle)*circle.radius)*Number(d.scale)+Number(d.offsetX))*ratio);
-                    const y=Math.round((-(circle.y+Math.sin(angle)*circle.radius)*Number(d.scale)+Number(d.offsetY))*ratio);
+                const samples=circle.points ?? [0.61,2.11].map(angle=>[circle.x+Math.cos(angle)*circle.radius,circle.y+Math.sin(angle)*circle.radius]);
+                return samples.map(([worldX,worldY])=>{
+                    const x=Math.round((worldX*Number(d.scale)+Number(d.offsetX))*ratio);
+                    const y=Math.round((-worldY*Number(d.scale)+Number(d.offsetY))*ratio);
                     const pixels=ctx.getImageData(x-4,y-4,9,9).data;
                     for(let i=0;i<pixels.length;i+=4)if(pixels[i+1]>100&&pixels[i+3]>80)return true;
                     return false;
                 });
             },previewCircle);
-            assert.deepEqual(painted,[true,true],`${label}: expected circle must be painted while pointer is held`);
+            assert.ok(painted.every(Boolean),`${label}: expected geometry must be painted while pointer is held (${painted})`);
         }
         const preview=await visiblePoints();await page.screenshot({path:`${output}/${label}-preview.png`});
         await page.mouse.up();await page.waitForTimeout(150);
         await page.screenshot({path:`${output}/${label}-released.png`});
         return preview;
     };
+    if(process.env.DXFER_MATRIX_ONLY_SPLINE) process.env.DXFER_MATRIX_ONLY_CLICKED='1';
     for(const name of (process.env.DXFER_MATRIX_ONLY_CLICKED ? [] : ['line-fixed','weld-fixed','line-free','line-anchor','poly-anchor','weld-free'])) {
         await load(name);
         const original=snapshot(await download());
@@ -100,6 +103,35 @@ try {
         await drag([points[1].x,points[1].y],[points[1].x+2,points[1].y+2],`${name}-reedit`);
         const edited=snapshot(await download());assert.notDeepEqual(edited.entities,after.entities);assert.equal(edited.dimensions[0].value,10);
         console.log('PASS preview/release, history, native reopen and reedit:',name);
+    }
+    if(!process.env.DXFER_MATRIX_ONLY_CLICKED || process.env.DXFER_MATRIX_ONLY_SPLINE) for(const kind of ['control','fit','tangent']) for(const locked of [false,true]) {
+        const name=`spline-${kind}-${locked?'fixed':'free'}`;
+        await load(name);
+        const original=snapshot(await download());
+        const start=await screen([0,0]);await page.mouse.click(start.x,start.y);await page.waitForTimeout(120);
+        const from=kind==='tangent'?[.25,0]:[1,0],dy=kind==='tangent'?.5:1;
+        const expectedDy=locked?0:dy;
+        const samples=kind==='fit'?[[0,expectedDy],[1,expectedDy]]:[[2,.5+expectedDy],[3.09375,.84375+expectedDy]];
+        await drag(from,[from[0],dy],name,{points:samples});
+        const file=await download(),next=snapshot(file);
+        if(locked) {
+            assert.deepEqual(next.entities,original.entities);assert.deepEqual(next.dimensions,original.dimensions);
+            await expect(page.getByRole('button',{name:'Undo',exact:true})).toBeDisabled();
+        } else {
+            const points=kind==='fit'?next.entities[0].fitPoints:next.entities[0].controlPoints;
+            close(points[0].x,0);close(points[0].y,dy);close(points[1].x,1);close(points[1].y,dy);
+            assert.equal(next.dimensions[0].value,kind==='tangent'?.25:1);
+            assert.deepEqual(next.entities[0].knots,original.entities[0].knots);assert.equal(next.entities[0].degree,original.entities[0].degree);
+            await page.getByRole('button',{name:'Undo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,original.entities);
+            await page.getByRole('button',{name:'Redo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,next.entities);
+            await load(`${name}-reopen`,file);assert.deepEqual(snapshot(await download()).entities,next.entities);
+            const endpoint=await screen([0,dy]);await page.mouse.click(endpoint.x,endpoint.y);await page.waitForTimeout(120);
+            await drag([3,1+dy],[3,.5+dy],`${name}-reedit`);
+            const reedited=snapshot(await download()),updated=kind==='fit'?reedited.entities[0].fitPoints:reedited.entities[0].controlPoints;
+            close(updated[2].y,.5+dy);assert.deepEqual(updated.slice(0,2),points.slice(0,2));
+            assert.equal(reedited.dimensions[0].value,next.dimensions[0].value);
+        }
+        console.log('PASS dimensioned spline preview/release/history/native reopen/reedit or fixed refusal:',name);
     }
     if(!process.env.DXFER_MATRIX_ONLY_CLICKED) for(const name of ['mid-locked','mid-anchor']) {
         await load(name);
