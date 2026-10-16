@@ -266,6 +266,18 @@ public sealed class WorkbenchDocumentLifecycleTests
         ((DxfWriteOptions)Invoke(workbench, "CreateDxfWriteOptions")!).IncludeNativeDocument.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OrdinaryOpenDoesNotImplicitlyDeleteDuplicates(bool normalize)
+    {
+        var workbench = Create();
+        var text = "0\nSECTION\n2\nENTITIES\n" +
+            string.Concat(Enumerable.Repeat("0\nLINE\n8\n0\n10\n0\n20\n0\n11\n10\n21\n0\n", 2)) + "0\nENDSEC\n0\nEOF\n";
+        Invoke(workbench, "LoadDxfText", "duplicates.dxf", text, false, normalize);
+        Get<DrawingDocument>(workbench, "_document").Entities.Should().HaveCount(2);
+    }
+
     [Fact]
     public void NativeReopenPreservesReferenceIdsGeometryAndFailedIntentWithoutCleaningOrSolving()
     {

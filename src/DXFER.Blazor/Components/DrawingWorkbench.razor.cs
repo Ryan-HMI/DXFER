@@ -681,11 +681,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         var imported = DxfDocumentReader.Read(text, out var nativeRestored);
         var document = WithOpenFileMetadata(imported, fileName, text, trustedSource);
         var sourceDocument = document;
-        // A verified native snapshot already owns its geometry and reference identities.
-        var cleanup = nativeRestored
-            ? new DuplicateGeometryResult(document, 0, 0)
-            : ExactDuplicateGeometryService.Remove(document);
-        document = cleanup.Document;
 
         if (document.Entities.Count == 0 && !nativeRestored)
         {
@@ -699,7 +694,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _fileName = fileName;
         _grainDirection = GrainDirection.None;
         _grainAngleDegrees = null;
-        _duplicateCleanupStatus = cleanup.RemovedCount > 0 || cleanup.ProtectedCount > 0 ? DuplicateCleanupStatus(cleanup) : null;
+        _duplicateCleanupStatus = null;
 
         if (normalization is not null)
         {
@@ -2540,7 +2535,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         try
         {
-            RemoveExactDuplicates();
             _duplicateCleanupStatus = null;
             var savedDocument = _document;
             var savedGrain = _grainDirection;

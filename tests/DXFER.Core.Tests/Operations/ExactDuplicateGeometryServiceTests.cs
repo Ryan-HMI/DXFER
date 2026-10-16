@@ -22,8 +22,10 @@ public sealed class ExactDuplicateGeometryServiceTests
             .BeApproximately((decimal)(20 + Math.Tau * .25 + 2 * Math.PI * .221), .000001m);
         ClosedContourService.Calculate(result.Document).Should().Be(new ClosedContourResult(3, null));
         ExactDuplicateGeometryService.Remove(result.Document).RemovedCount.Should().Be(0);
-        var normalized = DrawingNormalizationService.AutoNormalize(document);
-        normalized.OriginalDocument.Should().BeSameAs(document);
+        DrawingNormalizationService.AutoNormalize(document).NormalizedDocument.Entities.Should().HaveCount(12,
+            "normalization must not implicitly deduplicate");
+        var normalized = DrawingNormalizationService.AutoNormalize(result.Document);
+        normalized.OriginalDocument.Should().BeSameAs(result.Document);
         normalized.NormalizedDocument.Entities.Should().HaveCount(10);
         var exported = DxfDocumentReader.Read(DxfDocumentWriter.Write(normalized.NormalizedDocument));
         ClosedContourService.Calculate(exported).ClosedContourCount.Should().Be(3);

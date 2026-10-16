@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
+const url = process.env.DXFER_QA_URL ?? 'http://127.0.0.1:5037';
+assert.ok(['localhost', '127.0.0.1', 'dxferdev.sync.harrisonmetals.com'].includes(new URL(url).hostname));
+const browser = await chromium.launch({headless: true});
+try {
+  const page = await browser.newPage({viewport: {width: 1440, height: 1000}, extraHTTPHeaders: {'X-DXFER-API-Key': process.env.DXFER_QA_API_KEY}});
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto(url);
+  await page.waitForFunction(() => document.querySelector('input[type=file]')?._blazorInputFileNextFileId !== undefined);
+  const line = '0\nLINE\n8\nCUT\n10\n0\n20\n0\n11\n10\n21\n0\n';
+  const source = '0\nSECTION\n2\nENTITIES\n' + line + line + '0\nCIRCLE\n8\nCUT\n10\n5\n20\n5\n40\n.01\n0\nENDSEC\n0\nEOF\n';
+  await page.locator('input[type=file]').setInputFiles({name:'deliberate.dxf',mimeType:'application/dxf',buffer:Buffer.from(source)});
+  await page.waitForFunction(() => document.querySelector('canvas').dataset.entityCount === '3');
+  const download = async () => {
+    const event = page.waitForEvent('download');
+    await page.getByRole('button',{name:'Open application menu'}).click();
+    await page.getByRole('button',{name:'File',exact:true}).hover();
+    await page.getByRole('button',{name:'Download DXF',exact:true}).click();
+    const text = await readFile(await (await event).path(),'utf8');
+    const lines = text.trim().split(/\r?\n/); let hex='';
+    for(let i=0;i<lines.length;i+=2) if(lines[i].trim()==='310') hex+=lines[i+1].trim();
+    return JSON.parse(Buffer.from(hex,'hex'));
+  };
+  const original = await download();
+  assert.equal(original.entities.length,3,'open and download must retain duplicates and tiny circles');
+  assert.equal(await page.getByRole('button',{name:'Undo',exact:true}).isDisabled(),true);
+  await page.getByRole('button',{name:'Remove duplicates',exact:true}).first().click();
+  await page.waitForFunction(() => document.querySelector('canvas').dataset.entityCount === '2');
+  const cleaned = await download();
+  assert.equal(cleaned.entities.length,2);
+  assert.ok(cleaned.entities.some(e=>e.radius===.01),'manual dedup must not remove a unique small circle');
+  await page.getByRole('button',{name:'Undo',exact:true}).click();
+  assert.deepEqual((await download()).entities,original.entities);
+  await page.getByRole('button',{name:'Redo',exact:true}).click();
+  assert.deepEqual((await download()).entities,cleaned.entities);
+  assert.deepEqual(errors,[]);
+  const build = await page.locator('.app-brand').getAttribute('title');
+  if(process.env.DXFER_EXPECTED_REVISION) assert.ok(build.includes(process.env.DXFER_EXPECTED_REVISION));
+  console.log('PASS deliberate cleanup: ordinary open/download preserves all entities; explicit dedup removes duplicate only; Undo/Redo. Build:',build);
+} finally {await browser.close();}
