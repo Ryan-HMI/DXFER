@@ -15,3 +15,4 @@
 - Real-browser local checks pass at 1188x761 and 1100x705: right defaults, exact Foundry scrollbar colors, scroll overflow with full control width, legacy migration, floating/collapse/label retention and actual Grain drag back left surviving reload. Command inventory and document history remain unchanged.
 - Screenshots: `/tmp/dxfer-scrollbar-evidence/`; `default-1100.png` visually inspected.
 - Dev-only rollout; no manufacturing data repair is needed. A repeat manual-testing reminder is not required for this small layout correction.
+- Installed Dev `3b9337b4b57cbbee9995f8015e5eb03ac69a5c1a`, independently identified from the rendered build tooltip by the same public-browser suite; all checks pass. Installed assemblies match, all ten runtime settings retained, health 200 and anonymous sign-in redirect 302; Production/Test PIDs unchanged. Existing compact-palette browser suite also passes locally.
