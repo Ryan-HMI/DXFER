@@ -59,6 +59,7 @@ public static class SketchCreationConstraintFactory
         AddPointSnapConstraints(constraints, existingEntities, createdEntities, createConstraintId);
         AddPerpendicularSnapConstraints(constraints, existingEntities, createdEntities, createConstraintId);
         AddTangentArcConstraints(constraints, existingEntities, createdEntities, createConstraintId);
+        AddInsertedLineTangentConstraints(constraints, existingEntities, createdEntities, createConstraintId);
         return constraints;
     }
 
@@ -259,6 +260,99 @@ public static class SketchCreationConstraintFactory
             }
         }
     }
+
+    private static void AddInsertedLineTangentConstraints(
+        ICollection<SketchConstraint> constraints,
+        IReadOnlyList<DrawingEntity> existingEntities,
+        IReadOnlyList<DrawingEntity> createdEntities,
+        Func<SketchConstraintKind, string> createConstraintId)
+    {
+        var curves = existingEntities.Where(entity => entity is CircleEntity or ArcEntity).ToArray();
+        foreach (var line in createdEntities.OfType<LineEntity>())
+        {
+            foreach (var curve in curves)
+            {
+                var (center, radius) = curve is CircleEntity circle
+                    ? (circle.Center, circle.Radius)
+                    : (((ArcEntity)curve).Center, ((ArcEntity)curve).Radius);
+                if (!TryGetFiniteTangentContact(line, center, radius, out var contact)
+                    || (curve is ArcEntity arc && !IsContactOnArc(arc, contact)))
+                {
+                    continue;
+                }
+
+                AddConstraintIfMissing(constraints, SketchConstraintKind.Tangent, createConstraintId,
+                    curve.Id.Value, line.Id.Value);
+            }
+        }
+    }
+
+    private static bool TryGetFiniteTangentContact(LineEntity line, Point2 center, double radius, out Point2 contact)
+    {
+        contact = default;
+        if (!IsFinitePoint(line.Start) || !IsFinitePoint(line.End) || !IsFinitePoint(center)
+            || !double.IsFinite(radius) || radius <= GeometryTolerance)
+        {
+            return false;
+        }
+
+        var length = Distance(line.Start, line.End);
+        if (!double.IsFinite(length) || length <= GeometryTolerance)
+        {
+            return false;
+        }
+
+        var directionX = (line.End.X - line.Start.X) / length;
+        var directionY = (line.End.Y - line.Start.Y) / length;
+        var along = (center.X - line.Start.X) * directionX + (center.Y - line.Start.Y) * directionY;
+        // Measure endpoint slack in drawing units, not as a fraction of a potentially long line.
+        if (!double.IsFinite(along) || along < -GeometryTolerance || along > length + GeometryTolerance)
+        {
+            return false;
+        }
+
+        contact = new Point2(line.Start.X + along * directionX, line.Start.Y + along * directionY);
+        return Math.Abs(Distance(center, contact) - radius) <= GeometryTolerance;
+    }
+
+    private static bool IsContactOnArc(ArcEntity arc, Point2 contact)
+    {
+        var sweep = arc.EndAngleDegrees - arc.StartAngleDegrees;
+        if (!double.IsFinite(arc.StartAngleDegrees) || !double.IsFinite(arc.EndAngleDegrees)
+            || !double.IsFinite(sweep))
+        {
+            return false;
+        }
+
+        if (sweep >= 360)
+        {
+            return true;
+        }
+
+        sweep = NormalizeDegrees(sweep);
+        if (sweep == 0)
+        {
+            return false;
+        }
+
+        var angle = Math.Atan2(contact.Y - arc.Center.Y, contact.X - arc.Center.X) * 180 / Math.PI;
+        if (NormalizeDegrees(angle - NormalizeDegrees(arc.StartAngleDegrees)) <= sweep)
+        {
+            return true;
+        }
+
+        // Endpoint tolerance is spatial, so a large radius cannot widen the accepted contact region.
+        return Distance(contact, PointOnArc(arc, arc.StartAngleDegrees)) <= GeometryTolerance
+            || Distance(contact, PointOnArc(arc, arc.EndAngleDegrees)) <= GeometryTolerance;
+    }
+
+    private static double NormalizeDegrees(double angle)
+    {
+        var normalized = angle % 360;
+        return normalized < 0 ? normalized + 360 : normalized;
+    }
+
+    private static bool IsFinitePoint(Point2 point) => double.IsFinite(point.X) && double.IsFinite(point.Y);
 
     private static IEnumerable<PointReference> EnumeratePointReferences(IReadOnlyList<DrawingEntity> entities)
     {
