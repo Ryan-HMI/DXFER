@@ -105,4 +105,11 @@ welded peer endpoint, Fixed refusal/no Undo and untouched peer end are checked.
 Sixteen exports audit with zero errors/fixes. Parent reran1283core/606JS tests.
 The committed `circleDrag.browser.mjs` is replayable with the six native fixtures.
 No synthetic canvas hooks replace the actual DOM measurement/geometry checks.
-Installed Dev verification follows deployment; local passes alone do not claim it.
+Installed Dev829a065 passes the same ten-case public-URL replay. The browser's
+rendered DXFER tooltip independently identifies829a065. Both reference cases
+show the updated held label, with unchanged driving intent in the other cases;
+all sixteen public-replay exports audit clean. Four installed assemblies and
+served canvas/app CSS match publish; ten runtime settings retained, health200,
+anonymous302, normal sign-in and disabled Sync callbacks retained. Production
+and Test DXFer processes are unchanged. Independent Flux replay is requested,
+not yet accepted. Screenshot evidence remains in `/tmp/dxfer-circle-evidence`.

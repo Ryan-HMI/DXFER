@@ -19,6 +19,9 @@ try {
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(url);
     await page.waitForFunction(() => document.querySelector('input[type=file]')?._blazorInputFileNextFileId !== undefined);
+    const build = await page.locator('.app-brand').getAttribute('title');
+    if (process.env.DXFER_EXPECTED_REVISION) assert.ok(build.includes(process.env.DXFER_EXPECTED_REVISION), build);
+    console.log(`Browser build: ${build}`);
     const canvas = page.locator('canvas.drawing-canvas');
     const menu = async name => {
         await page.getByRole('button', { name: 'Open application menu' }).click();
