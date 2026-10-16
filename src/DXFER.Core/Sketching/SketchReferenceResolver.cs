@@ -48,7 +48,13 @@ public static class SketchReferenceResolver
         var fit = spline.FitPoints.Count >= 2;
         var points = fit ? spline.FitPoints : spline.ControlPoints;
         var prefix = fit ? "fit-" : "control-";
-        var index = label.ToLowerInvariant() switch { "start" => 0, "end" => points.Count - 1, _ => -1 };
+        if (StringComparer.OrdinalIgnoreCase.Equals(label, "start") || StringComparer.OrdinalIgnoreCase.Equals(label, "end"))
+        {
+            var curve = fit ? points : spline.GetSamplePoints();
+            point = curve[StringComparer.OrdinalIgnoreCase.Equals(label, "start") ? 0 : curve.Count - 1];
+            return true;
+        }
+        var index = -1;
         if (label.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
             && !int.TryParse(label[prefix.Length..], NumberStyles.None, CultureInfo.InvariantCulture, out index)) return false;
         if (index >= 0 && index < points.Count)

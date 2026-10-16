@@ -7,6 +7,20 @@ namespace DXFER.Core.Tests.Sketching;
 
 public sealed class DimensionedSplineDragTests
 {
+    [Fact]
+    public void UnclampedEndpointsResolveCurveEndpointsRatherThanControlVertices()
+    {
+        var spline = new SplineEntity(EntityId.Create("spline"), 3, Cubic().ControlPoints,
+            new double[] { 0, 1, 2, 3, 4, 5, 6, 7 });
+        var document = new DrawingDocument(new DrawingEntity[] { spline });
+        SketchReferenceResolver.TryGetPoint(document, "spline|point|start|0|0", out var start).Should().BeTrue();
+        SketchReferenceResolver.TryGetPoint(document, "spline|point|end|4|1", out var end).Should().BeTrue();
+        start.Should().Be(spline.GetSamplePoints()[0]);
+        end.Should().Be(spline.GetSamplePoints()[^1]);
+        start.Should().NotBe(spline.ControlPoints[0]);
+        SketchReferenceResolver.TryGetPoint(document, "spline|point|tangent-start|.25|0", out _).Should().BeFalse();
+    }
+
     [Theory]
     [InlineData("control-99")]
     [InlineData("fit-1")]

@@ -8152,8 +8152,8 @@ function resolveCurrentPointTargetPoint(entity, label, fallbackPoint) {
     }
 
     const controlPoints = getEntityControlPoints(entity);
-    if (normalizedLabel === "start") return controlPoints[0] || fallbackPoint;
-    if (normalizedLabel === "end") return controlPoints[controlPoints.length - 1] || fallbackPoint;
+    if (normalizedLabel === "start") return points[0] || fallbackPoint;
+    if (normalizedLabel === "end") return points[points.length - 1] || fallbackPoint;
     if (normalizedLabel === "tangent-start" || normalizedLabel === "tangent-end") {
       const handles = getPersistentSplineTangentHandlesForEntity(entity);
       return normalizedLabel === "tangent-start" ? handles[0]?.forward || fallbackPoint : handles[1]?.backward || fallbackPoint;

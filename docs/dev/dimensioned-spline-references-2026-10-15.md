@@ -35,7 +35,9 @@ as well as exported committed geometry.
 
 All six local browser fixtures (fit/control/tangent, free/Fixed) pass: held-pointer
 geometry, release, driving intent, valid history/reopen/reedit, and Fixed refusal
-without Undo. 1,118 core tests pass. An initial pixel check sampled a fit-spline
+without Undo. 1,119 core and 408 JavaScript tests pass. Unclamped endpoint
+resolution uses actual evaluated curve endpoints, not the outside control
+vertices; unsupported unclamped tangent grips still refuse. An initial pixel check sampled a fit-spline
 point outside the fitted viewport after translation; visible fit points now
 provide the check, without weakening the exported-geometry assertions.
 
