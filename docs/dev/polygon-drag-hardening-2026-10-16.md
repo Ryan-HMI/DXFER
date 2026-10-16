@@ -106,3 +106,26 @@ fix was warranted. No existing records were changed and no repair need was
 identified. Intentionally inconsistent fixture dimensions refuse without silently
 rewriting intent; previously damaged documents still need separate diagnosis and
 verified recovery, not inferred repair.
+
+## Parent Browser Verification
+
+October16: current Dev `d72876b`, unchanged application code. The committed native
+fixtures and `polygonDrag.browser.mjs` exercise all twelve combinations of the
+four fixtures and three gestures above. Held-pointer canvas pixels, release,
+driving values and moving dimension anchors pass. Fixed variants preserve all
+geometry, dimensions and constraints, leave Undo disabled, and reopen unchanged.
+Free variants preserve the welded peer's opposite endpoint, support Undo/Redo,
+native download/reopen and a second drag returning to the starting position.
+History and reopened document comparisons are exact; mouse-driven coordinates
+use a 0.000001-inch tolerance. Constraint intent is retained; initially Unknown
+weld states legitimately become Satisfied after solving.
+
+All eighteen exported DXFs audit with zero errors and zero fixes. Evidence is
+under `/tmp/dxfer-polygon-evidence`; screenshots show nonblank geometry and
+readable Fixed refusal. Full parent suites pass: 1233 core and535 JavaScript
+tests, zero skipped. These are owner tests, not Flux or Ryan acceptance.
+Fix-removal recovery, reversed order, circumscribed mode and zero/epsilon deltas
+have automated coverage but were not independently repeated in the browser.
+No new deployment is required for tests-only changes; current Dev behavior is
+the tested behavior. No live Sync callbacks, manufacturing records or machine
+actions were used. Production and Test remain unchanged by this DXFer work.

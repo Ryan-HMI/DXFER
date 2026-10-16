@@ -42,7 +42,13 @@ Dev d72876b passed the full six-fixture public-browser replay with rendered
 build tooltip verification, followed by retained clicked/corrupt-polyline cases.
 Four assemblies and served app/scoped CSS/canvas module match publish. Ten
 runtime settings retained, health200/anonymous302; Production/Test processes
-unchanged, normal sign-in retained, Sync callbacks disabled. Independent Flux
-replay requested with exact fixtures and gestures. No independent ellipse pass
-or overall solver completion claimed. Next uncovered family: dimensioned
-polygon translation and fixed-peer behavior.
+unchanged, normal sign-in retained, Sync callbacks disabled.
+
+Flux's saved independent result (03:38 UTC, posted October16 at09:20 EDT) passes
+all six fixtures: free axes, locked-axis/Fixed-peer refusal without Undo,
+free-case Undo/Redo, native reopen/edit-again, crossed axes and welded-center
+propagation. Fourteen exports audit cleanly. Exact-center/epsilon and held-pointer
+preview remain owner-verified, not independently verified. Received by manual
+channel read October16; no duplicate QA requested. This is bounded acceptance,
+not overall solver completion. Next uncovered family: dimensioned polygon
+translation and fixed-peer behavior.
