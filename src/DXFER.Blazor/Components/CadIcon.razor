@@ -171,9 +171,12 @@
             <path d="M7 12h10"/>
             break;
         case CadIconName.PowerTrim:
-            <path d="M3 7h8m5 0h5M8 3v8M4 19l14-8m-7 4 7 6"/>
-            <circle cx="4" cy="19" r="2"/>
-            <circle cx="18" cy="21" r="1"/>
+            <line x1="7" y1="4" x2="7" y2="20"/>
+            <line x1="17" y1="4" x2="17" y2="20"/>
+            <line x1="2" y1="12" x2="7" y2="12"/>
+            <line x1="17" y1="12" x2="22" y2="12"/>
+            <line x1="10" y1="9" x2="14" y2="15"/>
+            <line x1="14" y1="9" x2="10" y2="15"/>
             break;
         case CadIconName.Split:
             <g class="dxfer-split-point-icon">
@@ -244,8 +247,10 @@
             </g>
             break;
         case CadIconName.Coincident:
-            <path d="M3 19 10 12m4 0 7-7"/>
-            <circle cx="12" cy="10" r="3"/>
+            <line x1="3" y1="16" x2="12" y2="16"/>
+            <line x1="20" y1="4" x2="12" y2="16"/>
+            <circle cx="12" cy="16" r="3"/>
+            <circle cx="12" cy="16" r="1.4" fill="currentColor" stroke="none"/>
             break;
         case CadIconName.Concentric:
             <circle cx="12" cy="12" r="8"/>

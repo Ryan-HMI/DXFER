@@ -2,6 +2,7 @@ from pathlib import Path
 import json, html, math
 R=Path(__file__).parent
 P=lambda d:f'<path d="{d}"/>'
+L=lambda x1,y1,x2,y2:f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"/>'
 C=lambda x,y,r:f'<circle cx="{x}" cy="{y}" r="{r}"/>'
 Q=lambda x,y,w,h,r=0:f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{r}"/>'
 N=lambda x,y:f'<circle cx="{x}" cy="{y}" r="1.4" fill="currentColor" stroke="none"/>'
@@ -31,7 +32,7 @@ icons={
 'undo':P('m8 5-5 5 5 5M4 10h10a6 6 0 0 1 0 12'),
 'redo':P('m16 5 5 5-5 5M20 10H10a6 6 0 0 0 0 12'),
 'delete':P('M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7'),
-'trim':P('M3 7h8m5 0h5M8 3v8M4 19l14-8m-7 4 7 6')+C(4,19,2)+C(18,21,1),
+'trim':L(7,4,7,20)+L(17,4,17,20)+L(2,12,7,12)+L(17,12,22,12)+L(10,9,14,15)+L(14,9,10,15),
 'extend':P('M3 15h12m-4-4 4 4-4 4M20 3v18M16 15h4'),
 'split':P('M3 19 9 13m6-6 5-5M10 5l9 9M10 11l4 4')+N(11,10),
 'offset':P('M3 18V6h14M7 22V10h14M12 14v5m-2-2 2 2 2-2'),
@@ -47,7 +48,7 @@ icons={
 'mirror':P('M12 3v3m0 3v6m0 3v3M8 6 3 18h5ZM16 6l5 12h-5Z'),
 'linear-pattern':''.join(Q(x,y,5,5,0.5) for y in [4,15] for x in [4,15])+P('M11 6.5h2m-1-1 1 1-1 1'),
 'circular-pattern':''.join(C(x,y,2.2) for x,y in [(12,4),(20,12),(12,20),(4,12)])+P('M16 4a9 9 0 0 1 4 4')+N(12,12),
-'coincident':P('M3 19 10 12m4 0 7-7')+C(12,10,3),
+'coincident':L(3,16,12,16)+L(20,4,12,16)+C(12,16,3)+N(12,16),
 'concentric':C(12,12,8)+C(12,12,4)+N(12,12),
 'parallel':P('M4 17 16 5M8 21 20 9'),
 'perpendicular':P('M5 3v16h16M5 13h6v6'),
