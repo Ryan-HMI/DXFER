@@ -57,6 +57,12 @@ internal static class SketchGeometryEditor
         SketchReference reference,
         out Point2 point)
     {
+        if (reference.IsOrigin)
+        {
+            point = new Point2(0, 0);
+            return true;
+        }
+
         if (!TryGetEntity(entities, reference, out _, out var entity))
         {
             point = default;
@@ -118,6 +124,8 @@ internal static class SketchGeometryEditor
         SketchReference reference,
         Point2 point)
     {
+        if (reference.EntityId == SketchReference.OriginEntityId) return false;
+
         if (!TryGetEntity(entities, reference, out var index, out var entity))
         {
             return false;
