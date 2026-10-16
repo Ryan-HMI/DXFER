@@ -45,3 +45,12 @@ This is not a claim of arbitrary coupled spline solving or numeric resizing of
 all spline dimensions. Unsupported identities fail closed; that does not prove
 mathematical inconsistency. Previously damaged geometry is not reconstructed:
 use Undo or verified originals and explicit review. No records were repaired.
+
+## Installed Evidence
+
+Dev3547ab4 public-browser replay passed the complete drag matrix, including all
+six spline fixtures and earlier line/polyline/weld/midpoint/tangent regressions.
+Rendered build tooltip matches3547ab4. Four assemblies and four served CSS/JS
+assets match publish bytes; normal sign-in302, health200, ten runtime settings
+preserved, Production/Test processes unchanged. Independent spline replay is
+requested separately, not claimed passed by the owner-run browser suite.
