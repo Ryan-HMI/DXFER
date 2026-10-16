@@ -3,6 +3,12 @@
 Native DXF files generated with `DxfDocumentWriter` and `IncludeNativeDocument: true`.
 All coordinates and dimensions are inches. No manufacturing artifacts are used.
 
+- `equal-rectangle`: closed polyline (0,0),(11,0),(11,12.5),(0,12.5),(0,0),
+  H/V, closure, Equal/Parallel opposite short edges and Perpendicular adjacent
+  edges. Bottom edge driving11. Add top driving11: redundant explanation.
+  Change top to12: conflicting explanation. Both preserve geometry and intent
+  through history and native reopen. Removing top permits original edits again.
+
 - `line-free`: edge (0,0)-(10,0), driving length 10.
 - `line-anchor`: same, Fix start. Drag end toward (13,3): rotate about start,
   preserving length 10. Toward (0,0) is undefined and must refuse unchanged.

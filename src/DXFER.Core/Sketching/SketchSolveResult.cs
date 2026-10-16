@@ -28,13 +28,21 @@ public sealed class SketchSolveResult
     public ReadOnlyCollection<SketchSolveDiagnostic> AffectedDiagnostics { get; }
 }
 
+public enum SketchSolveDiagnosticReason
+{
+    Unresolved,
+    RedundantDrivingDimension,
+    ConflictingDrivingDimension
+}
+
 public sealed class SketchSolveDiagnostic
 {
     public SketchSolveDiagnostic(
         string itemId,
         string itemKind,
         IEnumerable<string> referenceKeys,
-        string message)
+        string message,
+        SketchSolveDiagnosticReason reason = SketchSolveDiagnosticReason.Unresolved)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(itemId);
         ArgumentException.ThrowIfNullOrWhiteSpace(itemKind);
@@ -45,6 +53,7 @@ public sealed class SketchSolveDiagnostic
         ItemKind = itemKind;
         ReferenceKeys = Array.AsReadOnly(referenceKeys.ToArray());
         Message = message;
+        Reason = reason;
     }
 
     public string ItemId { get; }
@@ -54,10 +63,26 @@ public sealed class SketchSolveDiagnostic
     public ReadOnlyCollection<string> ReferenceKeys { get; }
 
     public string Message { get; }
+
+    public SketchSolveDiagnosticReason Reason { get; }
 }
 
 public static class SketchSolveDiagnostics
 {
+    public static string DescribeFailure(IReadOnlyList<SketchSolveDiagnostic> diagnostics)
+    {
+        if (diagnostics.Count > 0 && diagnostics.All(d => d.Reason == SketchSolveDiagnosticReason.RedundantDrivingDimension))
+        {
+            return "Redundant driving dimension: this value already follows from existing constraints. Remove the duplicate driving dimension.";
+        }
+        if (diagnostics.Count > 0 && diagnostics.All(d => d.Reason != SketchSolveDiagnosticReason.Unresolved)
+            && diagnostics.Any(d => d.Reason == SketchSolveDiagnosticReason.ConflictingDrivingDimension))
+        {
+            return "Driving dimension conflicts with existing constraints. Change or remove the conflicting dimension.";
+        }
+        return "Constraints could not be satisfied by the supported solver. Resolve the highlighted unsatisfied constraints or dimensions.";
+    }
+
     public static IReadOnlyList<SketchSolveDiagnostic> FromDocument(DrawingDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -84,11 +109,19 @@ public static class SketchSolveDiagnostics
                 continue;
             }
 
+            var reason = SketchDimensionSolverService.GetFailureReason(document, dimension);
+            var message = reason switch
+            {
+                SketchSolveDiagnosticReason.RedundantDrivingDimension => $"Dimension '{dimension.Id}' is redundant: its value already follows from existing constraints.",
+                SketchSolveDiagnosticReason.ConflictingDrivingDimension => $"Dimension '{dimension.Id}' conflicts with existing constraints.",
+                _ => $"Dimension '{dimension.Id}' is unsatisfied; the supported solver could not resolve it."
+            };
             diagnostics.Add(new SketchSolveDiagnostic(
                 dimension.Id,
                 "dimension",
                 dimension.ReferenceKeys,
-                $"Dimension '{dimension.Id}' is unsatisfied."));
+                message,
+                reason));
         }
 
         return diagnostics;

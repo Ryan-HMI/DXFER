@@ -1300,8 +1300,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private void RestoreHistoryFeedback(string status)
     {
         _duplicateCleanupStatus = null;
-        _solveFailureStatus = SketchSolveDiagnostics.FromDocument(_document).Count > 0
-            ? $"{status} This drawing has unsatisfied constraints or dimensions. Resolve the highlighted items."
+        var diagnostics = SketchSolveDiagnostics.FromDocument(_document);
+        _solveFailureStatus = diagnostics.Count > 0
+            ? $"{status} {SketchSolveDiagnostics.DescribeFailure(diagnostics)}"
             : null;
         _status = _solveFailureStatus ?? status;
     }
@@ -2235,7 +2236,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         var status = result.Status == SketchSolveStatus.Solved
             ? successStatus
-            : "Constraints could not be satisfied. Geometry unchanged; resolve the highlighted constraints or dimensions.";
+            : $"{SketchSolveDiagnostics.DescribeFailure(result.AffectedDiagnostics)} Geometry unchanged.";
         ApplyDocumentChange(result.Document, status);
         _solveFailureStatus = result.Status == SketchSolveStatus.Solved ? null : status;
     }

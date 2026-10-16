@@ -213,6 +213,35 @@ public sealed class WorkbenchDocumentLifecycleTests
     }
 
     [Theory]
+    [InlineData(11, "Redundant")]
+    [InlineData(12, "conflicts")]
+    public void ProvenDimensionReasonSurvivesHistoryAndNativeReopen(double value, string message)
+    {
+        var original = DXFER.Core.Tests.Sketching.SketchFailureExplanationTests.Rectangle();
+        var incoming = new SketchDimension("opposing", SketchDimensionKind.LinearDistance,
+            new[] { "box|segment|2:start", "box|segment|2:end" }, value, isDriving: true);
+        var result = new LegacySketchSolverAdapter().Solve(new SketchSolveRequest(original, Array.Empty<SketchConstraint>(), new[] { incoming }));
+        var workbench = Create();
+        Set(workbench, "_document", original);
+        Invoke(workbench, "ApplySketchSolveResult", result, "Added dimension.");
+        Get<string>(workbench, "_solveFailureStatus").Should().Contain(message).And.Contain("Geometry unchanged");
+        Invoke(workbench, "UndoLastDocumentChange");
+        Get<string?>(workbench, "_solveFailureStatus").Should().BeNull();
+        Invoke(workbench, "RedoLastDocumentChange");
+        Get<string>(workbench, "_solveFailureStatus").Should().Contain(message);
+        var reopened = DxfDocumentReader.Read(DxfDocumentWriter.Write(result.Document, new DxfWriteOptions(IncludeNativeDocument: true)));
+        Set(workbench, "_document", reopened);
+        Invoke(workbench, "RestoreHistoryFeedback", "Opened drawing.");
+        Get<string>(workbench, "_solveFailureStatus").Should().Contain(message);
+        var recovered = new DrawingDocument(reopened.Entities, reopened.Dimensions.Where(d => d.Id != "opposing"), reopened.Constraints);
+        var next = new LegacySketchSolverAdapter().Solve(new SketchSolveRequest(recovered, Array.Empty<SketchConstraint>(),
+            new[] { new SketchDimension("original", SketchDimensionKind.LinearDistance, original.Dimensions[0].ReferenceKeys, 12, isDriving: true) }));
+        next.Status.Should().Be(SketchSolveStatus.Solved);
+        Invoke(workbench, "ApplySketchSolveResult", next, "Changed original.");
+        Get<string?>(workbench, "_solveFailureStatus").Should().BeNull();
+    }
+
+    [Theory]
     [InlineData("NewBlankDocument")]
     [InlineData("LoadSample")]
     public void StandaloneReplacementDropsPreviousSyncOwnership(string method)

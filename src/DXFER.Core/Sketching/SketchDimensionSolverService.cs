@@ -109,6 +109,20 @@ public static class SketchDimensionSolverService
         };
     }
 
+    internal static SketchSolveDiagnosticReason GetFailureReason(DrawingDocument document, SketchDimension dimension)
+    {
+        if (!dimension.IsDriving || !IsOverConstrainedDimension(document, dimension)
+            || !TryGetDimensionMeasurement(document, dimension, out var measured)
+            || !double.IsFinite(measured) || !double.IsFinite(dimension.Value))
+        {
+            return SketchSolveDiagnosticReason.Unresolved;
+        }
+
+        return Math.Abs(measured - Math.Abs(dimension.Value)) <= DimensionValueTolerance
+            ? SketchSolveDiagnosticReason.RedundantDrivingDimension
+            : SketchSolveDiagnosticReason.ConflictingDrivingDimension;
+    }
+
     private static bool IsOverConstrainedAngleDimension(
         DrawingDocument document,
         SketchDimension dimension)

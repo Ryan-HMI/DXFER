@@ -71,7 +71,7 @@ try {
         await page.screenshot({path:`${output}/${label}-released.png`});
         return preview;
     };
-    if(process.env.DXFER_MATRIX_ONLY_SPLINE) process.env.DXFER_MATRIX_ONLY_CLICKED='1';
+    if(process.env.DXFER_MATRIX_ONLY_SPLINE || process.env.DXFER_MATRIX_ONLY_DIAGNOSTICS) process.env.DXFER_MATRIX_ONLY_CLICKED='1';
     for(const name of (process.env.DXFER_MATRIX_ONLY_CLICKED ? [] : ['line-fixed','weld-fixed','line-free','line-anchor','poly-anchor','weld-free'])) {
         await load(name);
         const original=snapshot(await download());
@@ -180,6 +180,34 @@ try {
         const recovered=snapshot(await download());close(recovered.entities[0].center.x,recovery[0]);close(recovered.entities[0].center.y,recovery[1]);
         assert.deepEqual(recovered.entities[1],original.entities[1]);assert.ok(recovered.constraints.every(c=>c.state==='Satisfied'));
         console.log('PASS combination valid/refusal/recovery/history/native reopen:',name);
+    }
+    if(!process.env.DXFER_MATRIX_ONLY_CLICKED || process.env.DXFER_MATRIX_ONLY_DIAGNOSTICS) {
+        await load('equal-rectangle');
+        const original=snapshot(await download());
+        await page.getByRole('button',{name:'Dimension',exact:true}).click();await page.waitForTimeout(200);
+        await page.getByRole('button',{name:'Fit extents',exact:true}).click();await page.waitForTimeout(150);
+        for(const position of [[0,12.5],[11,12.5],[5.5,10.5]]){const p=await screen(position);await page.mouse.click(p.x,p.y);await page.waitForTimeout(150);}
+        await expect(page.getByRole('status')).toContainText('Redundant driving dimension');
+        await page.screenshot({path:`${output}/rectangle-redundant.png`});
+        const redundantFile=await download(),redundant=snapshot(redundantFile);
+        assert.deepEqual(redundant.entities,original.entities);assert.equal(redundant.dimensions.length,2);
+        const added=redundant.dimensions.find(d=>d.id!=='original');close(added.value,11);
+        const input=page.locator(`[data-dimension-id="${added.id}"]`);
+        await input.fill('12');await input.press('Enter');await page.waitForTimeout(150);
+        await expect(page.getByRole('status')).toContainText('conflicts with existing constraints');
+        await page.screenshot({path:`${output}/rectangle-conflicting.png`});
+        const conflictFile=await download(),conflict=snapshot(conflictFile);assert.deepEqual(conflict.entities,original.entities);
+        await page.getByRole('button',{name:'Undo',exact:true}).click();
+        await expect(page.getByRole('status')).toContainText('Redundant driving dimension');
+        await page.getByRole('button',{name:'Redo',exact:true}).click();
+        await expect(page.getByRole('status')).toContainText('conflicts with existing constraints');
+        await load('rectangle-conflict-reopen',conflictFile);
+        await expect(page.getByRole('status')).toContainText('conflicts with existing constraints');
+        assert.deepEqual(snapshot(await download()).entities,original.entities);
+        await load('rectangle-redundant-reopen',redundantFile);
+        await expect(page.getByRole('status')).toContainText('Redundant driving dimension');
+        assert.deepEqual(snapshot(await download()).entities,original.entities);
+        console.log('PASS actual Equal-rectangle redundant/conflicting reasons, rollback, history and native reopen');
     }
     const rawPolyline=[0,'SECTION',2,'HEADER',9,'$ACADVER',1,'AC1015',9,'$INSUNITS',70,1,0,'ENDSEC',
         0,'SECTION',2,'ENTITIES',0,'LWPOLYLINE',8,0,90,3,70,0,10,0,20,0,10,10,20,0,10,10,20,6,0,'ENDSEC',0,'EOF'].join('\n');
