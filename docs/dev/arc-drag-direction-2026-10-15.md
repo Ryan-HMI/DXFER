@@ -34,3 +34,16 @@ This is undefined geometry, not a claim that a constraint system is inconsistent
 
 No markup/CSS/layout changes. Reuse the existing wrapping status area for the
 new refusal. Public deployment and independent acceptance are recorded separately.
+
+## Installed Evidence
+
+Dev cb9236e passed public actual-canvas replay, including the rendered build
+tooltip. Four assemblies matched, ten runtime settings retained, health200,
+anonymous302; Production/Test processes unchanged and Sync callbacks disabled.
+Flux independently accepted at23:25EDT: free-weld translation/history/native
+reopen/second drag, Fixed refusal/no Undo, valid anchored Shift sweep45.0015456,
+history/reopen and same-ID driving radius3->4 with fixed center; exports audit0/0.
+Exact-center/epsilon and held-pointer checks remain owner evidence. Rounded
+pixel targets are not proof of a zero-direction defect. Independent post-reopen
+anchored edit was the radius dimension, not another endpoint gesture. Zero/full
+circle sweep semantics remain outside this acceptance.

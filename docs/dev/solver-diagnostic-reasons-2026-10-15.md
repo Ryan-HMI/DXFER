@@ -36,3 +36,10 @@ native download/reopen of both states. Screenshot confirms readable wrapped
 inspector text. Core tests include the existing0.001 tolerance boundary and an
 unproven measurement mismatch that must not claim conflict. Component recovery
 removes the failed intent and successfully edits the original dimension.
+
+Installed Dev da62081 passed the same public-browser replay. Flux independently
+accepted at23:15EDT: old compatible11 native load/Undo says redundant; opposing12
+edit/Redo/old native reopen says conflict, exact geometry and IDs/references
+retained. Removing the failed dimension permits original11->12, then reopened
+12->10.5; all10 relations Satisfied and DXF audit0/0. Bounded diagnostic issue
+closed; no broader solver acceptance implied.

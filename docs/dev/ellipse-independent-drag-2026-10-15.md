@@ -35,3 +35,14 @@ No business records/manufacturing files repaired. Old scaled saved shapes are
 not silently changed: use Undo or verified originals if correction is needed.
 Arbitrary coupled ellipse systems and partial-ellipse endpoint editing are not
 claimed accepted by these full-ellipse fixtures.
+
+## Installed Evidence
+
+Dev d72876b passed the full six-fixture public-browser replay with rendered
+build tooltip verification, followed by retained clicked/corrupt-polyline cases.
+Four assemblies and served app/scoped CSS/canvas module match publish. Ten
+runtime settings retained, health200/anonymous302; Production/Test processes
+unchanged, normal sign-in retained, Sync callbacks disabled. Independent Flux
+replay requested with exact fixtures and gestures. No independent ellipse pass
+or overall solver completion claimed. Next uncovered family: dimensioned
+polygon translation and fixed-peer behavior.
