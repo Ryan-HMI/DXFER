@@ -48,5 +48,19 @@ try {
         assert.deepEqual(reopened.entities,after.entities);assert.deepEqual(reopened.constraints,after.constraints);
         console.log(`${kind}: circle tangent cue, retained Satisfied relation, unchanged peer, Undo/Redo/native reopen pass`);
     }
+    for(const typed of [false,true]) {
+        await load('line');const before=native(await download());
+        await tool('Center circle');await click([4,4]);await move(typed?[4,0]:[6,0]);
+        if(typed) {
+            const input=page.locator('input[data-dimension-key="radius"]');
+            await input.fill('3');await input.press('Enter');await page.waitForTimeout(200);
+        } else {await page.mouse.down();await page.mouse.up();await page.waitForTimeout(200);}
+        await page.keyboard.press('Escape');const after=native(await download(typed?'radius-override':'ordinary-edge'));
+        const created=after.entities.find(e=>!before.entities.some(b=>b.id===e.id));assert.equal(created?.kind,'circle');
+        assert.equal(after.constraints.filter(c=>c.kind==='Tangent').length,before.constraints.filter(c=>c.kind==='Tangent').length);
+        if(typed)assert.ok(Math.abs(created.radius-3)<1e-6);
+        assert.deepEqual(after.entities.filter(e=>e.id!==created.id),before.entities);
+        console.log(`${typed?'Typed radius overriding snap':'Ordinary edge click'}: no spurious tangent relation`);
+    }
     assert.deepEqual(errors,[]);
 } finally {await browser.close();}
