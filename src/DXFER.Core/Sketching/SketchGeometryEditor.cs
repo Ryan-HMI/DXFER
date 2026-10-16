@@ -330,7 +330,8 @@ internal static class SketchGeometryEditor
         SketchReference reference,
         double radius)
     {
-        if (reference.Target != SketchReferenceTarget.Entity
+        if (!double.IsFinite(radius) || radius <= Tolerance
+            || reference.Target != SketchReferenceTarget.Entity
             || !TryGetEntity(entities, reference, out var index, out var entity))
         {
             return false;

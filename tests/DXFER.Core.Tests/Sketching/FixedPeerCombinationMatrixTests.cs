@@ -8,6 +8,27 @@ namespace DXFER.Core.Tests.Sketching;
 public sealed class FixedPeerCombinationMatrixTests
 {
     [Theory]
+    [InlineData(3, false)]
+    [InlineData(3.000000025067703, false)]
+    [InlineData(2.99999999, false)]
+    [InlineData(2.9999, true)]
+    public void TangentRadiusCollapseRefusesWithoutMutatingAndRecovers(double centerY, bool accepted)
+    {
+        var original = new DrawingDocument(new DrawingEntity[] {
+            new CircleEntity(EntityId.Create("circle"), new(0, 0), 3),
+            new LineEntity(EntityId.Create("line"), new(-5, 3), new(5, 3)) }, Array.Empty<SketchDimension>(),
+            new[] { C("tangent", SketchConstraintKind.Tangent, "line", "circle"), C("fix", SketchConstraintKind.Fix, "line") });
+        SketchGeometryDragService.TryApplyDrag(original, "circle|point|center|0|0", new(0, 0), new(0, centerY), false,
+            out var next, out var status).Should().Be(accepted, status);
+        if (!accepted) next.Should().BeSameAs(original);
+        else ((CircleEntity)next.Entities[0]).Radius.Should().BeApproximately(0.0001, 1e-10);
+        SketchGeometryDragService.TryApplyDrag(original, "circle|point|center|0|0", new(0, 0), new(0, 1), false,
+            out next, out status).Should().BeTrue(status);
+        ((CircleEntity)next.Entities[0]).Radius.Should().Be(2);
+        next.Entities[1].Should().Be(original.Entities[1]);
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(2)]

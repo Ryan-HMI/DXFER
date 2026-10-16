@@ -22,6 +22,13 @@ All coordinates and dimensions are inches. No manufacturing artifacts are used.
 - `mid-anchor`: line(0,0)-(10,0), Midpoint marker(5,0), Fix marker. End drag
   toward(8,2) gives start(2,-2), end(8,2), marker unchanged.
 - `mid-locked`: same, plus Fix line:start. The same drag refuses unchanged.
+- `equal-tangent-fixed`: moving circle(0,0) R3, Equal fixed circle(20,0) R3,
+  moving circle Tangent to line(-5,3)-(5,3). Center motion is valid; radius5
+  refuses while the equal peer remains fixed.
+- `tangent-radius-free`: circle(0,0) R3 tangent to fixed line y3. Move center
+  to(0,1): R2. Moving onto y3 refuses collapse; moving to(0,2) recovers with R1.
+- `tangent-diameter-fixed`: same plus driving diameter6. Center motion along X
+  is valid; Y displacement refuses without changing circle, line or diameter.
 
 `dragMatrix.browser.mjs` drives actual mouse preview/release, compares preview
 endpoints with exported native geometry, tests Undo/Redo, downloads/reopens,

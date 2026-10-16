@@ -77,3 +77,28 @@ behavior, history/reopen/reedit, IDs and clean DXF audits. Held-pointer preview
 remains owner-verified, not independently claimed. 678a2ca independently closes
 the exact stale-vertex L-shape case, repeated same-ID 10/12/9 edits, and red
 warning on unchanged old corrupt geometry. No overall solver acceptance claimed.
+
+## Near-Zero Tangent Radius Follow-Up
+
+Actual installed browser testing of a radius-free circle tangent to fixed y=3
+found a separate preview/release mismatch. Moving the center onto the line was
+refused by preview, but core accepted radius 0 or approximately 2.5e-8 because
+the shared radius setter had no finite/minimum-geometry check. Three exact and
+near-zero core regressions failed before the fix; the 0.0001-radius positive
+control passed. The core setter now requires finite radius greater than the
+existing geometry tolerance, matching preview. No engine/tolerance-policy change.
+
+Concrete browser combination fixtures are now checked in:
+`equal-tangent-fixed`, `tangent-radius-free`, `tangent-diameter-fixed`.
+They cover valid movement, incompatible or degenerate refusal with no Undo,
+recovery, Undo/Redo, native reopen and further edits. Core/preview tests include
+both relation orders and all six Equal/Tangent/Fixed permutations. Near-zero
+refusal preserves geometry and intent; previously saved collapsed circles are
+not automatically repaired.
+
+Verification: 1,111 core tests and 402 JavaScript tests pass. The isolated actual
+canvas run passes all three combination fixtures, including held-pointer painted
+geometry, release, rejection without Undo, recovery, and native reopen/reedit.
+Flux independently accepted dc5ef52 midpoint committed geometry, Undo/Redo,
+native reopen and a second edit; the locked-start counterpart refuses unchanged.
+That independent check did not claim held-pointer preview coverage.

@@ -46,11 +46,24 @@ try {
             const [x,y]=s.split(',').map(Number);return {x:(x-Number(d.offsetX))/Number(d.scale),y:(Number(d.offsetY)-y)/Number(d.scale)};
         });
     });
-    const drag=async(from,to,label)=>{
+    const drag=async(from,to,label,previewCircle=null)=>{
         const a=await screen(from),b=await screen(to);
         await page.mouse.move(a.x,a.y);await page.waitForTimeout(80);
         await expect(canvas).toHaveAttribute('data-hovered-kind','point');
         await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:12});await page.waitForTimeout(100);
+        if(previewCircle) {
+            const painted=await canvas.evaluate((c,circle)=>{
+                const d=c.dataset,ctx=c.getContext('2d'),ratio=c.width/c.clientWidth;
+                return [0.61,2.11].map(angle=>{
+                    const x=Math.round(((circle.x+Math.cos(angle)*circle.radius)*Number(d.scale)+Number(d.offsetX))*ratio);
+                    const y=Math.round((-(circle.y+Math.sin(angle)*circle.radius)*Number(d.scale)+Number(d.offsetY))*ratio);
+                    const pixels=ctx.getImageData(x-4,y-4,9,9).data;
+                    for(let i=0;i<pixels.length;i+=4)if(pixels[i+1]>100&&pixels[i+3]>80)return true;
+                    return false;
+                });
+            },previewCircle);
+            assert.deepEqual(painted,[true,true],`${label}: expected circle must be painted while pointer is held`);
+        }
         const preview=await visiblePoints();await page.screenshot({path:`${output}/${label}-preview.png`});
         await page.mouse.up();await page.waitForTimeout(150);
         await page.screenshot({path:`${output}/${label}-released.png`});
@@ -110,6 +123,31 @@ try {
             assert.deepEqual(reedited.entities[1],original.entities[1]);
         }
         console.log('PASS fixed midpoint preview/release, refusal or history/reopen/reedit:',name);
+    }
+    if(!process.env.DXFER_MATRIX_ONLY_CLICKED) for(const name of ['equal-tangent-fixed','tangent-radius-free','tangent-diameter-fixed']) {
+        await load(name);
+        const original=snapshot(await download());
+        const equal=name.startsWith('equal'),diameter=name.includes('diameter');
+        const center=equal?[2,1]:diameter?[1,0]:[0,1],radius=diameter||equal?3:2;
+        const expectedPreview={x:center[0],y:center[1],radius};
+        await drag([0,0],center,`${name}-positive`,expectedPreview);
+        const file=await download(),next=snapshot(file),circle=next.entities[0];
+        close(circle.center.x,center[0]);close(circle.center.y,center[1]);close(circle.radius,radius);
+        assert.deepEqual(next.entities[1],original.entities[1]);assert.ok(next.constraints.every(c=>c.state==='Satisfied'));
+        await page.getByRole('button',{name:'Undo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,original.entities);
+        await page.getByRole('button',{name:'Redo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,next.entities);
+        await load(`${name}-reopen`,file);
+        assert.deepEqual(snapshot(await download()).entities,next.entities);
+        const invalidFrom=equal?[center[0]+radius,center[1]]:center;
+        const invalidTo=equal?[center[0]+radius+2,center[1]]:diameter?[1,1]:[0,3];
+        await drag(invalidFrom,invalidTo,`${name}-refusal`,expectedPreview);
+        const rejected=snapshot(await download());assert.deepEqual(rejected.entities,next.entities);assert.deepEqual(rejected.dimensions,next.dimensions);
+        await expect(page.getByRole('button',{name:'Undo',exact:true})).toBeDisabled();
+        const recovery=equal?[1,2]:diameter?[2,0]:[0,2];
+        await drag(center,recovery,`${name}-recovery`,{x:recovery[0],y:recovery[1],radius:equal||diameter?3:1});
+        const recovered=snapshot(await download());close(recovered.entities[0].center.x,recovery[0]);close(recovered.entities[0].center.y,recovery[1]);
+        assert.deepEqual(recovered.entities[1],original.entities[1]);assert.ok(recovered.constraints.every(c=>c.state==='Satisfied'));
+        console.log('PASS combination valid/refusal/recovery/history/native reopen:',name);
     }
     const rawPolyline=[0,'SECTION',2,'HEADER',9,'$ACADVER',1,'AC1015',9,'$INSUNITS',70,1,0,'ENDSEC',
         0,'SECTION',2,'ENTITIES',0,'LWPOLYLINE',8,0,90,3,70,0,10,0,20,0,10,10,20,0,10,10,20,6,0,'ENDSEC',0,'EOF'].join('\n');

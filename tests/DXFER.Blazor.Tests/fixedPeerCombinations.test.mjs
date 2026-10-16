@@ -5,6 +5,13 @@ const p=(x,y)=>({x,y});
 const c=(id,kind,...referenceKeys)=>({id,kind,referenceKeys,state:'satisfied'});
 const circle=(id,x,y,radius=3)=>({id,kind:'circle',center:p(x,y),radius});
 const line=(id,a,b)=>({id,kind:'line',points:[a,b]});
+for(const [y,accepted] of [[3,false],[3.000000025067703,false],[2.99999999,false],[2.9999,true]])test(`tangent radius collapse ${y}`,()=>{
+    const original={entities:[circle('circle',0,0),line('line',p(-5,3),p(5,3))],dimensions:[],
+        constraints:[c('tangent','tangent','line','circle'),c('fix','fix','line')]};
+    assert.equal(Boolean(applyGeometryDragPreview(original,'circle|point|center|0|0',p(0,0),p(0,y))),accepted);
+    const recovered=applyGeometryDragPreview(original,'circle|point|center|0|0',p(0,0),p(0,1));
+    assert.ok(recovered);assert.equal(recovered.entities[0].radius,2);assert.deepEqual(recovered.entities[1].points,original.entities[1].points);
+});
 for(const order of [[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]])test(`Equal/Tangent/Fixed order ${order}`,()=>{
     const constraints=[c('equal','equal','moving','fixed'),c('tangent','tangent','line','moving'),c('fix','fix','fixed')];
     const original={entities:[circle('moving',0,0),circle('fixed',20,0),line('line',p(-5,3),p(5,3))],dimensions:[],constraints:order.map(i=>constraints[i])};
