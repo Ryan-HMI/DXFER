@@ -31,6 +31,39 @@
     border-bottom: 1px solid var(--dx-border, #242d39);
 }
 
+.dxfer-options-header,
+.dxfer-options-footer,
+.dxfer-hotkey-search,
+.dxfer-options-error {
+    flex-shrink: 0;
+}
+
+.dxfer-hotkey-search {
+    padding: 0.65rem 0.75rem 0;
+}
+
+.dxfer-hotkey-search input {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 2rem;
+    padding: 0.35rem 0.5rem;
+    color: var(--dx-text, #f4f7fb);
+    background: var(--dx-input, #0a0d12);
+    border: 1px solid var(--dx-border-strong, #687b90);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.8rem;
+}
+
+.dxfer-hotkey-search input:focus {
+    outline: 1px solid var(--dx-accent, #66d9ff);
+}
+
+.dxfer-hotkey-empty {
+    color: var(--dx-muted, #97a5b6);
+    font-size: 0.8rem;
+}
+
 .dxfer-options-footer {
     justify-content: flex-end;
     border-top: 1px solid var(--dx-border, #242d39);
@@ -84,16 +117,22 @@
     gap: 0.3rem;
     padding: 0.68rem 0.75rem;
     overflow: auto;
+    min-height: 0;
 }
 
 .dxfer-hotkey-row {
     display: grid;
-    grid-template-columns: minmax(11rem, 1fr) minmax(8.5rem, 10rem);
+    grid-template-columns: minmax(0, 1fr) minmax(8.5rem, 10rem);
     align-items: center;
     gap: 0.7rem;
     min-height: 2rem;
     color: var(--dx-text, #f4f7fb);
     font-size: 0.8rem;
+}
+
+.dxfer-hotkey-row span {
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .dxfer-hotkey-row input {

@@ -54,6 +54,9 @@ export function enableToolHotkeyRecorders(root) {
     const inputs = container.querySelectorAll("[data-dxfer-hotkey-input='true']");
 
     for (const input of inputs) {
+        // A rejected chord must not remain displayed as though it was accepted.
+        if (input.dataset.dxferAcceptedHotkey !== undefined)
+            input.value = input.dataset.dxferAcceptedHotkey;
         if (input.dataset.dxferHotkeyRecorder === "true") {
             continue;
         }

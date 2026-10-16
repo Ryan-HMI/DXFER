@@ -10,11 +10,11 @@
         <section class="dxfer-options-panel"
                  @ref="_panel"
                  aria-label="Tool hotkey settings"
+                 @onkeydown="OnPanelKeyDown"
                  @onclick:stopPropagation="true">
             <header class="dxfer-options-header">
                 <div>
                     <div class="dxfer-section-title">Tool Hotkeys</div>
-                    <div class="dxfer-options-subtitle">CAD command chords such as Shift+A</div>
                 </div>
                 <button type="button"
                         class="dxfer-options-icon-button"
@@ -23,10 +23,14 @@
                         @onclick="CloseAsync"><CadIcon Name="CadIconName.Close" /></button>
             </header>
 
+            <div class="dxfer-hotkey-search">
+                <input type="search" @ref="_searchInput" @bind="_search" @bind:event="oninput"
+                       aria-label="Search hotkeys" placeholder="Search commands or shortcuts" autocomplete="off" />
+            </div>
             <div class="dxfer-hotkey-grid">
-                @foreach (var commandId in ToolHotkeyResolver.ToolCommandIds)
+                @foreach (var commandId in FilteredCommands)
                 {
-                    <label class="dxfer-hotkey-row">
+                    <label class="dxfer-hotkey-row" @key="commandId">
                         <span>@ToolHotkeyResolver.FormatCommandName(commandId)</span>
                         <input value="@GetKey(commandId)"
                                maxlength="32"
@@ -34,19 +38,24 @@
                                autocomplete="off"
                                spellcheck="false"
                                data-dxfer-hotkey-input="true"
+                               data-dxfer-accepted-hotkey="@GetKey(commandId)"
                                aria-label="@($"{ToolHotkeyResolver.FormatCommandName(commandId)} hotkey")"
                                @onchange="args => ChangeHotkeyAsync(commandId, args.Value?.ToString() ?? string.Empty)" />
                     </label>
+                }
+                @if (!FilteredCommands.Any())
+                {
+                    <div class="dxfer-hotkey-empty" role="status">No matching commands</div>
                 }
             </div>
 
             @if (!string.IsNullOrWhiteSpace(_error))
             {
-                <div class="dxfer-options-error">@_error</div>
+                <div class="dxfer-options-error" role="alert">@_error</div>
             }
 
             <footer class="dxfer-options-footer">
-                <button type="button" class="dxfer-options-command" @onclick="ResetAsync">Reset</button>
+                <button type="button" class="dxfer-options-command" @onclick="ResetAsync">Reset all</button>
                 <button type="button" class="dxfer-options-command" @onclick="CloseAsync">Close</button>
             </footer>
         </section>
@@ -54,10 +63,14 @@
 }
 
 @code {
-    private const string ModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js?v=20260506-all-hotkey-keys";
+    private const string ModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js?v=20261016-search-hotkeys";
     private const string StorageKey = "dxfer.toolHotkeys.v2";
     private IJSObjectReference? _module;
     private ElementReference _panel;
+    private ElementReference _searchInput;
+    private string _search = string.Empty;
+    private bool _wasOpen;
+    private bool _focusSearch;
     private bool _loaded;
     private string? _error;
 
@@ -66,6 +79,27 @@
 
     [Parameter]
     public EventCallback OnClose { get; set; }
+
+    private IEnumerable<WorkbenchCommandId> FilteredCommands => ToolHotkeyResolver.ToolCommandIds
+        .Where(id => string.IsNullOrWhiteSpace(_search)
+            || ToolHotkeyResolver.FormatCommandName(id).Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase)
+            || GetKey(id).Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    protected override void OnParametersSet()
+    {
+        if (IsOpen && !_wasOpen)
+        {
+            _search = string.Empty;
+            _error = null;
+            _focusSearch = true;
+        }
+        _wasOpen = IsOpen;
+    }
+
+    private async Task OnPanelKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape") await CloseAsync();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -90,6 +124,11 @@
         if (IsOpen)
         {
             await _module.InvokeVoidAsync("enableToolHotkeyRecorders", _panel);
+            if (_focusSearch)
+            {
+                _focusSearch = false;
+                await _searchInput.FocusAsync();
+            }
         }
     }
 
