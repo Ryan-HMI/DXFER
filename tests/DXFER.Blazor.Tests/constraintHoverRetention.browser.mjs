@@ -23,8 +23,8 @@ try{
  const pixels=()=>canvas.evaluate((c,p)=>{const r=c.getBoundingClientRect();return Array.from(c.getContext('2d').getImageData(Math.round(p.x-r.left)-7,Math.round(p.y-r.top)-7,14,14).data);},glyph);
  await page.mouse.move(10,10);await page.waitForTimeout(3300);const hidden=await pixels();
  await page.mouse.move(center.x,center.y);await page.waitForTimeout(100);const shown=await pixels();assert.notDeepEqual(shown,hidden);
- await page.mouse.move(10,10);await page.waitForTimeout(1200);assert.deepEqual(await pixels(),shown);
- await page.waitForTimeout(1500);const fading=await pixels();assert.notDeepEqual(fading,hidden);assert.notDeepEqual(fading,shown);
+ await page.mouse.move(10,10);await page.waitForTimeout(600);assert.deepEqual(await pixels(),shown);
+ await page.waitForTimeout(750);const fading=await pixels();assert.notDeepEqual(fading,hidden);assert.notDeepEqual(fading,shown);
  await page.screenshot({path:`${output}/fading.png`});
  await page.waitForTimeout(650);assert.deepEqual(await pixels(),hidden);
  // Crossing the empty gap to a glyph after leaving its geometry must still be possible.

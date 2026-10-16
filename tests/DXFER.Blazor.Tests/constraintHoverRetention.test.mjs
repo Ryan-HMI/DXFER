@@ -9,12 +9,12 @@ const create=()=>({document:{entities:[{id:'line',kind:'line',points:[{x:0,y:0},
   constraints:[{id:'h',kind:'Horizontal',referenceKeys:['line'],state:'Satisfied'}],dimensions:[]},
   view:{scale:10,offsetX:100,offsetY:200},constraintGroupOffsets:new Map(),selectedKeys:new Set(),showAllConstraints:false});
 
-test('leaving geometry retains full opacity for 2.5 seconds then fades until 3 seconds',()=>{
+test('leaving geometry retains full opacity for 1.25 seconds then fades until 1.5 seconds',()=>{
   const state=create(), original=JSON.stringify(state.document);
   retainDepartedConstraintGroups(state,target,null,100);
-  assert.equal(getVisibleConstraintGlyphGroups(state,2599)[0].hoverOpacity,1);
-  assert.equal(getVisibleConstraintGlyphGroups(state,2850)[0].hoverOpacity,.5);
-  assert.equal(getVisibleConstraintGlyphGroups(state,3100).length,0);
+  assert.equal(getVisibleConstraintGlyphGroups(state,1349)[0].hoverOpacity,1);
+  assert.equal(getVisibleConstraintGlyphGroups(state,1475)[0].hoverOpacity,.5);
+  assert.equal(getVisibleConstraintGlyphGroups(state,1600).length,0);
   assert.equal(state.constraintHoverDeadlines.size,0);
   assert.equal(JSON.stringify(state.document),original);
 });
@@ -22,11 +22,11 @@ test('leaving geometry retains full opacity for 2.5 seconds then fades until 3 s
 test('crossing to a glyph during fade restores full opacity; leaving restarts grace',()=>{
   const state=create(); retainDepartedConstraintGroups(state,target,null,0);
   state.hoveredTarget=icon;
-  assert.equal(getVisibleConstraintGlyphGroups(state,2900)[0].hoverOpacity,1);
+  assert.equal(getVisibleConstraintGlyphGroups(state,1400)[0].hoverOpacity,1);
   assert.equal(getVisibleConstraintGlyphGroups(state,8000)[0].hoverOpacity,1);
   retainDepartedConstraintGroups(state,icon,null,8000);state.hoveredTarget=null;
-  assert.equal(getVisibleConstraintGlyphGroups(state,10500)[0].hoverOpacity,1);
-  assert.equal(getVisibleConstraintGlyphGroups(state,11000).length,0);
+  assert.equal(getVisibleConstraintGlyphGroups(state,9250)[0].hoverOpacity,1);
+  assert.equal(getVisibleConstraintGlyphGroups(state,9500).length,0);
 });
 
 test('selected constraints stay visible after pointer departure and expiry',()=>{
