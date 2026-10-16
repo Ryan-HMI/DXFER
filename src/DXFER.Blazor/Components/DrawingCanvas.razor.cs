@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261016-measure-feedback";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261016-shared-constraint-icons";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -155,7 +155,7 @@ public partial class DrawingCanvas : IAsyncDisposable
 
         _dotNetReference = DotNetObjectReference.Create(this);
         _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", CanvasModulePath);
-        _canvasInstance = await _module.InvokeAsync<IJSObjectReference>("createDrawingCanvas", _canvas, _dotNetReference, _dimensionOverlay);
+        _canvasInstance = await _module.InvokeAsync<IJSObjectReference>("createDrawingCanvas", _canvas, _dotNetReference, _dimensionOverlay, ConstraintIconGeometry.All);
 
         _renderedSelectionResetToken = SelectionResetToken;
         await SetCanvasDocumentAsync();

@@ -64,6 +64,14 @@ public sealed class CadIconHandoffTests
     public void IntegratedArtworkMatchesReviewedMaster(string name, string asset)
     {
         var source = Read("src/DXFER.Blazor/Components/CadIcon.razor");
+        if (ConstraintIconGeometry.All.TryGetValue(name.ToLowerInvariant(), out var shared))
+        {
+            shared.Outline.Should().NotBeNullOrWhiteSpace();
+            source.Should().Contain("ConstraintIconGeometry.All.TryGetValue")
+                .And.Contain("d=\"@constraintIcon.Outline\"").And.Contain("d=\"@constraintIcon.Fill\"");
+            Read("src/DXFER.Blazor/Components/DrawingCanvas.razor.cs").Should().Contain("_dimensionOverlay, ConstraintIconGeometry.All");
+            return; // Shared constraint paths supersede the archived handoff artwork.
+        }
         var match = Regex.Match(source, $@"case CadIconName\.{name}:\s*([\s\S]*?)\s*break;");
         match.Success.Should().BeTrue();
         var masters = JsonSerializer.Deserialize<Dictionary<string, string>>(
@@ -79,7 +87,8 @@ public sealed class CadIconHandoffTests
         var source = Read("src/DXFER.Blazor/Components/CadIcon.razor");
         foreach (var name in Enum.GetNames<CadIconName>())
         {
-            Regex.Matches(source, $@"case CadIconName\.{name}:").Count.Should().Be(1);
+            var shared = ConstraintIconGeometry.All.ContainsKey(name.ToLowerInvariant()) ? 1 : 0;
+            (Regex.Matches(source, $@"case CadIconName\.{name}:").Count + shared).Should().Be(1);
         }
 
         source.Should().Contain("aria-hidden=\"true\"").And.Contain("focusable=\"false\"");

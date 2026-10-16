@@ -11,6 +11,16 @@
      stroke-linejoin="round"
      aria-hidden="true"
      focusable="false">
+    @if (ConstraintIconGeometry.All.TryGetValue(Name.ToString().ToLowerInvariant(), out var constraintIcon))
+    {
+        <path d="@constraintIcon.Outline" />
+        @if (constraintIcon.Fill is not null)
+        {
+            <path d="@constraintIcon.Fill" fill="currentColor" stroke="none" />
+        }
+    }
+    else
+    {
     @switch (Name)
     {
         case CadIconName.NewFile:
@@ -246,46 +256,6 @@
                 <circle cx="5.9" cy="8.5" r="1.35" />
             </g>
             break;
-        case CadIconName.Coincident:
-            <line x1="3" y1="16" x2="12" y2="16"/>
-            <line x1="20" y1="4" x2="12" y2="16"/>
-            <circle cx="12" cy="16" r="3"/>
-            <circle cx="12" cy="16" r="1.4" fill="currentColor" stroke="none"/>
-            break;
-        case CadIconName.Concentric:
-            <circle cx="12" cy="12" r="8"/>
-            <circle cx="12" cy="12" r="4"/>
-            <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>
-            break;
-        case CadIconName.Parallel:
-            <path d="M4 17 16 5M8 21 20 9"/>
-            break;
-        case CadIconName.Tangent:
-            <circle cx="12" cy="9" r="6"/>
-            <path d="M3 15h18"/>
-            <circle cx="12" cy="15" r="1.4" fill="currentColor" stroke="none"/>
-            break;
-        case CadIconName.Horizontal:
-            <path d="M3 12h18"/>
-            <circle cx="3" cy="12" r="1.4" fill="currentColor" stroke="none"/>
-            <circle cx="21" cy="12" r="1.4" fill="currentColor" stroke="none"/>
-            break;
-        case CadIconName.Vertical:
-            <path d="M12 3v18"/>
-            <circle cx="12" cy="3" r="1.4" fill="currentColor" stroke="none"/>
-            <circle cx="12" cy="21" r="1.4" fill="currentColor" stroke="none"/>
-            break;
-        case CadIconName.Perpendicular:
-            <path d="M5 3v16h16M5 13h6v6"/>
-            break;
-        case CadIconName.Equal:
-            <path d="M4 8h16M4 16h16"/>
-            break;
-        case CadIconName.Midpoint:
-            <path d="M3 15h18m-9-9-4 9h8Z"/>
-            <circle cx="3" cy="15" r="1.4" fill="currentColor" stroke="none"/>
-            <circle cx="21" cy="15" r="1.4" fill="currentColor" stroke="none"/>
-            break;
         case CadIconName.Normal:
             <path d="M3 19Q12 8 21 19M12 14V3m-3 3 3-3 3 3M12 14h4v3"/>
             break;
@@ -296,11 +266,6 @@
             break;
         case CadIconName.Symmetric:
             <path d="M12 3v3m0 3v6m0 3v3M3 6l5 6-5 6m18-12-5 6 5 6"/>
-            break;
-        case CadIconName.Fix:
-            <rect x="5" y="10" width="14" height="11" rx="2"/>
-            <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
-            <circle cx="12" cy="15" r="1"/>
             break;
         case CadIconName.Curvature:
             <path d="M5 18c3-10 10-13 14-8" />
@@ -382,6 +347,7 @@
             <rect x="9" y="9" width="12" height="12" rx="1"/>
             <path d="m12 12 6 6m0-6-6 6"/>
             break;
+    }
     }
 </svg>
 

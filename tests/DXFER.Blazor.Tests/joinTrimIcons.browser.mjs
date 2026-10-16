@@ -7,8 +7,14 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright')
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const output = process.env.DXFER_ICON_EVIDENCE ?? '/tmp/dxfer-join-trim-evidence';
 const source = await readFile(resolve(root, 'src/DXFER.Blazor/Components/CadIcon.razor'), 'utf8');
+const shared = await readFile(resolve(root, 'src/DXFER.Blazor/Components/ConstraintIconGeometry.cs'), 'utf8');
 const names = [['Coincident', 'Coincident'], ['PowerTrim', 'Power trim/extend']];
 const artwork = Object.fromEntries(names.map(([name]) => {
+    if (name === 'Coincident') {
+        const match = shared.match(/\["coincident"\] = new\("([^"]+)", "([^"]+)"\)/);
+        assert.ok(match);
+        return [name, `<path d="${match[1]}"/><path d="${match[2]}" fill="currentColor" stroke="none"/>`];
+    }
     const body = source.match(new RegExp(`case CadIconName\\.${name}:\\s*([\\s\\S]*?)\\s*break;`))?.[1];
     assert.ok(body, name);
     return [name, body];

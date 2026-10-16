@@ -3,32 +3,33 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using FluentAssertions;
+using DXFER.Blazor.Components;
 
 namespace DXFER.Core.Tests.Components;
 
 public sealed class CadIconJoinTrimTests
 {
     [Fact]
-    public void CoincidentHasTwoDistinctSegmentsEndingAtOneMarkedPoint()
+    public void CoincidentHasOrthogonalCrosshairsAndAHeavyFilledCenter()
     {
-        var icon = Artwork("Coincident");
-        var lines = icon.Elements("line").ToArray();
-        lines.Should().HaveCount(2);
-        var joint = icon.Elements("circle").Single(c => (string?)c.Attribute("fill") == "currentColor");
-        var ring = icon.Elements("circle").Single(c => c.Attribute("fill") is null);
-        var x = Number(joint, "cx");
-        var y = Number(joint, "cy");
-        foreach (var line in lines)
+        var icon = ConstraintIconGeometry.All["coincident"];
+        icon.Outline.Should().Be("M3 12h18M12 3v18");
+        icon.Fill.Should().Be("M14.8 12a2.8 2.8 0 1 0-5.6 0a2.8 2.8 0 1 0 5.6 0Z");
+    }
+
+    [Fact]
+    public void MidpointIsOneEquilateralTriangleWithoutAnExtraLineOrDots()
+    {
+        var icon = ConstraintIconGeometry.All["midpoint"];
+        icon.Fill.Should().BeNull();
+        icon.Outline.Should().Be("M12 4.205771366 21 19.794228634H3Z");
+        var height = 19.794228634 - 4.205771366;
+        Math.Sqrt(9 * 9 + height * height).Should().BeApproximately(18, 1e-8);
+        ConstraintIconGeometry.All.Keys.Should().BeEquivalentTo(new[]
         {
-            Number(line, "x2").Should().Be(x);
-            Number(line, "y2").Should().Be(y);
-        }
-        Number(ring, "cx").Should().Be(x);
-        Number(ring, "cy").Should().Be(y);
-        Number(ring, "r").Should().BeGreaterThan(Number(joint, "r") + 1);
-        var cross = (Number(lines[0], "x1") - x) * (Number(lines[1], "y1") - y)
-            - (Number(lines[1], "x1") - x) * (Number(lines[0], "y1") - y);
-        Math.Abs(cross).Should().BeGreaterThan(20, "the two entities must not read as one line passing through a point");
+            "coincident", "concentric", "parallel", "tangent", "horizontal", "vertical",
+            "perpendicular", "equal", "midpoint", "fix"
+        });
     }
 
     [Fact]
@@ -65,7 +66,6 @@ public sealed class CadIconJoinTrimTests
     }
 
     [Theory]
-    [InlineData("Coincident", "coincident")]
     [InlineData("PowerTrim", "trim")]
     public void RuntimeStandaloneAndSpriteMatchMasterAndFitTheGlyph(string name, string asset)
     {

@@ -156,7 +156,7 @@ const POWER_TRIM_EXTEND_HIT_TEST_TOLERANCE = 18;
 const SPLINE_TANGENT_HANDLE_SCALE = 0.25;
 const SPLINE_FIT_SEGMENTS_PER_SPAN = 32;
 
-export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) {
+export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, constraintIcons = {}) {
   const context = canvas.getContext("2d");
   if (!context) {
     throw new Error("DXFER drawing canvas requires a 2D rendering context.");
@@ -167,6 +167,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null) 
     context,
     dotnetRef,
     dimensionOverlay,
+    constraintIcons: compileConstraintIcons(constraintIcons),
     dimensionInputs: new Map(),
     persistentDimensionInputs: new Map(),
     dimensionAnchorOverrides: new Map(),
@@ -4008,92 +4009,33 @@ function drawConstraintGlyph(state, icon, point, constraint) {
   context.stroke();
   drawConstraintGlyphIcon(
     context,
-    icon,
+    state.constraintIcons?.[icon],
     point,
     selected ? "#ffffff" : stateText === "unsatisfied" ? "#fecaca" : "#e2e8f0"
   );
   context.restore();
 }
 
-function drawConstraintGlyphIcon(context, icon, point, color) {
+export function compileConstraintIcons(icons) {
+  return Object.fromEntries(Object.entries(icons).map(([kind, shape]) => [kind, {
+    outline: new Path2D(shape.outline),
+    fill: shape.fill ? new Path2D(shape.fill) : null
+  }]));
+}
+
+export function drawConstraintGlyphIcon(context, shape, point, color) {
+  if (!shape) return;
   context.save();
-  context.translate(point.x, point.y);
+  context.translate(point.x - 6, point.y - 6);
+  context.scale(0.5, 0.5);
   context.strokeStyle = color;
   context.fillStyle = color;
-  context.lineWidth = 1.45;
+  context.lineWidth = 1.6;
   context.lineCap = "round";
   context.lineJoin = "round";
-
-  switch (icon) {
-    case "coincident":
-      drawCircleIcon(context, -2.2, 2.2, 2.3);
-      drawCircleIcon(context, 2.2, -2.2, 2.3);
-      drawGlyphLine(context, -0.6, 0.6, 0.6, -0.6);
-      break;
-    case "concentric":
-      drawCircleIcon(context, 0, 0, 4.7);
-      drawCircleIcon(context, 0, 0, 2.2);
-      break;
-    case "parallel":
-      drawGlyphLine(context, -4.3, 4.9, 1.2, -4.9);
-      drawGlyphLine(context, -0.7, 4.9, 4.8, -4.9);
-      break;
-    case "tangent":
-      drawCircleIcon(context, -1.7, 1.5, 3.2);
-      drawGlyphLine(context, 0.7, -1.4, 5.5, -6.2);
-      break;
-    case "horizontal":
-      drawGlyphLine(context, -5.4, 0, 5.4, 0);
-      drawGlyphLine(context, -2.5, -2.7, 2.5, -2.7);
-      break;
-    case "vertical":
-      drawGlyphLine(context, 0, -5.4, 0, 5.4);
-      drawGlyphLine(context, 2.7, -2.5, 2.7, 2.5);
-      break;
-    case "perpendicular":
-      drawGlyphLine(context, -4.6, 4.3, -4.6, -4.3);
-      drawGlyphLine(context, -4.6, 4.3, 4.6, 4.3);
-      drawGlyphLine(context, -1.6, 4.3, -1.6, 1.3);
-      drawGlyphLine(context, -4.6, 1.3, -1.6, 1.3);
-      break;
-    case "equal":
-      drawGlyphLine(context, -4.7, -2, 4.7, -2);
-      drawGlyphLine(context, -4.7, 2, 4.7, 2);
-      break;
-    case "midpoint":
-      drawGlyphLine(context, -5, 0, 5, 0);
-      context.beginPath();
-      context.moveTo(0, -4.5);
-      context.lineTo(4, 3.2);
-      context.lineTo(-4, 3.2);
-      context.closePath();
-      context.stroke();
-      break;
-    case "fix":
-      drawGlyphLine(context, 0, -5.2, 0, 1.8);
-      drawGlyphLine(context, -4.2, 1.8, 4.2, 1.8);
-      drawGlyphLine(context, -2.7, 4.8, 2.7, 4.8);
-      drawGlyphLine(context, -2.2, 1.8, -2.7, 4.8);
-      drawGlyphLine(context, 2.2, 1.8, 2.7, 4.8);
-      break;
-    default:
-      break;
-  }
-
+  context.stroke(shape.outline);
+  if (shape.fill) context.fill(shape.fill);
   context.restore();
-}
-
-function drawCircleIcon(context, x, y, radius) {
-  context.beginPath();
-  context.arc(x, y, radius, 0, Math.PI * 2);
-  context.stroke();
-}
-
-function drawGlyphLine(context, x1, y1, x2, y2) {
-  context.beginPath();
-  context.moveTo(x1, y1);
-  context.lineTo(x2, y2);
-  context.stroke();
 }
 
 export function getConstraintGlyphIcon(kind) {
