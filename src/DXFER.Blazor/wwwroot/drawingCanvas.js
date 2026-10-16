@@ -10948,11 +10948,11 @@ function applyPreviewEllipsePointDrag(entity, normalizedLabel, delta, dragEnd) {
   if (normalizedLabel === "start"
     || normalizedLabel === "end"
     || normalizedLabel === "quadrant-0") {
-    return setPreviewEllipseMajorAxis(entity, subtractPoints(dragEnd, center), ellipse.minorRadiusRatio);
+    return setPreviewEllipseMajorAxis(entity, subtractPoints(dragEnd, center), ellipse.majorLength * ellipse.minorRadiusRatio);
   }
 
   if (normalizedLabel === "quadrant-180") {
-    return setPreviewEllipseMajorAxis(entity, subtractPoints(center, dragEnd), ellipse.minorRadiusRatio);
+    return setPreviewEllipseMajorAxis(entity, subtractPoints(center, dragEnd), ellipse.majorLength * ellipse.minorRadiusRatio);
   }
 
   if (normalizedLabel === "quadrant-90" || normalizedLabel === "quadrant-270") {
@@ -10968,8 +10968,11 @@ function applyPreviewEllipsePointDrag(entity, normalizedLabel, delta, dragEnd) {
   return false;
 }
 
-function setPreviewEllipseMajorAxis(entity, majorAxisEndPoint, minorRadiusRatio) {
-  if (Math.hypot(majorAxisEndPoint.x, majorAxisEndPoint.y) <= WORLD_GEOMETRY_TOLERANCE) {
+function setPreviewEllipseMajorAxis(entity, majorAxisEndPoint, minorLength) {
+  const majorLength = Math.hypot(majorAxisEndPoint.x, majorAxisEndPoint.y);
+  const minorRadiusRatio = minorLength / majorLength;
+  if (!Number.isFinite(majorLength) || majorLength <= WORLD_GEOMETRY_TOLERANCE
+    || !Number.isFinite(minorRadiusRatio) || minorRadiusRatio <= WORLD_GEOMETRY_TOLERANCE) {
     return false;
   }
 

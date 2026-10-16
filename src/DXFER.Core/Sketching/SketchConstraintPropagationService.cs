@@ -826,6 +826,9 @@ internal static class SketchConstraintPropagationService
                 case CircleEntity circle:
                     yield return new SketchReference(circle.Id.Value, SketchReferenceTarget.Center);
                     break;
+                case EllipseEntity ellipse:
+                    yield return new SketchReference(ellipse.Id.Value, SketchReferenceTarget.Center);
+                    break;
                 case ArcEntity arc:
                     yield return new SketchReference(arc.Id.Value, SketchReferenceTarget.Start);
                     yield return new SketchReference(arc.Id.Value, SketchReferenceTarget.End);

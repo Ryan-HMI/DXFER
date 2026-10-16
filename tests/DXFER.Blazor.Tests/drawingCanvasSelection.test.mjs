@@ -3567,7 +3567,7 @@ test("geometry drag preview updates ellipse major and minor handles", () => {
     { x: 6, y: 0 });
 
   assert.deepEqual(majorPreview.entities[0].majorAxisEndPoint, { x: 6, y: 0 });
-  assert.equal(majorPreview.entities[0].minorRadiusRatio, 0.5);
+  assert.equal(majorPreview.entities[0].minorRadiusRatio, 2 / 6);
 
   const minorPreview = applyGeometryDragPreview(
     document,

@@ -98,6 +98,9 @@ internal static class SketchGeometryEditor
             case ArcEntity arc when reference.Target == SketchReferenceTarget.Center:
                 point = arc.Center;
                 return true;
+            case EllipseEntity ellipse when reference.Target == SketchReferenceTarget.Center:
+                point = ellipse.Center;
+                return true;
             case PolygonEntity polygon when reference.Target == SketchReferenceTarget.Center:
                 point = polygon.Center;
                 return true;
@@ -159,6 +162,9 @@ internal static class SketchGeometryEditor
                 return true;
             case ArcEntity arc when reference.Target == SketchReferenceTarget.Center:
                 entities[index] = arc with { Center = point };
+                return true;
+            case EllipseEntity ellipse when reference.Target == SketchReferenceTarget.Center:
+                entities[index] = ellipse with { Center = point };
                 return true;
             case PolygonEntity polygon when reference.Target == SketchReferenceTarget.Center:
                 entities[index] = polygon with { Center = point };

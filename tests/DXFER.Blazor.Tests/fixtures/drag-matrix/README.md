@@ -3,6 +3,16 @@
 Native DXF files generated with `DxfDocumentWriter` and `IncludeNativeDocument: true`.
 All coordinates and dimensions are inches. No manufacturing artifacts are used.
 
+- `ellipse-major-free` / `ellipse-minor-free`: center(0,0), stored major vector
+  (4,0), ratio0.5, Fix center and drive only the opposite diameter (minor4 or
+  major8). Drag major grip(4,0)->(6,0) or minor grip(0,2)->(0,3): the opposite
+  axis and center stay unchanged. `*-locked` additionally drives the edited
+  diameter and refuses. After native reopen, collapse toward center refuses;
+  retry major5 or minor5 succeeds (minor5 crosses the stored major4).
+- `ellipse-weld-free` / `ellipse-weld-fixed`: same ellipse center welded to
+  line start(0,0), end(-2,0). Center drag to(1,1) moves both references, or
+  refuses if line:start is Fixed. Native reopen permits a second free drag.
+
 - `arc-weld-free` / `arc-weld-fixed`: arc center(0,0), R3, angles0/90,
   driving radius3/sweep90, end welded to line(0,3)-(-2,3). Drag end to(1,4):
   free arc translates center to(1,1) with welded line start(1,4), retaining

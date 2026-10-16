@@ -1044,7 +1044,7 @@ public sealed class SketchGeometryDragServiceTests
 
         var ellipse = next.Entities.Should().ContainSingle().Which.Should().BeOfType<EllipseEntity>().Subject;
         ellipse.MajorAxisEndPoint.Should().Be(new Point2(6, 0));
-        ellipse.MinorRadiusRatio.Should().Be(0.5);
+        ellipse.MinorRadiusRatio.Should().BeApproximately(2.0 / 6.0, 1e-8);
     }
 
     [Fact]

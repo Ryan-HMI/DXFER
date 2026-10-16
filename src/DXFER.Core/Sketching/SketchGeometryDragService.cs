@@ -2117,13 +2117,21 @@ public static class SketchGeometryDragService
 
         if (TryGetDraggedEllipseMajorAxis(ellipse, label, targetPoint, dragEnd, out var majorAxis))
         {
-            if (SketchGeometryEditor.Distance(new Point2(0, 0), majorAxis) <= SketchGeometryEditor.Tolerance)
+            var nextMajorLength = SketchGeometryEditor.Distance(new Point2(0, 0), majorAxis);
+            if (!double.IsFinite(nextMajorLength) || nextMajorLength <= SketchGeometryEditor.Tolerance)
             {
                 status = "Ellipse major axis must stay positive.";
                 return false;
             }
 
-            entities[entityIndex] = ellipse with { MajorAxisEndPoint = majorAxis };
+            // An axis grip edits one diameter, not the ratio-coupled size of both axes.
+            var nextRatio = majorLength * ellipse.MinorRadiusRatio / nextMajorLength;
+            if (!double.IsFinite(nextRatio) || nextRatio <= SketchGeometryEditor.Tolerance)
+            {
+                status = "Ellipse minor axis must stay positive.";
+                return false;
+            }
+            entities[entityIndex] = ellipse with { MajorAxisEndPoint = majorAxis, MinorRadiusRatio = nextRatio };
             status = "Changed ellipse major axis.";
             return true;
         }

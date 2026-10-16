@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261015-arc-endpoint-direction";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261015-independent-axis-drags";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;

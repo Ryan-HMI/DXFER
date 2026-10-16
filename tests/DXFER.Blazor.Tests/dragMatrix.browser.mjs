@@ -36,7 +36,7 @@ try {
         await expect(canvas).not.toHaveAttribute('data-entity-count','0');
         await page.getByRole('button',{name:'Fit extents',exact:true}).click();
         await page.waitForTimeout(120);
-        if(name.startsWith('arc-')) {
+        if(name.startsWith('arc-') || name.startsWith('ellipse-')) {
             const rect=await canvas.boundingBox();
             await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);
             await page.mouse.wheel(0,500);await page.waitForTimeout(180);
@@ -76,7 +76,56 @@ try {
         await page.screenshot({path:`${output}/${label}-released.png`});
         return preview;
     };
-    if(process.env.DXFER_MATRIX_ONLY_SPLINE || process.env.DXFER_MATRIX_ONLY_DIAGNOSTICS || process.env.DXFER_MATRIX_ONLY_ARC) process.env.DXFER_MATRIX_ONLY_CLICKED='1';
+    if(process.env.DXFER_MATRIX_ONLY_SPLINE || process.env.DXFER_MATRIX_ONLY_DIAGNOSTICS || process.env.DXFER_MATRIX_ONLY_ARC || process.env.DXFER_MATRIX_ONLY_ELLIPSE) process.env.DXFER_MATRIX_ONLY_CLICKED='1';
+    if(!process.env.DXFER_MATRIX_ONLY_CLICKED || process.env.DXFER_MATRIX_ONLY_ELLIPSE) {
+        const ellipsePaint=(a,b)=>({points:[0.6,2.2,4.1].map(t=>[a*Math.cos(t),b*Math.sin(t)])});
+        for(const locked of [false,true]) {
+            const name=locked?'ellipse-weld-fixed':'ellipse-weld-free';
+            await load(name);const original=snapshot(await download());
+            const paint=ellipsePaint(4,2);if(!locked)paint.points=paint.points.map(([x,y])=>[x+1,y+1]);
+            await drag([0,0],[1,1],name,paint);
+            const file=await download(),next=snapshot(file);
+            if(locked) {
+                assert.deepEqual(next.entities,original.entities);
+                await expect(page.getByRole('button',{name:'Undo',exact:true})).toBeDisabled();
+            } else {
+                close(next.entities[0].center.x,1);close(next.entities[0].center.y,1);
+                close(next.entities[1].start.x,1);close(next.entities[1].start.y,1);
+                await page.getByRole('button',{name:'Undo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,original.entities);
+                await page.getByRole('button',{name:'Redo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,next.entities);
+                await load(`${name}-reopen`,file);assert.deepEqual(snapshot(await download()).entities,next.entities);
+                await drag([1,1],[2,2],`${name}-reedit`,{points:ellipsePaint(4,2).points.map(([x,y])=>[x+2,y+2])});
+                const edited=snapshot(await download());close(edited.entities[0].center.x,2);close(edited.entities[1].start.y,2);
+            }
+            console.log('PASS ellipse center weld preview/release/history/native reopen:',name);
+        }
+        for(const major of [false,true])for(const locked of [false,true]) {
+            const name=`ellipse-${major?'major':'minor'}-${locked?'locked':'free'}`;
+            await load(name);const original=snapshot(await download());
+            const from=major?[4,0]:[0,2],to=major?[6,0]:[0,3];
+            await drag(from,to,name,ellipsePaint(major&&!locked?6:4,!major&&!locked?3:2));
+            const file=await download(),next=snapshot(file);
+            assert.deepEqual(next.dimensions,original.dimensions);assert.deepEqual(next.entities[0].center,original.entities[0].center);
+            if(locked) {
+                assert.deepEqual(next.entities,original.entities);
+                await expect(page.getByRole('button',{name:'Undo',exact:true})).toBeDisabled();
+                console.log('PASS fixed-center both-axis driving refusal:',name);continue;
+            }
+            close(next.entities[0].majorAxisEndPoint.x,major?6:4);
+            close(next.entities[0].majorAxisEndPoint.x*next.entities[0].minorRadiusRatio,major?2:3);
+            await page.getByRole('button',{name:'Undo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,original.entities);
+            await page.getByRole('button',{name:'Redo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,next.entities);
+            await load(`${name}-reopen`,file);assert.deepEqual(snapshot(await download()).entities,next.entities);
+            await drag(to,[0,0],`${name}-degenerate`,ellipsePaint(major?6:4,major?2:3));
+            assert.deepEqual(snapshot(await download()).entities,next.entities);
+            await expect(page.getByRole('button',{name:'Undo',exact:true})).toBeDisabled();
+            await drag(to,major?[5,0]:[0,5],`${name}-recovery`,ellipsePaint(major?5:4,major?2:5));
+            const recovered=snapshot(await download());close(recovered.entities[0].majorAxisEndPoint.x,major?5:4);
+            close(recovered.entities[0].majorAxisEndPoint.x*recovered.entities[0].minorRadiusRatio,major?2:5);
+            assert.deepEqual(recovered.dimensions,original.dimensions);
+            console.log('PASS independent ellipse axis preview/release, degenerate refusal, recovery/history/native reopen:',name);
+        }
+    }
     if(!process.env.DXFER_MATRIX_ONLY_CLICKED || process.env.DXFER_MATRIX_ONLY_ARC) {
         const arcPaint=(x,y,end=90)=>({points:[end/3,end*2/3].map(a=>[x+3*Math.cos(a*Math.PI/180),y+3*Math.sin(a*Math.PI/180)])});
         for(const locked of [false,true]) {
