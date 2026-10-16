@@ -16,6 +16,9 @@ All coordinates and dimensions are inches. No manufacturing artifacts are used.
   poly:start -> point. Drag edge:end toward (13,3): line translates to
   (3,3)-(13,3), both welded references follow to (13,3).
 - `weld-fixed`: same, with Fix point. Drag edge:end toward (13,3) must refuse.
+- `poly-clicks-corrupt`: saved vertices (0,0),(10,2),(10,6), driving length10
+  with original clicked-vertex coordinates in its references. Reopen must show
+  an unsatisfied dimension without changing geometry or driving intent.
 
 `dragMatrix.browser.mjs` drives actual mouse preview/release, compares preview
 endpoints with exported native geometry, tests Undo/Redo, downloads/reopens,

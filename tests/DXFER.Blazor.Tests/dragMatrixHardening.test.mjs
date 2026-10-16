@@ -5,6 +5,19 @@ const p=(x,y)=>({x,y});
 const c=(id,kind,...referenceKeys)=>({id,kind,referenceKeys,state:'satisfied'});
 const d=(kind,first,second)=>({id:'dimension',kind,referenceKeys:[first,second],value:10,isDriving:true,anchor:p(5,-2)});
 const line={id:'edge',kind:'line',points:[p(0,0),p(10,0)]};
+test('clicked polyline vertices retain driving length with stale coordinate suffixes',()=>{
+    const original={entities:[{id:'poly',kind:'polyline',points:[p(0,0),p(10,0),p(10,6)]}],
+        dimensions:[d('linearDistance','poly|point|vertex-0|0|0','poly|point|vertex-1|10|0')],constraints:[]};
+    const next=applyGeometryDragPreview(original,'poly|point|vertex-1|10|0',p(10,0),p(10,2));
+    assert.ok(next);assert.deepEqual(next.entities[0].points,[p(0,2),p(10,2),p(10,8)]);
+    const again=applyGeometryDragPreview(next,'poly|point|vertex-1|10|2',p(10,2),p(11,4));
+    assert.ok(again);assert.deepEqual(again.entities[0].points,[p(1,4),p(11,4),p(11,10)]);
+});
+test('missing clicked polyline vertex refuses rather than measuring the saved coordinates',()=>{
+    const original={entities:[{id:'poly',kind:'polyline',points:[p(0,0),p(10,0),p(10,6)]}],
+        dimensions:[d('linearDistance','poly|point|vertex-0|0|0','poly|point|vertex-9|10|0')],constraints:[]};
+    assert.equal(applyGeometryDragPreview(original,'poly|point|vertex-1|10|0',p(10,0),p(10,2)),null);
+});
 for(const fixed of [false,true])test(`DRAG-LINE-002 perpendicular preview with fixed start=${fixed}`,()=>{
     const original={entities:[line],dimensions:[d('linearDistance','edge:start','edge:end')],constraints:fixed?[c('fix','fix','edge:start')]:[]};
     const copy=structuredClone(original);

@@ -7,6 +7,37 @@ namespace DXFER.Core.Tests.Sketching;
 
 public sealed class DragMatrixHardeningTests
 {
+    [Fact]
+    public void ClickedPolylineVertexDimensionMeasuresLiveGeometryNotStoredCoordinates()
+    {
+        var dimension = Dimension("length", SketchDimensionKind.LinearDistance,
+            "poly|point|vertex-0|0|0", "poly|point|vertex-1|10|0", 10);
+        var invalid = new DrawingDocument(new DrawingEntity[] {
+            new PolylineEntity(EntityId.Create("poly"), new[] { new Point2(0, 0), new(10, 2), new(10, 6) }) }, new[] { dimension }, Array.Empty<SketchConstraint>());
+        SketchDimensionSolverService.IsDimensionSatisfied(invalid, dimension).Should().BeFalse();
+    }
+
+    [Fact]
+    public void ClickedPolylineLengthSurvivesDragAndRepeatedDimensionEdit()
+    {
+        var dimension = Dimension("length", SketchDimensionKind.LinearDistance,
+            "poly|point|vertex-0|0|0", "poly|point|vertex-1|10|0", 10);
+        var original = new DrawingDocument(new DrawingEntity[] {
+            new PolylineEntity(EntityId.Create("poly"), new[] { new Point2(0, 0), new(10, 0), new(10, 6) }) }, new[] { dimension }, Array.Empty<SketchConstraint>());
+        SketchGeometryDragService.TryApplyDrag(original, "poly|point|vertex-1|10|0", new(10, 0), new(10, 2), false,
+            out var next, out var status).Should().BeTrue(status);
+        ((PolylineEntity)next.Entities[0]).Vertices.Should().Equal(new Point2(0, 2), new(10, 2), new(10, 8));
+        foreach (var value in new[] { 12d, 9d })
+        {
+            var edited = Dimension("length", SketchDimensionKind.LinearDistance, dimension.ReferenceKeys[0], dimension.ReferenceKeys[1], value);
+            next = SketchDimensionSolverService.ApplyDimension(next, edited);
+            SketchDimensionSolverService.TryGetDimensionMeasurement(next, edited, out var measured).Should().BeTrue();
+            measured.Should().BeApproximately(value, 1e-8);
+            var vertices = ((PolylineEntity)next.Entities[0]).Vertices;
+            Math.Sqrt(Math.Pow(vertices[1].X - vertices[0].X, 2) + Math.Pow(vertices[1].Y - vertices[0].Y, 2)).Should().BeApproximately(value, 1e-8);
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

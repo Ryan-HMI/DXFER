@@ -42,7 +42,7 @@ For every entity and grip, classify the requested drag into allowed degrees of f
 | DRAG-LINE-001 | Drag endpoint of a line with a driving length dimension in the length-changing direction. | Length remains satisfied; blocked component translates the line and its dimension anchor or fails without geometry corruption if another constraint fixes translation. | APP-VERIFIED: core focused test passed, canvas preview test passed, rebuilt app verified line `605,418 -> 845,418` shifted to `701,418 -> 941,418`, dimension value stayed `10`, and dimension input anchor moved from `left: 725px` to `left: 821px`. |
 | DRAG-LINE-002 | Drag endpoint of a line with a driving length dimension perpendicular to the current line and no angle constraint. | Solver chooses a valid dimension-preserving movement and paints no false failed state. | APP-VERIFIED bounded free translation/fixed-start rotation, preview/release/history/native reopen/reedit. See anchored-and-welded-drag-2026-10-15.md. |
 | DRAG-DIM-002 | Drag a line constrained by a driving point-to-line/parallel-line distance along the free parallel direction. | The selected line moves only along the free direction, the distance remains satisfied, and the dimension anchor travels with the referenced entity. | AUTO-PASSED: core and canvas-preview focused tests passed. |
-| DRAG-POLYLINE-001 | Drag one vertex of a partially dimensioned polyline segment. | Only allowed free geometry changes; constrained dimension component stays satisfied. | APP-VERIFIED open three-vertex polyline, driving width 10, fixed first/last vertices. Closed aliases/coupled dimensions not covered. |
+| DRAG-POLYLINE-001 | Drag one vertex of a partially dimensioned polyline segment. | Only allowed free geometry changes; constrained dimension component stays satisfied. | APP-VERIFIED bounded horizontal-width/fixed-endpoint fixture AND actual toolbar-created LinearDistance 10 L-shape, history/native reopen/reedit. Stale click-coordinate validation fixed; old corrupted fixture shows failure without auto-repair. Closed aliases/coupled dimensions remain open. |
 | DRAG-POLYGON-001 | Drag a dimensioned polygon center, midpoint, and whole entity. | Polygon translates, radius/count dimensions remain satisfied, anchors travel. | PARTIAL |
 | DRAG-CIRCLE-001 | Drag a dimensioned circle center and circumference. | Center drag translates with dimensions; circumference drag changes radius only when driving dimensions allow it. | PARTIAL AUTO-PASSED: circumference drag with a driving radius dimension translates the circle and dimension anchor while preserving radius. |
 | DRAG-ARC-001 | Drag dimensioned arc endpoint and perimeter. | Radius/sweep changes only when driving dimensions and constraints allow them. | PARTIAL AUTO-PASSED: endpoint drag against a driving arc sweep dimension translates the arc and dimension anchor instead of breaking the sweep. |
@@ -58,3 +58,8 @@ Prior PowerTrim driving-value protection is accepted independently on reported
 `0eca667`: Trim/Extend/Split driving 10 refuse unchanged/no Undo; reference
 fixtures update measurements, with history/native reopen and clean DXF audits.
 That acceptance is retained, not put back on the open drag backlog.
+
+The next Equal/Midpoint/Tangent + Fixed results and concrete fixtures are in
+`live-polyline-references-2026-10-15.md`. Fixed-midpoint symmetric endpoint
+recovery is currently unsupported, not mathematically inconsistent. Do not mark
+that limitation passed merely because refusal preserves geometry.

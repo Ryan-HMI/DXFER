@@ -690,6 +690,12 @@ public static class SketchDimensionSolverService
             return true;
         }
 
+        if (entity is PolylineEntity polyline)
+        {
+            // Missing/deleted indexed vertices must not validate against old click coordinates.
+            return SketchReferenceResolver.TryGetPolylineCanvasPoint(polyline, label, out point);
+        }
+
         point = storedPoint;
         return true;
     }

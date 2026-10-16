@@ -155,6 +155,16 @@ public readonly record struct SketchReference
 
         var tail = key[(separatorIndex + CanvasPointSeparator.Length)..];
         var parts = tail.Split('|', StringSplitOptions.RemoveEmptyEntries);
+        // Vertex identity survives movement; the coordinates in a canvas key do not.
+        if (parts.Length > 0 && parts[0].StartsWith("vertex-", StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(parts[0][7..], NumberStyles.None, CultureInfo.InvariantCulture, out var vertexIndex)
+            && vertexIndex >= 0)
+        {
+            reference = vertexIndex == 0
+                ? new SketchReference(entityId, SketchReferenceTarget.Start, 0)
+                : new SketchReference(entityId, SketchReferenceTarget.End, vertexIndex - 1);
+            return true;
+        }
         if (parts.Length == 0 || !TryParsePointTarget(parts[0], out var target))
         {
             reference = default;

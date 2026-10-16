@@ -13441,6 +13441,14 @@ export function getSketchDiagnosticEntityIds(document) {
 function resolveSketchReferencePoint(state, referenceKey) {
   const pointTarget = parsePointTargetKey(state, String(referenceKey || ""));
   if (pointTarget) {
+    if (getEntityKind(pointTarget.entity) === "polyline") {
+      const label = /^(vertex|mid)-(\d+)$/i.exec(pointTarget.label);
+      const points = getEntityPoints(pointTarget.entity);
+      if (!label) return null;
+      const index = Number(label[2]), isMidpoint = label[1].toLowerCase() === "mid";
+      if (!Number.isSafeInteger(index) || index < 0 || index >= points.length - (isMidpoint ? 1 : 0)) return null;
+      return isMidpoint ? midpoint(points[index], points[index + 1]) : points[index];
+    }
     return pointTarget.point;
   }
 
@@ -13654,6 +13662,11 @@ function parseSketchReference(referenceKey) {
     const entityId = key.slice(0, pointSeparatorIndex);
     const tail = key.slice(pointSeparatorIndex + POINT_KEY_SEPARATOR.length);
     const label = tail.split("|")[0] || "";
+    const vertex = /^vertex-(\d+)$/i.exec(label);
+    if (vertex && Number.isSafeInteger(Number(vertex[1]))) {
+      const index = Number(vertex[1]);
+      return { entityId, segmentIndex: Math.max(0, index - 1), target: index === 0 ? "start" : "end" };
+    }
     return {
       entityId,
       target: normalizeSketchReferenceTarget(label)

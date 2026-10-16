@@ -56,7 +56,7 @@ try {
         await page.screenshot({path:`${output}/${label}-released.png`});
         return preview;
     };
-    for(const name of ['line-fixed','weld-fixed','line-free','line-anchor','poly-anchor','weld-free']) {
+    for(const name of (process.env.DXFER_MATRIX_ONLY_CLICKED ? [] : ['line-fixed','weld-fixed','line-free','line-anchor','poly-anchor','weld-free'])) {
         await load(name);
         const original=snapshot(await download());
         const blocked=name.endsWith('fixed');
@@ -88,6 +88,44 @@ try {
         const edited=snapshot(await download());assert.notDeepEqual(edited.entities,after.entities);assert.equal(edited.dimensions[0].value,10);
         console.log('PASS preview/release, history, native reopen and reedit:',name);
     }
+    const rawPolyline=[0,'SECTION',2,'HEADER',9,'$ACADVER',1,'AC1015',9,'$INSUNITS',70,1,0,'ENDSEC',
+        0,'SECTION',2,'ENTITIES',0,'LWPOLYLINE',8,0,90,3,70,0,10,0,20,0,10,10,20,0,10,10,20,6,0,'ENDSEC',0,'EOF'].join('\n');
+    await load('poly-clicks',rawPolyline);
+    await page.getByRole('button',{name:'Dimension',exact:true}).click();
+    await expect(canvas).toHaveAttribute('data-active-tool','dimension');
+    await page.waitForTimeout(200);
+    await page.getByRole('button',{name:'Fit extents',exact:true}).click();await page.waitForTimeout(150);
+    for(const position of [[0,0],[10,0],[5,2]]){const p=await screen(position);await page.mouse.click(p.x,p.y);await page.waitForTimeout(100);}
+    await page.screenshot({path:`${output}/poly-clicks-dimension-create.png`});
+    await page.keyboard.press('Escape');
+    const clicked=snapshot(await download());
+    assert.equal(clicked.dimensions.length,1);
+    const dimension=clicked.dimensions[0];assert.equal(dimension.kind,'LinearDistance');assert.equal(dimension.isDriving,true);close(dimension.value,10);
+    assert.ok(dimension.referenceKeys.every(k=>k.includes('|point|vertex-')),'must test UI-created canvas references');
+    const preview=await drag([10,0],[10,2],'poly-clicks');
+    const movedFile=await download(),moved=snapshot(movedFile),vertices=moved.entities[0].vertices;
+    close(Math.hypot(vertices[1].x-vertices[0].x,vertices[1].y-vertices[0].y),10);
+    for(let i=0;i<2;i++){close(vertices[i].x,preview[i].x);close(vertices[i].y,preview[i].y);}
+    assert.equal(moved.dimensions[0].value,10);
+    await page.getByRole('button',{name:'Undo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,clicked.entities);
+    await page.getByRole('button',{name:'Redo',exact:true}).click();assert.deepEqual(snapshot(await download()).entities,moved.entities);
+    await load('poly-clicks-reopened',movedFile);
+    for(const value of [12,9]) {
+        const input=page.locator(`[data-dimension-id="${dimension.id}"]`);
+        await input.fill(String(value));await input.press('Enter');await page.waitForTimeout(150);
+        const edited=snapshot(await download()),p=edited.entities[0].vertices;
+        close(Math.hypot(p[1].x-p[0].x,p[1].y-p[0].y),value);
+        assert.equal(edited.dimensions[0].id,dimension.id);assert.deepEqual(edited.dimensions[0].referenceKeys,dimension.referenceKeys);
+        await expect(input).not.toHaveClass(/unsatisfied/);
+    }
+    console.log('PASS actual toolbar-created polyline LinearDistance: preview/release, history, native reopen, same-ID edits 10->12->9');
+    await load('poly-clicks-corrupt');
+    await expect(page.locator('[data-dimension-id="length"]')).toHaveClass(/unsatisfied/);
+    const corrupt=snapshot(await download());
+    assert.deepEqual(corrupt.entities[0].vertices,[{x:0,y:0},{x:10,y:2},{x:10,y:6}]);
+    assert.equal(corrupt.dimensions[0].value,10);
+    await expect(page.getByRole('button',{name:'Undo',exact:true})).toBeDisabled();
+    console.log('PASS previously corrupted native drawing: visible unsatisfied dimension, no automatic geometry repair');
     assert.deepEqual(errors,[]);
     console.log('Build:',await page.locator('.app-brand').getAttribute('title'));
 } finally {await browser.close();}

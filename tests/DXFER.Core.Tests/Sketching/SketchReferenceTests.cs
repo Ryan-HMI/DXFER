@@ -21,6 +21,9 @@ public sealed class SketchReferenceTests
     [InlineData("poly-a|segment|1", "poly-a|segment|1", SketchReferenceTarget.Entity)]
     [InlineData("poly-a|segment|1:start", "poly-a|segment|1:start", SketchReferenceTarget.Start)]
     [InlineData("poly-a|segment|1:end", "poly-a|segment|1:end", SketchReferenceTarget.End)]
+    [InlineData("poly-a|point|vertex-0|0|0", "poly-a|segment|0:start", SketchReferenceTarget.Start)]
+    [InlineData("poly-a|point|vertex-1|10|0", "poly-a|segment|0:end", SketchReferenceTarget.End)]
+    [InlineData("poly-a|point|vertex-2|10|6", "poly-a|segment|1:end", SketchReferenceTarget.End)]
     public void ParserNormalizesSupportedReferences(string key, string normalized, SketchReferenceTarget target)
     {
         var result = SketchReference.TryParse(key, out var reference);
@@ -86,5 +89,18 @@ public sealed class SketchReferenceTests
 
         result.Should().BeTrue();
         midpoint.Should().Be(new Point2(5, 0));
+    }
+
+    [Theory]
+    [InlineData("vertex-1", 10, 2)]
+    [InlineData("mid-0", 5, 1)]
+    public void PolylineCanvasReferenceUsesCurrentGeometry(string label, double x, double y)
+    {
+        var document = new DrawingDocument(new[] { new PolylineEntity(EntityId.Create("poly"),
+            new[] { new Point2(0, 0), new(10, 2), new(10, 6) }) });
+        SketchReferenceResolver.TryGetPoint(document, $"poly|point|{label}|999|999", out var point).Should().BeTrue();
+        point.Should().Be(new Point2(x, y));
+        SketchReferenceResolver.TryGetPoint(document, "poly|point|vertex-99|10|0", out _).Should().BeFalse();
+        SketchReferenceResolver.TryGetPoint(document, "poly|point|mid-99|10|0", out _).Should().BeFalse();
     }
 }
