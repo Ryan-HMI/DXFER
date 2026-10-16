@@ -1004,7 +1004,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private void OnToolCommitRequested(
         string toolName,
         IReadOnlyList<CanvasPointDto> points,
-        IReadOnlyDictionary<string, double> dimensionValues)
+        IReadOnlyDictionary<string, double> dimensionValues,
+        string? tangentReferenceKey)
     {
         var toolPoints = points.Select(ToPoint).ToArray();
         var newEntities = CreateEntitiesForTool(toolName, toolPoints, dimensionValues).ToArray();
@@ -1022,14 +1023,45 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             toolName,
             _document.Entities,
             newEntities,
-            CreateConstraintId);
+            CreateConstraintId,
+            tangentReferenceKey);
+
+        if (tangentReferenceKey is not null
+            && (NormalizeToolName(toolName) != "centercircle"
+                || !newConstraints.Any(constraint => constraint.Kind == SketchConstraintKind.Tangent)))
+        {
+            _status = "Circle tangent snap no longer matches valid geometry. Geometry unchanged.";
+            _solveFailureStatus = _status;
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
 
         var nextDocument = new DrawingDocument(
             _document.Entities.Concat(newEntities),
             _document.Dimensions.Concat(newDimensions),
             _document.Constraints,
             _document.Metadata);
-        if (newConstraints.Count > 0)
+        if (tangentReferenceKey is not null)
+        {
+            // Explicit creation snaps describe geometry already constructed, not permission
+            // to reposition an existing peer or revise its driving dimensions while solving.
+            var constraints = newConstraints
+                .Select(constraint => SketchConstraintService.ValidateConstraint(nextDocument, constraint)).ToArray();
+            nextDocument = new DrawingDocument(nextDocument.Entities, nextDocument.Dimensions,
+                _document.Constraints.Concat(constraints), nextDocument.Metadata);
+            var protectedDimensions = newDimensions.Concat(_document.Dimensions.Where(dimension => dimension.IsDriving
+                && SketchDimensionSolverService.IsDimensionSatisfied(_document, dimension)));
+            if (constraints.Any(constraint => constraint.State == SketchConstraintState.Unsatisfied)
+                || protectedDimensions.Any(dimension => dimension.IsDriving
+                    && !SketchDimensionSolverService.IsDimensionSatisfied(nextDocument, dimension)))
+            {
+                _status = "Circle tangent snap could not preserve existing constraints and driving dimensions. Geometry unchanged.";
+                _solveFailureStatus = _status;
+                _ = InvokeAsync(StateHasChanged);
+                return;
+            }
+        }
+        else if (newConstraints.Count > 0)
         {
             nextDocument = SolveSketchChange(
                 nextDocument,

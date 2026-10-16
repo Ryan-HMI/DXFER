@@ -63,7 +63,7 @@ public partial class DrawingCanvas : IAsyncDisposable
     public Action<string?>? ActiveSelectionChanged { get; set; }
 
     [Parameter]
-    public Action<string, IReadOnlyList<CanvasPointDto>, IReadOnlyDictionary<string, double>>? ToolCommitRequested { get; set; }
+    public Action<string, IReadOnlyList<CanvasPointDto>, IReadOnlyDictionary<string, double>, string?>? ToolCommitRequested { get; set; }
 
     [Parameter]
     public Action<string>? ToolModeChanged { get; set; }
@@ -259,7 +259,8 @@ public partial class DrawingCanvas : IAsyncDisposable
         string toolName,
         double[] coordinates,
         string[]? dimensionKeys = null,
-        double[]? dimensionValues = null)
+        double[]? dimensionValues = null,
+        string? tangentReferenceKey = null)
     {
         var points = new List<CanvasPointDto>();
         for (var index = 0; index + 1 < coordinates.Length; index += 2)
@@ -267,7 +268,7 @@ public partial class DrawingCanvas : IAsyncDisposable
             points.Add(new CanvasPointDto(coordinates[index], coordinates[index + 1]));
         }
 
-        ToolCommitRequested?.Invoke(toolName, points, BuildDimensionLocks(dimensionKeys, dimensionValues));
+        ToolCommitRequested?.Invoke(toolName, points, BuildDimensionLocks(dimensionKeys, dimensionValues), tangentReferenceKey);
         return Task.CompletedTask;
     }
 
