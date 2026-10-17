@@ -37,3 +37,16 @@ Near-but-distinct endpoints are deliberately not welded.
 
 This closes only the reproduced alias cases, not every coupled polyline solve.
 Independent Flux QA and Ryan acceptance remain separate from owner verification.
+
+## Installed verification
+
+Dev deployed `d8e284e3aa14a84b6beb61486fb7b85928dc3cb7` at
+2026-10-17 18:36 UTC. The public browser independently reports build `d8e284e`.
+All three fixtures pass against that endpoint, including held preview, release,
+closure, history and native reopen/reedit (or Fixed refusal without Undo).
+All five downloaded fixture files audit with zero DXF errors or fixes.
+The eight spline-weld browser fixtures also pass on this installed build;
+their twelve exported files audit with zero errors or fixes.
+Public health returns 200 and anonymous root returns 302 to normal sign-in.
+Sync callbacks remain disabled. Production/Test were not deployment targets.
+Rollback publish is `dev-publish-before-d8e284e`.
