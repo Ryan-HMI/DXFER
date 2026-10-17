@@ -8689,9 +8689,14 @@ function getAnchoredDimensionPreview(originalDocument, editCandidate, selectionK
     if (kind === "line") return !Number.isInteger(reference.segmentIndex)
       && ["start", "end"].includes(grip.label) && reference.target === grip.label;
     const vertex = /^vertex-(\d+)$/.exec(grip.label);
-    return vertex && Number.isInteger(reference.segmentIndex)
-      && ["start", "end"].includes(reference.target)
-      && reference.segmentIndex + (reference.target === "end" ? 1 : 0) === Number(vertex[1]);
+    if (!vertex || !Number.isInteger(reference.segmentIndex) || !["start", "end"].includes(reference.target)) return false;
+    let selected = Number(vertex[1]), referenced = reference.segmentIndex + (reference.target === "end" ? 1 : 0);
+    const points = getEntityPoints(entity);
+    if (points.length > 2 && points[0].x === points.at(-1).x && points[0].y === points.at(-1).y) {
+      if (selected === points.length - 1) selected = 0;
+      if (referenced === points.length - 1) referenced = 0;
+    }
+    return referenced === selected;
   };
   const relevant = getDocumentDimensions(originalDocument).filter(dimension => isDrivingPreviewDimension(dimension)
     && getSketchReferenceKeys(dimension).some(key => matches(parseSketchReference(key))));
@@ -10315,6 +10320,16 @@ function getPreviewFixedReferenceKeys(document) {
     }
   }
 
+  for (const entity of getDocumentEntities(document)) {
+    if (getEntityKind(entity) !== "polyline") continue;
+    const points = getEntityPoints(entity);
+    if (points.length < 3 || points[0].x !== points.at(-1).x || points[0].y !== points.at(-1).y) continue;
+    const id = getEntityId(entity), lastIndex = points.length - 2;
+    const first = `${id}|segment|0:start`, last = `${id}|segment|${lastIndex}:end`;
+    if ([first, last, `${id}|segment|0`, `${id}|segment|${lastIndex}`].some(key => fixedReferences.has(key))) {
+      fixedReferences.add(first); fixedReferences.add(last);
+    }
+  }
   return fixedReferences;
 }
 
@@ -10884,6 +10899,17 @@ function getPreviewReferencePoint(document, reference) {
     : null;
 }
 
+function setPreviewPolylineVertex(entity, index, point) {
+  const points = getEntityPoints(entity);
+  if (!Number.isInteger(index) || index < 0 || index >= points.length) return false;
+  const closed = points.length > 2 && points[0].x === points.at(-1).x && points[0].y === points.at(-1).y;
+  points[index] = copyPoint(point);
+  if (closed && index === 0) points[points.length - 1] = copyPoint(point);
+  else if (closed && index === points.length - 1) points[0] = copyPoint(point);
+  entity.points = points;
+  return true;
+}
+
 function setPreviewReferencePoint(document, reference, point) {
   if (reference.entityId === "$origin") return false;
   const entity = findCanvasDocumentEntity(document, reference.entityId);
@@ -10899,15 +10925,12 @@ function setPreviewReferencePoint(document, reference, point) {
     }
 
     if (reference.target === "start") {
-      points[reference.segmentIndex] = copyPoint(point);
+      return setPreviewPolylineVertex(entity, reference.segmentIndex, point);
     } else if (reference.target === "end") {
-      points[reference.segmentIndex + 1] = copyPoint(point);
+      return setPreviewPolylineVertex(entity, reference.segmentIndex + 1, point);
     } else {
       return false;
     }
-
-    entity.points = points;
-    return true;
   }
 
   const kind = getEntityKind(entity);
@@ -10992,10 +11015,8 @@ function setPreviewLineReference(document, reference, line) {
       return false;
     }
 
-    points[reference.segmentIndex] = copyPoint(line.start);
-    points[reference.segmentIndex + 1] = copyPoint(line.end);
-    entity.points = points;
-    return true;
+    return setPreviewPolylineVertex(entity, reference.segmentIndex, line.start)
+      && setPreviewPolylineVertex(entity, reference.segmentIndex + 1, line.end);
   }
 
   if (getEntityKind(entity) !== "line") {
@@ -11242,9 +11263,7 @@ function applyPreviewPointDrag(document, entity, label, delta, dragEnd, constrai
         return false;
       }
 
-      points[vertexIndex] = addWorldPoints(points[vertexIndex], delta);
-      entity.points = points;
-      return true;
+      return setPreviewPolylineVertex(entity, vertexIndex, addWorldPoints(points[vertexIndex], delta));
     }
 
     const segmentIndex = parseIndexedPointLabel(normalizedLabel, "mid-");
@@ -11686,10 +11705,8 @@ function translatePreviewPolylineSegment(document, entityId, segmentIndex, delta
     return false;
   }
 
-  points[segmentIndex] = addWorldPoints(points[segmentIndex], delta);
-  points[segmentIndex + 1] = addWorldPoints(points[segmentIndex + 1], delta);
-  entity.points = points;
-  return true;
+  return setPreviewPolylineVertex(entity, segmentIndex, addWorldPoints(points[segmentIndex], delta))
+    && setPreviewPolylineVertex(entity, segmentIndex + 1, addWorldPoints(points[segmentIndex + 1], delta));
 }
 
 function translatePreviewDimensionAnchorsForDrag(document, selectionKey, delta) {

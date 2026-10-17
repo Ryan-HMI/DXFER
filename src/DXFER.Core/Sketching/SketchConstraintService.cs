@@ -89,7 +89,7 @@ public static class SketchConstraintService
         IEnumerable<SketchConstraint> constraints,
         SketchConstraint constraint)
     {
-        var fixedReferences = SketchFixedReferences.FromConstraints(constraints);
+        var fixedReferences = SketchFixedReferences.FromConstraints(constraints, entities);
 
         switch (constraint.Kind)
         {

@@ -138,9 +138,7 @@ internal static class SketchGeometryEditor
             && TryGetPolylineSegment(entity, reference, out var segmentIndex, out _, out _)
             && reference.Target is SketchReferenceTarget.Start or SketchReferenceTarget.End)
         {
-            var vertices = polyline.Vertices.ToArray();
-            vertices[reference.Target == SketchReferenceTarget.Start ? segmentIndex : segmentIndex + 1] = point;
-            entities[index] = new PolylineEntity(polyline.Id, vertices, polyline.IsConstruction);
+            entities[index] = polyline.WithVertex(reference.Target == SketchReferenceTarget.Start ? segmentIndex : segmentIndex + 1, point);
             return true;
         }
 
@@ -270,10 +268,7 @@ internal static class SketchGeometryEditor
             && entity is PolylineEntity polyline
             && TryGetPolylineSegment(entity, reference, out var segmentIndex, out _, out _))
         {
-            var vertices = polyline.Vertices.ToArray();
-            vertices[segmentIndex] = line.Start;
-            vertices[segmentIndex + 1] = line.End;
-            entities[index] = new PolylineEntity(polyline.Id, vertices, polyline.IsConstruction);
+            entities[index] = polyline.WithVertex(segmentIndex, line.Start).WithVertex(segmentIndex + 1, line.End);
             return true;
         }
 

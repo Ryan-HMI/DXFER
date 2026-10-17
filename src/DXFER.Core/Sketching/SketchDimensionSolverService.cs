@@ -38,7 +38,7 @@ public static class SketchDimensionSolverService
                 originalEntities,
                 entities,
                 document.Constraints,
-                SketchFixedReferences.FromConstraints(document.Constraints));
+                SketchFixedReferences.FromConstraints(document.Constraints, document.Entities));
         }
 
         var dimensions = UpsertDimension(document.Dimensions, effectiveDimension);
@@ -247,7 +247,7 @@ public static class SketchDimensionSolverService
         IReadOnlyList<SketchConstraint> constraints,
         SketchDimension dimension)
     {
-        var fixedReferences = SketchFixedReferences.FromConstraints(constraints);
+        var fixedReferences = SketchFixedReferences.FromConstraints(constraints, entities);
 
         switch (dimension.Kind)
         {

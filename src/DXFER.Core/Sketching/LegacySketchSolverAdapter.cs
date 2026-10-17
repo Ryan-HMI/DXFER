@@ -14,7 +14,7 @@ public sealed class LegacySketchSolverAdapter : ISketchSolver
         var propagatedEntities = constrained.Entities.ToArray();
         SketchConstraintPropagationService.PropagateFromChanges(
             request.Document.Entities, propagatedEntities, constrained.Constraints,
-            SketchFixedReferences.FromConstraints(constrained.Constraints));
+            SketchFixedReferences.FromConstraints(constrained.Constraints, constrained.Entities));
         constrained = new DrawingDocument(propagatedEntities, constrained.Dimensions,
             constrained.Constraints, constrained.Metadata);
         var dimensions = constrained.Dimensions

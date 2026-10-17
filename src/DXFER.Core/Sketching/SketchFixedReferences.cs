@@ -1,3 +1,5 @@
+using DXFER.Core.Documents;
+
 namespace DXFER.Core.Sketching;
 
 internal sealed class SketchFixedReferences
@@ -9,7 +11,7 @@ internal sealed class SketchFixedReferences
         this.fixedReferences = fixedReferences;
     }
 
-    public static SketchFixedReferences FromConstraints(IEnumerable<SketchConstraint> constraints)
+    public static SketchFixedReferences FromConstraints(IEnumerable<SketchConstraint> constraints, IReadOnlyList<DrawingEntity> entities)
     {
         var fixedReferences = new HashSet<string>(StringComparer.Ordinal);
 
@@ -30,6 +32,19 @@ internal sealed class SketchFixedReferences
             }
         }
 
+        foreach (var polyline in entities.OfType<PolylineEntity>().Where(p => p.Vertices.Count > 2 && p.Vertices[0] == p.Vertices[^1]))
+        {
+            var first = new SketchReference(polyline.Id.Value, SketchReferenceTarget.Start, 0).ToString();
+            var lastIndex = polyline.Vertices.Count - 2;
+            var last = new SketchReference(polyline.Id.Value, SketchReferenceTarget.End, lastIndex).ToString();
+            if (fixedReferences.Contains(first) || fixedReferences.Contains(last)
+                || fixedReferences.Contains(new SketchReference(polyline.Id.Value, SketchReferenceTarget.Entity, 0).ToString())
+                || fixedReferences.Contains(new SketchReference(polyline.Id.Value, SketchReferenceTarget.Entity, lastIndex).ToString()))
+            {
+                fixedReferences.Add(first);
+                fixedReferences.Add(last);
+            }
+        }
         return new SketchFixedReferences(fixedReferences);
     }
 

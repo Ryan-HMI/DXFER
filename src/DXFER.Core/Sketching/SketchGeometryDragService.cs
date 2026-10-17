@@ -163,7 +163,7 @@ public static class SketchGeometryDragService
 
         var originalEntities = document.Entities.ToArray();
         var entities = document.Entities.ToArray();
-        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
+        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints, document.Entities);
         if (TryApplyDimensionedRectangleTranslation(document, selectionKey, delta, out nextDocument, out status))
         {
             return true;
@@ -287,7 +287,7 @@ public static class SketchGeometryDragService
             || !SketchGeometryEditor.TryFindEntity(document.Entities, entityId, out _, out var entity)
             || entity is not (LineEntity or PolylineEntity)) return false;
 
-        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
+        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints, document.Entities);
         var relevant = document.Dimensions.Where(d => d.IsDriving && d.ReferenceKeys.Any(key =>
             SketchReference.TryParse(key, out var reference) && MatchesGrip(reference))).ToArray();
         // Only a single anchored distance has an unambiguous analytic recovery here.
@@ -323,10 +323,17 @@ public static class SketchGeometryDragService
                 return !reference.SegmentIndex.HasValue
                     && ((label == "start" && reference.Target == SketchReferenceTarget.Start)
                         || (label == "end" && reference.Target == SketchReferenceTarget.End));
-            return TryParseIndexedLabel(label, "vertex-", out var vertex)
-                && reference.SegmentIndex.HasValue
-                && reference.Target is SketchReferenceTarget.Start or SketchReferenceTarget.End
-                && reference.SegmentIndex.Value + (reference.Target == SketchReferenceTarget.End ? 1 : 0) == vertex;
+            if (!TryParseIndexedLabel(label, "vertex-", out var vertex)
+                || !reference.SegmentIndex.HasValue
+                || reference.Target is not (SketchReferenceTarget.Start or SketchReferenceTarget.End)) return false;
+            var referencedVertex = reference.SegmentIndex.Value + (reference.Target == SketchReferenceTarget.End ? 1 : 0);
+            var polyline = (PolylineEntity)entity;
+            if (polyline.Vertices.Count > 2 && polyline.Vertices[0] == polyline.Vertices[^1])
+            {
+                if (vertex == polyline.Vertices.Count - 1) vertex = 0;
+                if (referencedVertex == polyline.Vertices.Count - 1) referencedVertex = 0;
+            }
+            return referencedVertex == vertex;
         }
     }
 
@@ -345,7 +352,7 @@ public static class SketchGeometryDragService
         }
 
         var entities = document.Entities.ToArray();
-        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
+        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints, document.Entities);
         if (!TryTranslateEntityById(entities, fixedReferences, entityId, delta, out status))
         {
             return false;
@@ -394,7 +401,7 @@ public static class SketchGeometryDragService
             }
 
             var entities = document.Entities.ToArray();
-            var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
+            var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints, document.Entities);
             if (!TryTranslateEntityById(entities, fixedReferences, entityId, projectedDelta, out status))
             {
                 continue;
@@ -520,7 +527,7 @@ public static class SketchGeometryDragService
             return false;
         }
 
-        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
+        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints, document.Entities);
         var translationEntityIds = GetCornerModifiedRectangleTranslationEntityIds(document, rectangleEntityIds);
         if (translationEntityIds.Any(entityId => !CanTranslateEntity(document.Entities, fixedReferences, entityId)))
         {
@@ -572,7 +579,7 @@ public static class SketchGeometryDragService
             return false;
         }
 
-        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
+        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints, document.Entities);
         if (rectangleEntityIds.Any(entityId => !fixedReferences.CanMoveWholeLine(new SketchReference(entityId, SketchReferenceTarget.Entity))))
         {
             status = "Rectangle is constrained.";
@@ -738,7 +745,7 @@ public static class SketchGeometryDragService
         }
 
         handled = true;
-        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
+        var fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints, document.Entities);
         if (!fixedReferences.CanMoveWholeLine(new SketchReference(selectedEntityId, SketchReferenceTarget.Entity)))
         {
             status = "Rectangle edge is constrained.";
@@ -2773,10 +2780,8 @@ public static class SketchGeometryDragService
             return false;
         }
 
-        var vertices = polyline.Vertices.ToArray();
-        vertices[segmentIndex] = Add(vertices[segmentIndex], delta);
-        vertices[segmentIndex + 1] = Add(vertices[segmentIndex + 1], delta);
-        entities[entityIndex] = new PolylineEntity(polyline.Id, vertices, polyline.IsConstruction);
+        entities[entityIndex] = polyline.WithVertex(segmentIndex, Add(polyline.Vertices[segmentIndex], delta))
+            .WithVertex(segmentIndex + 1, Add(polyline.Vertices[segmentIndex + 1], delta));
         status = "Moved polyline segment.";
         return true;
     }
@@ -2802,9 +2807,7 @@ public static class SketchGeometryDragService
             return false;
         }
 
-        var vertices = polyline.Vertices.ToArray();
-        vertices[vertexIndex] = point;
-        entities[entityIndex] = new PolylineEntity(polyline.Id, vertices, polyline.IsConstruction);
+        entities[entityIndex] = polyline.WithVertex(vertexIndex, point);
         status = "Moved polyline vertex.";
         return true;
     }

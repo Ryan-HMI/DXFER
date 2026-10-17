@@ -20,6 +20,20 @@ public sealed record PolylineEntity : DrawingEntity
 
     public IReadOnlyList<Point2> Vertices { get; }
 
+    public PolylineEntity WithVertex(int index, Point2 point)
+    {
+        var vertices = Vertices.ToArray();
+        vertices[index] = point;
+        // Imported closure is represented by a repeated endpoint, not two
+        // independently editable vertices. Do not weld merely nearby ends.
+        if (Vertices.Count > 2 && Vertices[0] == Vertices[^1])
+        {
+            if (index == 0) vertices[^1] = point;
+            else if (index == vertices.Length - 1) vertices[0] = point;
+        }
+        return new PolylineEntity(Id, vertices, IsConstruction);
+    }
+
     public override Bounds2 GetBounds() => Bounds2.FromPoints(Vertices);
 
     public override DrawingEntity Transform(Transform2 transform) =>

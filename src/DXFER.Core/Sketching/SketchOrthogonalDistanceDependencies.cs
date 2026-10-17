@@ -17,7 +17,7 @@ internal sealed class SketchOrthogonalDistanceDependencies
     private SketchOrthogonalDistanceDependencies(DrawingDocument document)
     {
         this.document = document;
-        fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints);
+        fixedReferences = SketchFixedReferences.FromConstraints(document.Constraints, document.Entities);
     }
 
     public static bool IsRedundant(DrawingDocument document, SketchDimension dimension, double valueTolerance)
