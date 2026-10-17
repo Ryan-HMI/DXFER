@@ -43,3 +43,14 @@ These are bounded passes, not exhaustive solver acceptance. Arbitrary coupled
 spline systems, indexed-control constraints, and closed-polyline aliases remain
 open. Independent Flux QA is separate. Existing files are untouched; previously
 failed user intent is not automatically repaired or declared satisfied.
+
+## Installed Dev verification
+
+2026-10-17 18:27 UTC: deployed `6dc419ad77001f59a5160504c24a575935f9b82d`
+to https://dxferdev.sync.harrisonmetals.com. Rendered build independently asserted
+by the browser replay; all eight fixtures pass on the public endpoint. Twelve
+downloaded exports audit with zero errors/fixes. Ten runtime settings retained,
+four installed assemblies match the candidate, health 200 and anonymous root
+302 to normal sign-in. Sync callbacks remain disabled and Production/Test process
+IDs are unchanged. Rollback publish: `dev-publish-before-6dc419a`.
+Public evidence: `/tmp/dxfer-spline-weld-dev`. Flux replay requested separately.
