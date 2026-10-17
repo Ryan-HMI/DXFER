@@ -45,3 +45,19 @@ origin Concentric orders with unchanged peers/radius, Undo/Redo/native reopen.
 Core tests also cover arcs, Fixed refusal and free radius; preview regressions
 cover immutable center and free radius. Browser radius reedit is also checked.
 Screenshots inspected; no phone QA is requested for this desktop application.
+
+## Installed Dev verification
+
+Installed `3404e37a2badc75f216d154f97c7f19d7bf34d3f` on DXFer Dev at
+2026-10-17T23:34Z. Public browser independently read `DXFER build3404e37`
+and replayed the full browser scope above. Seven downloaded DXFs audit with
+zero errors and zero fixes. Public screenshots at both desktop sizes inspected.
+
+Installed assemblies match the published candidate; all ten tracked runtime
+settings retained. Health200, anonymous root302. Normal Google sign-in and
+disabled Sync callbacks retained; Production/Test process IDs unchanged.
+Rollback publish retained. No application records or existing drawings changed.
+
+Independent Flux replay remains pending. This fixes the demonstrated quadrant
+pick failure, not every possible intermittent Tangent solve. Existing failed
+point-qualified Tangent constraints still require deliberate removal/reapplication.
