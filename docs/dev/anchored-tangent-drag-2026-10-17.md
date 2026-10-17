@@ -41,3 +41,17 @@ Runner: `tests/DXFER.Blazor.Tests/anchoredTangentDrag.browser.mjs`.
 Twelve valid actual canvas drags include held screenshots, release, Undo/Redo,
 native download/reopen and edit again. Two driving-large-radius cases refuse
 unchanged with no history. Fourteen local exports audit0/0; held screenshot inspected.
+
+## Installed verification
+
+1653 .NET tests and826 JavaScript tests pass; Release publish passes.
+Installed `2a127dd13a1222e5919b90f77abbade4422b61cf` on DXFer Dev at
+2026-10-17T23:45Z. Public browser verified the rendered2a127dd build and replayed
+all14 cases above. Fourteen public DXFs audit with zero errors/fixes; held
+internal-tangency screenshots inspected. Independent Flux replay is pending.
+
+Live assemblies match the published candidate; ten runtime settings unchanged,
+health200 and anonymous root302. Normal Google auth and disabled Sync callbacks
+retained. Production/Test PIDs unchanged. Rollback publish retained.
+This does not claim arbitrary position-dimension chains are solved; Ryan's exact
+native fixture was requested to distinguish that from the reproduced anchors.
