@@ -61,3 +61,14 @@ Rollback publish retained. No application records or existing drawings changed.
 Independent Flux replay remains pending. This fixes the demonstrated quadrant
 pick failure, not every possible intermittent Tangent solve. Existing failed
 point-qualified Tangent constraints still require deliberate removal/reapplication.
+
+## Independent replay update
+
+Flux Slack1792280766.677999 (retrieved through channel history) accepts visible
+3404e37 rapid layer typing, icons, Exit-to-idle information and hide/reopen,
+compact Hotkeys/search/scrolling at1180x757. Circle quadrant Tangent both orders
+and circle/arc Concentric-to-origin pass, including free radius and retained arc
+sweep, history/native reopen and18 clean exports. Exact1100px layout remains
+owner-tested only. A separate empty-drawing download error after layer rename
+is not yet minimized; nonempty exports passed. Rectangle coupled Tangent is
+tracked separately and is not included in this independent acceptance.
