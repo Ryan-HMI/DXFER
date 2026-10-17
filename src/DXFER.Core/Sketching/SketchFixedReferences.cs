@@ -13,9 +13,10 @@ internal sealed class SketchFixedReferences
 
     public static SketchFixedReferences FromConstraints(IEnumerable<SketchConstraint> constraints, IReadOnlyList<DrawingEntity> entities)
     {
+        var constraintList = constraints.ToArray();
         var fixedReferences = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var constraint in constraints)
+        foreach (var constraint in constraintList)
         {
             if (constraint.Kind != SketchConstraintKind.Fix
                 || constraint.State == SketchConstraintState.Suppressed)
@@ -45,7 +46,35 @@ internal sealed class SketchFixedReferences
                 fixedReferences.Add(last);
             }
         }
-        return new SketchFixedReferences(fixedReferences);
+        var result = new SketchFixedReferences(fixedReferences);
+        // An anchored center removes translation freedom, not radius freedom.
+        // Close only satisfied center relationships; do not turn whole curves into Fix.
+        for (var pass = 0; pass < constraintList.Length; pass++)
+        {
+            var changed = false;
+            foreach (var constraint in constraintList)
+            {
+                if (constraint.State != SketchConstraintState.Satisfied || constraint.ReferenceKeys.Count != 2
+                    || constraint.Kind is not (SketchConstraintKind.Coincident or SketchConstraintKind.Concentric)
+                    || !SketchReference.TryParse(constraint.ReferenceKeys[0], out var first)
+                    || !SketchReference.TryParse(constraint.ReferenceKeys[1], out var second)) continue;
+                if (constraint.Kind == SketchConstraintKind.Concentric)
+                {
+                    if (!IsCurveOrOrigin(first) || !IsCurveOrOrigin(second)) continue;
+                    first = new SketchReference(first.EntityId, SketchReferenceTarget.Center);
+                    second = new SketchReference(second.EntityId, SketchReferenceTarget.Center);
+                }
+                if (result.IsFixed(first) && IsCurveCenter(second)) changed |= fixedReferences.Add(second.ToString());
+                if (result.IsFixed(second) && IsCurveCenter(first)) changed |= fixedReferences.Add(first.ToString());
+            }
+            if (!changed) break;
+        }
+        return result;
+
+        bool IsCurveOrOrigin(SketchReference reference) => reference.IsOrigin
+            || SketchGeometryEditor.TryGetCircleLike(entities, reference, out _, out _, out _);
+        bool IsCurveCenter(SketchReference reference) => reference.Target == SketchReferenceTarget.Center
+            && !reference.IsOrigin && IsCurveOrOrigin(reference);
     }
 
     public bool IsFixed(SketchReference reference)

@@ -320,25 +320,29 @@ internal static class SketchConstraintPropagationService
         if (firstChanged && !secondChanged)
         {
             return TryMoveOrResizeCircleLikeForTangency(
+                originalEntities,
                 entities,
                 fixedReferences,
                 movingReference: secondReference,
                 movingCenter: secondCenter,
                 movingRadius: secondRadius,
                 anchorCenter: firstCenter,
-                anchorRadius: firstRadius);
+                anchorRadius: firstRadius,
+                anchorReference: firstReference);
         }
 
         if (secondChanged && !firstChanged)
         {
             return TryMoveOrResizeCircleLikeForTangency(
+                originalEntities,
                 entities,
                 fixedReferences,
                 movingReference: firstReference,
                 movingCenter: firstCenter,
                 movingRadius: firstRadius,
                 anchorCenter: secondCenter,
-                anchorRadius: secondRadius);
+                anchorRadius: secondRadius,
+                anchorReference: secondReference);
         }
 
         return false;
@@ -704,18 +708,24 @@ internal static class SketchConstraintPropagationService
     }
 
     private static bool TryMoveOrResizeCircleLikeForTangency(
+        IReadOnlyList<DrawingEntity> originalEntities,
         DrawingEntity[] entities,
         SketchFixedReferences fixedReferences,
         SketchReference movingReference,
         Point2 movingCenter,
         double movingRadius,
         Point2 anchorCenter,
-        double anchorRadius)
+        double anchorRadius,
+        SketchReference anchorReference)
     {
+        if (!SketchGeometryEditor.TryGetCircleLike(originalEntities, movingReference, out _, out var oldCenter, out var oldRadius)
+            || !SketchGeometryEditor.TryGetCircleLike(originalEntities, anchorReference, out _, out var oldAnchorCenter, out var oldAnchorRadius)) return false;
         var centerDistance = SketchGeometryEditor.Distance(anchorCenter, movingCenter);
         var externalDistance = Math.Abs(anchorRadius) + Math.Abs(movingRadius);
         var internalDistance = Math.Abs(Math.Abs(anchorRadius) - Math.Abs(movingRadius));
-        var useInternal = Math.Abs(centerDistance - internalDistance) < Math.Abs(centerDistance - externalDistance);
+        var oldDistance = SketchGeometryEditor.Distance(oldAnchorCenter, oldCenter);
+        var useInternal = Math.Abs(oldDistance - Math.Abs(oldRadius - oldAnchorRadius))
+            < Math.Abs(oldDistance - (oldRadius + oldAnchorRadius));
         var targetDistance = useInternal ? internalDistance : externalDistance;
 
         if (fixedReferences.CanMoveCircleLikeCenter(movingReference)
@@ -734,7 +744,7 @@ internal static class SketchConstraintPropagationService
         }
 
         var nextRadius = useInternal
-            ? Math.Abs(centerDistance - Math.Abs(anchorRadius))
+            ? oldRadius > oldAnchorRadius ? centerDistance + Math.Abs(anchorRadius) : Math.Abs(anchorRadius) - centerDistance
             : centerDistance - Math.Abs(anchorRadius);
         return nextRadius > SketchGeometryEditor.Tolerance
             && TrySetCircleLikeRadiusAndReport(entities, movingReference, nextRadius);

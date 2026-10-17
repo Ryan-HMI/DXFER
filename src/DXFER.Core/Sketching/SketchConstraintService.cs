@@ -581,7 +581,7 @@ public static class SketchConstraintService
         }
 
         var nextRadius = useInternal
-            ? Math.Abs(centerDistance - Math.Abs(anchorRadius))
+            ? movingRadius > anchorRadius ? centerDistance + Math.Abs(anchorRadius) : Math.Abs(anchorRadius) - centerDistance
             : centerDistance - Math.Abs(anchorRadius);
         return nextRadius > SketchGeometryEditor.Tolerance
             && SketchGeometryEditor.TrySetCircleLikeRadius(entities, movingReference, nextRadius);

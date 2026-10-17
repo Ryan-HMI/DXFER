@@ -10287,24 +10287,28 @@ function propagatePreviewTangentConstraint(originalDocument, previewDocument, fi
   const secondChanged = hasPreviewCircleLikeGeometryChanged(originalDocument, previewDocument, pair.secondReference);
   if (firstChanged && !secondChanged) {
     return tryMoveOrResizePreviewCircleLikeForTangency(
+      originalDocument,
       previewDocument,
       fixedReferences,
       pair.secondReference,
       pair.second.center,
       pair.second.radius,
       pair.first.center,
-      pair.first.radius);
+      pair.first.radius,
+      pair.firstReference);
   }
 
   if (secondChanged && !firstChanged) {
     return tryMoveOrResizePreviewCircleLikeForTangency(
+      originalDocument,
       previewDocument,
       fixedReferences,
       pair.firstReference,
       pair.first.center,
       pair.first.radius,
       pair.second.center,
-      pair.second.radius);
+      pair.second.radius,
+      pair.secondReference);
   }
 
   return false;
@@ -10334,6 +10338,25 @@ function getPreviewFixedReferenceKeys(document) {
     if ([first, last, `${id}|segment|0`, `${id}|segment|${lastIndex}`].some(key => fixedReferences.has(key))) {
       fixedReferences.add(first); fixedReferences.add(last);
     }
+  }
+  const constraints = getDocumentConstraints(document);
+  for (let pass = 0; pass < constraints.length; pass++) {
+    const before = fixedReferences.size;
+    for (const constraint of constraints) {
+      const kind = getSketchConstraintKind(constraint), keys = getSketchReferenceKeys(constraint);
+      if (getSketchItemState(constraint) !== "satisfied" || keys.length !== 2
+        || !["coincident", "concentric"].includes(kind)) continue;
+      let [first, second] = keys.map(parseSketchReference);
+      if (!first || !second) continue;
+      if (kind === "concentric") {
+        if (![first, second].every(ref => ref.entityId === "$origin" || getPreviewCircleLike(document, ref))) continue;
+        first = { ...first, target: "center" }; second = { ...second, target: "center" };
+      }
+      const isCurveCenter = ref => ref.target === "center" && getPreviewCircleLike(document, ref);
+      if (isPreviewReferenceFixed(fixedReferences, first) && isCurveCenter(second)) fixedReferences.add(sketchReferenceToKey(second));
+      if (isPreviewReferenceFixed(fixedReferences, second) && isCurveCenter(first)) fixedReferences.add(sketchReferenceToKey(first));
+    }
+    if (before === fixedReferences.size) break;
   }
   return fixedReferences;
 }
@@ -10611,17 +10634,24 @@ function tryMovePreviewCircleLikeCenterTangentToLine(document, circleReference, 
 }
 
 function tryMoveOrResizePreviewCircleLikeForTangency(
+  originalDocument,
   document,
   fixedReferences,
   movingReference,
   movingCenter,
   movingRadius,
   anchorCenter,
-  anchorRadius) {
+  anchorRadius,
+  anchorReference) {
+  const original = getPreviewCircleLike(originalDocument, movingReference);
+  const originalAnchor = getPreviewCircleLike(originalDocument, anchorReference);
+  if (!original || !originalAnchor) return false;
   const centerDistance = distanceBetweenWorldPoints(anchorCenter, movingCenter);
   const externalDistance = Math.abs(anchorRadius) + Math.abs(movingRadius);
   const internalDistance = Math.abs(Math.abs(anchorRadius) - Math.abs(movingRadius));
-  const useInternal = Math.abs(centerDistance - internalDistance) < Math.abs(centerDistance - externalDistance);
+  const oldDistance = distanceBetweenWorldPoints(original.center, originalAnchor.center);
+  const useInternal = Math.abs(oldDistance - Math.abs(original.radius - originalAnchor.radius))
+    < Math.abs(oldDistance - (original.radius + originalAnchor.radius));
   const targetDistance = useInternal ? internalDistance : externalDistance;
   if (canMovePreviewCircleLikeCenter(fixedReferences, movingReference) && targetDistance > WORLD_GEOMETRY_TOLERANCE) {
     const unit = unitVector(anchorCenter, movingCenter);
@@ -10636,7 +10666,7 @@ function tryMoveOrResizePreviewCircleLikeForTangency(
   }
 
   const nextRadius = useInternal
-    ? Math.abs(centerDistance - Math.abs(anchorRadius))
+    ? (original.radius > originalAnchor.radius ? centerDistance + Math.abs(anchorRadius) : Math.abs(anchorRadius) - centerDistance)
     : centerDistance - Math.abs(anchorRadius);
   return nextRadius > WORLD_GEOMETRY_TOLERANCE
     && trySetPreviewCircleLikeRadius(document, movingReference, nextRadius);
