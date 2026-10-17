@@ -811,6 +811,10 @@ internal static class SketchConstraintPropagationService
         {
             switch (entity)
             {
+                case SplineEntity spline:
+                    yield return new SketchReference(spline.Id.Value, SketchReferenceTarget.Start);
+                    yield return new SketchReference(spline.Id.Value, SketchReferenceTarget.End);
+                    break;
                 case LineEntity line:
                     yield return new SketchReference(line.Id.Value, SketchReferenceTarget.Start);
                     yield return new SketchReference(line.Id.Value, SketchReferenceTarget.End);

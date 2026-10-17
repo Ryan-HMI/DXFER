@@ -30,7 +30,7 @@ For every entity and grip, classify the requested drag into allowed degrees of f
 | Circle | center | circumference/quadrant radius | PARTIAL driving radius translation and reference radius resizing app-verified | PARTIAL center/line-start weld and Fixed refusal | PARTIAL | PARTIAL | APP-VERIFIED bounded center/quadrant fixtures | USER-FAILED |
 | Arc | center or whole arc where supported | start, end, perimeter radius/sweep | PARTIAL driving radius/sweep and fixed-center Shift sweep app-verified | PARTIAL arc-end/line-start weld and Fixed refusal | PARTIAL | PARTIAL | APP-VERIFIED bounded fixtures | USER-FAILED |
 | Ellipse | center or whole ellipse | major/minor quadrant axes | PARTIAL independent orthogonal driving diameters/Fixed center app-verified | PARTIAL center/line-start app-verified | PARTIAL | PARTIAL | APP-VERIFIED bounded axis/weld fixtures | USER-FAILED |
-| Spline | whole spline | fit points, control points, endpoint tangent handles | PARTIAL live indexed span/Fixed cases independently accepted on3547ab4 | OPEN | PARTIAL | PARTIAL | APP-VERIFIED for edit handles | USER-FAILED |
+| Spline | whole spline | fit points, control points, endpoint tangent handles | PARTIAL live indexed span/Fixed cases independently accepted on3547ab4 | PARTIAL endpoint/line/point weld and Fixed refusal; see spline-endpoint-weld-2026-10-17.md | PARTIAL | PARTIAL | APP-VERIFIED for edit handles and bounded endpoint welds | USER-FAILED |
 | Point | point location | N/A | OPEN | OPEN | PARTIAL | PARTIAL | OPEN | OPEN |
 | Dimension | anchor | value edit through input | PARTIAL skip synthetic value commits | N/A | PARTIAL | PARTIAL | APP-VERIFIED for anchor skip-commit | USER-FAILED |
 | Constraint glyph/reference | glyph anchor where supported | reference-driven geometry through solver | PARTIAL Fix/Equal/Concentric/Midpoint/Tangent auto-passed | PARTIAL coincident/axis/relation plus driven constraint propagation | PARTIAL | PARTIAL | OPEN | USER-FAILED |
@@ -71,3 +71,9 @@ The next Equal/Midpoint/Tangent + Fixed results and concrete fixtures are in
 recovery is now implemented and has paired valid/incompatible fixtures. Arbitrary
 coupled projection and cases without a unique changed endpoint remain outside
 that bounded solve. Do not equate safe refusal with mathematical inconsistency.
+
+2026-10-17: owner verified eight additional spline endpoint weld fixtures, with
+driving-span preservation, Fixed refusal/no Undo, held-preview/release and native
+reopen/reedit. Core and preview handle both constraint orders, weighted/fit/linear
+representations and small moves. See `spline-endpoint-weld-2026-10-17.md` for exact
+scope; no blanket acceptance of arbitrary mixed-family constraints is implied.

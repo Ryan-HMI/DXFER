@@ -249,7 +249,7 @@ public sealed class SketchOriginReferenceTests
     public void UnsupportedSplinePointRelationRefusesWithoutApproximatingSpline()
     {
         var spline = new SplineEntity(EntityId.Create("spline"), 3,
-            new Point2[] { new(1, 1), new(2, 1), new(3, 2), new(4, 2) }, new double[] { 0, 0, 0, 0, 1, 1, 1, 1 });
+            new Point2[] { new(1, 1), new(2, 1), new(3, 2), new(4, 2) }, new double[] { 0, 1, 2, 3, 4, 5, 6, 7 });
         var document = new DrawingDocument(new DrawingEntity[] { spline });
         var constraint = new SketchConstraint("coincident", SketchConstraintKind.Coincident, new[] { Origin, "spline:start" });
         var result = new LegacySketchSolverAdapter().Solve(new SketchSolveRequest(document, new[] { constraint }, Array.Empty<SketchDimension>()));

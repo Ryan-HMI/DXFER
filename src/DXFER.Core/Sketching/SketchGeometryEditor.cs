@@ -86,6 +86,9 @@ internal static class SketchGeometryEditor
 
         switch (entity)
         {
+            case SplineEntity spline when !reference.SegmentIndex.HasValue && reference.Target is SketchReferenceTarget.Start or SketchReferenceTarget.End:
+                return SketchReferenceResolver.TryGetSplineCanvasPoint(spline,
+                    reference.Target == SketchReferenceTarget.Start ? "start" : "end", out point);
             case LineEntity line when reference.Target == SketchReferenceTarget.Start:
                 point = line.Start;
                 return true;
@@ -143,6 +146,11 @@ internal static class SketchGeometryEditor
 
         switch (entity)
         {
+            case SplineEntity spline when !reference.SegmentIndex.HasValue && reference.Target is SketchReferenceTarget.Start or SketchReferenceTarget.End:
+                if (!TryMoveSplineEndpoint(spline, reference.Target == SketchReferenceTarget.Start, point, out var moved))
+                    return false;
+                entities[index] = moved;
+                return true;
             case LineEntity line when reference.Target == SketchReferenceTarget.Start:
                 entities[index] = line with { Start = point };
                 return true;
@@ -183,6 +191,38 @@ internal static class SketchGeometryEditor
             default:
                 return false;
         }
+    }
+
+    internal static bool TryMoveSplineEndpoint(SplineEntity spline, bool atStart, Point2 point, out SplineEntity moved)
+    {
+        moved = spline;
+        if (!double.IsFinite(point.X) || !double.IsFinite(point.Y)) return false;
+        var fit = spline.FitPoints.Count >= 2;
+        var points = (fit ? spline.FitPoints : spline.ControlPoints).ToArray();
+        var index = atStart ? 0 : points.Length - 1;
+        if (!fit)
+        {
+            // Only clamped endpoints coincide with endpoint controls. Unclamped
+            // curves require a different solve, not a silent control-point edit.
+            var knots = spline.Knots;
+            var start = knots[spline.Degree];
+            var end = knots[points.Length];
+            if (!double.IsFinite(start) || !double.IsFinite(end) || end <= start
+                || spline.Weights.Any(w => !double.IsFinite(w) || w <= 0)
+                || knots.Any(k => !double.IsFinite(k))
+                || knots.Zip(knots.Skip(1)).Any(pair => pair.First > pair.Second)
+                || !(atStart ? knots.Take(spline.Degree + 1).All(k => k == start)
+                    : knots.Skip(points.Length).All(k => k == end))) return false;
+        }
+        var delta = new Point2(point.X - points[index].X, point.Y - points[index].Y);
+        points[index] = point;
+        moved = fit
+            ? SplineEntity.FromFitPoints(spline.Id, points, spline.IsConstruction,
+                atStart && spline.StartTangentHandle is { } a ? new Point2(a.X + delta.X, a.Y + delta.Y) : spline.StartTangentHandle,
+                !atStart && spline.EndTangentHandle is { } b ? new Point2(b.X + delta.X, b.Y + delta.Y) : spline.EndTangentHandle)
+            : new SplineEntity(spline.Id, spline.Degree, points, spline.Knots, spline.Weights,
+                spline.IsConstruction, spline.FitPoints, spline.StartTangentHandle, spline.EndTangentHandle);
+        return true;
     }
 
     public static bool TryGetLine(

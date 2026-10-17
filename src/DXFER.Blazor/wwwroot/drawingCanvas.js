@@ -10644,6 +10644,7 @@ function enumeratePreviewPointReferences(document) {
     }
 
     switch (getEntityKind(entity)) {
+      case "spline":
       case "line":
         references.push({ entityId, target: "start" }, { entityId, target: "end" });
         break;
@@ -10814,6 +10815,16 @@ function getPreviewReferencePoint(document, reference) {
   }
 
   const kind = getEntityKind(entity);
+  if (kind === "spline" && Number.isInteger(reference.segmentIndex)) return null;
+  if (kind === "spline" && !Number.isInteger(reference.segmentIndex)
+    && (reference.target === "start" || reference.target === "end")) {
+    const fit = getEntityFitPoints(entity);
+    const points = fit.length >= 2 ? fit : sampleControlSpline(getEntityControlPoints(entity),
+      readProperty(entity, "splineDegree", "SplineDegree"),
+      readProperty(entity, "splineKnots", "SplineKnots"),
+      readProperty(entity, "splineWeights", "SplineWeights"));
+    return points?.[reference.target === "start" ? 0 : points.length - 1] || null;
+  }
   if (Number.isInteger(reference.segmentIndex)) {
     const points = getEntityPoints(entity);
     if (reference.segmentIndex < 0 || reference.segmentIndex >= points.length - 1) {
@@ -10879,6 +10890,7 @@ function setPreviewReferencePoint(document, reference, point) {
   if (!entity || !point) {
     return false;
   }
+  if (getEntityKind(entity) === "spline" && Number.isInteger(reference.segmentIndex)) return false;
 
   if (Number.isInteger(reference.segmentIndex)) {
     const points = getEntityPoints(entity);
@@ -10899,6 +10911,9 @@ function setPreviewReferencePoint(document, reference, point) {
   }
 
   const kind = getEntityKind(entity);
+  if (kind === "spline" && (reference.target === "start" || reference.target === "end")) {
+    return setPreviewSplineEndpoint(entity, reference.target === "start", point);
+  }
   if (kind === "line") {
     const points = getEntityPoints(entity);
     if (points.length < 2) {
@@ -11359,6 +11374,10 @@ function setPreviewEllipseMajorAxis(entity, majorAxisEndPoint, minorLength) {
 }
 
 function applyPreviewSplinePointDrag(entity, normalizedLabel, delta, dragEnd) {
+  if (normalizedLabel === "start" || normalizedLabel === "end") {
+    const endpoint = getPreviewReferencePoint({ entities: [entity] }, { entityId: getEntityId(entity), target: normalizedLabel });
+    return endpoint && setPreviewSplineEndpoint(entity, normalizedLabel === "start", addWorldPoints(endpoint, delta));
+  }
   const fitPoints = getEntityFitPoints(entity);
   if (fitPoints.length >= 2) {
     if (normalizedLabel === "tangent-start" || normalizedLabel === "tangent-end") {
@@ -11372,6 +11391,29 @@ function applyPreviewSplinePointDrag(entity, normalizedLabel, delta, dragEnd) {
   return controlPoints.length >= 2
     ? applyPreviewSplineEditablePointDrag(entity, controlPoints, "control", normalizedLabel, delta, dragEnd)
     : false;
+}
+
+function setPreviewSplineEndpoint(entity, atStart, point) {
+  if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) return false;
+  const fitPoints = getEntityFitPoints(entity);
+  const fit = fitPoints.length >= 2;
+  const points = (fit ? fitPoints : getEntityControlPoints(entity)).map(copyPoint);
+  if (!fit) {
+    const degree = readProperty(entity, "splineDegree", "SplineDegree");
+    const knots = readProperty(entity, "splineKnots", "SplineKnots");
+    const weights = readProperty(entity, "splineWeights", "SplineWeights") || [];
+    if (!Number.isInteger(degree) || degree < 1 || points.length <= degree
+      || !Array.isArray(knots) || knots.length !== points.length + degree + 1
+      || !knots.every(Number.isFinite) || knots.some((k, i) => i > 0 && k < knots[i - 1])
+      || weights.some(w => !Number.isFinite(w) || w <= 0)
+      || !(knots[points.length] > knots[degree])
+      || !(atStart ? knots.slice(0, degree + 1).every(k => k === knots[degree])
+        : knots.slice(points.length).every(k => k === knots[points.length]))) return false;
+  }
+  const index = atStart ? 0 : points.length - 1;
+  const delta = subtractPoints(point, points[index]);
+  points[index] = copyPoint(point);
+  return setPreviewSplineEditablePoints(entity, fit ? "fit" : "control", points, index, delta);
 }
 
 function applyPreviewSplineEditablePointDrag(entity, sourcePoints, sourceKind, normalizedLabel, delta, dragEnd) {
@@ -13935,6 +13977,8 @@ function resolveSketchReferencePoint(state, referenceKey) {
   switch (getEntityKind(entity)) {
     case "point":
       return getPointEntityLocation(entity);
+    case "spline":
+      return getPreviewReferencePoint(state.document, reference);
     case "line": {
       const points = getEntityPoints(entity);
       if (reference.target === "start") {

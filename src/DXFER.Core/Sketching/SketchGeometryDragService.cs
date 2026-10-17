@@ -2383,6 +2383,19 @@ public static class SketchGeometryDragService
             return true;
         }
 
+        if (label is "start" or "end")
+        {
+            if (!SketchReferenceResolver.TryGetSplineCanvasPoint(spline, label, out var endpoint)
+                || !SketchGeometryEditor.TryMoveSplineEndpoint(spline, label == "start", Add(endpoint, delta), out var moved))
+            {
+                status = "Unsupported spline endpoint movement. Geometry unchanged.";
+                return false;
+            }
+            entities[entityIndex] = moved;
+            status = "Moved spline endpoint.";
+            return true;
+        }
+
         if (TryParseIndexedLabel(label, pointPrefix, out var pointIndex)
             || TryGetSplineEndpointIndex(label, points.Length, out pointIndex))
         {
