@@ -30,3 +30,13 @@ Tangent and Concentric semantics are not changed by this patch.
 No historical drawing is rewritten. Previously saved point-qualified failed
 Equal intent remains uncorrected; remove/reapply that constraint after updating.
 This is not a fix for the separate coupled-orientation or placement failures.
+
+## Installed verification
+
+Dev-only 319bdf97b65688e705c5c48f2c470d87cfe9242a installed2026-10-17T23:16Z.
+Public browser asserts the rendered319bdf9 build and passes both pick orders,
+unchanged geometry, satisfied entity references, Undo/Redo and native reopen.
+Four public downloads audit0/0. Candidate/live assemblies match; ten runtime
+settings retained, health200 and anonymous302. Production/Test processes
+unchanged; Sync callbacks disabled and normal sign-in retained.
+Rollback: `dev-publish-before-319bdf9`. Independent Flux retest pending.
