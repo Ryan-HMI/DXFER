@@ -50,3 +50,17 @@ their twelve exported files audit with zero errors or fixes.
 Public health returns 200 and anonymous root returns 302 to normal sign-in.
 Sync callbacks remain disabled. Production/Test were not deployment targets.
 Rollback publish is `dev-publish-before-d8e284e`.
+
+## Independent QA
+
+Flux reported bounded acceptance on d8e284e in Slack message
+1792264456.968729: closing aliases and spline endpoint welds pass the tested
+free/Fixed/driving cases, Undo/Redo and native reopen. Held-pointer preview was
+not independently verified; its evidence remains owner-run only.
+
+Separate OPEN solver limitation from the same report: line (0,0)-(10,0),
+Midpoint to Point (5,0), Fix only the Point. Changing driving length10 to12
+refuses with unchanged geometry, although (-1,0)-(11,0) is feasible. Removing
+Fix allows12 and moves the marker to(6,0). Equal coupling is unnecessary.
+This is a feasible-solve refusal, not proven inconsistent intent or corruption.
+No correction or existing-document repair is claimed yet.

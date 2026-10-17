@@ -54,3 +54,9 @@ four installed assemblies match the candidate, health 200 and anonymous root
 302 to normal sign-in. Sync callbacks remain disabled and Production/Test process
 IDs are unchanged. Rollback publish: `dev-publish-before-6dc419a`.
 Public evidence: `/tmp/dxfer-spline-weld-dev`. Flux replay requested separately.
+
+Flux subsequently reported independent bounded passes on d8e284e for the tested
+free/Fixed/driving weld cases, Undo/Redo and native reopen (Slack
+1792264456.968729). Held-pointer preview remains owner-verified, not independently
+accepted. Closed-polyline alias corrections and their separate acceptance are
+recorded in `closed-polyline-alias-2026-10-17.md`; broader coupling remains open.
