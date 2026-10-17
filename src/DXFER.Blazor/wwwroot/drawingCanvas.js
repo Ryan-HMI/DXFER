@@ -74,7 +74,7 @@ import {
   isPanPointerDownForTool,
   isTargetEligibleForConstraintTool,
   shouldDrawSelectionTargetOverlay
-} from "./canvas/targets.js?v=20261016-origin";
+} from "./canvas/targets.js?v=20261017-origin-concentric";
 import {
   CONSTRAINT_KEY_PREFIX,
   POINT_KEY_SEPARATOR,
@@ -121,7 +121,7 @@ export {
   isPanPointerDownForTool,
   isTargetEligibleForConstraintTool,
   shouldDrawSelectionTargetOverlay
-} from "./canvas/targets.js";
+} from "./canvas/targets.js?v=20261017-origin-concentric";
 
 const DEFAULT_FIT_MARGIN = 32;
 const DEFAULT_BLANK_VIEW_SCALE = 24;
@@ -8254,7 +8254,7 @@ function createOriginTarget() {
 function canPickOrigin(state) {
   const tool = normalizeToolName(state.activeTool);
   return tool === "select" || isDimensionTool(state)
-    || ["coincident", "horizontal", "vertical", "midpoint"].includes(tool);
+    || ["coincident", "horizontal", "vertical", "midpoint", "concentric"].includes(tool);
 }
 
 function createDimensionTarget(dimension) {
@@ -9804,6 +9804,8 @@ function isPreviewConstraintSatisfied(originalDocument, document, constraint) {
       return Boolean(circles && close(circles.first.radius, circles.second.radius));
     }
     case "concentric": {
+      const originCurve = getPreviewOriginConcentricCircle(document, constraint);
+      if (originCurve) return samePoint(originCurve.circle.center, { x: 0, y: 0 });
       const pair = getTwoPreviewCircleLikeReferences(document, constraint);
       return Boolean(pair && samePoint(pair.first.center, pair.second.center));
     }
@@ -10171,6 +10173,9 @@ function propagatePreviewEqualConstraint(originalDocument, previewDocument, fixe
 }
 
 function propagatePreviewConcentricConstraint(originalDocument, previewDocument, fixedReferences, constraint) {
+  const originCurve = getPreviewOriginConcentricCircle(previewDocument, constraint);
+  if (originCurve) return canMovePreviewCircleLikeCenter(fixedReferences, originCurve.reference)
+    && trySetPreviewCircleLikeCenter(previewDocument, originCurve.reference, { x: 0, y: 0 });
   const pair = getTwoPreviewCircleLikeReferences(previewDocument, constraint);
   if (!pair) {
     return false;
@@ -10764,6 +10769,14 @@ function getTwoPreviewCircleLikeReferences(document, constraint) {
   return firstReference && secondReference && first && second
     ? { firstReference, first, secondReference, second }
     : null;
+}
+
+function getPreviewOriginConcentricCircle(document, constraint) {
+  const keys = getSketchReferenceKeys(constraint);
+  if (keys.length !== 2 || !keys.includes("$origin:center")) return null;
+  const reference = parseSketchReference(keys.find(key => key !== "$origin:center"));
+  const circle = reference && getPreviewCircleLike(document, reference);
+  return circle ? { reference, circle } : null;
 }
 
 function getPreviewLineAndCircleLikeReferences(document, constraint) {

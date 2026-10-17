@@ -61,7 +61,7 @@ export function isTargetEligibleForConstraintTool(tool, target) {
     case "tangent":
       return isLine || isCircleLike;
     case "concentric":
-      return isCircleLike;
+      return isCircleLike || target.key === "$origin:center";
     case "equal":
       return isLine || isCircleLike;
     case "midpoint":

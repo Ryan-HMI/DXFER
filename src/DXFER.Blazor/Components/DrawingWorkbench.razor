@@ -56,10 +56,10 @@
     {
         <aside class="dxfer-operation-inspector" aria-label="Active operation" @onkeydown="HandleInspectorKeyDown">
             <header class="dxfer-operation-heading">
-                <h2>@ActiveToolLabel</h2>
+                <h2>@(_activeTool.HasValue ? ActiveToolLabel : "Information")</h2>
                 <button type="button" class="dxfer-inspector-toggle" @ref="_inspectorToggle"
                         aria-label="Hide operation inspector" title="Hide operation inspector" @onclick="ToggleOperationInspector">
-                    <CadIcon Name="CadIconName.CollapseRight" />
+                    <CadIcon Name="CadIconName.Info" />
                 </button>
             </header>
             <div class="dxfer-operation-feedback">
@@ -83,10 +83,13 @@
                 {
                     <button type="button" class="dxfer-exit-tool" disabled="@(CornerPreview is null)" @onclick="CommitCornerPreview">Apply</button>
                 }
+                @if (_activeTool.HasValue)
+                {
                 <button type="button" class="dxfer-exit-tool" title="Exit current tool" @onclick="ExitInspectorTool">
                     <CadIcon Name="CadIconName.Close" />
                     <span>Exit tool</span>
                 </button>
+                }
             </footer>
         </aside>
     }
@@ -115,7 +118,7 @@
                 }
                 </div>
                 <div class="dxfer-layer-details" @onkeydown:stopPropagation="true">
-                    <label>Layer name<input aria-label="Layer name" value="@(_selectedLayerName == SelectedLayerName ? _layerNameInput : SelectedLayerName)" @oninput="e => _layerNameInput = e.Value?.ToString() ?? string.Empty" disabled="@(LayersReadOnly || SelectedLayerName == "0")" /></label>
+                    <label>Layer name<input aria-label="Layer name" @bind="LayerNameDraft" @bind:event="oninput" disabled="@(LayersReadOnly || SelectedLayerName == "0")" /></label>
                     <button type="button" class="dxfer-exit-tool" disabled="@(LayersReadOnly || SelectedLayerName == "0")" @onclick="RenameLayer">Rename</button>
                     <div class="dxfer-layer-tools">
                         <button type="button" title="Select all on layer" aria-label="Select all on layer" disabled="@(SelectedLayer.IsHidden || SelectedLayer.IsLocked || LayerCount(SelectedLayerName) == 0)" @onclick="SelectLayerEntities"><CadIcon Name="CadIconName.SelectLayer" /></button>
@@ -157,7 +160,7 @@
             {
                 <button type="button" class="dxfer-inspector-toggle" @ref="_inspectorToggle"
                         aria-label="Show operation inspector" title="Show operation inspector" @onclick="ToggleOperationInspector">
-                    <CadIcon Name="CadIconName.CollapseLeft" />
+                    <CadIcon Name="CadIconName.Info" />
                 </button>
             }
         }

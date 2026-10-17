@@ -1,0 +1,47 @@
+# Layers, information and Hotkeys corrections
+
+## Layout and interaction contract
+
+- Retain Foundry colors, 48px header, existing palette docking and right-side
+  information/layers width. No geometry or saved layout changes from styling.
+- Layer action targets remain28px; glyphs are explicitly18px and cannot expand
+  to the available container size. Names retain ellipsis and full-name tooltips.
+- Layer-name editing uses Blazor input binding so delayed renders acknowledge
+  the browser's current value. Rename remains explicit; typing adds no history.
+- Information visibility is independent of active tool state. Exit cancels the
+  tool only; a circled-i hide/show control remains usable while idle.
+- Hotkeys is a centered600x560px dialog, clamped to the actual canvas bounds
+  with24px margins. Header/search/footer stay put;
+  the command list alone scrolls using the existing thin Foundry scrollbar.
+  Search and existing binding persistence remain unchanged; Escape closes.
+- Verify at1440x1000 and1100x705, including constrained viewport bounds, rapid
+  overlapping rapid layer input events, idle panel reopening and keyboard controls.
+
+No existing drawings or layer names will be automatically rewritten.
+
+## Geometry corrections
+
+Six core regressions reproduced two gaps before changes:
+
+- Tangent with circle quadrant picks retained point-qualified references that
+  circle-radius solving cannot use. The factory now maps only circle-like
+  Tangent operands to whole curves, preserving line and point-constraint meaning.
+- Concentric lacked origin support in selection, factory, validation, solving
+  and preview. It now accepts circle/arc + immutable origin in either order.
+  Core/preview share center-only behavior: no synthetic origin entity/radius;
+  Fixed centers refuse, radius remains free, and other geometry stays unchanged.
+
+The quadrant-pick failure is reproduced and corrected; this does not establish
+that every intermittent Tangent report had that cause. Previously saved failed
+point-qualified Tangent intent needs deliberate remove/reapply. No backfill.
+
+## Verification
+
+1622 .NET and797 JavaScript tests pass. Actual browser verifies rapid typing,
+rename/history/native reopen,18px layer glyphs, Exit preserving info and idle
+hide/show, Hotkeys centered on the field at1440x1000 and1100x705, search/scroll
+and Escape, both circle quadrant-Tangent pick orders, and both circle-center /
+origin Concentric orders with unchanged peers/radius, Undo/Redo/native reopen.
+Core tests also cover arcs, Fixed refusal and free radius; preview regressions
+cover immutable center and free radius. Browser radius reedit is also checked.
+Screenshots inspected; no phone QA is requested for this desktop application.

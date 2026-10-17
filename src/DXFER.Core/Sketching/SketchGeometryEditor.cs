@@ -348,6 +348,19 @@ internal static class SketchGeometryEditor
         }
     }
 
+    internal static bool TryGetOriginConcentricCircle(IReadOnlyList<DrawingEntity> entities,
+        SketchConstraint constraint, out SketchReference circle, out Point2 center)
+    {
+        circle = default;
+        center = default;
+        if (constraint.Kind != SketchConstraintKind.Concentric || constraint.ReferenceKeys.Count != 2
+            || !SketchReference.TryParse(constraint.ReferenceKeys[0], out var first)
+            || !SketchReference.TryParse(constraint.ReferenceKeys[1], out var second)
+            || first.IsOrigin == second.IsOrigin) return false;
+        circle = first.IsOrigin ? second : first;
+        return TryGetCircleLike(entities, circle, out _, out center, out _);
+    }
+
     public static bool TrySetCircleLikeCenter(
         DrawingEntity[] entities,
         SketchReference reference,

@@ -174,6 +174,9 @@ internal static class SketchConstraintPropagationService
         SketchFixedReferences fixedReferences,
         SketchConstraint constraint)
     {
+        if (SketchGeometryEditor.TryGetOriginConcentricCircle(entities, constraint, out var curve, out _))
+            return fixedReferences.CanMoveCircleLikeCenter(curve)
+                && TrySetCircleLikeCenterAndReport(entities, curve, new Point2(0, 0));
         if (!TryGetTwoCircleLikeReferences(
                 entities,
                 constraint,

@@ -151,7 +151,9 @@ public static class SketchCommandFactory
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(selectionKeys);
 
-        var selections = NormalizeSelections(document, selectionKeys, activeSelectionKey);
+        var selections = NormalizeSelections(document,
+            kind == SketchConstraintKind.Concentric ? selectionKeys.Select(key => NormalizeConcentricPick(document, key)) : selectionKeys,
+            activeSelectionKey);
         var pointSelections = selections.Where(selection => selection.Point.HasValue).ToArray();
         var lineSelections = selections.Where(selection => selection.Line is not null).ToArray();
         var circleLikeSelections = selections.Where(selection => selection.CircleLike is not null).ToArray();
@@ -175,6 +177,10 @@ public static class SketchCommandFactory
             SketchConstraintKind.Tangent when selections.Length == 2
                 && circleLikeSelections.Length >= 1
                 && (circleLikeSelections.Length == 2 || lineSelections.Length == 1) =>
+                selections.Select(selection => selection.CircleLike is not null
+                    ? GetCircleLikeEntityReferenceKey(selection.Key) : selection.Key).ToArray(),
+            SketchConstraintKind.Concentric when selections.Length == 2 && circleLikeSelections.Length == 1
+                && selections.Any(selection => selection.Key == SketchReference.OriginKey) =>
                 Keys(selections),
             SketchConstraintKind.Concentric when circleLikeSelections.Length == 2 =>
                 Keys(circleLikeSelections),
@@ -291,6 +297,16 @@ public static class SketchCommandFactory
     {
         var pointSeparatorIndex = key.IndexOf("|point|", StringComparison.Ordinal);
         return pointSeparatorIndex > 0 ? key[..pointSeparatorIndex] : key;
+    }
+
+    private static string NormalizeConcentricPick(DrawingDocument document, string key)
+    {
+        var entityKey = GetCircleLikeEntityReferenceKey(key);
+        if (SketchReference.TryParse(entityKey, out var reference)
+            && TryFindEntity(document, reference.EntityId, out var entity)
+            && entity is CircleEntity or ArcEntity)
+            return reference.EntityId;
+        return key;
     }
 
     private static string NormalizeSelectionKey(string? selectionKey)

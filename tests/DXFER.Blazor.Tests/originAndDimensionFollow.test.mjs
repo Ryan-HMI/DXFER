@@ -8,7 +8,7 @@ const line = { id: 'line', kind: 'line', points: [p(2, 2), p(6, 2)] };
 const state = tool => ({ activeTool: tool, document: { entities: [line] },
     view: { scale: 50, offsetX: 200, offsetY: 300 }, selectedKeys: new Set() });
 
-for (const tool of ['select', 'dimension', 'coincident', 'horizontal', 'vertical', 'midpoint']) {
+for (const tool of ['select', 'dimension', 'coincident', 'horizontal', 'vertical', 'midpoint', 'concentric']) {
     test(`origin is a selectable persistent point for ${tool}`, () => {
         const s = state(tool), target = findNearestTarget(s, p(200, 300));
         assert.equal(target?.key, '$origin:center');

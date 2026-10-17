@@ -7,6 +7,7 @@ public enum CadIconName
     Sample,
     Export,
     Hotkeys,
+    Info,
     CollapseLeft,
     CollapseRight,
     ChevronUp,

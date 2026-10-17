@@ -9,6 +9,11 @@ public partial class DrawingWorkbench
 {
     private string _selectedLayerName = "0";
     private string _layerNameInput = "0";
+    private string LayerNameDraft
+    {
+        get => _selectedLayerName == SelectedLayerName ? _layerNameInput : SelectedLayerName;
+        set => _layerNameInput = value;
+    }
     private string? _layerError;
     private bool _layersCollapsed;
     private IReadOnlyDictionary<string, DxfEntityStyle> Layers => DrawingLayerService.GetLayers(_document);

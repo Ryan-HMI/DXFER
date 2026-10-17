@@ -36,3 +36,14 @@ Flux Slack1792266007.634239 reports on d8e284e:
 - 107 inspected exports audit clean, as reported by Flux (not rerun by owner).
 
 Point-to-line placement and the coupled-propagation findings remain OPEN.
+
+## Independent native-fixture replay
+
+Fresh Flux delivery3ec499cdf2492d7faddbdc9d tested the afba6b3 driving fixture
+against installed d8e284e. Horizontal Point movement, single-step Undo/Redo,
+native reopen and same-ID distance3-to4 editing pass with the Fixed line
+unchanged. Seven exported DXFs audit clean per Flux. Perpendicular and diagonal
+drags refuse unchanged without history. Diagonal projection onto available
+horizontal freedom remains a limitation; construction/placement remains OPEN.
+This is prebuilt-dimension acceptance, not UI placement acceptance. The later
+319bdf9 Equal fix is separate and was not part of this independent replay.

@@ -460,7 +460,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         ? "--dxfer-inspector-width:18.5rem;"
         : "--dxfer-inspector-width:0px;";
 
-    private bool HasOperationInspector => EnableFullEditing && _activeTool.HasValue;
+    private bool HasOperationInspector => EnableFullEditing;
     private bool IsOperationInspectorVisible => HasOperationInspector && !_operationInspectorCollapsed;
     private string DocumentUnitsText => _document.Metadata.Units switch
     {
@@ -3687,7 +3687,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private static string GetConstraintPrompt(SketchConstraintKind kind) => kind switch
     {
         SketchConstraintKind.Coincident => "Select two editable points.",
-        SketchConstraintKind.Concentric => "Select two circles or arcs.",
+        SketchConstraintKind.Concentric => "Select two circles or arcs, or a circle/arc and the origin.",
         SketchConstraintKind.Parallel => "Select two lines or polyline segments.",
         SketchConstraintKind.Tangent => "Select a line/circle/arc plus another circle/arc or line.",
         SketchConstraintKind.Horizontal => "Select one line or two editable points.",

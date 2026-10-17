@@ -66,6 +66,35 @@ export function enableToolHotkeyRecorders(root) {
     }
 }
 
+export function observeHotkeyDialog(root) {
+    const canvas = document.querySelector("canvas.drawing-canvas");
+    const backdrop = root?.parentElement;
+    if (!canvas || !backdrop) return { dispose() {} };
+    const position = () => {
+        const bounds = canvas.getBoundingClientRect();
+        backdrop.style.inset = "0";
+        backdrop.style.padding = `${bounds.top + 24}px ${Math.max(0, window.innerWidth - bounds.right) + 24}px ${Math.max(0, window.innerHeight - bounds.bottom) + 24}px ${bounds.left + 24}px`;
+    };
+    const trap = event => {
+        if (event.key !== "Tab") return;
+        const controls = [...root.querySelectorAll("button:not(:disabled),input:not(:disabled),[tabindex='0']")]
+            .filter(element => element.getClientRects().length);
+        const first = controls[0], last = controls.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    const observer = new ResizeObserver(position);
+    observer.observe(canvas);
+    window.addEventListener("resize", position);
+    root.addEventListener("keydown", trap);
+    position();
+    return { dispose() {
+        observer.disconnect();
+        window.removeEventListener("resize", position);
+        root.removeEventListener("keydown", trap);
+    } };
+}
+
 function isEditableTarget(target) {
     if (!target || target === document || target === window) {
         return false;

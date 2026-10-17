@@ -1,19 +1,21 @@
 .dxfer-options-backdrop {
     position: fixed;
-    inset: 0;
+    inset: 48px 0 0;
     z-index: 100;
     display: flex;
-    align-items: flex-start;
-    justify-content: flex-start;
-    padding: 54px 0 0 12px;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
     background: rgba(5, 8, 11, 0.36);
 }
 
 .dxfer-options-panel {
     display: flex;
     flex-direction: column;
-    width: min(520px, calc(100vw - 24px));
-    max-height: calc(100vh - 72px);
+    width: min(600px, 100%);
+    height: min(560px, calc(100dvh - 96px));
+    max-height: 100%;
+    box-sizing: border-box;
     color: var(--dx-text, #f4f7fb);
     background: var(--dx-panel, #10141b);
     border: 1px solid #35434e;
@@ -118,7 +120,16 @@
     padding: 0.68rem 0.75rem;
     overflow: auto;
     min-height: 0;
+    flex: 1;
+    align-content: start;
+    scrollbar-width: thin;
+    scrollbar-color: var(--dx-border-strong, #687b90) var(--dx-panel, #10141b);
+    scrollbar-gutter: stable;
 }
+
+.dxfer-hotkey-grid::-webkit-scrollbar { width: 8px; height: 8px; }
+.dxfer-hotkey-grid::-webkit-scrollbar-track { background: var(--dx-panel, #10141b); }
+.dxfer-hotkey-grid::-webkit-scrollbar-thumb { background: var(--dx-border-strong, #687b90); border: 2px solid var(--dx-panel, #10141b); border-radius: 4px; }
 
 .dxfer-hotkey-row {
     display: grid;

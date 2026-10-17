@@ -281,6 +281,12 @@ public static class SketchConstraintService
         SketchFixedReferences fixedReferences,
         SketchConstraint constraint)
     {
+        if (SketchGeometryEditor.TryGetOriginConcentricCircle(entities, constraint, out var curve, out _))
+        {
+            if (fixedReferences.CanMoveCircleLikeCenter(curve))
+                SketchGeometryEditor.TrySetCircleLikeCenter(entities, curve, new Point2(0, 0));
+            return;
+        }
         if (!TryGetTwoCircleLikeReferences(
                 entities,
                 constraint,
@@ -694,6 +700,8 @@ public static class SketchConstraintService
 
     private static bool IsConcentric(IReadOnlyList<DrawingEntity> entities, SketchConstraint constraint)
     {
+        if (SketchGeometryEditor.TryGetOriginConcentricCircle(entities, constraint, out _, out var center))
+            return SketchGeometryEditor.AreClose(center, new Point2(0, 0));
         if (!TryGetTwoCircleLikeReferences(
                 entities,
                 constraint,

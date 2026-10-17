@@ -10,6 +10,7 @@
         <section class="dxfer-options-panel"
                  @ref="_panel"
                  aria-label="Tool hotkey settings"
+                 role="dialog" aria-modal="true"
                  @onkeydown="OnPanelKeyDown"
                  @onclick:stopPropagation="true">
             <header class="dxfer-options-header">
@@ -63,9 +64,10 @@
 }
 
 @code {
-    private const string ModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js?v=20261016-search-hotkeys";
+    private const string ModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js?v=20261017-centered-dialog";
     private const string StorageKey = "dxfer.toolHotkeys.v2";
     private IJSObjectReference? _module;
+    private IJSObjectReference? _dialogObserver;
     private ElementReference _panel;
     private ElementReference _searchInput;
     private string _search = string.Empty;
@@ -123,12 +125,19 @@
 
         if (IsOpen)
         {
+            _dialogObserver ??= await _module.InvokeAsync<IJSObjectReference>("observeHotkeyDialog", _panel);
             await _module.InvokeVoidAsync("enableToolHotkeyRecorders", _panel);
             if (_focusSearch)
             {
                 _focusSearch = false;
                 await _searchInput.FocusAsync();
             }
+        }
+        else if (_dialogObserver is not null)
+        {
+            await _dialogObserver.InvokeVoidAsync("dispose");
+            await _dialogObserver.DisposeAsync();
+            _dialogObserver = null;
         }
     }
 
@@ -182,6 +191,11 @@
 
         try
         {
+            if (_dialogObserver is not null)
+            {
+                await _dialogObserver.InvokeVoidAsync("dispose");
+                await _dialogObserver.DisposeAsync();
+            }
             await _module.DisposeAsync();
         }
         catch (JSDisconnectedException)
