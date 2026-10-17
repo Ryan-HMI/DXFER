@@ -39,4 +39,14 @@ unchanged geometry, satisfied entity references, Undo/Redo and native reopen.
 Four public downloads audit0/0. Candidate/live assemblies match; ten runtime
 settings retained, health200 and anonymous302. Production/Test processes
 unchanged; Sync callbacks disabled and normal sign-in retained.
-Rollback: `dev-publish-before-319bdf9`. Independent Flux retest pending.
+Rollback: `dev-publish-before-319bdf9`.
+
+## Independent acceptance
+
+Flux delivery `24744668d719e7b6a8b70159` reports a visible319bdf9 retest:
+exact R3 arc-midpoint/circle picks in both orders and body-pick control pass.
+Equal retains whole-curve references, Satisfied status and unchanged geometry
+through Undo/Redo and native reopen. Separate arc-center Fix retains its point
+reference and blocks center dragging. Eight exports audit clean per Flux.
+This closes the bounded Equal pick regression, not broader solver acceptance.
+Previously saved failed Equal constraints still require deliberate remove/reapply.
