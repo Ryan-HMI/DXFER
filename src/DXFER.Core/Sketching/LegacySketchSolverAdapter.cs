@@ -8,6 +8,30 @@ public sealed class LegacySketchSolverAdapter : ISketchSolver
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        var result = SolveAttempt(request);
+        if (result.Status == SketchSolveStatus.Solved || request.Constraints.Count != 1 || request.Dimensions.Count != 0)
+            return result;
+        var relation = request.Constraints[0];
+        if (relation.Kind is not (SketchConstraintKind.Parallel or SketchConstraintKind.Perpendicular)
+            || relation.ReferenceKeys.Count != 2 || relation.State == SketchConstraintState.Suppressed)
+            return result;
+
+        // Symmetric line relations have two possible driven peers. Retry from the
+        // original snapshot, validating the complete system before accepting either.
+        var reversed = new SketchConstraint(relation.Id, relation.Kind, relation.ReferenceKeys.Reverse(), relation.State);
+        var alternate = SolveAttempt(new SketchSolveRequest(request.Document, new[] { reversed }, request.Dimensions,
+            request.FixedReferenceKeys, request.InitialGuesses));
+        if (alternate.Status != SketchSolveStatus.Solved) return result;
+        var restored = Revalidate(new DrawingDocument(alternate.Document.Entities, alternate.Document.Dimensions,
+            alternate.Document.Constraints.Select(c => c.Id == relation.Id
+                ? new SketchConstraint(c.Id, c.Kind, relation.ReferenceKeys, c.State) : c), alternate.Document.Metadata));
+        var diagnostics = SketchSolveDiagnostics.FromDocument(restored);
+        return ClassifyStatus(restored, diagnostics) == SketchSolveStatus.Solved
+            ? new SketchSolveResult(SketchSolveStatus.Solved, restored) : result;
+    }
+
+    private static SketchSolveResult SolveAttempt(SketchSolveRequest request)
+    {
         var constrained = SketchConstraintService.ApplyConstraints(
             request.Document,
             request.Constraints);

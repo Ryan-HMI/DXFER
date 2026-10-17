@@ -9771,9 +9771,8 @@ function isPreviewConstraintSatisfied(originalDocument, document, constraint) {
       let second;
       if (keys.length === 1) {
         const line = resolveSketchLineReference({ document }, keys[0]);
-        if (!getPreviewLineDirection(line)) return false;
-        first = line.start;
-        second = line.end;
+        const direction = getPreviewLineDirection(line);
+        return Boolean(direction && close(kind === "horizontal" ? direction.y : direction.x, 0));
       } else {
         const pair = getTwoPreviewPointReferences(constraint);
         first = pair && getPreviewReferencePoint(document, pair.first);

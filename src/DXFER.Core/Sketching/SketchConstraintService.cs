@@ -608,14 +608,14 @@ public static class SketchConstraintService
             && SketchReference.TryParse(constraint.ReferenceKeys[0], out var lineReference)
             && SketchGeometryEditor.TryGetLine(entities, lineReference, out _, out var line))
         {
-            if (SketchGeometryEditor.AreClose(line.Start, line.End))
+            if (!SketchGeometryEditor.TryGetLineDirection(line, out var unitX, out var unitY, out _))
             {
                 return false;
             }
 
             return isHorizontal
-                ? SketchGeometryEditor.AreClose(line.Start.Y, line.End.Y)
-                : SketchGeometryEditor.AreClose(line.Start.X, line.End.X);
+                ? Math.Abs(unitY) <= SketchGeometryEditor.Tolerance
+                : Math.Abs(unitX) <= SketchGeometryEditor.Tolerance;
         }
 
         if (!TryGetTwoPointReferences(constraint, out var firstReference, out var secondReference)
