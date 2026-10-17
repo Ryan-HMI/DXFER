@@ -11,6 +11,57 @@ public sealed class SketchCommandFactoryTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void EqualCurvePickRespectsFixedPeer(bool fixBoth)
+    {
+        var constraints = new List<SketchConstraint> {
+            new("fix-circle", SketchConstraintKind.Fix, new[] { "circle" }, SketchConstraintState.Satisfied)
+        };
+        if (fixBoth) constraints.Add(new("fix-arc", SketchConstraintKind.Fix,
+            new[] { "arc" }, SketchConstraintState.Satisfied));
+        var document = new DrawingDocument(new DrawingEntity[] {
+            new ArcEntity(EntityId.Create("arc"), new(10, 10), 3, 0, 90),
+            new CircleEntity(EntityId.Create("circle"), new(20, 10), 4)
+        }, Array.Empty<SketchDimension>(), constraints);
+        SketchCommandFactory.TryBuildConstraint(document,
+            new[] { "arc|point|mid|12.121320343559642|12.121320343559642", "circle" },
+            SketchConstraintKind.Equal, "equal", out var constraint, out var status).Should().BeTrue(status);
+        var solved = SketchConstraintService.ApplyConstraint(document, constraint);
+        solved.Constraints.Single(c => c.Id == "equal").State.Should().Be(fixBoth
+            ? SketchConstraintState.Unsatisfied : SketchConstraintState.Satisfied);
+        solved.Entities[1].Should().Be(document.Entities[1]);
+        var arc = (ArcEntity)solved.Entities[0];
+        arc.Center.Should().Be(new Point2(10, 10));
+        arc.Radius.Should().Be(fixBoth ? 3 : 4);
+    }
+
+    [Theory]
+    [InlineData("arc|point|mid|12.121320343559642|12.121320343559642", "circle", false)]
+    [InlineData("arc|point|mid|12.121320343559642|12.121320343559642", "circle", true)]
+    [InlineData("arc|point|start|13|10", "circle|point|quadrant-0|23|10", false)]
+    [InlineData("arc|point|end|10|13", "circle|point|quadrant-90|20|13", true)]
+    public void EqualCurvePicksUseEntityReferences(string arcKey, string circleKey, bool reversed)
+    {
+        var document = new DrawingDocument(new DrawingEntity[] {
+            new ArcEntity(EntityId.Create("arc"), new(10, 10), 3, 0, 90),
+            new CircleEntity(EntityId.Create("circle"), new(20, 10), 3)
+        });
+        var keys = reversed ? new[] { circleKey, arcKey } : new[] { arcKey, circleKey };
+        SketchCommandFactory.TryBuildConstraint(document, keys, SketchConstraintKind.Equal,
+            "equal", out var constraint, out var status).Should().BeTrue(status);
+        constraint.ReferenceKeys.Should().Equal(reversed ? new[] { "circle", "arc" } : new[] { "arc", "circle" });
+        var solved = SketchConstraintService.ApplyConstraint(document, constraint);
+        solved.Constraints.Single().State.Should().Be(SketchConstraintState.Satisfied);
+        solved.Entities.Should().Equal(document.Entities);
+
+        SketchCommandFactory.TryBuildConstraint(document, keys, SketchConstraintKind.Coincident,
+            "join", out var pointConstraint, out _);
+        if (circleKey.Contains("|point|", StringComparison.Ordinal))
+            pointConstraint.ReferenceKeys.Should().Equal(keys);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void BuildsOriginDimensionAndCoincidentWithoutSyntheticEntity(bool reversed)
     {
         var document = new DrawingDocument(new DrawingEntity[] {

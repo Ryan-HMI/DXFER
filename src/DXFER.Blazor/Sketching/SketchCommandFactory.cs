@@ -53,7 +53,7 @@ public static class SketchCommandFactory
             dimension = new SketchDimension(
                 id,
                 kind,
-                new[] { GetCircleLikeDimensionReferenceKey(selections[0].Key) },
+                new[] { GetCircleLikeEntityReferenceKey(selections[0].Key) },
                 value,
                 anchorOverride ?? new Point2(circleLike.Center.X + circleLike.Radius, circleLike.Center.Y),
                 isDriving: true);
@@ -181,7 +181,7 @@ public static class SketchCommandFactory
             SketchConstraintKind.Equal when lineSelections.Length == 2 =>
                 Keys(lineSelections),
             SketchConstraintKind.Equal when circleLikeSelections.Length == 2 =>
-                Keys(circleLikeSelections),
+                circleLikeSelections.Select(selection => GetCircleLikeEntityReferenceKey(selection.Key)).ToArray(),
             SketchConstraintKind.Midpoint when lineSelections.Length == 1 && pointSelections.Length == 1 =>
                 new[] { lineSelections[0].Key, pointSelections[0].Key },
             SketchConstraintKind.Fix when selections.Length > 0 =>
@@ -287,7 +287,7 @@ public static class SketchCommandFactory
         return !StringComparer.OrdinalIgnoreCase.Equals(normalized, "center");
     }
 
-    private static string GetCircleLikeDimensionReferenceKey(string key)
+    private static string GetCircleLikeEntityReferenceKey(string key)
     {
         var pointSeparatorIndex = key.IndexOf("|point|", StringComparison.Ordinal);
         return pointSeparatorIndex > 0 ? key[..pointSeparatorIndex] : key;
