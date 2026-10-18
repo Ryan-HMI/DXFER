@@ -36,4 +36,17 @@ The draft handler is unchanged. The canvas module URL is versioned for reload.
 - Seven generated DXFs audit with zero errors/fixes. Screenshot inspected;
   geometry, dimension overlays and the operational layout are unchanged.
 - Evidence: `/tmp/creation-tab-before.log`, `/tmp/creation-tab-local.log` and
-  `/tmp/creation-tab-local`. Public Dev replay pending deployment.
+  `/tmp/creation-tab-local`.
+
+## Deployment
+
+Installed `92dfc24c1a922cb8a5cee4f36df4daa47e76c481` on DXFer Dev at
+2026-10-18T19:27Z. Four assembly hashes match; ten runtime settings preserved;
+health 200 and anonymous root 302. Normal sign-in and disabled Sync callbacks
+retained. Production/Test runtimes unchanged.
+
+Public browser replay passes with rendered build 92dfc24, including deliberate
+editing and Tab-to-commit, history and native reopen. Seven public DXFs audit
+with zero errors/fixes; screenshot inspected. Evidence `/tmp/creation-tab-dev`
+and `/tmp/creation-tab-dev.log`. Independent acceptance pending. No drawing
+repair required. Local QA process stopped.
