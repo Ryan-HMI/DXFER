@@ -48,4 +48,14 @@ new constraints automatically. Independent QA remains separate from owner tests.
 
 ## Deployment
 
-Pending verified Dev-only rollout. Production/Test remain unchanged.
+Installed `efd2b0345d49a380b3d34032b0834d2dea041d6c` on DXFer Dev at
+2026-10-18T23:01Z. Four installed assemblies match the published candidate and
+ten runtime settings remain unchanged. Health200, anonymous302, normal Google
+sign-in and disabled Sync callbacks retained; Production/Test runtimes unchanged.
+
+Local and public browser runs pass all eight cases against the rendered efd2b03
+public build. Each run's twelve exports audit with zero errors or fixes.
+Screenshots inspected; no page errors. Public evidence is in
+`/tmp/incidence-browser-dev.log` and `/tmp/line-incidence-dev`. Local QA has stopped
+and port5049 has no listener. Independent Flux replay remains pending; these
+owner checks do not establish blanket solver or visual acceptance.
