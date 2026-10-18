@@ -9469,9 +9469,9 @@ function getSelectedPreviewLineEntityId(document, selectionKey) {
 
 function getDimensionedRectanglePreviewEntityIds(document, selectedEntityId) {
   const rectangleEntityIds = getRectanglePreviewEntityIds(document, selectedEntityId);
-  if (rectangleEntityIds
-    && countDrivingPreviewDimensionsForEntityGroup(getDocumentDimensions(document), rectangleEntityIds) >= 2) {
-    return getCornerModifiedRectanglePreviewTranslationEntityIds(document, rectangleEntityIds);
+  if (rectangleEntityIds) {
+    return countDrivingPreviewDimensionsForEntityGroup(getDocumentDimensions(document), rectangleEntityIds) >= 2
+      ? getCornerModifiedRectanglePreviewTranslationEntityIds(document, rectangleEntityIds) : null;
   }
 
   const modifiedRectangleEntityIds = getCornerModifiedRectanglePreviewEntityIds(document, selectedEntityId);
@@ -9517,10 +9517,30 @@ function getRectanglePreviewEntityIds(document, selectedEntityId) {
     }
   }
 
-  return rectangleEntityIds.size === 4
-    && hasRectanglePreviewLineRelations(getDocumentConstraints(document), rectangleEntityIds)
-    ? rectangleEntityIds
-    : null;
+  if (rectangleEntityIds.size === 4) {
+    return hasRectanglePreviewLineRelations(getDocumentConstraints(document), rectangleEntityIds)
+      ? rectangleEntityIds : null;
+  }
+
+  // A corner weld may connect independent rectangles. Find the selected four-edge cycle,
+  // not the entire connected component; ambiguous or excessively dense graphs decline.
+  let result = null;
+  let remaining = 4096;
+  for (const second of adjacency.get(selectedEntityId)) {
+    for (const third of adjacency.get(second)) {
+      if (--remaining < 0) return null;
+      if (third === selectedEntityId) continue;
+      for (const fourth of adjacency.get(third)) {
+        if (--remaining < 0) return null;
+        if (fourth === selectedEntityId || fourth === second || !adjacency.get(fourth).has(selectedEntityId)) continue;
+        const candidate = new Set([selectedEntityId, second, third, fourth]);
+        if (!hasRectanglePreviewLineRelations(getDocumentConstraints(document), candidate)) continue;
+        if (result && [...candidate].some(id => !result.has(id))) return null;
+        result = candidate;
+      }
+    }
+  }
+  return result;
 }
 
 function getCornerModifiedRectanglePreviewEntityIds(document, selectedEntityId) {

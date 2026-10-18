@@ -1488,10 +1488,9 @@ public static class SketchGeometryDragService
         string selectedEntityId,
         out HashSet<string> rectangleEntityIds)
     {
-        if (TryGetRectangleGroup(document, selectedEntityId, out rectangleEntityIds)
-            && CountDrivingDimensionsForEntityGroup(document.Dimensions, rectangleEntityIds) >= 2)
+        if (TryGetRectangleGroup(document, selectedEntityId, out rectangleEntityIds))
         {
-            return true;
+            return CountDrivingDimensionsForEntityGroup(document.Dimensions, rectangleEntityIds) >= 2;
         }
 
         return TryGetCornerModifiedRectangleGroup(document, selectedEntityId, out rectangleEntityIds)
@@ -1548,8 +1547,35 @@ public static class SketchGeometryDragService
             }
         }
 
-        return rectangleEntityIds.Count == 4
-            && HasRectangleLineRelations(document.Constraints, rectangleEntityIds);
+        if (rectangleEntityIds.Count == 4)
+        {
+            return HasRectangleLineRelations(document.Constraints, rectangleEntityIds);
+        }
+
+        // Corner-welded rectangles share a component, but not their four-edge cycles.
+        // Decline ambiguous or excessively dense searches instead of choosing by order.
+        HashSet<string>? result = null;
+        var remaining = 4096;
+        foreach (var second in adjacency[selectedEntityId])
+        {
+            foreach (var third in adjacency[second])
+            {
+                if (--remaining < 0) return false;
+                if (third == selectedEntityId) continue;
+                foreach (var fourth in adjacency[third])
+                {
+                    if (--remaining < 0) return false;
+                    if (fourth == selectedEntityId || fourth == second || !adjacency[fourth].Contains(selectedEntityId)) continue;
+                    var candidate = new HashSet<string>(StringComparer.Ordinal) { selectedEntityId, second, third, fourth };
+                    if (!HasRectangleLineRelations(document.Constraints, candidate)) continue;
+                    if (result is not null && !result.SetEquals(candidate)) return false;
+                    result = candidate;
+                }
+            }
+        }
+        if (result is null) return false;
+        rectangleEntityIds = result;
+        return true;
     }
 
     private static bool TryGetCornerModifiedRectangleGroup(
