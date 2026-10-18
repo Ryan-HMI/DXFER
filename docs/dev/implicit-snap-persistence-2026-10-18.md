@@ -33,6 +33,19 @@ Existing closed-alias regressions remain passing. No UI/layout or solver-engine 
 Actual browser harness: implicitSnapPersistence.browser.mjs, four synthetic native
 fixtures named implicit-snap-{ellipse,spline,line,polyline}.dxf. It tests creation,
 held drag/release, source stability, Undo/Redo, native reopen and coupled edit again.
+The final local replay passes all four fixtures/eight interaction paths;12 exports
+audit with zero errors/fixes and held-preview screenshots were inspected.
+
+## Installed verification
+
+Installed58981361c8117a100fd1a0af7882c6d05ee3a259 at2026-10-18T19:00Z.
+Public browser independently read rendered5898136 and repeated the same successful
+replay;12 public exports audit0/0 and spline-follow screenshot inspected. Log:
+/tmp/dxfer-implicit-snaps-dev-browser.log. Four installed assemblies match publish,
+ten runtime settings unchanged, health200/anonymous302, Production/Test PIDs
+unchanged. Normal sign-in, isolated storage and disabled Sync callbacks retained.
+Rollback:/home/ryan/dxfer-runtime/dev-publish-before-5898136. Independent Flux
+replay and Ryan acceptance remain pending, not inferred from owner checks.
 
 ## Remaining, Not Complete
 
@@ -47,6 +60,7 @@ held drag/release, source stability, Undo/Redo, native reopen and coupled edit a
 | Acquired projection/virtual midpoint | Source identities/relationship provenance currently lost at commit |
 | Virtual centers (e.g. center rectangle) | Not necessarily a persisted point entity/reference |
 | Polar/grid-style positioning | No blanket persistent inference implemented |
+| Dimension-projected drag shortcuts | Full snap-intent capture not audited here |
 
 Do not claim this matrix is fully implemented. Completing the rule needs typed
 snap intent through creation/drag and stable geometric references for virtual
