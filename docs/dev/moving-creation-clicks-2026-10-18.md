@@ -38,4 +38,13 @@ Evidence: `/tmp/moving-click-before.log`, `/tmp/moving-click-js.log`,
 
 Shared input handling is corrected; no saved drawings need repair. Previously
 ignored clicks produced no geometry and must be clicked again deliberately.
-Pending Dev deployment and public replay. Production/Test untouched.
+Dev deployed `0548a7bc2f4e40e21ab5b855b1248575533d7949` at 2026-10-18T23:27Z.
+Public browser repeats all six creation/history/reopen cases and origin snapping,
+with rendered build verified, no page errors and screenshots inspected. Thirteen
+exported DXFs audit with zero errors/fixes. Evidence:
+`/tmp/moving-click-browser-dev.log` and `/tmp/moving-click-dev`.
+
+Installed four assembly hashes match, ten runtime settings retained, health200,
+anonymous root302, callbacks disabled; Production/Test processes unchanged.
+Rollback: `/home/ryan/dxfer-runtime/dev-publish-before-0548a7b`.
+Owner verification complete; independent Flux/Ryan replay remains separate.
