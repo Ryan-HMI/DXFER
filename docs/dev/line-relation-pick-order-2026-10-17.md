@@ -37,3 +37,15 @@ native reopen, and conflicting intent with visible unchanged feedback.
 No data repair or silent re-solve of saved drawings. Reapply existing failed
 relations deliberately. This closes the minimized single-relation selection-order
 case only; general coupled rotation and angle editing remain separate open work.
+
+## Installed verification
+
+Installed `2ac6db41520eeb0bd58bed99ed31415323dd4a73` on DXFer Dev at
+2026-10-17T23:59Z. Local and public browser suites pass all six cases; public
+browser verified the rendered2ac6db4 build. Six public exports audit0/0 and
+screenshots were inspected. Independent Flux retest requested, not yet accepted.
+
+Published/live assembly hashes match; ten tracked runtime settings retained,
+health200 and anonymous root302. Normal Google auth, independent Dev state and
+disabled Sync callbacks retained. Production/Test PIDs unchanged. Rollback
+publish retained. Existing drawings were not rewritten.
