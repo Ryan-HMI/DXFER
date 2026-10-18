@@ -250,6 +250,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
   return {
     setDocument(document, fitToDocument = false) {
       state.document = document || null;
+      reconcileDimensionAnchorOverrides(state, fitToDocument);
       state.acquiredSnapPoints = [];
       if (fitToDocument) {
         state.toolDraft = createEmptyToolDraft();
@@ -2307,6 +2308,17 @@ function getDimensionAnchorOverride(state, id) {
     : null;
 }
 
+export function reconcileDimensionAnchorOverrides(state, reset = false) {
+  if (reset) state.dimensionDrag = null;
+  const ids = new Set(getDocumentDimensions(state.document).map(getSketchItemId));
+  for (const id of state.dimensionAnchorOverrides.keys()) {
+    // Only the live pointer gesture may mask an authoritative document anchor.
+    if (id !== state.dimensionDrag?.dimensionId || !ids.has(id)) {
+      state.dimensionAnchorOverrides.delete(id);
+    }
+  }
+}
+
 function drawDimensionToolPreview(state) {
   if (!isDimensionTool(state) || !state.dimensionDraft || !state.dimensionDraft.complete) {
     return;
@@ -3174,6 +3186,8 @@ function handlePersistentDimensionPointerCancel(state, input, event) {
   const drag = state.dimensionDrag;
   if (drag && drag.pointerId === event.pointerId) {
     state.dimensionDrag = null;
+    state.dimensionAnchorOverrides.delete(drag.dimensionId);
+    draw(state);
   }
 
   input.dataset.dimensionDragging = "false";
@@ -3201,6 +3215,11 @@ function handlePersistentDimensionInputKeyDown(state, input, event) {
     focusCanvas(state.canvas);
     event.preventDefault();
   } else if (event.key === "Escape") {
+    if (state.dimensionDrag?.dimensionId === input.dataset.dimensionId) {
+      state.dimensionAnchorOverrides.delete(state.dimensionDrag.dimensionId);
+      state.dimensionDrag = null;
+      draw(state);
+    }
     input.dataset.dimensionEditing = "false";
     focusCanvas(state.canvas);
     event.preventDefault();
@@ -5930,6 +5949,8 @@ function handleKeyDown(state, event) {
 
 function cancelActiveTool(state) {
   cancelGeometryDrag(state);
+  state.dimensionDrag = null;
+  state.dimensionAnchorOverrides.clear();
   state.clickCandidate = null;
   state.selectionBox = null;
   state.selectedKeys.clear();
