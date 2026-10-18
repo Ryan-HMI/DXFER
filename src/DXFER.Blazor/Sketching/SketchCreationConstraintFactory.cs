@@ -416,38 +416,8 @@ public static class SketchCreationConstraintFactory
 
     private static IEnumerable<PointReference> EnumeratePointReferences(IReadOnlyList<DrawingEntity> entities)
     {
-        foreach (var entity in entities)
-        {
-            switch (entity)
-            {
-                case LineEntity line:
-                    yield return new PointReference(new SketchReference(line.Id.Value, SketchReferenceTarget.Start), line.Start);
-                    yield return new PointReference(new SketchReference(line.Id.Value, SketchReferenceTarget.End), line.End);
-                    break;
-                case ArcEntity arc:
-                    yield return new PointReference(new SketchReference(arc.Id.Value, SketchReferenceTarget.Start), PointOnArc(arc, arc.StartAngleDegrees));
-                    yield return new PointReference(new SketchReference(arc.Id.Value, SketchReferenceTarget.End), PointOnArc(arc, arc.EndAngleDegrees));
-                    yield return new PointReference(new SketchReference(arc.Id.Value, SketchReferenceTarget.Center), arc.Center);
-                    break;
-                case CircleEntity circle:
-                    yield return new PointReference(new SketchReference(circle.Id.Value, SketchReferenceTarget.Center), circle.Center);
-                    break;
-                case PointEntity point:
-                    yield return new PointReference(new SketchReference(point.Id.Value, SketchReferenceTarget.Entity), point.Location);
-                    break;
-                case PolygonEntity polygon:
-                    yield return new PointReference(new SketchReference(polygon.Id.Value, SketchReferenceTarget.Center), polygon.Center);
-                    break;
-                case PolylineEntity polyline:
-                    for (var index = 0; index < polyline.Vertices.Count - 1; index++)
-                    {
-                        yield return new PointReference(new SketchReference(polyline.Id.Value, SketchReferenceTarget.Start, index), polyline.Vertices[index]);
-                        yield return new PointReference(new SketchReference(polyline.Id.Value, SketchReferenceTarget.End, index), polyline.Vertices[index + 1]);
-                    }
-
-                    break;
-            }
-        }
+        return SketchReferenceResolver.EnumeratePersistentPoints(entities)
+            .Select(point => new PointReference(point.Reference, point.Point));
     }
 
     private static IEnumerable<LineReference> EnumerateLineReferences(IReadOnlyList<DrawingEntity> entities)

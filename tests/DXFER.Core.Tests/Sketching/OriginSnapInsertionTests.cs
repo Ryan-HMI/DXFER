@@ -13,11 +13,15 @@ public sealed class OriginSnapInsertionTests
     [InlineData("line")]
     [InlineData("centercircle")]
     [InlineData("point")]
+    [InlineData("ellipse")]
+    [InlineData("spline")]
     public void ExplicitOriginSnapPersistsWithoutPinningUnsnappedCreation(string tool)
     {
         DrawingEntity entity = tool switch {
             "line" => new LineEntity(EntityId.Create("created"), new(0, 0), new(5, 3)),
             "centercircle" => new CircleEntity(EntityId.Create("created"), new(0, 0), 3),
+            "ellipse" => new EllipseEntity(EntityId.Create("created"), new(0, 0), new(4, 0), .5),
+            "spline" => new SplineEntity(EntityId.Create("created"), 3, new Point2[] { new(0, 0), new(1, 0), new(3, 2), new(4, 2) }, new double[] { 0, 0, 0, 0, 1, 1, 1, 1 }),
             _ => new PointEntity(EntityId.Create("created"), new(0, 0)) };
         var created = new[] { entity };
         var count = 0;

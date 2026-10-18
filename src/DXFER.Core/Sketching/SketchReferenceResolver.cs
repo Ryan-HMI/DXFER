@@ -6,6 +6,33 @@ namespace DXFER.Core.Sketching;
 
 public static class SketchReferenceResolver
 {
+    public static IEnumerable<(SketchReference Reference, Point2 Point)> EnumeratePersistentPoints(IReadOnlyList<DrawingEntity> entities)
+    {
+        ArgumentNullException.ThrowIfNull(entities);
+        foreach (var entity in entities)
+        {
+            if (entity is PolylineEntity polyline)
+            {
+                for (var index = 0; index < polyline.Vertices.Count - 1; index++)
+                {
+                    yield return (new SketchReference(entity.Id.Value, SketchReferenceTarget.Start, index), polyline.Vertices[index]);
+                    yield return (new SketchReference(entity.Id.Value, SketchReferenceTarget.End, index), polyline.Vertices[index + 1]);
+                }
+                continue;
+            }
+
+            var targets = entity is PointEntity
+                ? new[] { SketchReferenceTarget.Entity }
+                : new[] { SketchReferenceTarget.Start, SketchReferenceTarget.End, SketchReferenceTarget.Center };
+            foreach (var target in targets)
+            {
+                var reference = new SketchReference(entity.Id.Value, target);
+                if (SketchGeometryEditor.TryGetPoint(entities, reference, out var point))
+                    yield return (reference, point);
+            }
+        }
+    }
+
     public static bool TryGetEntity(DrawingDocument document, string key, out DrawingEntity entity)
     {
         ArgumentNullException.ThrowIfNull(document);

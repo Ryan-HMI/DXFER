@@ -257,7 +257,7 @@ public static class SketchGeometryDragService
             return false;
         }
 
-        draggedDocument = AddCoincidentConstraintForSnappedPointDrag(draggedDocument, selectionKey, ref status);
+        draggedDocument = AddPersistentConstraintForSnappedPointDrag(document, draggedDocument, selectionKey, ref status);
         nextDocument = draggedDocument;
         return true;
     }
@@ -2976,34 +2976,50 @@ public static class SketchGeometryDragService
                 SketchReferenceTarget.Start);
     }
 
-    private static DrawingDocument AddCoincidentConstraintForSnappedPointDrag(
+    private static DrawingDocument AddPersistentConstraintForSnappedPointDrag(
+        DrawingDocument original,
         DrawingDocument document,
         string selectionKey,
         ref string status)
     {
-        if (!TryGetDraggedPointReference(selectionKey, out var draggedReference)
-            || !SketchGeometryEditor.TryGetPoint(document.Entities, draggedReference, out var draggedPoint)
-            || !TryFindCoincidentPointReference(document.Entities, draggedReference, draggedPoint, out var anchorReference)
-            || HasCoincidentConstraint(document.Constraints, anchorReference, draggedReference))
+        if (!TryGetDraggedPointReference(document.Entities, selectionKey, out var draggedReference)
+            || !SketchGeometryEditor.TryGetPoint(document.Entities, draggedReference, out var draggedPoint))
         {
             return document;
         }
 
+        var kind = SketchConstraintKind.Coincident;
+        if (TryFindCoincidentPointReference(original.Entities, document.Entities, draggedReference, draggedPoint, out var anchorReference))
+        {
+            if (HasCoincidentConstraint(document.Constraints, anchorReference, draggedReference)) return document;
+        }
+        else
+        {
+            kind = SketchConstraintKind.Midpoint;
+            if (!TryFindMidpointReference(original.Entities, document.Entities, draggedReference, draggedPoint, out anchorReference)
+                || document.Constraints.Any(c => c.Kind == kind && c.ReferenceKeys.Contains(anchorReference.ToString())
+                    && c.ReferenceKeys.Contains(draggedReference.ToString()))) return document;
+        }
+
         var constraint = new SketchConstraint(
-            $"drag-coincident-{Guid.NewGuid():N}",
-            SketchConstraintKind.Coincident,
+            $"drag-{kind.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}",
+            kind,
             new[] { anchorReference.ToString(), draggedReference.ToString() },
             SketchConstraintState.Satisfied);
-        var constrainedDocument = SketchConstraintService.ApplyConstraint(document, constraint);
-        status = $"{status} Added coincident constraint.";
-        return constrainedDocument;
+        if (SketchConstraintService.ValidateConstraint(document, constraint).State != SketchConstraintState.Satisfied)
+            return document;
+        // Persist the satisfied snap without re-solving or moving already accepted geometry.
+        status = $"{status} Added {kind.ToString().ToLowerInvariant()} constraint.";
+        return new DrawingDocument(document.Entities, document.Dimensions, document.Constraints.Append(constraint), document.Metadata);
     }
 
-    private static bool TryGetDraggedPointReference(string selectionKey, out SketchReference reference)
+    private static bool TryGetDraggedPointReference(IReadOnlyList<DrawingEntity> entities, string selectionKey, out SketchReference reference)
     {
-        if (SketchReference.TryParse(selectionKey, out reference)
-            && reference.Target != SketchReferenceTarget.Entity)
+        if (SketchReference.TryParse(selectionKey, out var parsed)
+            && (parsed.Target != SketchReferenceTarget.Entity
+                || entities.Any(entity => entity.Id.Value == parsed.EntityId && entity is PointEntity)))
         {
+            reference = parsed;
             return true;
         }
 
@@ -3011,7 +3027,27 @@ public static class SketchGeometryDragService
         return false;
     }
 
+    private static bool TryFindMidpointReference(IReadOnlyList<DrawingEntity> originalEntities, IReadOnlyList<DrawingEntity> entities, SketchReference draggedReference,
+        Point2 draggedPoint, out SketchReference reference)
+    {
+        foreach (var entity in entities.Where(entity => entity.Id.Value != draggedReference.EntityId))
+        {
+            var count = entity is PolylineEntity polyline ? polyline.Vertices.Count - 1 : entity is LineEntity ? 1 : 0;
+            for (var index = 0; index < count; index++)
+            {
+                reference = new SketchReference(entity.Id.Value, SketchReferenceTarget.Entity, entity is PolylineEntity ? index : null);
+                if (SketchGeometryEditor.TryGetLine(entities, reference, out _, out var line)
+                    && SketchGeometryEditor.TryGetLine(originalEntities, reference, out _, out var originalLine)
+                    && SketchGeometryEditor.AreClose(SketchGeometryEditor.Midpoint(line), SketchGeometryEditor.Midpoint(originalLine))
+                    && SketchGeometryEditor.AreClose(draggedPoint, SketchGeometryEditor.Midpoint(line))) return true;
+            }
+        }
+        reference = default;
+        return false;
+    }
+
     private static bool TryFindCoincidentPointReference(
+        IReadOnlyList<DrawingEntity> originalEntities,
         IReadOnlyList<DrawingEntity> entities,
         SketchReference draggedReference,
         Point2 draggedPoint,
@@ -3027,6 +3063,8 @@ public static class SketchGeometryDragService
             if (StringComparer.Ordinal.Equals(candidate.EntityId, draggedReference.EntityId)
                 || StringComparer.Ordinal.Equals(candidate.ToString(), draggedReference.ToString())
                 || !SketchGeometryEditor.TryGetPoint(entities, candidate, out var candidatePoint)
+                || !SketchGeometryEditor.TryGetPoint(originalEntities, candidate, out var originalPoint)
+                || !SketchGeometryEditor.AreClose(candidatePoint, originalPoint)
                 || !SketchGeometryEditor.AreClose(candidatePoint, draggedPoint))
             {
                 continue;
@@ -3042,38 +3080,7 @@ public static class SketchGeometryDragService
 
     private static IEnumerable<SketchReference> EnumeratePointReferences(IReadOnlyList<DrawingEntity> entities)
     {
-        foreach (var entity in entities)
-        {
-            switch (entity)
-            {
-                case LineEntity line:
-                    yield return new SketchReference(line.Id.Value, SketchReferenceTarget.Start);
-                    yield return new SketchReference(line.Id.Value, SketchReferenceTarget.End);
-                    break;
-                case PolylineEntity polyline:
-                    for (var index = 0; index < polyline.Vertices.Count - 1; index++)
-                    {
-                        yield return new SketchReference(polyline.Id.Value, SketchReferenceTarget.Start, index);
-                        yield return new SketchReference(polyline.Id.Value, SketchReferenceTarget.End, index);
-                    }
-
-                    break;
-                case CircleEntity circle:
-                    yield return new SketchReference(circle.Id.Value, SketchReferenceTarget.Center);
-                    break;
-                case ArcEntity arc:
-                    yield return new SketchReference(arc.Id.Value, SketchReferenceTarget.Start);
-                    yield return new SketchReference(arc.Id.Value, SketchReferenceTarget.End);
-                    yield return new SketchReference(arc.Id.Value, SketchReferenceTarget.Center);
-                    break;
-                case PolygonEntity polygon:
-                    yield return new SketchReference(polygon.Id.Value, SketchReferenceTarget.Center);
-                    break;
-                case PointEntity point:
-                    yield return new SketchReference(point.Id.Value, SketchReferenceTarget.Entity);
-                    break;
-            }
-        }
+        return SketchReferenceResolver.EnumeratePersistentPoints(entities).Select(point => point.Reference);
     }
 
     private static bool HasCoincidentConstraint(
