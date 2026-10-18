@@ -62,4 +62,20 @@ a reproduced avoidable cost, not proof of Ryan's exact tab-freeze cause.
 The systemic joined-rectangle rejection is fixed; no existing records require
 repair for this fix. Ryan's exact freeze remains open pending his native drawing
 or a replay of this installed change. No blanket solver acceptance is claimed.
-Dev-only deployment and independent QA remain pending at this commit.
+Independent QA remains pending.
+
+## Deployment
+
+Installed `f8129a2a9b15b551d41cf4531d16385f547f2353` on DXFer Dev at
+2026-10-18T22:46Z. Four assemblies match the published candidate; ten runtime
+settings preserved, health200 and anonymous302. Normal sign-in and disabled Sync
+callbacks retained; Production/Test runtimes unchanged.
+
+Public browser verifies rendered build f8129a2 and all four fixtures. Six sustained
+drags (including re-edits) retain a responsive 20ms heartbeat, with observed
+maximum gaps of 20.5-24.8ms. This is a measured run, not a universal timing bound.
+Held geometry, release, peer preservation, Undo/Redo/native reopen/re-edit and
+fixed refusal pass. Six exported DXFs audit with zero errors/fixes; screenshot
+checked. Evidence `/tmp/joined-browser-dev.log`, `/tmp/joined-rectangle-dev`.
+Local QA is stopped. Exact original drawing/freeze and independent Flux replay
+remain outstanding; no records were repaired or need repair for this code fix.
