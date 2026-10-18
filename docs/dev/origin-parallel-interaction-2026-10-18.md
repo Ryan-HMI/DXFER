@@ -45,3 +45,13 @@ constraints need no record repair; drawings previously snapped without a stored
 origin relation need a deliberate Coincident or resnap, not automatic pinning.
 Broader coupled-angle/rotation and fixed-midpoint limitations are separate.
 Independent Flux replay and Ryan acceptance are not yet claimed.
+
+## Installed verification
+
+Installed f016d90732ff8cd9cb989552d7fdd84bf4820a6e at2026-10-18T18:51Z.
+The public Dev browser independently read rendered f016d90 and passed the full
+same interaction replay. Eleven public exports audit0/0; held-preview screenshot
+inspected. Log: /tmp/dxfer-origin-dev-browser.log. Published/live assemblies match,
+ten runtime settings are unchanged, health200/anonymous302, Production/Test PIDs
+unchanged. Normal sign-in, isolated Dev storage and disabled Sync callbacks retained.
+Rollback: /home/ryan/dxfer-runtime/dev-publish-before-f016d90.
