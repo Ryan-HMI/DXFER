@@ -34,7 +34,20 @@ The existing anchoredTangentDrag.browser.mjs now includes driving-primary
 center-orbit cases. Sixteen local actual-canvas cases pass held preview/release,
 history, native reopen and edit again, including two resize refusals with no
 history. Sixteen exports audit with zero errors/fixes. Held-orbit screenshot
-inspected. Release/public verification is recorded after rollout.
+inspected.
+
+## Installed verification
+
+Installed7f8e712c63449a7126f9f043b69d003d9e75e00e on DXFer Dev at
+2026-10-18T18:36Z. Release publish passed. Public browser independently read
+the rendered7f8e712 build and replayed all16 cases;16 public exports audit
+zero errors/fixes and held-orbit screenshot was inspected. Flux independent
+replay remains pending. Public browser log:/tmp/dxfer-orbit-dev-browser.log.
+
+Published/live assembly hashes match;10 runtime settings unchanged, health200,
+anonymous root302. Normal sign-in, independent Dev storage and disabled Sync
+callbacks retained. Production/Test PIDs unchanged. Rollback retained at
+/home/ryan/dxfer-runtime/dev-publish-before-7f8e712.
 
 No existing drawings or manufacturing records rewritten. This repairs the shared
 drag behavior; valid saved constraints need no data repair. Ryan's exact native
