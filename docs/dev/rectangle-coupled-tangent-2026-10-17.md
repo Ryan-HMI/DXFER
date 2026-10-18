@@ -23,5 +23,12 @@ runner are checked in under `tests/DXFER.Blazor.Tests`.
 
 No drawings changed automatically. Existing failed intent requires a deliberate
 re-solve/reapply; Ryan's original drawing remains for manual confirmation.
-Independent Flux replay on2a127dd requested. Arbitrary coupled constraints and
-the newly reported Parallel pick-order failure remain outside this acceptance.
+Independent Flux replay on2a127dd passed both pick orders and history/reopen
+(delivery596164c17cd75eccb702f3d5). The result is tangent to the edge's extended
+supporting line outside the finite segment: this accepts the solve, not visible
+contact within the rectangle edge. Arbitrary coupled constraints remain outside
+this acceptance. Parallel pick-order correction is separately documented.
+
+Flux also retested empty default, added-layer, renamed-layer and one-line
+downloads successfully on2a127dd. The single earlier3404e37 download exception
+was not reproduced; its cause is unconfirmed, not claimed fixed.

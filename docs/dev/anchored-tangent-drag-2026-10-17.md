@@ -48,10 +48,20 @@ unchanged with no history. Fourteen local exports audit0/0; held screenshot insp
 Installed `2a127dd13a1222e5919b90f77abbade4422b61cf` on DXFer Dev at
 2026-10-17T23:45Z. Public browser verified the rendered2a127dd build and replayed
 all14 cases above. Fourteen public DXFs audit with zero errors/fixes; held
-internal-tangency screenshots inspected. Independent Flux replay is pending.
+internal-tangency screenshots inspected.
 
 Live assemblies match the published candidate; ten runtime settings unchanged,
 health200 and anonymous root302. Normal Google auth and disabled Sync callbacks
 retained. Production/Test PIDs unchanged. Rollback publish retained.
 This does not claim arbitrary position-dimension chains are solved; Ryan's exact
 native fixture was requested to distinguish that from the reproduced anchors.
+
+## Independent acceptance
+
+Flux delivery596164c17cd75eccb702f3d5 reports passing
+2a127dd replay of the saved synthetic failure and six internal/external cases
+with center Fix, origin Coincident and origin Concentric. Anchored centers stay
+put; free radii adjust. Undo/Redo, native reopen and subsequent edits pass.
+Both driving-large-radius negative controls refuse unchanged;42 exports audit
+clean. This accepts those fixtures, not arbitrary coupled systems or Ryan's
+original drawing. No saved drawings were repaired.

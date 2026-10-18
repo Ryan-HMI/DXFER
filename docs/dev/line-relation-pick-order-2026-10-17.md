@@ -43,9 +43,20 @@ case only; general coupled rotation and angle editing remain separate open work.
 Installed `2ac6db41520eeb0bd58bed99ed31415323dd4a73` on DXFer Dev at
 2026-10-17T23:59Z. Local and public browser suites pass all six cases; public
 browser verified the rendered2ac6db4 build. Six public exports audit0/0 and
-screenshots were inspected. Independent Flux retest requested, not yet accepted.
+screenshots were inspected.
 
 Published/live assembly hashes match; ten tracked runtime settings retained,
 health200 and anonymous root302. Normal Google auth, independent Dev state and
 disabled Sync callbacks retained. Production/Test PIDs unchanged. Rollback
 publish retained. Existing drawings were not rewritten.
+
+## Independent acceptance
+
+Flux delivery8fb7230b51a7a324225bfb84 confirms2ac6db4 passes the exact
+Parallel fixture and Perpendicular in both pick orders. Vertical A and the
+free peer's length remain unchanged. Conflicting Vertical/Horizontal axes
+refuse Parallel in both orders without changing geometry or existing axes.
+Undo/Redo and native reopen preserve geometry and constraint states;15 exports
+audit clean. This closes the tested normal-scale pick-order cases only.
+Nearly-collapsed small-scale coverage remains owner-tested, not independently
+accepted. Broader coupled rotation and angle issues remain open.
