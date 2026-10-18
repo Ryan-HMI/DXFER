@@ -46,4 +46,20 @@ reload persistence, unchanged native exports/layers/history, centered dialog at
 Evidence: `/tmp/appearances-local`, `/tmp/appearances-browser-local.log`,
 `/tmp/fade-core.log`, `/tmp/fade-js.log`, `/tmp/fade-build.log`.
 
-Pending Dev-only deployment and public endpoint verification. Production/Test unchanged.
+Dev deployed `92ac1dd83082f8f38ad84be4b2ea274cc80bba31` on 2026-10-18 at
+23:20 UTC. Public browser replay independently reads the rendered build tooltip
+and passes the same appearance checks, with no page errors. Four exported DXFs
+audit with zero errors/fixes. Public screenshots inspected. Evidence:
+`/tmp/appearances-dev`, `/tmp/appearances-browser-dev.log`.
+Public canvas interaction smoke also passes the Collinear `lines` fixture:
+selection, relation creation, Undo/Redo, native reopen and projected drag after
+reopen remain functional with gradient painting (`/tmp/appearances-geometry.log`).
+
+All four installed assembly hashes match the candidate; ten runtime settings
+retained, health 200, anonymous root 302, Sync callbacks disabled. Production/Test
+processes unchanged. Rollback publish retained at
+`/home/ryan/dxfer-runtime/dev-publish-before-92ac1dd`.
+
+Ryan reaffirmed Foundry as the default in Slack delivery
+`695c89d9437b5f29dbdd6a0d`. This is owner verification, not independent Flux/Ryan
+visual acceptance. No recurring trivial-UI reminder is required.
