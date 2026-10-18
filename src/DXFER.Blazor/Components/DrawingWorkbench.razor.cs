@@ -1017,7 +1017,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         IReadOnlyList<CanvasPointDto> points,
         IReadOnlyDictionary<string, double> dimensionValues,
         string? tangentReferenceKey,
-        bool originSnapUsed)
+        bool originSnapUsed,
+        IReadOnlyList<CanvasCreationSnapDto>? creationSnaps)
     {
         var toolPoints = points.Select(ToPoint).ToArray();
         var newEntities = CreateEntitiesForTool(toolName, toolPoints, dimensionValues).ToArray();
@@ -1031,13 +1032,25 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             newEntities,
             dimensionValues,
             CreateDimensionId);
-        var newConstraints = SketchCreationConstraintFactory.CreateConstraintsForInsertion(
-            toolName,
-            _document.Entities,
-            newEntities,
-            CreateConstraintId,
-            tangentReferenceKey,
-            originSnapUsed);
+        IReadOnlyList<SketchConstraint> newConstraints;
+        try
+        {
+            newConstraints = SketchCreationConstraintFactory.CreateConstraintsForInsertion(
+                toolName,
+                _document.Entities,
+                newEntities,
+                CreateConstraintId,
+                tangentReferenceKey,
+                originSnapUsed,
+                creationSnaps);
+        }
+        catch (InvalidOperationException exception)
+        {
+            _status = exception.Message;
+            _solveFailureStatus = _status;
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
 
         if (tangentReferenceKey is not null
             && (NormalizeToolName(toolName) != "centercircle"
@@ -1054,7 +1067,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             _document.Dimensions.Concat(newDimensions),
             _document.Constraints,
             _document.Metadata);
-        if (tangentReferenceKey is not null)
+        if (tangentReferenceKey is not null || creationSnaps is { Count: > 0 })
         {
             // Explicit creation snaps describe geometry already constructed, not permission
             // to reposition an existing peer or revise its driving dimensions while solving.
@@ -1068,7 +1081,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 || protectedDimensions.Any(dimension => dimension.IsDriving
                     && !SketchDimensionSolverService.IsDimensionSatisfied(nextDocument, dimension)))
             {
-                _status = "Circle tangent snap could not preserve existing constraints and driving dimensions. Geometry unchanged.";
+                _status = "Creation snap could not preserve existing constraints and driving dimensions. Geometry unchanged.";
                 _solveFailureStatus = _status;
                 _ = InvokeAsync(StateHasChanged);
                 return;

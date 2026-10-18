@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261018-moving-creation-clicks";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261018-creation-snap-intent";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -101,7 +101,7 @@ public partial class DrawingCanvas : IAsyncDisposable
     public Action<string?>? ActiveSelectionChanged { get; set; }
 
     [Parameter]
-    public Action<string, IReadOnlyList<CanvasPointDto>, IReadOnlyDictionary<string, double>, string?, bool>? ToolCommitRequested { get; set; }
+    public Action<string, IReadOnlyList<CanvasPointDto>, IReadOnlyDictionary<string, double>, string?, bool, IReadOnlyList<CanvasCreationSnapDto>?>? ToolCommitRequested { get; set; }
 
     [Parameter]
     public Action<string>? ToolModeChanged { get; set; }
@@ -321,7 +321,8 @@ public partial class DrawingCanvas : IAsyncDisposable
         string[]? dimensionKeys = null,
         double[]? dimensionValues = null,
         string? tangentReferenceKey = null,
-        bool originSnapUsed = false)
+        bool originSnapUsed = false,
+        CanvasCreationSnapDto[]? creationSnaps = null)
     {
         var points = new List<CanvasPointDto>();
         for (var index = 0; index + 1 < coordinates.Length; index += 2)
@@ -329,7 +330,7 @@ public partial class DrawingCanvas : IAsyncDisposable
             points.Add(new CanvasPointDto(coordinates[index], coordinates[index + 1]));
         }
 
-        ToolCommitRequested?.Invoke(toolName, points, BuildDimensionLocks(dimensionKeys, dimensionValues), tangentReferenceKey, originSnapUsed);
+        ToolCommitRequested?.Invoke(toolName, points, BuildDimensionLocks(dimensionKeys, dimensionValues), tangentReferenceKey, originSnapUsed, creationSnaps);
         return Task.CompletedTask;
     }
 

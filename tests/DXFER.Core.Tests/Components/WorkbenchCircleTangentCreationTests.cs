@@ -98,6 +98,54 @@ public sealed class WorkbenchCircleTangentCreationTests
         });
     }
 
+    [Theory]
+    [InlineData("PointOnLine", "edge", 1, 0)]
+    [InlineData("Horizontal", "edge:start", 1, 0)]
+    [InlineData("Vertical", "edge:start", -4, 3)]
+    public async Task PointSnapPersistsWithHistoryAndNativeReopen(string kind, string key, double x, double y)
+    {
+        using var services = new ServiceCollection().BuildServiceProvider();
+        await using var renderer = new TestRenderer(services);
+        var original = Fixture(true);
+        var workbench = Attach(renderer, original);
+        await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            await Canvas(workbench).OnSketchToolCommitted("point", new[] { x, y }, null, null,
+                creationSnaps: new[] { new CanvasCreationSnapDto(new(x, y), kind, new[] { key }) });
+            var created = Get<DrawingDocument>(workbench, "_document");
+            created.Entities.Take(original.Entities.Count).Should().Equal(original.Entities);
+            created.Entities.OfType<PointEntity>().Should().ContainSingle();
+            created.Constraints.Should().Contain(c => c.Kind.ToString() == kind && c.ReferenceKeys.Contains(key)
+                && c.State == SketchConstraintState.Satisfied);
+            created.Constraints.Take(original.Constraints.Count).Should().Equal(original.Constraints);
+            created.Dimensions.Should().Equal(original.Dimensions);
+            Get<Stack<DrawingDocument>>(workbench, "_undoStack").Should().ContainSingle();
+            var reopened = DxfDocumentReader.Read(Native(created));
+            DxferDocumentSerializer.Write(reopened).Should().Be(DxferDocumentSerializer.Write(created));
+            Invoke(workbench, "UndoLastDocumentChange");
+            Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
+            Invoke(workbench, "RedoLastDocumentChange");
+            Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(created);
+        });
+    }
+
+    [Fact]
+    public async Task StalePointSnapRefusesWithNoHistory()
+    {
+        using var services = new ServiceCollection().BuildServiceProvider();
+        await using var renderer = new TestRenderer(services);
+        var original = Fixture(false);
+        var workbench = Attach(renderer, original);
+        await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            await Canvas(workbench).OnSketchToolCommitted("point", new double[] { 1, 0 }, null, null,
+                creationSnaps: new[] { new CanvasCreationSnapDto(new(1, 0), "PointOnLine", new[] { "missing" }) });
+            Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
+            Get<Stack<DrawingDocument>>(workbench, "_undoStack").Should().BeEmpty();
+            Get<string>(workbench, "_status").Should().Contain("Geometry unchanged");
+        });
+    }
+
     private static DrawingDocument Fixture(bool failedIntent)
     {
         var entities = new List<DrawingEntity> { new LineEntity(EntityId.Create("edge"), new(-4, 0), new(4, 0)) };
@@ -117,8 +165,8 @@ public sealed class WorkbenchCircleTangentCreationTests
     private static DrawingCanvas Canvas(DrawingWorkbench workbench)
     {
         var canvas = new DrawingCanvas();
-        Action<string, IReadOnlyList<CanvasPointDto>, IReadOnlyDictionary<string, double>, string?, bool> handler =
-            (tool, points, locks, key, origin) => Invoke(workbench, "OnToolCommitRequested", tool, points, locks, key!, origin);
+        Action<string, IReadOnlyList<CanvasPointDto>, IReadOnlyDictionary<string, double>, string?, bool, IReadOnlyList<CanvasCreationSnapDto>?> handler =
+            (tool, points, locks, key, origin, snaps) => Invoke(workbench, "OnToolCommitRequested", tool, points, locks, key!, origin, snaps!);
         typeof(DrawingCanvas).GetProperty(nameof(DrawingCanvas.ToolCommitRequested))!.SetValue(canvas, handler);
         return canvas;
     }

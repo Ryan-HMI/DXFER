@@ -67,3 +67,28 @@ test('changing tools during a held creation click cannot commit the old point',t
   h.instance.setActiveTool('centercircle');h.pointer('pointerup',320,320);
   h.click(500,400);assert.equal(h.commits().length,0);
 });
+
+test('registered moving point click sends the accepted edge reference to the server',t=>{
+  const h=harness(t,'point');
+  h.instance.setDocument({entities:[{id:'source',kind:'line',points:[{x:2,y:3},{x:6,y:3}]}],dimensions:[],constraints:[],
+    bounds:{minX:0,minY:0,maxX:10,maxY:10}},true);
+  const d=h.canvas.dataset,x=3*+d.scale+ +d.offsetX,y=-3*+d.scale+ +d.offsetY;
+  h.click(x,y,true);
+  const [commit]=h.commits();assert.ok(commit);
+  assert.equal(commit[7].length,1);
+  const snap=commit[7][0];assert.equal(snap.kind,'PointOnLine');assert.deepEqual(snap.referenceKeys,['source']);
+  assert.ok(Math.abs(snap.point.x-3)<1e-9 && Math.abs(snap.point.y-3)<1e-9);
+});
+
+test('multi-click creation keeps its first snap and Escape drops pending intent',t=>{
+  const h=harness(t,'line');
+  h.instance.setDocument({entities:[{id:'source',kind:'line',points:[{x:2,y:3},{x:6,y:3}]}],dimensions:[],constraints:[],
+    bounds:{minX:0,minY:0,maxX:10,maxY:10}},true);
+  const d=h.canvas.dataset,x=3*+d.scale+ +d.offsetX,y=-3*+d.scale+ +d.offsetY;
+  h.click(x,y);h.click(x+50,y-70);
+  assert.ok(h.commits()[0][7].some(s=>s.kind==='PointOnLine' && s.referenceKeys[0]==='source'));
+  h.instance.setActiveTool('select');h.instance.setActiveTool('line');h.calls.length=0;
+  h.click(x,y);h.handlers.get('keydown')({key:'Escape',target:h.canvas,preventDefault(){}});
+  h.instance.setActiveTool('line');h.click(x+70,y-80);h.click(x+120,y-140);
+  assert.deepEqual(h.commits()[0][7],[]);
+});

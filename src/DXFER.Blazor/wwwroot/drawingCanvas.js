@@ -5336,6 +5336,7 @@ function handleSketchToolClick(state, screenPoint, event) {
   const originSnapUsed = Boolean(state.toolDraft?.originSnapUsed || clickTarget?.entityId === "$origin");
   state.toolDraft.originSnapUsed = originSnapUsed;
   if (getSketchToolPointCount(tool) === 1) {
+    rememberCreationSnap(state, clickTarget, worldPoint);
     commitSketchToolPoints(state, tool, [worldPoint]);
     return;
   }
@@ -5345,6 +5346,7 @@ function handleSketchToolClick(state, screenPoint, event) {
       points: [worldPoint],
       previewPoint: null,
       dimensionValues: {},
+      creationSnaps: getCreationSnapIntents(state, clickTarget, worldPoint),
       originSnapUsed,
       startSnapTarget: getLineStartSnapTarget(tool, clickTarget, worldPoint)
     };
@@ -5362,12 +5364,15 @@ function handleSketchToolClick(state, screenPoint, event) {
     return;
   }
 
+  rememberCreationSnap(state, clickTarget, worldPoint);
+
   const nextPoints = state.toolDraft.points.concat(worldPoint);
   if (isVariablePointSketchTool(tool)) {
     state.toolDraft = {
       points: nextPoints,
       previewPoint: null,
       dimensionValues: {},
+      creationSnaps: state.toolDraft.creationSnaps,
       originSnapUsed
     };
     setHoveredTarget(state, null);
@@ -5383,6 +5388,7 @@ function handleSketchToolClick(state, screenPoint, event) {
       points: nextPoints,
       previewPoint: null,
       dimensionValues,
+      creationSnaps: state.toolDraft.creationSnaps,
       originSnapUsed
     };
     state.pendingDimensionFocusKey = getNextSketchToolDimensionFocusKey(tool, nextPoints);
@@ -5391,6 +5397,48 @@ function handleSketchToolClick(state, screenPoint, event) {
   }
 
   commitSketchToolPoints(state, tool, nextPoints);
+}
+
+function rememberCreationSnap(state, target, point) {
+  state.toolDraft.creationSnaps ||= [];
+  for (const intent of getCreationSnapIntents(state, target, point)) {
+    if (!state.toolDraft.creationSnaps.some(existing => JSON.stringify(existing) === JSON.stringify(intent)))
+      state.toolDraft.creationSnaps.push(intent);
+  }
+}
+
+function persistentSnapPointKey(key) {
+  const reference = parseSketchReference(key);
+  if (!reference) return null;
+  if (reference.target !== 'entity') return sketchReferenceToKey(reference);
+  return null;
+}
+
+export function getCreationSnapIntents(state, target, point) {
+  const snapped = getTargetWorldSnapPoint(target);
+  if (!target || !point || !snapped || !sameOptionalWorldPoint(snapped, point)) return [];
+  const intent = (kind, key) => ({point: copyPoint(point), kind, referenceKeys: [key]});
+  if (target.creationRelations) return target.creationRelations.map(r => ({...r, point: copyPoint(point)}));
+  if (target.dynamic) return [];
+  const kind = getEntityKind(target.entity);
+  const pointKey = persistentSnapPointKey(target.key);
+  if (pointKey) return [intent('Coincident', pointKey)];
+  if (kind === 'point') return [intent('Coincident', target.entityId)];
+  if (target.kind === 'point') {
+    if (kind === 'line' && target.label === 'mid') return [intent('Midpoint', target.entityId)];
+    const mid = kind === 'polyline' && /^mid-(\d+)$/.exec(target.label);
+    if (mid) return [intent('Midpoint', `${target.entityId}|segment|${mid[1]}`)];
+    const intersection = /^intersection-(.+)-\d+$/.exec(target.label || '');
+    if (intersection) {
+      const other = getDocumentEntities(state.document).find(e => getEntityId(e) === intersection[1]);
+      if (kind === 'line' && getEntityKind(other) === 'line')
+        return [intent('PointOnLine', target.entityId), intent('PointOnLine', getEntityId(other))];
+    }
+    return [];
+  }
+  if (kind === 'line' || kind === 'polyline' && target.kind === 'segment')
+    return [intent('PointOnLine', target.key)];
+  return [];
 }
 
 function getLineStartSnapTarget(tool, target, worldPoint) {
@@ -5817,6 +5865,7 @@ function advanceCurrentSketchToolPoint(state) {
   }
 
   const nextPoints = state.toolDraft.points.concat(state.toolDraft.previewPoint);
+  rememberCreationSnap(state, state.hoveredTarget, state.toolDraft.previewPoint);
   const originSnapUsed = Boolean(state.toolDraft.originSnapUsed || state.hoveredTarget?.entityId === "$origin");
   if (isVariablePointSketchTool(tool)) {
     const previousPoint = state.toolDraft.points[state.toolDraft.points.length - 1];
@@ -5828,6 +5877,7 @@ function advanceCurrentSketchToolPoint(state) {
       points: nextPoints,
       previewPoint: null,
       dimensionValues: {},
+      creationSnaps: state.toolDraft.creationSnaps,
       originSnapUsed
     };
     setHoveredTarget(state, null);
@@ -5850,6 +5900,7 @@ function advanceCurrentSketchToolPoint(state) {
     points: nextPoints,
     previewPoint: null,
     dimensionValues,
+    creationSnaps: state.toolDraft.creationSnaps,
     originSnapUsed
   };
   state.pendingDimensionFocusKey = getNextSketchToolDimensionFocusKey(tool, nextPoints);
@@ -5863,6 +5914,8 @@ function commitSketchToolPoints(state, tool, points) {
   }
 
   const dimensionLocks = getSketchToolDimensionLocks(state.toolDraft);
+  rememberCreationSnap(state, state.hoveredTarget, points[points.length - 1]);
+  const creationSnaps = state.toolDraft.creationSnaps || [];
   const originSnapUsed = Boolean(state.toolDraft.originSnapUsed || state.hoveredTarget?.entityId === "$origin");
   const tangentReferenceKey = tool === "centercircle"
     && state.hoveredTarget?.tangentReferenceKey
@@ -5890,7 +5943,8 @@ function commitSketchToolPoints(state, tool, points) {
     dimensionLocks.keys,
     dimensionLocks.values,
     tangentReferenceKey,
-    originSnapUsed);
+    originSnapUsed,
+    creationSnaps);
   if (toolModeChanged) {
     invokeDotNet(state, "OnSketchToolModeChanged", nextTool);
   }
@@ -6582,6 +6636,7 @@ export function getDynamicSketchSnapHit(state, screenPoint, highlightedTarget = 
     if (distance <= SNAP_POINT_TOLERANCE) {
       hits.push({
         target: { ...createDynamicPointTarget(candidate.label, candidate.point, candidate.guides),
+          ...(candidate.creationRelations ? { creationRelations: candidate.creationRelations } : {}),
           ...(candidate.tangentReferenceKey ? { tangentReferenceKey: candidate.tangentReferenceKey } : {}) },
         distance,
         priority
@@ -6619,6 +6674,7 @@ function addAcquiredProjectionSnapCandidates(candidates, state, worldPoint) {
       touchAcquiredSnapPoint(acquired);
       candidates.push({
         label: `project-v-${acquired.label}`,
+        creationRelations: acquiredCreationRelation(acquired, 'Vertical'),
         point: verticalPoint,
         guides: [{ orientation: "vertical", point: acquired.point }],
         priority: 2
@@ -6630,12 +6686,18 @@ function addAcquiredProjectionSnapCandidates(candidates, state, worldPoint) {
       touchAcquiredSnapPoint(acquired);
       candidates.push({
         label: `project-h-${acquired.label}`,
+        creationRelations: acquiredCreationRelation(acquired, 'Horizontal'),
         point: horizontalPoint,
         guides: [{ orientation: "horizontal", point: acquired.point }],
         priority: 2
       });
     }
   }
+}
+
+function acquiredCreationRelation(acquired, kind) {
+  const key = acquired.referenceKey || persistentSnapPointKey(acquired.key);
+  return key ? [{kind, referenceKeys: [key]}] : [];
 }
 
 function addAcquiredMidpointCandidate(candidates, state, first, second) {
@@ -6678,6 +6740,7 @@ function addAcquiredIntersectionCandidate(candidates, state, verticalSource, hor
   touchAcquiredSnapPoint(horizontalSource);
   candidates.push({
     label: `project-${verticalSource.label}-${horizontalSource.label}`,
+    creationRelations: [...acquiredCreationRelation(verticalSource, 'Vertical'), ...acquiredCreationRelation(horizontalSource, 'Horizontal')],
     point,
     guides: [
       { orientation: "vertical", point: verticalSource.point },
@@ -6706,6 +6769,10 @@ function addHighlightedGeometryOrthoSnapCandidates(candidates, state, highlighte
       touchAcquiredSnapPoint(acquired);
       candidates.push({
         label: `project-${snap.orientation}-${acquired.label}-${entityId}-${snap.index}`,
+        creationRelations: [
+          ...acquiredCreationRelation(acquired, snap.orientation === 'vertical' ? 'Vertical' : 'Horizontal'),
+          ...(getEntityKind(highlightedTarget.entity) === 'line' ? [{kind: 'PointOnLine', referenceKeys: [entityId]}] : [])
+        ],
         point: snap.point,
         guides: [{ orientation: snap.orientation === "vertical" ? "vertical" : "horizontal", point: acquired.point }],
         priority: 7
@@ -13144,6 +13211,7 @@ function rememberAcquiredSnapPoint(state, target) {
 
   state.acquiredSnapPoints.push({
     key: target.key,
+    ...(isPersistentPointTarget ? { referenceKey: target.entityId } : {}),
     label: sanitizeKeyPart(target.label || target.entityId || "point"),
     point: acquiredPoint,
     acquiredAt: getInteractionTimestamp()

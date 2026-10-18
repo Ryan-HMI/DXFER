@@ -1,6 +1,7 @@
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
 using DXFER.Core.Sketching;
+using DXFER.Blazor.Interop;
 
 namespace DXFER.Blazor.Sketching;
 
@@ -51,7 +52,8 @@ public static class SketchCreationConstraintFactory
         IReadOnlyList<DrawingEntity> createdEntities,
         Func<SketchConstraintKind, string> createConstraintId,
         string? tangentReferenceKey = null,
-        bool originSnapUsed = false)
+        bool originSnapUsed = false,
+        IReadOnlyList<CanvasCreationSnapDto>? creationSnaps = null)
     {
         ArgumentNullException.ThrowIfNull(existingEntities);
         ArgumentNullException.ThrowIfNull(createdEntities);
@@ -72,7 +74,33 @@ public static class SketchCreationConstraintFactory
         {
             AddExplicitCircleTangentConstraint(constraints, existingEntities, createdEntities, tangentReferenceKey, createConstraintId);
         }
+        AddExplicitPointSnaps(constraints, existingEntities, createdEntities, creationSnaps, createConstraintId);
         return constraints;
+    }
+
+    private static void AddExplicitPointSnaps(ICollection<SketchConstraint> constraints,
+        IReadOnlyList<DrawingEntity> existing, IReadOnlyList<DrawingEntity> created,
+        IReadOnlyList<CanvasCreationSnapDto>? snaps, Func<SketchConstraintKind, string> nextId)
+    {
+        if (snaps is null || snaps.Count == 0) return;
+        var document = new DrawingDocument(existing.Concat(created));
+        var createdPoints = EnumeratePointReferences(created).ToArray();
+        foreach (var snap in snaps)
+        {
+            if (!Enum.TryParse<SketchConstraintKind>(snap.Kind, out var kind)
+                || kind is not (SketchConstraintKind.Coincident or SketchConstraintKind.Midpoint
+                    or SketchConstraintKind.Horizontal or SketchConstraintKind.Vertical or SketchConstraintKind.PointOnLine)
+                || snap.ReferenceKeys is not { Length: 1 } || !IsFinitePoint(snap.Point))
+                throw new InvalidOperationException("Unsupported creation snap. Geometry unchanged.");
+            foreach (var point in createdPoints.Where(p => AreClose(p.Point, snap.Point)))
+            {
+                var keys = new[] { snap.ReferenceKeys[0], point.Reference.ToString() };
+                var candidate = new SketchConstraint("snap-validation", kind, keys);
+                if (SketchConstraintService.ValidateConstraint(document, candidate).State != SketchConstraintState.Satisfied)
+                    throw new InvalidOperationException("Creation snap no longer matches its source. Geometry unchanged.");
+                AddConstraintIfMissing(constraints, kind, nextId, keys);
+            }
+        }
     }
 
     private static void AddExplicitCircleTangentConstraint(
