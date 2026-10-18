@@ -4770,7 +4770,7 @@ function handlePointerMove(state, event) {
         : findNearestTarget(state, screenPoint);
     setHoveredTarget(state, nearestTarget);
 
-    if (sketchTool && !addSplinePointSketchTool && tryToggleSketchChainToolAtPoint(state, screenPoint, nearestTarget)) {
+    if (sketchTool && !state.clickCandidate?.creationTool && !addSplinePointSketchTool && tryToggleSketchChainToolAtPoint(state, screenPoint, nearestTarget)) {
       updateDebugAttributes(state);
       draw(state);
       return;
@@ -4802,7 +4802,7 @@ function handlePointerMove(state, event) {
       draw(state);
     }
 
-    if (state.clickCandidate) {
+    if (state.clickCandidate && !state.clickCandidate.creationTool) {
       const moveDistance = distanceBetweenScreenPoints(screenPoint, state.clickCandidate.screenPoint);
       if (moveDistance > CLICK_MOVE_TOLERANCE) {
         state.clickCandidate.cancelled = true;
@@ -4931,6 +4931,7 @@ function handlePointerDown(state, event) {
       screenPoint,
       pointerId: event.pointerId,
       cancelled: false,
+      creationTool: isAddSplinePointSketchTool(getSketchCreationTool(state)) ? null : getSketchCreationTool(state),
       target: dragTarget,
       // A grip's hit area is larger than the point; do not carry that pick offset into a snap.
       startWorldPoint: dragTarget?.kind === "point" && dragTarget.point
@@ -5040,6 +5041,19 @@ function handlePointerUp(state, event) {
 
   const candidate = state.clickCandidate;
   state.clickCandidate = null;
+
+  // Creation is point placement, not a selection drag. Keep the pressed location
+  // even when the pointer is already travelling toward the next drawing point.
+  if (candidate?.creationTool && candidate.pointerId === event.pointerId) {
+    if (!candidate.cancelled && candidate.creationTool === getSketchCreationTool(state)) {
+      handleSketchToolClick(state, candidate.screenPoint, event);
+      updateDebugAttributes(state);
+      draw(state);
+    }
+    releasePointer(state.canvas, event.pointerId);
+    event.preventDefault();
+    return;
+  }
 
   if (candidate && candidate.pointerId === event.pointerId && !candidate.cancelled) {
     const moveDistance = distanceBetweenScreenPoints(screenPoint, candidate.screenPoint);
@@ -5316,9 +5330,7 @@ function handleSketchToolClick(state, screenPoint, event) {
   }
 
   const clickTarget = findNearestTarget(state, screenPoint);
-  if (clickTarget) {
-    setHoveredTarget(state, clickTarget);
-  }
+  setHoveredTarget(state, clickTarget);
 
   let worldPoint = getSketchWorldPoint(state, screenPoint, clickTarget, event);
   const originSnapUsed = Boolean(state.toolDraft?.originSnapUsed || clickTarget?.entityId === "$origin");
