@@ -48,6 +48,7 @@ try {
     await load(kind === 'closed' ? polyline : kind === 'open' ? openPolyline : twoLines, `${tool}-${kind}.dxf`);
     const original = native(await download());
     await page.getByRole('button', { name: 'Hide operation inspector', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('.dxfer-operation-inspector'));
     await page.getByRole('button', { name: tool, exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.dxfer-operation-inspector'));
     assert.equal(await apply.isDisabled(), true);
@@ -91,9 +92,11 @@ try {
     await page.waitForFunction(() => document.querySelector('canvas').dataset.cornerPreview === 'true');
     if (kind === 'closed') {
       await page.getByRole('button', {name: 'Hide operation inspector'}).click();
+      await page.waitForFunction(() => !document.querySelector('.dxfer-operation-inspector'));
       await page.screenshot({path:`${output}/${tool}-collapsed.png`});
       await input.press('Enter');
       await page.getByRole('button', {name: 'Show operation inspector'}).click();
+      await page.waitForFunction(() => document.querySelector('.dxfer-operation-inspector'));
     } else if (kind === 'open') {
       await canvas.focus();
       await page.keyboard.press('Enter');
