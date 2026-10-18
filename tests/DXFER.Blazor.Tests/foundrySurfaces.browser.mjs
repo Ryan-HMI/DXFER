@@ -23,7 +23,7 @@ try {
     assert.equal(await split.locator('.dxfer-split-point-icon').count(),1);
     assert.match(await split.getAttribute('title'),/Split at point/i);
     await split.screenshot({path:`${output}/split-at-point.png`});
-    assert.match(await canvas.evaluate(e=>getComputedStyle(e).backgroundImage),/radial-gradient.*23, 40, 50.*11, 16, 22/);
+    assert.equal(await canvas.evaluate(e=>getComputedStyle(e).backgroundImage),'none');
     await page.mouse.move(800,20);
     const screenshot=await canvas.screenshot();
     const pixels=await page.evaluate(async base64=>{
@@ -33,8 +33,8 @@ try {
         const read=(x,y)=>[...ctx.getImageData(Math.floor(c.width*x),Math.floor(c.height*y),1,1).data];
         return {center:read(.5,.5),edge:read(.99,.99)};
     },screenshot.toString('base64'));
-    assert.ok(pixels.center[1]>pixels.edge[1]+15,JSON.stringify(pixels));
-    assert.deepEqual(pixels.edge,[11,16,22,255]);
+    assert.deepEqual(pixels.center,[38,38,38,255]);
+    assert.deepEqual(pixels.edge,[38,38,38,255]);
     const fixture=[0,'SECTION',2,'HEADER',9,'$ACADVER',1,'AC1015',9,'$INSUNITS',70,1,0,'ENDSEC',
         0,'SECTION',2,'ENTITIES',0,'LINE',8,0,10,0,20,0,11,10,21,0,
         0,'LINE',8,0,10,10,20,0,11,10,21,6,0,'ENDSEC',0,'EOF'].join('\n');
@@ -66,7 +66,7 @@ try {
         await page.mouse.move(width-20,20); await page.waitForTimeout(180);
         const header=await page.locator('.app-header').boundingBox(); assert.equal(header.height,48);
         const button=await fillet.boundingBox(); assert.equal(button.width,32); assert.equal(button.height,32);
-        const exit=await page.getByRole('button',{name:'Exit tool',exact:true}).boundingBox();
+        const exit=await page.getByRole('button',{name:'Cancel',exact:true}).boundingBox();
         assert.ok(exit.x+exit.width<=width && exit.y+exit.height<=height);
         const raw=await canvas.evaluate(c=>{
             const ctx=c.getContext('2d'), p=ctx.getImageData(c.width-1,c.height-1,1,1).data;
@@ -78,10 +78,10 @@ try {
         assert.ok(raw.marks>100,'geometry must still be painted');
         await page.screenshot({path:`${output}/foundry-${width}.png`});
     }
-    await page.getByRole('button',{name:'Exit tool',exact:true}).click();
+    await page.getByRole('button',{name:'Cancel',exact:true}).click();
     assert.deepEqual(snapshot(await download()).entities,before.entities);
     assert.ok(await page.getByRole('button',{name:'Undo',exact:true,includeHidden:true}).isDisabled());
     assert.deepEqual(errors,[]);
-    console.log('PASS: reference surface colors, screenshot gradient pixels, compact sizing, inspector visibility, transparent redraw and unchanged exported geometry.',pixels,
+    console.log('PASS: reference surfaces, neutral background pixels, compact sizing, inspector visibility, transparent redraw and unchanged exported geometry.',pixels,
         'Build:',await page.locator('.app-brand').getAttribute('title'));
 } finally {await browser.close();}

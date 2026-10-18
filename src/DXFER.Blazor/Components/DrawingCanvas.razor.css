@@ -54,7 +54,7 @@
     display: block;
     width: 100%;
     height: 100%;
-    background: radial-gradient(ellipse at center, #172832 0%, #0b1016 70%);
+    background: var(--dx-canvas-background, #262626);
     cursor: crosshair;
     touch-action: none;
 }
@@ -129,7 +129,7 @@
 }
 
 ::deep .drawing-persistent-dimension-input {
-    color: #f3f6fb;
+    color: var(--dx-canvas-label, #f3f6fb);
     background: transparent;
     border-color: transparent;
     box-shadow: none;
@@ -137,21 +137,21 @@
 }
 
 ::deep .drawing-persistent-dimension-input:hover {
-    color: #ffffff;
+    color: var(--dx-canvas-label, #ffffff);
 }
 
 ::deep .drawing-persistent-dimension-input-selected {
-    color: #e0f2fe;
+    color: var(--dx-canvas-label-selected, #e0f2fe);
     text-shadow: 0 0 8px rgba(125, 211, 252, 0.55);
 }
 
 ::deep .drawing-persistent-dimension-input-active {
-    color: #f8fdff;
+    color: var(--dx-canvas-label-selected, #f8fdff);
     text-shadow: 0 0 10px rgba(186, 230, 253, 0.7);
 }
 
 ::deep .drawing-persistent-dimension-input-unsatisfied {
-    color: #fecaca;
+    color: var(--dx-canvas-label-error, #fecaca);
     text-shadow: 0 0 9px rgba(248, 113, 113, 0.7);
 }
 

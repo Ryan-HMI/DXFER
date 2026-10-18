@@ -1,0 +1,8 @@
+.canvas-appearance { display: flex; align-items: center; gap: 8px; padding: 10px; border-top: 1px solid var(--dx-border, #242d39); font-size: 12px; }
+.canvas-appearance label { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: 1; min-width: 0; }
+.canvas-appearance input { width: 28px; height: 28px; padding: 0; border: 0; background: transparent; cursor: pointer; flex: 0 0 28px; }
+.canvas-appearance button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 5px; border: 0; border-radius: 3px; background: transparent; color: var(--dx-text, #f4f7fb); cursor: pointer; }
+.canvas-appearance button:hover { background: var(--dx-hover, #1a222d); }
+.canvas-appearance button:focus-visible, .canvas-appearance input:focus-visible { outline: 1px solid var(--dx-accent, #66d9ff); outline-offset: 2px; }
+.canvas-appearance button:disabled, .canvas-appearance input:disabled { opacity: .45; cursor: default; }
+.canvas-appearance ::deep svg { width: 18px; height: 18px; }

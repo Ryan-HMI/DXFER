@@ -1,0 +1,62 @@
+import assert from 'node:assert/strict';
+import {mkdir,readFile,writeFile} from 'node:fs/promises';
+const {chromium,expect}=await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright/test');
+const url=process.env.DXFER_QA_URL ?? 'http://127.0.0.1:5049';
+assert.ok(['127.0.0.1','dxferdev.sync.harrisonmetals.com'].includes(new URL(url).hostname));
+const output=process.env.DXFER_SCREENSHOTS ?? '/tmp/canvas-background';await mkdir(output,{recursive:true});
+const browser=await chromium.launch({headless:true});
+try {
+  const page=await browser.newPage({viewport:{width:1440,height:1000},extraHTTPHeaders:{'X-DXFER-API-Key':process.env.DXFER_QA_API_KEY}});
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(url);
+  const picker=page.getByLabel('Drawing background color',{exact:true});
+  const reset=page.getByRole('button',{name:'Reset background to neutral',exact:true});
+  const canvas=page.locator('canvas.drawing-canvas');
+  const ready=async()=>{await expect(picker).toBeEnabled();await page.waitForFunction(()=>document.querySelector('input[type=file]')?._blazorInputFileNextFileId!==undefined);};
+  await ready();
+  const tool=name=>page.getByRole('button',{name,exact:true}).click();
+  const background=()=>canvas.evaluate(c=>getComputedStyle(c).backgroundColor);
+  const pixel=async()=>{
+    const screenshot=await canvas.screenshot();
+    return page.evaluate(async base64=>{const img=new Image();img.src='data:image/png;base64,'+base64;await img.decode();
+      const c=document.createElement('canvas');c.width=img.width;c.height=img.height;const ctx=c.getContext('2d');ctx.drawImage(img,0,0);
+      return [...ctx.getImageData(c.width-3,c.height-3,1,1).data];},screenshot.toString('base64'));
+  };
+  await expect(picker).toHaveValue('#262626');
+  assert.equal(await background(),'rgb(38, 38, 38)');assert.deepEqual(await pixel(),[38,38,38,255]);
+  const fixture=await readFile(new URL('./fixtures/corner-driving10.dxf',import.meta.url));
+  await page.locator('input[type=file]').setInputFiles({name:'background-qa.dxf',mimeType:'application/dxf',buffer:fixture});
+  await expect(page.locator('input[data-dimension-id]')).toHaveCount(1);
+  await page.getByLabel('Layer color 0',{exact:true}).fill('#e15e4c');
+  await page.waitForTimeout(200);
+  const native=text=>{const a=text.trim().split(/\r?\n/);let h='';for(let i=0;i<a.length;i+=2)if(a[i].trim()==='310')h+=a[i+1].trim();return JSON.parse(Buffer.from(h,'hex'));};
+  const download=async name=>{const pending=page.waitForEvent('download');await tool('Open application menu');await page.getByRole('button',{name:'File',exact:true}).hover();await tool('Download DXF');const text=await readFile(await(await pending).path(),'utf8');await writeFile(`${output}/${name}.dxf`,text);return native(text);};
+  const before=await download('before');
+  const undoEnabled=await page.getByRole('button',{name:'Undo',exact:true}).isEnabled();
+  for(const [color,rgb] of [['#ffffff',[255,255,255]],['#303030',[48,48,48]]]) {
+    await picker.fill(color);await expect(canvas).toHaveAttribute('data-background-color',color);
+    assert.deepEqual(await pixel(),[...rgb,255]);
+    assert.equal(await page.getByRole('button',{name:'Undo',exact:true}).isEnabled(),undoEnabled);
+    await expect(page.locator('.document-change-state')).toHaveText('Unchanged');
+    assert.equal(await page.getByLabel('Layer color 0',{exact:true}).inputValue(),'#e15e4c');
+    assert.deepEqual(await download(color.slice(1)),before);
+    const ink=await page.locator('input[data-dimension-id]').evaluate(e=>getComputedStyle(e).color);
+    assert.equal(ink,color==='#ffffff'?'rgb(32, 32, 32)':'rgb(243, 246, 251)');
+    await page.screenshot({path:`${output}/${color.slice(1)}-1440.png`});
+  }
+  await page.reload();await ready();await expect(picker).toHaveValue('#303030');
+  assert.equal(await background(),'rgb(48, 48, 48)');
+  await reset.click();await expect(picker).toHaveValue('#262626');
+  await page.reload();await ready();await expect(picker).toHaveValue('#262626');
+  await page.setViewportSize({width:1100,height:705});
+  await picker.scrollIntoViewIfNeeded();
+  const box=await page.locator('.canvas-appearance').boundingBox();
+  assert.ok(box.x>=0 && box.x+box.width<=1100 && box.y+box.height<=705);
+  assert.equal(await picker.evaluate(e=>e.getBoundingClientRect().width),28);
+  await page.screenshot({path:`${output}/neutral-1100.png`});
+  await page.evaluate(()=>localStorage.setItem('dxfer.canvasBackground.v1','url(invalid)'));
+  await page.reload();await ready();await expect(picker).toHaveValue('#262626');
+  assert.deepEqual(errors,[]);
+  const build=await page.locator('.app-brand').getAttribute('title');if(process.env.DXFER_EXPECTED_REVISION)assert.ok(build.includes(process.env.DXFER_EXPECTED_REVISION));
+  console.log('PASS neutral/custom pixels, layer/export invariance, history/dirty preservation, light annotations, persistence/reset/invalid preference, desktop layout.',build);
+} finally {await browser.close();}

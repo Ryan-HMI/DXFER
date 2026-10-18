@@ -11,12 +11,10 @@ const luminance=hex=>{
 };
 const contrast=(a,b)=>(Math.max(luminance(a),luminance(b))+.05)/(Math.min(luminance(a),luminance(b))+.05);
 
-test('Foundry geometry and selection colors remain readable at the brightest field point',()=>{
-    assert.match(css,/radial-gradient\(ellipse at center, #172832 0%, #0b1016 70%\)/);
-    const defaultColors=source.match(/strokeStyle: affectedByDiagnostics[^\n]+/)[0].match(/#[a-f0-9]{6}/g);
-    const selectedColors=source.match(/strokeStyle: isActive \?[^\n]+/)[0].match(/#[a-f0-9]{6}/g);
-    const hoverColors=source.match(/strokeStyle: isPowerTrimExtendHover[^\n]+/)[0].match(/#[a-f0-9]{6}/g);
-    for(const color of [...defaultColors,...selectedColors,...hoverColors]) {
-        assert.ok(contrast(color,'#172832')>=4.5,`${color} against field center`);
+test('Foundry overlays remain readable on the neutral default field',()=>{
+    assert.match(css,/background: var\(--dx-canvas-background, #262626\)/);
+    for(const color of ['#ff6c7c','#97a5b6','#d3e1ed','#b7efff','#66d9ff','#ffc56c']) {
+        assert.ok(source.includes(color));
+        assert.ok(contrast(color,'#262626')>=4.5,`${color} against neutral field`);
     }
 });

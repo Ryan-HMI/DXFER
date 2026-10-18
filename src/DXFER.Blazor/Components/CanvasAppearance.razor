@@ -1,0 +1,41 @@
+@namespace DXFER.Blazor.Components
+@implements IAsyncDisposable
+@inject IJSRuntime JsRuntime
+
+<div class="canvas-appearance" @ref="_control" @onkeydown:stopPropagation="true">
+    <label>Background
+        <input type="color" value="@_color" disabled="@(_module is null)" aria-label="Drawing background color"
+               title="Drawing background color" @onchange="ChangeColor" />
+    </label>
+    <button type="button" disabled="@(_module is null)" title="Reset background to neutral" aria-label="Reset background to neutral" @onclick="Reset">
+        <CadIcon Name="CadIconName.Undo" />
+    </button>
+</div>
+
+@code {
+    private ElementReference _control;
+    private IJSObjectReference? _module;
+    private string _color = "#262626";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./_content/DXFER.Blazor/canvasAppearance.js?v=20261018-background");
+        _color = await _module.InvokeAsync<string>("loadCanvasBackground");
+        await _module.InvokeVoidAsync("applyCanvasBackground", _control, _color);
+        StateHasChanged();
+    }
+
+    private Task ChangeColor(ChangeEventArgs args) => SetColor(args.Value?.ToString() ?? "#262626");
+    private Task Reset() => SetColor("#262626");
+    private async Task SetColor(string value)
+    {
+        if (_module is not null) _color = await _module.InvokeAsync<string>("applyCanvasBackground", _control, value, true);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is null) return;
+        try { await _module.DisposeAsync(); } catch (JSDisconnectedException) { }
+    }
+}

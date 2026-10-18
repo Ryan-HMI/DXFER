@@ -48,7 +48,7 @@ import {
   shouldCommitDimensionInputOnBlur,
   shouldCommitDimensionInputOnChange,
   shouldRefreshDimensionInputValue
-} from "./canvas/dimensionPresentation.js";
+} from "./canvas/dimensionPresentation.js?v=20261018-background";
 import {
   getDefaultActiveDimensionKey,
   getDimensionKeys,
@@ -87,6 +87,7 @@ import {
   resolveNearestTargetHit
 } from "./canvas/targetResolution.js";
 import { getUnobscuredViewport } from "./canvas/viewportFit.js";
+import { normalizeCanvasBackground, isLightCanvasBackground } from "./canvasAppearance.js?v=20261018-background";
 
 export {
   getLinearDimensionScreenGeometry,
@@ -215,6 +216,13 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
   };
 
   const resize = () => resizeCanvas(state);
+  state.backgroundColor = normalizeCanvasBackground(canvas.dataset?.backgroundColor);
+  state.lightBackground = isLightCanvasBackground(state.backgroundColor);
+  const onBackgroundChanged = () => {
+    state.backgroundColor = normalizeCanvasBackground(canvas.dataset?.backgroundColor);
+    state.lightBackground = isLightCanvasBackground(state.backgroundColor);
+    draw(state);
+  };
   const onPointerMove = event => handlePointerMove(state, event);
   const onPointerDown = event => handlePointerDown(state, event);
   const onPointerUp = event => handlePointerUp(state, event);
@@ -234,6 +242,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
   state.canvas.addEventListener("wheel", onWheel, { passive: false });
   state.canvas.addEventListener("dblclick", onDoubleClick);
   state.canvas.addEventListener("contextmenu", onContextMenu);
+  state.canvas.addEventListener("dxfer-background-changed", onBackgroundChanged);
   window.addEventListener("resize", resize);
   window.addEventListener("keydown", onKeyDown);
 
@@ -393,6 +402,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
       state.canvas.removeEventListener("wheel", onWheel);
       state.canvas.removeEventListener("dblclick", onDoubleClick);
       state.canvas.removeEventListener("contextmenu", onContextMenu);
+      state.canvas.removeEventListener("dxfer-background-changed", onBackgroundChanged);
       window.removeEventListener("resize", resize);
       window.removeEventListener("keydown", onKeyDown);
 
@@ -675,6 +685,10 @@ function createEmptyDimensionDraft() {
   };
 }
 
+function canvasInk(state, dark, light) {
+  return state.lightBackground ? light : dark;
+}
+
 function draw(state) {
   const { context, canvas } = state;
   const size = getCanvasCssSize(state);
@@ -686,7 +700,7 @@ function draw(state) {
 
   context.save();
   context.setTransform(state.pixelRatio, 0, 0, state.pixelRatio, 0, 0);
-  // Keep the canvas transparent so the reference field fade survives redraws.
+  // The browser preference supplies the field color underneath transparent redraws.
 
   if (state.showOriginAxes) {
     drawOriginAxes(state, size);
@@ -699,7 +713,7 @@ function draw(state) {
   for (const entity of entities) {
     const affectedByDiagnostics = diagnosticEntityIds.has(getEntityId(entity));
     drawEntity(state, entity, {
-      strokeStyle: affectedByDiagnostics ? "#ff6c7c" : entity.isConstruction ? "#97a5b6" : entity.layerColor || "#d3e1ed",
+      strokeStyle: affectedByDiagnostics ? canvasInk(state, "#ff6c7c", "#a51628") : entity.isConstruction ? canvasInk(state, "#97a5b6", "#505050") : entity.layerColor || canvasInk(state, "#d3e1ed", "#202020"),
       lineWidth: affectedByDiagnostics ? 2.15 : entity.isConstruction ? 1.1 : 1.5,
       lineDash: getEntityRenderLineDash(entity, entity.isConstruction ? [8, 5] : [])
     });
@@ -709,7 +723,7 @@ function draw(state) {
     if (shouldShowPersistentCurveCenter(state, entity)) {
       const id = getEntityId(entity);
       const selected = [...(state.selectedKeys || [])].some(key => key === id || String(key).startsWith(`${id}${POINT_KEY_SEPARATOR}`));
-      const color = selected ? "#66d9ff" : "#97a5b6";
+      const color = selected ? canvasInk(state, "#66d9ff", "#005a75") : canvasInk(state, "#97a5b6", "#505050");
       const center = getEntityCenter(entity), point = worldToScreen(state, center);
       context.save();
       context.strokeStyle = color;
@@ -729,7 +743,7 @@ function draw(state) {
     if (target && shouldDrawSelectionTargetOverlay(target) && !isDimensionTargetBeingEdited(state, target)) {
       const isActive = selectedKey === state.activeSelectionKey;
       drawTarget(state, target, {
-        strokeStyle: isActive ? "#b7efff" : "#66d9ff",
+        strokeStyle: isActive ? canvasInk(state, "#b7efff", "#004557") : canvasInk(state, "#66d9ff", "#005a75"),
         lineWidth: target.kind === "point" ? isActive ? 3 : 1.65 : isActive ? 4.5 : 2.4,
         lineDash: getTargetSelectionLineDash(target),
         glow: isActive
@@ -748,7 +762,7 @@ function draw(state) {
     const isActive = state.hoveredTarget.key === state.activeSelectionKey;
     const isPowerTrimExtendHover = powerTrimHoverMode === "extend";
     drawTarget(state, state.hoveredTarget, {
-      strokeStyle: isPowerTrimExtendHover ? "#66d9ff" : isActive ? "#b7efff" : isSelected ? "#66d9ff" : "#ffc56c",
+      strokeStyle: isPowerTrimExtendHover ? canvasInk(state, "#66d9ff", "#005a75") : isActive ? canvasInk(state, "#b7efff", "#004557") : isSelected ? canvasInk(state, "#66d9ff", "#005a75") : canvasInk(state, "#ffc56c", "#805000"),
       lineWidth: state.hoveredTarget.kind === "point" ? isActive ? 3 : 1.8 : isActive ? 4.5 : isSelected ? 2.5 : 3.5,
       lineDash: isPowerTrimExtendHover ? [10, 4] : getTargetSelectionLineDash(state.hoveredTarget, isSelected ? [6, 4] : []),
       glow: isActive || isPowerTrimExtendHover
@@ -2624,7 +2638,7 @@ function drawLinearDimensionGraphics(state, dimension, isPreview, visualState = 
   }
 
   const { context } = state;
-  const style = getDimensionRenderStyle(isPreview, visualState);
+  const style = getDimensionRenderStyle(isPreview, visualState, state.lightBackground);
   context.save();
   applyDimensionGraphicsStyle(context, style);
 
@@ -2655,7 +2669,7 @@ function drawRadialDimensionGraphics(state, dimension, isPreview, visualState = 
   const edgeOverride = getArcRadialDimensionEdgeOverride(state, geometry);
   const radialGeometry = getRadialDimensionScreenGeometry(center, radius, anchor, geometry.diameter, textWidth, edgeOverride);
   const { context } = state;
-  const style = getDimensionRenderStyle(isPreview, visualState);
+  const style = getDimensionRenderStyle(isPreview, visualState, state.lightBackground);
 
   context.save();
   applyDimensionGraphicsStyle(context, style);
@@ -2714,7 +2728,7 @@ function drawAngleDimensionGraphics(state, dimension, isPreview, visualState = n
   }
 
   const { context } = state;
-  const style = getDimensionRenderStyle(isPreview, visualState);
+  const style = getDimensionRenderStyle(isPreview, visualState, state.lightBackground);
   context.save();
   applyDimensionGraphicsStyle(context, style);
   for (const segment of geometry.extensionSegments) {
@@ -2745,7 +2759,7 @@ function drawArcAngleDimensionGraphics(state, dimension, isPreview, visualState 
   }
 
   const { context } = state;
-  const style = getDimensionRenderStyle(isPreview, visualState);
+  const style = getDimensionRenderStyle(isPreview, visualState, state.lightBackground);
   context.save();
   applyDimensionGraphicsStyle(context, style);
   for (const segment of geometry.extensionSegments) {
@@ -2978,7 +2992,7 @@ function drawDimensionCanvasText(state, dimension, isPreview, visualState = null
     return;
   }
 
-  drawFloatingDimensionLabel(state, text, dimension.point, getDimensionRenderStyle(isPreview, visualState));
+  drawFloatingDimensionLabel(state, text, dimension.point, getDimensionRenderStyle(isPreview, visualState, state.lightBackground));
 }
 
 function measureDimensionCanvasText(state, text) {

@@ -6,7 +6,13 @@ const DIMENSION_LAYER_STROKE_STYLE = "#d5dde8";
 const DIMENSION_LAYER_TEXT_STYLE = "#f3f6fb";
 const DIMENSION_PREVIEW_STROKE_STYLE = "#facc15";
 
-export function getDimensionRenderStyle(isPreview, visualState = null) {
+export function getDimensionRenderStyle(isPreview, visualState = null, lightBackground = false) {
+  if (lightBackground) {
+    const style = getDimensionRenderStyle(isPreview, visualState);
+    const state = normalizeDimensionVisualState(visualState);
+    const color = isPreview ? "#805800" : state.unsatisfied ? "#a51628" : state.selected ? "#005a75" : "#202020";
+    return { ...style, strokeStyle: color, textStyle: color, glow: false };
+  }
   const normalizedVisualState = normalizeDimensionVisualState(visualState);
   if (!isPreview && normalizedVisualState.unsatisfied) {
     return {
