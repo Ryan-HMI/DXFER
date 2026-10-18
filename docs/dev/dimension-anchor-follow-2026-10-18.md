@@ -43,3 +43,17 @@ No record or drawing repair is required for this display-state defect. Core
 anchors were already correct in exports; refreshing/reopening restores them.
 This is a minimized linear-dimension reproduction, not an assertion that every
 dimension type and every related solver behavior is independently accepted.
+
+## Deployment
+
+Installed `adf544c7f754355b51796a38680ddd2cff10e505` on DXFer Dev at
+2026-10-18T19:20Z. Clean pushed candidate, four installed assembly hashes match,
+ten runtime settings unchanged, health200/anonymous302. Normal sign-in and
+disabled Sync callbacks retained; Production/Test PIDs unchanged.
+
+Public browser replay passes with the rendered `adf544c` build, including
+both held/released following, history, reopen/edit again and cancellation.
+Seven public DXFs audit0/0; screenshot inspected. Evidence:
+`/tmp/dimension-anchor-dev` and `/tmp/dimension-anchor-dev.log`.
+Independent Flux/Ryan acceptance pending. No live drawing changed and no
+automatic repair required. Temporary local QA process stopped.
