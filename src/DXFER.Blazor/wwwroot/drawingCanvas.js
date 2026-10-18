@@ -8755,6 +8755,22 @@ function getDimensionPreservingPreviewTranslationCandidate(originalDocument, ent
       if (pair && StringComparer(pair.circleReference.entityId, entityId)) {
         projectedDeltas.push(projectWorldDeltaOntoLine(delta, pair.line.start, pair.line.end));
       }
+      const refs = getSketchReferenceKeys(constraint).map(parseSketchReference);
+      if (refs.length !== 2 || !refs.some(ref => ref?.entityId === entityId && ref.target === "entity")) continue;
+      const peerRef = refs.find(ref => ref && ref.entityId !== entityId && ref.target === "entity");
+      const peer = peerRef && findCanvasDocumentEntity(originalDocument, peerRef.entityId);
+      if (getEntityKind(peer) !== "circle") continue;
+      const center = getEntityCenter(entity), anchor = getEntityCenter(peer);
+      const distance = distanceBetweenWorldPoints(center, anchor);
+      const internal = Math.abs(getEntityRadius(peer) - getEntityRadius(entity));
+      const external = getEntityRadius(peer) + getEntityRadius(entity);
+      const orbit = Math.abs(distance - internal) < Math.abs(distance - external) ? internal : external;
+      const dx = center.x + delta.x - anchor.x, dy = center.y + delta.y - anchor.y;
+      const length = Math.hypot(dx, dy);
+      if (length > WORLD_GEOMETRY_TOLERANCE && orbit > WORLD_GEOMETRY_TOLERANCE) {
+        projectedDeltas.push({x: anchor.x + dx / length * orbit - center.x,
+          y: anchor.y + dy / length * orbit - center.y});
+      }
     }
   }
 

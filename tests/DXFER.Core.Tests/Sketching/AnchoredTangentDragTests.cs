@@ -8,6 +8,94 @@ namespace DXFER.Core.Tests.Sketching;
 public sealed class AnchoredTangentDragTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void CenterDragOrbitsSizedAnchoredPeer(bool inside, bool reverse)
+    {
+        var x = inside ? 7d : 13d;
+        var tangent = new SketchConstraint("tangent", SketchConstraintKind.Tangent,
+            reverse ? new[] { "large", "small" } : new[] { "small", "large" }, SketchConstraintState.Satisfied);
+        var document = new DrawingDocument(new DrawingEntity[] {
+            new CircleEntity(EntityId.Create("large"), new(0, 0), 10),
+            new CircleEntity(EntityId.Create("small"), new(x, 0), 3) }, new[] {
+            new SketchDimension("radius", SketchDimensionKind.Radius, new[] { "large" }, 10, new(-7, 7), true) }, new[] {
+            new SketchConstraint("anchor", SketchConstraintKind.Coincident, new[] { "large:center", "$origin:center" }, SketchConstraintState.Satisfied), tangent });
+        SketchGeometryDragService.TryApplyDrag(document, $"small|point|center|{x}|0", new(x, 0), new(x + 1, 2), false,
+            out var changed, out var status).Should().BeTrue(status);
+        changed.Entities[0].Should().Be(document.Entities[0]);
+        var small = (CircleEntity)changed.Entities[1];
+        var length = Math.Sqrt((x + 1) * (x + 1) + 4);
+        small.Center.X.Should().BeApproximately((x + 1) / length * x, 1e-8);
+        small.Center.Y.Should().BeApproximately(2 / length * x, 1e-8);
+        small.Radius.Should().Be(3);
+        changed.Dimensions.Single().Value.Should().Be(10);
+        changed.Constraints.Should().OnlyContain(c => c.State == SketchConstraintState.Satisfied);
+    }
+
+    [Theory]
+    [InlineData(0.00001, false)]
+    [InlineData(1, false)]
+    [InlineData(10000, false)]
+    [InlineData(1, true)]
+    public void OrbitPreservesFixedPeerAndDrivingSmallRadiusAndRespectsFixedCenter(double scale, bool inside)
+    {
+        var x = (inside ? 7d : 13d) * scale;
+        var entities = new DrawingEntity[] {
+            new CircleEntity(EntityId.Create("large"), new(0, 0), 10 * scale),
+            new CircleEntity(EntityId.Create("small"), new(x, 0), 3 * scale) };
+        var dimensions = new[] {
+            new SketchDimension("radius", SketchDimensionKind.Radius, new[] { "small" }, 3 * scale, new(x, -4 * scale), true) };
+        var constraints = new[] {
+            new SketchConstraint("anchor", SketchConstraintKind.Fix, new[] { "large" }, SketchConstraintState.Satisfied),
+            new SketchConstraint("tangent", SketchConstraintKind.Tangent, new[] { "large", "small" }, SketchConstraintState.Satisfied),
+            new SketchConstraint("small-anchor", SketchConstraintKind.Fix, new[] { "small:center" }, SketchConstraintState.Satisfied) };
+        var document = new DrawingDocument(entities, dimensions, constraints);
+        var start = new Point2(x, 3 * scale);
+        var end = new Point2(x + scale, 5 * scale);
+        var key = $"small|point|quadrant-90|{x}|{3 * scale}";
+        SketchGeometryDragService.TryApplyDrag(document, key, start, end, false,
+            out var unchanged, out _).Should().BeFalse();
+        unchanged.Entities.Should().Equal(entities);
+        unchanged.Dimensions.Should().Equal(dimensions);
+        var free = new DrawingDocument(entities, dimensions, constraints.Take(2).ToArray());
+        SketchGeometryDragService.TryApplyDrag(free, key, start, end, false,
+            out var changed, out var status).Should().BeTrue(status);
+        changed.Entities[0].Should().Be(entities[0]);
+        var small = (CircleEntity)changed.Entities[1];
+        small.Radius.Should().Be(3 * scale);
+        Math.Sqrt(small.Center.X * small.Center.X + small.Center.Y * small.Center.Y).Should().BeApproximately(x, 1e-8);
+        small.Center.Y.Should().BeGreaterThan(0);
+        changed.Dimensions.Single().Value.Should().Be(3 * scale);
+        changed.Constraints.Should().OnlyContain(c => c.State == SketchConstraintState.Satisfied);
+    }
+
+    [Theory]
+    [InlineData(-10, 17, true)]
+    [InlineData(0, 0, false)]
+    [InlineData(-22.8, 30.4, false)]
+    public void OffAxisOrbitAndDegenerateRequestsPreserveSizedPeer(double x, double y, bool accepted)
+    {
+        var document = new DrawingDocument(new DrawingEntity[] {
+            new CircleEntity(EntityId.Create("large"), new(0, 0), 10),
+            new CircleEntity(EntityId.Create("small"), new(-11.4, 15.2), 9) }, new[] {
+            new SketchDimension("radius", SketchDimensionKind.Radius, new[] { "large" }, 10, new(11, -4), true) }, new[] {
+            new SketchConstraint("anchor", SketchConstraintKind.Coincident, new[] { "large:center", "$origin:center" }, SketchConstraintState.Satisfied),
+            new SketchConstraint("tangent", SketchConstraintKind.Tangent, new[] { "small", "large" }, SketchConstraintState.Satisfied) });
+        SketchGeometryDragService.TryApplyDrag(document, "small|point|center|-11.4|15.2", new(-11.4, 15.2), new(x, y), false,
+            out var changed, out _).Should().Be(accepted);
+        changed.Entities[0].Should().Be(document.Entities[0]);
+        if (!accepted) changed.Entities.Should().Equal(document.Entities);
+        else
+        {
+            var small = (CircleEntity)changed.Entities[1];
+            Math.Sqrt(small.Center.X * small.Center.X + small.Center.Y * small.Center.Y).Should().BeApproximately(19, 1e-8);
+            small.Radius.Should().Be(9);
+        }
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void DrivingSmallRadiusTranslatesAndResizesFreeLargePeer(bool inside)

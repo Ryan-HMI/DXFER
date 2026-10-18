@@ -242,7 +242,7 @@ public static class SketchGeometryDragService
             if (IsCircleTranslationDrag(document, selectionKey)
                 && TryGetSelectedEntityId(document, selectionKey, out var constrainedEntityId)
                 && TryApplyDimensionPreservingProjectedSelectionTranslation(
-                    document, constrainedEntityId, delta, out nextDocument, out status))
+                    document, constrainedEntityId, delta, out nextDocument, out status, allowCircleOrbit: true))
             {
                 return true;
             }
@@ -370,7 +370,8 @@ public static class SketchGeometryDragService
                     entityId,
                     delta,
                     out nextDocument,
-                    out status))
+                    out status,
+                    allowCircleOrbit: IsCircleTranslationDrag(document, selectionKey)))
             {
                 return true;
             }
@@ -389,11 +390,12 @@ public static class SketchGeometryDragService
         string entityId,
         Point2 delta,
         out DrawingDocument nextDocument,
-        out string status)
+        out string status,
+        bool allowCircleOrbit = false)
     {
         nextDocument = document;
         status = string.Empty;
-        foreach (var projectedDelta in GetDimensionPreservingTranslationCandidates(document, entityId, delta))
+        foreach (var projectedDelta in GetDimensionPreservingTranslationCandidates(document, entityId, delta, allowCircleOrbit))
         {
             if (SketchGeometryEditor.Distance(new Point2(0, 0), projectedDelta) <= SketchGeometryEditor.Tolerance)
             {
@@ -428,11 +430,12 @@ public static class SketchGeometryDragService
     private static IEnumerable<Point2> GetDimensionPreservingTranslationCandidates(
         DrawingDocument document,
         string entityId,
-        Point2 delta)
+        Point2 delta,
+        bool allowCircleOrbit)
     {
         // Tangency removes normal movement, not the circle's along-edge freedom.
         // Use the original edge, then validate the complete candidate as usual.
-        if (document.Entities.Any(entity => entity.Id.Value == entityId && entity is CircleEntity))
+        if (document.Entities.FirstOrDefault(entity => entity.Id.Value == entityId) is CircleEntity circle)
         {
             foreach (var constraint in document.Constraints)
             {
@@ -449,6 +452,24 @@ public static class SketchGeometryDragService
                         && SketchGeometryEditor.TryGetLineDirection(line, out _, out _, out _))
                     {
                         yield return ProjectDeltaOntoLine(delta, line.Start, line.End);
+                    }
+                    else if (allowCircleOrbit && SketchReference.TryParse(key, out var peerReference) && peerReference.IsEntity
+                        && peerReference.EntityId != entityId
+                        && document.Entities.FirstOrDefault(entity => entity.Id.Value == peerReference.EntityId) is CircleEntity peer)
+                    {
+                        // Preserve the original tangent branch and both radii while
+                        // projecting the requested center onto its available orbit.
+                        var distance = SketchGeometryEditor.Distance(circle.Center, peer.Center);
+                        var internalDistance = Math.Abs(peer.Radius - circle.Radius);
+                        var externalDistance = peer.Radius + circle.Radius;
+                        var orbit = Math.Abs(distance - internalDistance) < Math.Abs(distance - externalDistance)
+                            ? internalDistance : externalDistance;
+                        var dx = circle.Center.X + delta.X - peer.Center.X;
+                        var dy = circle.Center.Y + delta.Y - peer.Center.Y;
+                        var length = Math.Sqrt(dx * dx + dy * dy);
+                        if (length > SketchGeometryEditor.Tolerance && orbit > SketchGeometryEditor.Tolerance)
+                            yield return new Point2(peer.Center.X + dx / length * orbit - circle.Center.X,
+                                peer.Center.Y + dy / length * orbit - circle.Center.Y);
                     }
                 }
             }

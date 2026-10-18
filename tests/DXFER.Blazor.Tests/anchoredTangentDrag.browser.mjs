@@ -52,29 +52,32 @@ try {
     const fixture = await readFile(new URL(`./fixtures/drag-matrix/anchored-tangent-${anchor}-${inside ? 'internal' : 'external'}.dxf`, import.meta.url));
     const x = inside ? 7 : 13;
     for (const center of [false, true]) {
-      // Center movement with a fixed radius may legitimately project along tangency.
-      if (anchor === 'driving' && center) continue;
       await load(fixture); const original = native(await download());
       const name = `${anchor}-${inside ? 'internal' : 'external'}-${center ? 'center' : 'perimeter'}`;
-      const start = center ? [x, 0] : [x, 3], end = center ? [x + 1, 0] : [x, 4];
+      const start = center ? [x, 0] : [x, 3], end = center ? [x + 1, anchor === 'driving' ? 2 : 0] : [x, 4];
       await drag(start, end, center ? /^small\|point\|center/ : /^small\|point\|quadrant/, name);
       const text = await download(name), changed = native(text);
-      if (anchor === 'driving') {
+      if (anchor === 'driving' && !center) {
         assert.deepEqual(changed.entities, original.entities); assert.deepEqual(changed.dimensions, original.dimensions);
         await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
         console.log(`PASS ${name} refuses unchanged with no history`); continue;
       }
       const large = changed.entities.find(e => e.id === 'large'), small = changed.entities.find(e => e.id === 'small');
       assert.deepEqual(large.center, {x: 0, y: 0});
-      assert.ok(Math.abs(large.radius - (inside || center ? 11 : 9)) < 0.05, JSON.stringify(changed));
-      assert.ok(Math.abs(small.center.x - (center ? x + 1 : x)) < 0.05);
+      const orbit = anchor === 'driving';
+      assert.ok(Math.abs(large.radius - (orbit ? 10 : inside || center ? 11 : 9)) < 0.05, JSON.stringify(changed));
+      assert.ok(Math.abs(small.center.x - (orbit ? (x + 1) / Math.hypot(x + 1, 2) * x : center ? x + 1 : x)) < 0.05);
+      if (orbit) {
+        assert.ok(Math.abs(small.center.y - 2 / Math.hypot(x + 1, 2) * x) < 0.05);
+        assert.deepEqual(changed.dimensions, original.dimensions);
+      }
       assert.ok(Math.abs(small.radius - (center ? 3 : 4)) < 0.05);
       assert.ok(changed.constraints.every(c => c.state === 'Satisfied'));
       await tool('Undo'); assert.deepEqual(native(await download()).entities, original.entities);
       await tool('Redo'); assert.deepEqual(native(await download()).entities, changed.entities);
       await load(text); assert.deepEqual(native(await download()).entities, changed.entities);
-      const nextStart = [small.center.x, small.center.y + small.radius];
-      await drag(nextStart, [nextStart[0], nextStart[1] + 0.5], /^small\|point\|quadrant/);
+      const nextStart = [small.center.x, small.center.y + (orbit ? 0 : small.radius)];
+      await drag(nextStart, [nextStart[0], nextStart[1] + 0.5], orbit ? /^small\|point\|center/ : /^small\|point\|quadrant/);
       const editedAgain = native(await download());
       assert.ok(editedAgain.constraints.every(c => c.state === 'Satisfied'));
       assert.deepEqual(editedAgain.entities.find(e => e.id === 'large').center, {x: 0, y: 0});
