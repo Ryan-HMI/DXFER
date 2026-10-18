@@ -36,3 +36,17 @@ have versioned URLs to avoid stale loaded styles.
   `/tmp/background-surfaces` and corresponding logs. Public replay pending.
 
 This is a view preference; no drawing repair or migration.
+
+## Deployment
+
+Installed `88ebab335fb3f280697a6d665a8391d11d4c3490` on DXFer Dev at
+2026-10-18T22:34Z. Installed assembly hashes match, ten runtime settings
+preserved, health200/anonymous302; normal sign-in and disabled Sync callbacks
+retained. Production/Test runtimes unchanged.
+
+Public browser replay passes on rendered88ebab3: background pixels, light
+dimension ink, full native export/layer invariance, dirty/history preservation,
+reload/reset/invalid preference fallback and desktop layout. Three public
+exports audit0/0; screenshot inspected. Evidence `/tmp/background-dev` and
+matching log. Local QA stopped. Independent visual acceptance pending; no
+recurring trivial-UI testing reminder.
