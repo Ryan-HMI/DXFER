@@ -5911,7 +5911,7 @@ function handleKeyDown(state, event) {
   }
 
   const activeTool = normalizeToolName(state.activeTool);
-  if (event.key === "Enter" && state.cornerPreview && !event.repeat) {
+  if (event.key === "Enter" && event.target === state.canvas && state.cornerPreview && !event.repeat) {
     invokeDotNet(state, "OnCornerApplyRequested");
     event.preventDefault();
     return;

@@ -18,8 +18,21 @@ function harness(t) {
     buttons: type === 'pointerup' ? 0 : 1, preventDefault() {}});
   const click = (x, y) => {pointer('pointermove', x, y); pointer('pointerdown', x, y); pointer('pointerup', x, y);};
   const escape = () => keys.get('keydown')({key: 'Escape', target: canvas, preventDefault() {}});
-  return {instance, canvas, calls, pointer, click, escape};
+  const enter = (target, repeat = false) => keys.get('keydown')({key:'Enter', target, repeat, preventDefault() {}});
+  return {instance, canvas, calls, pointer, click, escape, enter};
 }
+
+test('corner Enter confirms only from canvas, never from Cancel or another control', t => {
+  const h = harness(t);
+  h.instance.setActiveTool('chamfer');
+  h.instance.setCornerPreview({entities: [], dimensions: [], constraints: []}, {x:1,y:1}, 2);
+  h.enter({closest: () => null}); // A focused button is not an editable input.
+  assert.ok(!h.calls.some(c => c[0] === 'OnCornerApplyRequested'));
+  h.enter(h.canvas, true);
+  assert.ok(!h.calls.some(c => c[0] === 'OnCornerApplyRequested'));
+  h.enter(h.canvas);
+  assert.equal(h.calls.filter(c => c[0] === 'OnCornerApplyRequested').length, 1);
+});
 
 for (const tool of ['line', 'centercircle', 'point']) test(`origin snap is committed explicitly by ${tool}`, t => {
   const h = harness(t); h.instance.setActiveTool(tool);

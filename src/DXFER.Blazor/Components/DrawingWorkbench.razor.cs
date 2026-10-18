@@ -487,6 +487,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         else if (args.Key == "Enter" && IsCornerModifyToolActive) CommitCornerPreview();
     }
 
+    private void HandleInspectorEscape(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape") ExitInspectorTool();
+    }
+
     private bool IsParametricCommandActive =>
         _activeTool.HasValue;
 
@@ -539,6 +544,16 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private string CornerModifyDistanceValue =>
         _cornerModifyDistanceText ?? FormatNumber(GetCornerModifyDistance());
+
+    private string CornerSizeDraft
+    {
+        get => CornerModifyDistanceValue;
+        set => OnCornerModifyDistanceChanged(new ChangeEventArgs { Value = value });
+    }
+
+    private string CornerPreviewState => CornerPreview is not null ? "Preview"
+        : _cornerModifyDistanceInvalid ? "Invalid size"
+        : _selectedEntityIds.Count == 0 ? "Select corner" : "Not applicable";
 
     private string CommandPromptText => _solveFailureStatus ?? _duplicateCleanupStatus ?? (_activeTool switch
     {
@@ -1294,6 +1309,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         _activeTool = tool;
+        if (TryGetCornerModifyCommand(tool, out _)) _operationInspectorCollapsed = false;
         _status = status;
     }
 
@@ -1855,7 +1871,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private void CommitCornerPreview()
     {
         if (CornerPreview is not null && TryGetCornerModifyCommand(_activeTool, out var command))
-            TryApplyCornerModifyTool(command, keepModal: true);
+        {
+            if (TryApplyCornerModifyTool(command, keepModal: false)) _focusCanvasAfterRender = true;
+        }
     }
 
     private void OnCornerSizeDragged(double value)
@@ -2798,6 +2816,16 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private IReadOnlyList<LiveReadoutItem> BuildLiveMeasurementReadouts()
     {
+        if (IsCornerModifyToolActive)
+        {
+            return new[]
+            {
+                new LiveReadoutItem("State", CornerPreviewState),
+                new LiveReadoutItem("Selection", _selectedEntityIds.Count == 1 ? ActiveSelectionText
+                    : _selectedEntityIds.Count == 0 ? "none" : $"{_selectedEntityIds.Count} elements")
+            };
+        }
+
         var items = new List<LiveReadoutItem>
         {
             new("Sel", _selectedEntityIds.Count == 0 ? "none" : _selectedEntityIds.Count.ToString(CultureInfo.InvariantCulture)),

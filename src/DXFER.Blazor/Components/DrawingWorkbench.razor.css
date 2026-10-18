@@ -752,6 +752,24 @@
     padding: 0.5rem;
 }
 
+.dxfer-corner-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.dxfer-confirm-corner:not(:disabled) {
+    border-color: var(--dx-accent, #66d9ff);
+    color: var(--dx-accent, #66d9ff);
+}
+
+.dxfer-command-bar > .dxfer-command-prompt {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 .dxfer-exit-tool:disabled {
     opacity: 0.45;
     cursor: not-allowed;

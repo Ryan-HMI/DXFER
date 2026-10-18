@@ -58,6 +58,10 @@ public sealed class WorkbenchCornerIntentTests
             Invoke(workbench, "RefreshCornerPreview");
             Invoke(workbench, "CommitCornerPreview");
             Get<Stack<DrawingDocument>>(workbench, "_undoStack").Should().HaveCount(1);
+            Get<WorkbenchTool?>(workbench, "_activeTool").Should().BeNull("Confirm finishes the corner session");
+            Get<DrawingDocument?>(workbench, "_cornerPreview").Should().BeNull();
+            Invoke(workbench, "CommitCornerPreview");
+            Get<Stack<DrawingDocument>>(workbench, "_undoStack").Should().HaveCount(1, "repeated confirmation must not commit again");
             var committed = Get<DrawingDocument>(workbench, "_document");
             committed.Dimensions.Single(d => d.Id == "length").Value.Should().BeApproximately(7, 1e-10);
             Invoke(workbench, "UndoLastDocumentChange");
@@ -67,6 +71,23 @@ public sealed class WorkbenchCornerIntentTests
             var reopened = DxfDocumentReader.Read(DxfDocumentWriter.Write(committed, new DxfWriteOptions(IncludeNativeDocument: true)));
             reopened.Entities.Should().BeEquivalentTo(committed.Entities);
             reopened.Dimensions.Should().BeEquivalentTo(committed.Dimensions);
+        });
+    }
+
+    [Theory]
+    [InlineData(WorkbenchTool.Chamfer)]
+    [InlineData(WorkbenchTool.Fillet)]
+    public async Task ActivatingCornerRevealsHiddenInspector(WorkbenchTool tool)
+    {
+        using var services = new ServiceCollection().BuildServiceProvider();
+        await using var renderer = new TestRenderer(services);
+        var workbench = Create();
+        renderer.Attach(workbench);
+        await renderer.Dispatcher.InvokeAsync(() =>
+        {
+            Set(workbench, "_operationInspectorCollapsed", true);
+            Invoke(workbench, "ActivateTool", tool, "Corner active.");
+            Get<bool>(workbench, "_operationInspectorCollapsed").Should().BeFalse();
         });
     }
 
