@@ -43,7 +43,7 @@ for (const kind of ['circle', 'arc']) test(`registered canvas paints selected ${
     const previous = globalThis.window;
     globalThis.window = { devicePixelRatio: 1, addEventListener() {}, removeEventListener() {} };
     const calls = [], handlers = new Map();
-    const context = new Proxy({ measureText: text => ({ width: String(text).length * 7 }) }, {
+    const context = new Proxy({ createRadialGradient: () => ({ addColorStop() {} }), measureText: text => ({ width: String(text).length * 7 }) }, {
         get: (target, key) => key in target ? target[key] : (...args) => calls.push([key, ...args])
     });
     const canvas = { clientWidth: 1000, clientHeight: 800, dataset: {}, style: {}, getContext: () => context,

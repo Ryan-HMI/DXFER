@@ -29,7 +29,7 @@
 
 .document-units,
 .document-change-state {
-    color: #b6c2ce;
+    color: var(--dx-secondary, #b6c2ce);
 }
 
 .document-access-state {

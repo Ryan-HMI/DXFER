@@ -140,7 +140,7 @@ function pendingDrag() {
   let reject;
   const response = new Promise((yes, no) => { resolve = yes; reject = no; });
   const drawingCalls = [];
-  const context = new Proxy({}, {
+  const context = new Proxy({ createRadialGradient: () => ({ addColorStop() {} }) }, {
     get: (target, name) => name in target ? target[name] : (...args) => drawingCalls.push([name, ...args]),
     set: (target, name, value) => { target[name] = value; return true; }
   });

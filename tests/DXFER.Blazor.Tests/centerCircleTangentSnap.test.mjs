@@ -41,7 +41,7 @@ for(const [name,entities,center,contact] of [
 for(const takeSnap of [true,false]) test(`registered canvas commits ${takeSnap?'explicit tangent reference':'no relation for ordinary edge click'}`,t=>{
     const previous=globalThis.window;globalThis.window={devicePixelRatio:1,addEventListener(){},removeEventListener(){}};
     const callbacks=[],handlers=new Map();
-    const context=new Proxy({measureText:text=>({width:String(text).length*7})},{get:(o,k)=>k in o?o[k]:()=>{}});
+    const context=new Proxy({createRadialGradient:()=>({addColorStop(){}}),measureText:text=>({width:String(text).length*7})},{get:(o,k)=>k in o?o[k]:()=>{}});
     const canvas={clientWidth:1000,clientHeight:800,dataset:{},style:{},getContext:()=>context,
         getBoundingClientRect:()=>({left:0,top:0,width:1000,height:800}),
         addEventListener:(k,v)=>handlers.set(k,v),removeEventListener(){},focus(){},setPointerCapture(){},releasePointerCapture(){}};

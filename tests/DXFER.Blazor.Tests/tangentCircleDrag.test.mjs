@@ -181,7 +181,7 @@ function canvasHarness(t, document, accepted) {
     const previous = globalThis.window;
     globalThis.window = { devicePixelRatio: 2, addEventListener() {}, removeEventListener() {} };
     const paint = [], calls = [], handlers = new Map();
-    const context = new Proxy({ measureText: text => ({ width: String(text).length * 7 }) }, {
+    const context = new Proxy({ createRadialGradient: () => ({ addColorStop() {} }), measureText: text => ({ width: String(text).length * 7 }) }, {
         get: (object, key) => key in object ? object[key] : (...args) => paint.push([key, ...args])
     });
     const canvas = { width: 0, height: 0, clientWidth: 1000, clientHeight: 800, dataset: {}, style: {},

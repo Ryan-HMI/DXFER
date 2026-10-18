@@ -11,10 +11,11 @@ const luminance=hex=>{
 };
 const contrast=(a,b)=>(Math.max(luminance(a),luminance(b))+.05)/(Math.min(luminance(a),luminance(b))+.05);
 
-test('Foundry overlays remain readable on the neutral default field',()=>{
-    assert.match(css,/background: var\(--dx-canvas-background, #262626\)/);
+test('Foundry overlays remain readable on the gradient and neutral fields',()=>{
+    assert.match(css,/background: var\(--dx-canvas-background, radial-gradient\(ellipse at center, #172832 0%, #0b1016 70%\)\)/);
     for(const color of ['#ff6c7c','#97a5b6','#d3e1ed','#b7efff','#66d9ff','#ffc56c']) {
         assert.ok(source.includes(color));
-        assert.ok(contrast(color,'#262626')>=4.5,`${color} against neutral field`);
+        for(const background of ['#202020','#172832','#0b1016'])
+            assert.ok(contrast(color,background)>=4.5,`${color} against ${background}`);
     }
 });

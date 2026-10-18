@@ -1,6 +1,6 @@
 html, body {
     background: var(--dx-app, #07090d);
-    color: #d6dde5;
+    color: var(--dx-text, #d6dde5);
     font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     height: 100%;
     margin: 0;
@@ -119,7 +119,7 @@ html, body {
 .app-menu-group:hover > .app-menu-item,
 .app-menu-group:focus-within > .app-menu-item {
     background: var(--dx-hover, #1a222d);
-    color: #f8fbfd;
+    color: var(--dx-text, #f8fbfd);
     outline: none;
 }
 
@@ -142,7 +142,7 @@ html, body {
 }
 
 .app-menu-arrow {
-    color: #8da0ad;
+    color: var(--dx-secondary, #8da0ad);
     font-size: 0.75rem;
 }
 
@@ -200,7 +200,7 @@ html, body {
 }
 
 .app-title {
-    color: #f4f7fa;
+    color: var(--dx-text, #f4f7fa);
     font-size: 16px;
     font-weight: 700;
     letter-spacing: 0;
@@ -208,7 +208,7 @@ html, body {
 }
 
 .app-subtitle {
-    color: #8ea0ae;
+    color: var(--dx-secondary, #8ea0ae);
     font-size: 13px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -285,7 +285,7 @@ html, body {
 }
 
 .app-field span {
-    color: #9dafbd;
+    color: var(--dx-secondary, #9dafbd);
     font-size: 0.76rem;
     font-weight: 650;
 }
@@ -294,7 +294,7 @@ html, body {
     background: var(--dx-input, #0a0d12);
     border: 1px solid var(--dx-border, #242d39);
     border-radius: 4px;
-    color: #f2f7fa;
+    color: var(--dx-text, #f2f7fa);
     height: 2rem;
     padding: 0 0.55rem;
 }
@@ -387,7 +387,7 @@ button {
 }
 
 .dxfer-icon-button-active {
-    color: #f8fbfd;
+    color: var(--dx-text, #f8fbfd);
     background: var(--dx-selected, rgba(102, 217, 255, 0.14));
     border-color: var(--dx-accent, #66d9ff);
 }

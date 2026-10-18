@@ -103,6 +103,7 @@ function createRecordingCanvas() {
   const calls = [];
   const contextTarget = {
     calls,
+    createRadialGradient: () => ({ addColorStop() {} }),
     measureText: text => ({ width: String(text).length * 7 })
   };
   const context = new Proxy(contextTarget, {

@@ -205,7 +205,7 @@
     max-height: 4.5rem;
     overflow: auto;
     overflow-wrap: anywhere;
-    color: #cfe2ee;
+    color: var(--dx-secondary, #cfe2ee);
     font-size: 0.78rem;
     line-height: 1.35;
 }
@@ -225,7 +225,7 @@
     align-items: center;
     gap: 0.32rem;
     min-width: 7rem;
-    color: #8fa4b2;
+    color: var(--dx-secondary, #8fa4b2);
     font-size: 0.74rem;
     font-weight: 650;
 }
@@ -236,7 +236,7 @@
     height: 1.55rem;
     box-sizing: border-box;
     padding: 0 0.42rem;
-    color: #f2f7fa;
+    color: var(--dx-text, #f2f7fa);
     background: var(--dx-input, #0a0d12);
     border: 1px solid var(--dx-border, #242d39);
     border-radius: 4px;
@@ -274,7 +274,7 @@
 
 .dxfer-live-readout-label {
     flex-shrink: 0;
-    color: #8fa4b2;
+    color: var(--dx-secondary, #8fa4b2);
     font-weight: 650;
 }
 
@@ -284,7 +284,7 @@
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-    color: #f2f7fa;
+    color: var(--dx-text, #f2f7fa);
 }
 
 .dxfer-tool-section {
@@ -327,7 +327,7 @@
 
 .dxfer-tool-section-summary:hover .dxfer-section-title,
 .dxfer-tool-section-summary:focus-visible .dxfer-section-title {
-    color: #ffffff;
+    color: var(--dx-text, #ffffff);
 }
 
 .dxfer-section-title {
@@ -346,7 +346,7 @@
 }
 
 .dxfer-tool-section-label {
-    color: #8295a2;
+    color: var(--dx-secondary, #8295a2);
     font-size: 0.68rem;
     line-height: 1;
     overflow: hidden;
@@ -355,7 +355,7 @@
 }
 
 .dxfer-tool-section-count {
-    color: #7f929f;
+    color: var(--dx-secondary, #7f929f);
     font-size: 0.68rem;
     line-height: 1;
 }
@@ -415,7 +415,7 @@
 }
 
 .dxfer-command-panel-title {
-    color: #e8f2f7;
+    color: var(--dx-text, #e8f2f7);
     font-size: 0.82rem;
     font-weight: 650;
 }
@@ -423,7 +423,7 @@
 .dxfer-command-panel label {
     display: grid;
     gap: 0.25rem;
-    color: #9dadb8;
+    color: var(--dx-secondary, #9dadb8);
     font-size: 0.74rem;
 }
 
@@ -456,7 +456,7 @@
 }
 
 .dxfer-button-active {
-    color: #f8fbfd;
+    color: var(--dx-text, #f8fbfd);
     background: var(--dx-selected, rgba(102, 217, 255, 0.14));
     border-color: var(--dx-accent, #66d9ff);
 }
@@ -480,7 +480,7 @@
     width: 100%;
     margin: 0 0 0.35rem;
     padding: 0;
-    color: #9aacb8;
+    color: var(--dx-secondary, #9aacb8);
     font-size: 0.7rem;
     font-weight: 700;
     line-height: 1;
@@ -514,7 +514,7 @@
     align-items: center;
     justify-content: center;
     min-height: 1.65rem;
-    color: #c7d1d8;
+    color: var(--dx-secondary, #c7d1d8);
     border-right: 1px solid var(--dx-border, #242d39);
     font-size: 0.74rem;
     line-height: 1;
@@ -525,7 +525,7 @@
 }
 
 .dxfer-segmented-option input:checked + span {
-    color: #f8fbfd;
+    color: var(--dx-text, #f8fbfd);
     background: var(--dx-selected, rgba(102, 217, 255, 0.14));
 }
 
@@ -535,13 +535,13 @@
 }
 
 .dxfer-file-name {
-    color: #eef3f6;
+    color: var(--dx-text, #eef3f6);
     font-weight: 650;
     overflow-wrap: anywhere;
 }
 
 .dxfer-status {
-    color: #aab8c2;
+    color: var(--dx-secondary, #aab8c2);
     font-size: 0.84rem;
     line-height: 1.35;
 }
@@ -555,12 +555,12 @@
 }
 
 .dxfer-metrics dt {
-    color: #8fa0ad;
+    color: var(--dx-secondary, #8fa0ad);
 }
 
 .dxfer-metrics dd {
     margin: 0;
-    color: #e4ebef;
+    color: var(--dx-text, #e4ebef);
     overflow-wrap: anywhere;
 }
 

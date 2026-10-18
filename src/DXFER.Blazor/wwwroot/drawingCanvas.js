@@ -87,7 +87,7 @@ import {
   resolveNearestTargetHit
 } from "./canvas/targetResolution.js";
 import { getUnobscuredViewport } from "./canvas/viewportFit.js";
-import { normalizeCanvasBackground, isLightCanvasBackground } from "./canvasAppearance.js?v=20261018-background";
+import { normalizeCanvasBackground, isLightCanvasBackground, paintCanvasBackground } from "./canvasAppearance.js?v=20261018-foundry-presets";
 
 export {
   getLinearDimensionScreenGeometry,
@@ -217,9 +217,11 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
 
   const resize = () => resizeCanvas(state);
   state.backgroundColor = normalizeCanvasBackground(canvas.dataset?.backgroundColor);
+  state.backgroundPreset = canvas.dataset?.backgroundPreset ?? 'foundry';
   state.lightBackground = isLightCanvasBackground(state.backgroundColor);
   const onBackgroundChanged = () => {
     state.backgroundColor = normalizeCanvasBackground(canvas.dataset?.backgroundColor);
+    state.backgroundPreset = canvas.dataset?.backgroundPreset ?? 'foundry';
     state.lightBackground = isLightCanvasBackground(state.backgroundColor);
     draw(state);
   };
@@ -700,7 +702,7 @@ function draw(state) {
 
   context.save();
   context.setTransform(state.pixelRatio, 0, 0, state.pixelRatio, 0, 0);
-  // The browser preference supplies the field color underneath transparent redraws.
+  paintCanvasBackground(context, size.width, size.height, {preset: state.backgroundPreset, color: state.backgroundColor});
 
   if (state.showOriginAxes) {
     drawOriginAxes(state, size);

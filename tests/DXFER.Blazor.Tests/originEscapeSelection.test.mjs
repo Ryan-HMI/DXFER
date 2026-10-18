@@ -5,7 +5,7 @@ import {createDrawingCanvas} from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.
 function harness(t) {
   const previous = globalThis.window, keys = new Map(), handlers = new Map(), calls = [];
   globalThis.window = {devicePixelRatio: 1, addEventListener: (key, handler) => keys.set(key, handler), removeEventListener() {}};
-  const context = new Proxy({measureText: text => ({width: String(text).length * 7})}, {get: (o, k) => k in o ? o[k] : () => {}});
+  const context = new Proxy({createRadialGradient: () => ({addColorStop(){}}), measureText: text => ({width: String(text).length * 7})}, {get: (o, k) => k in o ? o[k] : () => {}});
   const canvas = {clientWidth: 1000, clientHeight: 800, dataset: {}, style: {}, getContext: () => context,
     getBoundingClientRect: () => ({left: 0, top: 0, width: 1000, height: 800}),
     addEventListener: (key, handler) => handlers.set(key, handler), removeEventListener() {}, focus() {}, setPointerCapture() {}, releasePointerCapture() {}};

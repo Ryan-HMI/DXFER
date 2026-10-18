@@ -2,40 +2,94 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JsRuntime
 
-<div class="canvas-appearance" @ref="_control" @onkeydown:stopPropagation="true">
-    <label>Background
-        <input type="color" value="@_color" disabled="@(_module is null)" aria-label="Drawing background color"
-               title="Drawing background color" @onchange="ChangeColor" />
-    </label>
-    <button type="button" disabled="@(_module is null)" title="Reset background to neutral" aria-label="Reset background to neutral" @onclick="Reset">
-        <CadIcon Name="CadIconName.Undo" />
-    </button>
-</div>
+<span hidden @ref="_control"></span>
+@if (IsOpen)
+{
+    <div class="appearance-backdrop" @onclick="Close" @onkeydown:stopPropagation="true" @onkeydown="KeyDown">
+        <section class="appearance-dialog" @ref="_panel" role="dialog" aria-modal="true" aria-label="Appearances" @onclick:stopPropagation="true">
+            <header><h2>Appearances</h2><button type="button" title="Close appearances" aria-label="Close appearances" @ref="_close" @onclick="Close"><CadIcon Name="CadIconName.Close" /></button></header>
+            <div class="appearance-fields">
+                <label>Preset<select value="@_appearance.Preset" disabled="@(!_loaded)" aria-label="Drawing background preset" @onchange="ChangePreset">
+                    <option value="foundry">Foundry blue fade</option><option value="neutral">Dark grey</option><option value="custom">Custom</option>
+                </select></label>
+                <label>Canvas<input type="color" value="@_appearance.Color" disabled="@(!_loaded)" aria-label="Drawing background color" title="Custom solid canvas color" @onchange="ChangeColor" /></label>
+                <label>Panels<input type="color" value="@_appearance.PanelColor" disabled="@(!_loaded)" aria-label="Panel color" title="Panel color" @onchange="ChangePanelColor" /></label>
+            </div>
+            <footer><button type="button" class="appearance-reset" disabled="@(!_loaded)" @onclick="Reset"><CadIcon Name="CadIconName.Undo" /><span>Reset</span></button></footer>
+        </section>
+    </div>
+}
 
 @code {
-    private ElementReference _control;
-    private IJSObjectReference? _module;
-    private string _color = "#262626";
-
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    private ElementReference _control, _close, _panel;
+    private IJSObjectReference? _module, _observer;
+    private Appearance _appearance = new();
+    private bool _wasOpen, _focus, _loaded;
+    private int _changeGeneration;
+    private sealed class Appearance
+    {
+        public string Preset { get; set; } = "foundry";
+        public string Color { get; set; } = "#172832";
+        public string? PanelColor { get; set; }
+    }
+    protected override void OnParametersSet()
+    {
+        if (IsOpen && !_wasOpen) _focus = true;
+        _wasOpen = IsOpen;
+    }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./_content/DXFER.Blazor/canvasAppearance.js?v=20261018-background");
-        _color = await _module.InvokeAsync<string>("loadCanvasBackground");
-        await _module.InvokeVoidAsync("applyCanvasBackground", _control, _color);
-        StateHasChanged();
+        if (firstRender)
+        {
+            _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./_content/DXFER.Blazor/canvasAppearance.js?v=20261018-foundry-presets");
+            _appearance = await _module.InvokeAsync<Appearance>("loadCanvasAppearance");
+            await _module.InvokeVoidAsync("applyCanvasAppearance", _control, _appearance);
+            _loaded = true;
+            StateHasChanged();
+        }
+        if (IsOpen && _module is not null)
+        {
+            _observer ??= await _module.InvokeAsync<IJSObjectReference>("observeAppearanceDialog", _panel);
+            if (_focus) { _focus = false; await _close.FocusAsync(); }
+        }
+        else if (_observer is not null)
+        {
+            await _observer.InvokeVoidAsync("dispose");
+            await _observer.DisposeAsync();
+            _observer = null;
+        }
     }
-
-    private Task ChangeColor(ChangeEventArgs args) => SetColor(args.Value?.ToString() ?? "#262626");
-    private Task Reset() => SetColor("#262626");
-    private async Task SetColor(string value)
+    private Task ChangeColor(ChangeEventArgs args) => SetAppearance(new() { Preset = "custom", Color = args.Value?.ToString() ?? "#202020", PanelColor = _appearance.PanelColor });
+    private Task ChangePanelColor(ChangeEventArgs args) => SetAppearance(new() { Preset = _appearance.Preset, Color = _appearance.Color, PanelColor = args.Value?.ToString() });
+    private Task ChangePreset(ChangeEventArgs args)
     {
-        if (_module is not null) _color = await _module.InvokeAsync<string>("applyCanvasBackground", _control, value, true);
+        var preset = args.Value?.ToString() ?? "foundry";
+        return SetAppearance(new() { Preset = preset, Color = preset == "neutral" ? "#202020" : preset == "foundry" ? "#172832" : _appearance.Color, PanelColor = preset == "neutral" ? "#181818" : "#10141b" });
     }
-
+    private Task Reset() => SetAppearance(new());
+    private async Task Close()
+    {
+        await OnClose.InvokeAsync();
+        if (_module is not null) await _module.InvokeVoidAsync("focusDrawingCanvas");
+    }
+    private Task KeyDown(KeyboardEventArgs e) => e.Key == "Escape" ? Close() : Task.CompletedTask;
+    private async Task SetAppearance(Appearance value)
+    {
+        if (_module is null || !_loaded) return;
+        var generation = ++_changeGeneration;
+        _appearance = value;
+        var applied = await _module.InvokeAsync<Appearance>("applyCanvasAppearance", _control, value, true);
+        if (generation == _changeGeneration) _appearance = applied;
+    }
     public async ValueTask DisposeAsync()
     {
         if (_module is null) return;
-        try { await _module.DisposeAsync(); } catch (JSDisconnectedException) { }
+        try
+        {
+            if (_observer is not null) { await _observer.InvokeVoidAsync("dispose"); await _observer.DisposeAsync(); }
+            await _module.DisposeAsync();
+        } catch (JSDisconnectedException) { }
     }
 }

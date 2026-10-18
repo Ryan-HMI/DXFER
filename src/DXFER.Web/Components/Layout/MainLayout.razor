@@ -38,6 +38,7 @@
                             <button type="button" class="app-menu-command" @onclick="OpenSyncConnectDialog">Connect to Sync...</button>
                         }
                         <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SaveDxf)">Download DXF</button>
+                        <button type="button" class="app-menu-command" @onclick="OpenAppearances">Appearances</button>
                         @if (IsSyncLaunch)
                         {
                             <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SendToSync)">Save to Sync</button>
@@ -117,11 +118,15 @@
 </div>
 
 <ToolHotkeyOptions IsOpen="_isHotkeyOptionsOpen" OnClose="CloseHotkeyOptions" />
+<CanvasAppearance IsOpen="_isAppearancesOpen" OnClose="CloseAppearances" />
 
 @code {
     private bool _isAppMenuOpen;
     private int _fileInputKey;
     private bool _isHotkeyOptionsOpen;
+    private bool _isAppearancesOpen;
+    private void OpenAppearances() { _isAppMenuOpen = false; _isAppearancesOpen = true; }
+    private void CloseAppearances() => _isAppearancesOpen = false;
     private bool _isSyncConnectOpen;
     private string _syncConnectUrl = string.Empty;
     private string? _syncConnectError;
