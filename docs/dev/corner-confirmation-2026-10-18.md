@@ -49,3 +49,22 @@ The shared corner interaction and keyboard-routing causes are fixed. No saved
 drawings were changed or require migration. Prior intentional Apply commits
 remain saved edits, not something to reverse automatically. Dev rollout and
 independent acceptance are recorded separately below.
+
+## Dev rollout
+
+- Installed `a9d15a1cc8fccc45a88598723f7c8f983564c690` on
+  https://dxferdev.sync.harrisonmetals.com at 2026-10-18T19:13Z.
+  Application fix is `a5dc9c8`; follow-up explicitly waits for Blazor inspector
+  visibility in browser assertions/screenshots.
+- Published from a clean pushed ref. Four installed assembly hashes match;
+  ten runtime settings preserved, health 200, anonymous root 302. Normal Google
+  sign-in, independent Dev state and disabled Sync callbacks retained.
+  Production/Test runtime PIDs unchanged.
+- Full public browser replay passes with rendered build `a9d15a1`: both tools,
+  lines/open/closed polylines, numeric/handle preview, invalid and driving
+  refusal, Cancel via Enter, Escape, Confirm via click/input/canvas Enter,
+  collapsed inspector, rapid typing, one-step history and native reopen.
+- Six public exports audit 0 errors/0 fixes. Public screenshots inspected;
+  evidence `/tmp/corner-confirm-dev` and `/tmp/corner-confirm-dev-browser.log`.
+  Temporary local QA process stopped. Flux independent replay/Ryan acceptance
+  are not claimed by these owner-run checks.
