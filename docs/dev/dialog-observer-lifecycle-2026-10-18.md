@@ -35,3 +35,17 @@ also pass; custom-dialog screenshot inspected. Evidence:
 This fixes the identified shared disposal race. Existing drawing files and
 preferences need no repair; a previously disconnected tab requires reload.
 Production/Test remain outside scope. Installed verification recorded below.
+
+## Installed Verification
+
+Dev4e6f2056d892635fce0418599736c268d5d61a22 installed2026-10-18T23:52Z.
+Public browser verifies that rendered revision and passes the same eight custom
+color cycles, six Hotkeys cycles and full appearance regression.13 downloaded
+DXFs audit0/0;1100px dialog screenshot inspected. Server journal from23:52:30UTC
+through replay completion contains no warning/error entries. Four assemblies
+match publish; ten runtime settings retained, health200/anonymous302, normal
+Google sign-in and disabled Sync callbacks preserved. Production/Test processes
+unchanged. Rollback:/home/ryan/dxfer-runtime/dev-publish-before-4e6f205.
+Evidence:/tmp/dialog-lifecycle-dev.log and /tmp/dialog-lifecycle-dev/.
+Owner verification complete; Flux independent retest remains pending. Existing
+geometry acceptance is unaffected; no broad appearance acceptance inferred.
