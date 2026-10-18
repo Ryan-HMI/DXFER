@@ -1,0 +1,65 @@
+import assert from 'node:assert/strict';
+import {mkdir,readFile,writeFile} from 'node:fs/promises';
+const {chromium,expect}=await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright/test');
+const url=process.env.DXFER_QA_URL ?? 'http://127.0.0.1:5049';
+assert.ok(['127.0.0.1','dxferdev.sync.harrisonmetals.com'].includes(new URL(url).hostname));
+const output=process.env.DXFER_SCREENSHOTS ?? '/tmp/creation-tab';await mkdir(output,{recursive:true});
+const browser=await chromium.launch({headless:true});
+try {
+ const page=await browser.newPage({viewport:{width:1440,height:1000},extraHTTPHeaders:{'X-DXFER-API-Key':process.env.DXFER_QA_API_KEY}});
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(url);await page.waitForFunction(()=>document.querySelector('input[type=file]')?._blazorInputFileNextFileId!==undefined);
+ const canvas=page.locator('canvas.drawing-canvas');
+ const tool=name=>page.getByRole('button',{name,exact:true}).click();
+ const native=text=>{const a=text.trim().split(/\r?\n/);let h='';for(let i=0;i<a.length;i+=2)if(a[i].trim()==='310')h+=a[i+1].trim();return JSON.parse(Buffer.from(h,'hex'));};
+ const download=async name=>{const pending=page.waitForEvent('download');await tool('Open application menu');await page.getByRole('button',{name:'File',exact:true}).hover();await tool('Download DXF');const text=await readFile(await (await pending).path(),'utf8');if(name)await writeFile(`${output}/${name}.dxf`,text);return text;};
+ await tool('Two-point rectangle');
+ await expect(canvas).toHaveAttribute('data-active-tool','twopointrectangle');
+ await page.mouse.click(350,450);await page.mouse.move(600,650,{steps:5});
+ const width=page.locator('input[data-dimension-key="width"]'),height=page.locator('input[data-dimension-key="height"]');
+ await expect(width).toBeVisible();await expect(height).toBeVisible();
+ await width.focus();await page.keyboard.press('Tab');await expect(height).toBeFocused();
+ await page.keyboard.press('Shift+Tab');await expect(width).toBeFocused();
+ await width.fill('6');await width.press('Enter');await expect(height).toBeFocused();
+ await height.fill('4');await height.press('Enter');
+ await expect(page.locator('input[data-dimension-key]')).toHaveCount(0);
+ await expect(page.locator('input[data-dimension-id]')).toHaveCount(2);
+ const saved=native(await download('rectangle'));
+ assert.equal(saved.dimensions.length,2);
+ assert.deepEqual(saved.dimensions.map(d=>d.value).sort(),[4,6]);
+ await canvas.focus();
+ const focused=[];
+ for(let i=0;i<8;i++) {
+   await page.keyboard.press('Tab');
+   focused.push(await page.evaluate(()=>({tag:document.activeElement.tagName,id:document.activeElement.dataset.dimensionId ?? null})));
+ }
+ console.log('POST-CREATION TAB',JSON.stringify(focused));
+ assert.ok(focused.every(f=>!f.id),'Tab must not cycle through committed shape dimensions');
+ assert.deepEqual(native(await download('after-tabs')).dimensions,saved.dimensions);
+ await tool('Undo');
+ assert.equal(native(await download('undone')).entities.length,0);
+ await expect(page.locator('input[data-dimension-id]')).toHaveCount(0);
+ await tool('Redo');await expect(page.locator('input[data-dimension-id]')).toHaveCount(2);
+ // Deliberate dimension editing remains available, but Tab must leave it.
+ const dimension=page.locator('input[data-dimension-id]').first();
+ await dimension.dblclick();await expect(dimension).toBeFocused();
+ const editedId=await dimension.getAttribute('data-dimension-id');
+ await dimension.fill('7');
+ await page.keyboard.press('Tab');
+ assert.equal(await page.evaluate(()=>Boolean(document.activeElement.dataset.dimensionId)),false);
+ await expect(dimension).toHaveAttribute('data-dimension-value','7');
+ assert.equal(native(await download('edited')).dimensions.find(d=>d.id===editedId).value,7);
+ await tool('Undo');
+ await expect(dimension).not.toHaveAttribute('data-dimension-value','7');
+ assert.deepEqual(native(await download('edit-undone')).dimensions,saved.dimensions);
+ await canvas.focus();await page.keyboard.press('Escape');
+ await page.screenshot({path:`${output}/committed.png`});
+ const text=await download('redone');
+ await page.locator('input[type=file]').setInputFiles({name:'reopened.dxf',mimeType:'application/dxf',buffer:Buffer.from(text)});
+ await page.waitForFunction(()=>document.querySelector('.document-filename')?.textContent==='reopened.dxf');
+ assert.deepEqual(native(await download('reopened')).dimensions,saved.dimensions);
+ assert.deepEqual(await page.locator('input[data-dimension-id]').evaluateAll(es=>es.map(e=>e.tabIndex)),[-1,-1]);
+ assert.deepEqual(errors,[]);
+ const build=await page.locator('.app-brand').getAttribute('title');if(process.env.DXFER_EXPECTED_REVISION)assert.ok(build.includes(process.env.DXFER_EXPECTED_REVISION));
+ console.log('PASS creation Tab/Shift+Tab, end-of-creation focus, deliberate edit exit, history/reopen.',build);
+} finally {await browser.close();}

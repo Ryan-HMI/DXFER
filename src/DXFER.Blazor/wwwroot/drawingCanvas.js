@@ -3068,6 +3068,8 @@ function getOrCreatePersistentDimensionInput(state, dimension) {
   input.step = "0.001";
   input.inputMode = "decimal";
   input.className = getDimensionInputClassName({ persistent: true });
+  // Saved overlays are edited deliberately, outside the draft Tab cycle.
+  input.tabIndex = -1;
   input.style.pointerEvents = "auto";
   input.style.zIndex = "6";
   input.title = dimension.label;
@@ -3223,24 +3225,6 @@ function handlePersistentDimensionInputKeyDown(state, input, event) {
     input.dataset.dimensionEditing = "false";
     focusCanvas(state.canvas);
     event.preventDefault();
-  } else if (event.key === "Tab") {
-    focusNextPersistentDimensionInput(state, input.dataset.dimensionId, event.shiftKey);
-    event.preventDefault();
-  }
-}
-
-function focusNextPersistentDimensionInput(state, currentId, reverse) {
-  const ids = Array.from(state.persistentDimensionInputs.keys());
-  if (ids.length === 0) {
-    return;
-  }
-
-  const index = Math.max(0, ids.indexOf(currentId));
-  const nextId = ids[(index + (reverse ? -1 : 1) + ids.length) % ids.length];
-  const nextInput = state.persistentDimensionInputs.get(nextId);
-  if (nextInput) {
-    focusElement(nextInput);
-    selectInputText(nextInput);
   }
 }
 
