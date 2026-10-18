@@ -26,7 +26,7 @@
     private ElementReference _control, _close, _panel;
     private IJSObjectReference? _module, _observer;
     private Appearance _appearance = new();
-    private bool _wasOpen, _focus, _loaded;
+    private bool _wasOpen, _focus, _loaded, _disposed;
     private int _changeGeneration;
     private sealed class Appearance
     {
@@ -41,6 +41,7 @@
     }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_disposed) return;
         if (firstRender)
         {
             _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./_content/DXFER.Blazor/canvasAppearance.js?v=20261018-foundry-presets");
@@ -56,9 +57,7 @@
         }
         else if (_observer is not null)
         {
-            await _observer.InvokeVoidAsync("dispose");
-            await _observer.DisposeAsync();
-            _observer = null;
+            await ReleaseObserverAsync();
         }
     }
     private Task ChangeColor(ChangeEventArgs args) => SetAppearance(new() { Preset = "custom", Color = args.Value?.ToString() ?? "#202020", PanelColor = _appearance.PanelColor });
@@ -85,11 +84,23 @@
     }
     public async ValueTask DisposeAsync()
     {
-        if (_module is null) return;
+        if (_disposed) return;
+        _disposed = true;
+        var module = _module;
+        _module = null;
         try
         {
-            if (_observer is not null) { await _observer.InvokeVoidAsync("dispose"); await _observer.DisposeAsync(); }
-            await _module.DisposeAsync();
+            try { await ReleaseObserverAsync(); }
+            finally { if (module is not null) await module.DisposeAsync(); }
         } catch (JSDisconnectedException) { }
+    }
+    private async ValueTask ReleaseObserverAsync()
+    {
+        // Detach before interop yields: a subsequent render may also close the dialog.
+        var observer = _observer;
+        _observer = null;
+        if (observer is null) return;
+        try { await observer.InvokeVoidAsync("dispose"); }
+        finally { await observer.DisposeAsync(); }
     }
 }

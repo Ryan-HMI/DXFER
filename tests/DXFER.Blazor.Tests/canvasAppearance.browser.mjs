@@ -7,7 +7,9 @@ const output=process.env.DXFER_SCREENSHOTS ?? '/tmp/appearances';await mkdir(out
 const browser=await chromium.launch({headless:true});
 try {
   const page=await browser.newPage({viewport:{width:1440,height:1000},extraHTTPHeaders:{'X-DXFER-API-Key':process.env.DXFER_QA_API_KEY}});
-  const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(url);
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  page.on('console',message=>{if(message.type()==='error' && /unhandled|circuit|ObjectDisposedException/i.test(message.text()))errors.push(message.text());});
+  await page.goto(url);
   const canvas=page.locator('canvas.drawing-canvas'),dialog=page.getByRole('dialog',{name:'Appearances',exact:true});
   const picker=page.getByLabel('Drawing background color',{exact:true}),preset=page.getByLabel('Drawing background preset',{exact:true}),panels=page.getByLabel('Panel color',{exact:true});
   const tool=name=>page.getByRole('button',{name,exact:true}).click();
@@ -28,6 +30,23 @@ try {
   };
   await ready();await open();await expect(preset).toHaveValue('foundry');await close();await fade();
   await page.screenshot({path:`${output}/foundry-1440.png`});
+  const blank=await download('blank-before');
+  for(let i=0;i<8;i++) {
+    await open();await preset.selectOption('neutral');await picker.fill('#e6e6e6');await panels.fill('#eeeeee');await close();
+    await open();await expect(preset).toHaveValue('custom');await expect(picker).toHaveValue('#e6e6e6');await expect(panels).toHaveValue('#eeeeee');await close();
+    assert.deepEqual(await download(`blank-custom-${i}`),blank);
+    assert.deepEqual(errors,[]);
+  }
+  await page.reload();await ready();await open();await expect(picker).toHaveValue('#e6e6e6');await expect(panels).toHaveValue('#eeeeee');await tool('Reset');await close();await fade();
+  console.log('PASS blank saved drawing: repeated custom colors/close/reopen, working File menu and download, reload persistence, no circuit errors');
+  const hotkeys=page.getByRole('dialog',{name:'Tool hotkey settings',exact:true});
+  for(let i=0;i<6;i++) {
+    await tool('Tool hotkeys');await expect(hotkeys).toBeVisible();
+    await page.getByRole('searchbox',{name:'Search hotkeys'}).fill(i%2?'circle':'line');
+    await tool('Close tool hotkey settings');await expect(hotkeys).toHaveCount(0);
+    await open();await close();assert.deepEqual(errors,[]);
+  }
+  console.log('PASS Hotkeys search/render/close followed by Appearance reopen, no circuit errors');
   const fixture=await readFile(new URL('./fixtures/corner-driving10.dxf',import.meta.url));
   await page.locator('input[type=file]').setInputFiles({name:'appearance-qa.dxf',mimeType:'application/dxf',buffer:fixture});
   await expect(page.locator('input[data-dimension-id]')).toHaveCount(1);

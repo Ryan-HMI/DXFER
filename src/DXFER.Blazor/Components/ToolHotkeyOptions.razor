@@ -74,6 +74,7 @@
     private bool _wasOpen;
     private bool _focusSearch;
     private bool _loaded;
+    private bool _disposed;
     private string? _error;
 
     [Parameter]
@@ -105,6 +106,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_disposed) return;
         if (_module is null)
         {
             _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", ModulePath);
@@ -135,9 +137,7 @@
         }
         else if (_dialogObserver is not null)
         {
-            await _dialogObserver.InvokeVoidAsync("dispose");
-            await _dialogObserver.DisposeAsync();
-            _dialogObserver = null;
+            await ReleaseObserverAsync();
         }
     }
 
@@ -184,22 +184,27 @@
 
     public async ValueTask DisposeAsync()
     {
-        if (_module is null)
-        {
-            return;
-        }
-
+        if (_disposed) return;
+        _disposed = true;
+        var module = _module;
+        _module = null;
         try
         {
-            if (_dialogObserver is not null)
-            {
-                await _dialogObserver.InvokeVoidAsync("dispose");
-                await _dialogObserver.DisposeAsync();
-            }
-            await _module.DisposeAsync();
+            try { await ReleaseObserverAsync(); }
+            finally { if (module is not null) await module.DisposeAsync(); }
         }
         catch (JSDisconnectedException)
         {
         }
+    }
+
+    private async ValueTask ReleaseObserverAsync()
+    {
+        // Detach before interop yields: a subsequent render may also close the dialog.
+        var observer = _dialogObserver;
+        _dialogObserver = null;
+        if (observer is null) return;
+        try { await observer.InvokeVoidAsync("dispose"); }
+        finally { await observer.DisposeAsync(); }
     }
 }
