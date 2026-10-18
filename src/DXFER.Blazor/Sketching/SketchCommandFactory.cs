@@ -158,10 +158,20 @@ public static class SketchCommandFactory
         var lineSelections = selections.Where(selection => selection.Line is not null).ToArray();
         var circleLikeSelections = selections.Where(selection => selection.CircleLike is not null).ToArray();
 
+        if (kind == SketchConstraintKind.Coincident && selections.Length == 2)
+        {
+            if (pointSelections.Length == 1 && lineSelections.Length == 1) kind = SketchConstraintKind.PointOnLine;
+            else if (pointSelections.Length == 0 && lineSelections.Length == 2) kind = SketchConstraintKind.Collinear;
+        }
+
         string[]? references = kind switch
         {
             SketchConstraintKind.Coincident when pointSelections.Length == 2 =>
                 Keys(pointSelections),
+            SketchConstraintKind.PointOnLine when pointSelections.Length == 1 && lineSelections.Length == 1 =>
+                Keys(selections),
+            SketchConstraintKind.Collinear when lineSelections.Length == 2 =>
+                Keys(lineSelections),
             SketchConstraintKind.Horizontal when lineSelections.Length == 1 && selections.Length == 1 =>
                 Keys(lineSelections),
             SketchConstraintKind.Horizontal when pointSelections.Length == 2 =>

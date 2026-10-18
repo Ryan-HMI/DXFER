@@ -12,7 +12,7 @@ public sealed class LegacySketchSolverAdapter : ISketchSolver
         if (result.Status == SketchSolveStatus.Solved || request.Constraints.Count != 1 || request.Dimensions.Count != 0)
             return result;
         var relation = request.Constraints[0];
-        if (relation.Kind is not (SketchConstraintKind.Parallel or SketchConstraintKind.Perpendicular)
+        if (relation.Kind is not (SketchConstraintKind.Parallel or SketchConstraintKind.Perpendicular or SketchConstraintKind.Collinear)
             || relation.ReferenceKeys.Count != 2 || relation.State == SketchConstraintState.Suppressed)
             return result;
 

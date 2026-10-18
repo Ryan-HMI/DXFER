@@ -3712,7 +3712,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private static string GetConstraintPrompt(SketchConstraintKind kind) => kind switch
     {
-        SketchConstraintKind.Coincident => "Select two editable points.",
+        SketchConstraintKind.Coincident => "Select two points, a point and straight edge, or two straight edges.",
         SketchConstraintKind.Concentric => "Select two circles or arcs, or a circle/arc and the origin.",
         SketchConstraintKind.Parallel => "Select two lines or polyline segments.",
         SketchConstraintKind.Tangent => "Select a line/circle/arc plus another circle/arc or line.",

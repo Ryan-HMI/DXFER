@@ -67,6 +67,7 @@ public static class SketchConstraintService
         var satisfied = constraint.Kind switch
         {
             SketchConstraintKind.Coincident => IsCoincident(document.Entities, constraint),
+            SketchConstraintKind.PointOnLine or SketchConstraintKind.Collinear => SketchLineIncidence.IsSatisfied(document.Entities, constraint),
             SketchConstraintKind.Horizontal => IsAxisAligned(document.Entities, constraint, isHorizontal: true),
             SketchConstraintKind.Vertical => IsAxisAligned(document.Entities, constraint, isHorizontal: false),
             SketchConstraintKind.Parallel => IsParallel(document.Entities, constraint),
@@ -93,6 +94,10 @@ public static class SketchConstraintService
 
         switch (constraint.Kind)
         {
+            case SketchConstraintKind.PointOnLine:
+            case SketchConstraintKind.Collinear:
+                SketchLineIncidence.Apply(entities, fixedReferences, constraint);
+                break;
             case SketchConstraintKind.Coincident:
                 ApplyCoincident(entities, fixedReferences, constraint);
                 break;

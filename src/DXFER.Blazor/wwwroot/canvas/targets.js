@@ -51,7 +51,7 @@ export function isTargetEligibleForConstraintTool(tool, target) {
 
   switch (normalizedTool) {
     case "coincident":
-      return isPoint;
+      return isPoint || isLine;
     case "horizontal":
     case "vertical":
       return isPoint || isLine;

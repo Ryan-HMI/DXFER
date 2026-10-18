@@ -12,5 +12,7 @@ public enum SketchConstraintKind
     Equal,
     Midpoint,
     Symmetric,
-    Fix
+    Fix,
+    PointOnLine,
+    Collinear
 }

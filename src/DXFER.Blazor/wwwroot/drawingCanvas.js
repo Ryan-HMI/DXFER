@@ -74,7 +74,7 @@ import {
   isPanPointerDownForTool,
   isTargetEligibleForConstraintTool,
   shouldDrawSelectionTargetOverlay
-} from "./canvas/targets.js?v=20261017-origin-concentric";
+} from "./canvas/targets.js?v=20261018-line-incidence";
 import {
   CONSTRAINT_KEY_PREFIX,
   POINT_KEY_SEPARATOR,
@@ -122,7 +122,7 @@ export {
   isPanPointerDownForTool,
   isTargetEligibleForConstraintTool,
   shouldDrawSelectionTargetOverlay
-} from "./canvas/targets.js?v=20261017-origin-concentric";
+} from "./canvas/targets.js?v=20261018-line-incidence";
 
 const DEFAULT_FIT_MARGIN = 32;
 const DEFAULT_BLANK_VIEW_SCALE = 24;
@@ -4093,6 +4093,8 @@ export function drawConstraintGlyphIcon(context, shape, point, color) {
 
 export function getConstraintGlyphIcon(kind) {
   switch (kind) {
+    case "pointonline":
+    case "collinear":
     case "coincident":
       return "coincident";
     case "concentric":
@@ -6229,8 +6231,9 @@ export function findNearestTarget(state, screenPoint) {
   if (canPickOrigin(state)) {
     const distance = distanceBetweenScreenPoints(screenPoint, worldToScreen(state, { x: 0, y: 0 }));
     const selected = [...(state.selectedKeys || []), ...(state.dimensionDraft?.selectionKeys || [])];
+    const nearestPoint = getTargetWorldSnapPoint(nearestPointHit?.target);
     const pointAlreadySelected = (constraintTool || isDimensionTool(state)) && nearestPointHit && selected.includes(nearestPointHit.target.key)
-      && Math.hypot(nearestPointHit.target.point.x, nearestPointHit.target.point.y) < 1e-9;
+      && nearestPoint && Math.hypot(nearestPoint.x, nearestPoint.y) < 1e-9;
     if (distance <= SNAP_POINT_TOLERANCE && (!nearestPointHit || nearestPointHit.distance > SNAP_POINT_TOLERANCE || pointAlreadySelected)) {
       nearestPointHit = { target: createOriginTarget(), distance };
     }
@@ -9801,6 +9804,9 @@ function isPreviewConstraintSatisfied(originalDocument, document, constraint) {
     && distanceBetweenWorldPoints(first, second) <= WORLD_GEOMETRY_TOLERANCE);
   const kind = getSketchConstraintKind(constraint);
   switch (kind) {
+    case "pointonline":
+    case "collinear":
+      return isPreviewLineIncidenceSatisfied(document, constraint);
     case "fix": {
       const keys = getSketchReferenceKeys(constraint);
       return keys.length > 0 && keys.every(key => {
@@ -10199,6 +10205,10 @@ function propagatePreviewDrivenConstraints(originalDocument, previewDocument, co
   let changed = false;
   for (const constraint of constraints) {
     switch (getSketchConstraintKind(constraint)) {
+      case "pointonline":
+      case "collinear":
+        changed = propagatePreviewLineIncidence(originalDocument, previewDocument, fixedReferences, constraint) || changed;
+        break;
       case "equal":
         changed = propagatePreviewEqualConstraint(originalDocument, previewDocument, fixedReferences, constraint) || changed;
         break;
@@ -10215,6 +10225,99 @@ function propagatePreviewDrivenConstraints(originalDocument, previewDocument, co
   }
 
   return changed;
+}
+
+function getPreviewLineIncidencePair(document, constraint) {
+  const keys = getSketchReferenceKeys(constraint);
+  if (keys.length !== 2) return null;
+  const refs = keys.map(parseSketchReference);
+  if (refs.some(r => !r)) return null;
+  const lines = refs.map(r => r.target === "entity" ? resolveSketchLineReference({document}, sketchReferenceToKey(r)) : null);
+  if (getSketchConstraintKind(constraint) === "collinear") {
+    return lines.every(line => getPreviewLineDirection(line)) ? {refs, lines} : null;
+  }
+  if (refs[0].entityId === refs[1].entityId) return null;
+  for (const index of [0, 1]) {
+    const point = getPreviewReferencePoint(document, refs[index]);
+    if (point && getPreviewLineDirection(lines[1 - index])) {
+      return {point, pointRef: refs[index], line: lines[1 - index], lineRef: refs[1 - index]};
+    }
+  }
+  return null;
+}
+
+function projectPreviewIncidencePoint(point, line) {
+  const direction = getPreviewLineDirection(line);
+  if (!direction) return null;
+  const along = (point.x - line.start.x) * direction.x + (point.y - line.start.y) * direction.y;
+  return {x: line.start.x + direction.x * along, y: line.start.y + direction.y * along};
+}
+
+function isPreviewPointOnLine(point, line) {
+  const projection = projectPreviewIncidencePoint(point, line);
+  return Boolean(projection && distanceBetweenWorldPoints(point, projection) <= WORLD_GEOMETRY_TOLERANCE);
+}
+
+function isPreviewLineIncidenceSatisfied(document, constraint) {
+  const pair = getPreviewLineIncidencePair(document, constraint);
+  if (!pair) return false;
+  if (pair.point) return isPreviewPointOnLine(pair.point, pair.line);
+  const [a, b] = pair.lines, da = getPreviewLineDirection(a), db = getPreviewLineDirection(b);
+  return Math.abs(da.x * db.y - da.y * db.x) <= WORLD_GEOMETRY_TOLERANCE
+    && isPreviewPointOnLine(b.start, a) && isPreviewPointOnLine(b.end, a);
+}
+
+function propagatePreviewLineIncidence(original, document, fixedReferences, constraint) {
+  if (isPreviewLineIncidenceSatisfied(document, constraint)) return false;
+  const pair = getPreviewLineIncidencePair(document, constraint);
+  if (!pair) return false;
+  const lineChanged = (reference, line) => {
+    const before = resolveSketchLineReference({document: original}, sketchReferenceToKey(reference));
+    return Boolean(before && (distanceBetweenWorldPoints(before.start, line.start) > WORLD_GEOMETRY_TOLERANCE
+      || distanceBetweenWorldPoints(before.end, line.end) > WORLD_GEOMETRY_TOLERANCE));
+  };
+  if (pair.point) {
+    const {point, pointRef, line, lineRef} = pair;
+    const projection = projectPreviewIncidencePoint(point, line);
+    const before = getPreviewReferencePoint(original, pointRef);
+    const pointMoved = before && distanceBetweenWorldPoints(before, point) > WORLD_GEOMETRY_TOLERANCE;
+    if ((pointMoved && !lineChanged(lineRef, line) || !canMovePreviewPoint(fixedReferences, pointRef))
+      && canMovePreviewWholeLine(fixedReferences, lineRef)) {
+      const delta = {x: point.x - projection.x, y: point.y - projection.y};
+      return setPreviewLineReference(document, lineRef, {start: addWorldPoints(line.start, delta), end: addWorldPoints(line.end, delta)});
+    }
+    return canMovePreviewPoint(fixedReferences, pointRef) && trySetPreviewPoint(document, pointRef, projection);
+  }
+  const [a, b] = pair.lines, [first, second] = pair.refs;
+  return lineChanged(second, b) && !lineChanged(first, a)
+    ? alignPreviewIncidenceLine(document, fixedReferences, first, a, b) || alignPreviewIncidenceLine(document, fixedReferences, second, b, a)
+    : alignPreviewIncidenceLine(document, fixedReferences, second, b, a) || alignPreviewIncidenceLine(document, fixedReferences, first, a, b);
+}
+
+function alignPreviewIncidenceLine(document, fixedReferences, moving, line, anchor) {
+  if (isPreviewWholeEntityFixed(fixedReferences, moving)) return false;
+  const own = getPreviewLineDirection(line), axis = getPreviewLineDirection(anchor);
+  if (!own || !axis) return false;
+  const sign = own.x * axis.x + own.y * axis.y < 0 ? -1 : 1;
+  const dx = axis.x * own.length * sign, dy = axis.y * own.length * sign;
+  const fixedStart = !canChangePreviewLineEndpoint(fixedReferences, moving, "start");
+  const fixedEnd = !canChangePreviewLineEndpoint(fixedReferences, moving, "end");
+  if (fixedStart && fixedEnd) return false;
+  let start, end;
+  if (fixedStart) {
+    if (!isPreviewPointOnLine(line.start, anchor)) return false;
+    start = line.start; end = {x: start.x + dx, y: start.y + dy};
+  } else if (fixedEnd) {
+    if (!isPreviewPointOnLine(line.end, anchor)) return false;
+    end = line.end; start = {x: end.x - dx, y: end.y - dy};
+  } else {
+    const center = projectPreviewIncidencePoint(midpoint(line.start, line.end), anchor);
+    start = {x: center.x - dx / 2, y: center.y - dy / 2};
+    end = {x: center.x + dx / 2, y: center.y + dy / 2};
+  }
+  if (distanceBetweenWorldPoints(start, line.start) <= WORLD_GEOMETRY_TOLERANCE
+    && distanceBetweenWorldPoints(end, line.end) <= WORLD_GEOMETRY_TOLERANCE) return false;
+  return setPreviewLineReference(document, moving, {start, end});
 }
 
 function propagatePreviewEqualConstraint(originalDocument, previewDocument, fixedReferences, constraint) {
