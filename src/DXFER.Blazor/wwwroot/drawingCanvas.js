@@ -5140,13 +5140,6 @@ function startGeometryDrag(state, candidate, screenPoint, event = {}) {
     moved: true
   };
 
-  if (!state.selectedKeys.has(target.key) || state.activeSelectionKey !== target.key) {
-    state.selectedKeys.clear();
-    state.selectedKeys.add(target.key);
-    state.activeSelectionKey = target.key;
-    notifySelectionChanged(state);
-  }
-
   updateGeometryDrag(state, screenPoint, event);
   return true;
 }
@@ -5304,6 +5297,8 @@ function handleSketchToolClick(state, screenPoint, event) {
   }
 
   let worldPoint = getSketchWorldPoint(state, screenPoint, clickTarget, event);
+  const originSnapUsed = Boolean(state.toolDraft?.originSnapUsed || clickTarget?.entityId === "$origin");
+  state.toolDraft.originSnapUsed = originSnapUsed;
   if (getSketchToolPointCount(tool) === 1) {
     commitSketchToolPoints(state, tool, [worldPoint]);
     return;
@@ -5314,6 +5309,7 @@ function handleSketchToolClick(state, screenPoint, event) {
       points: [worldPoint],
       previewPoint: null,
       dimensionValues: {},
+      originSnapUsed,
       startSnapTarget: getLineStartSnapTarget(tool, clickTarget, worldPoint)
     };
     setHoveredTarget(state, null);
@@ -5335,7 +5331,8 @@ function handleSketchToolClick(state, screenPoint, event) {
     state.toolDraft = {
       points: nextPoints,
       previewPoint: null,
-      dimensionValues: {}
+      dimensionValues: {},
+      originSnapUsed
     };
     setHoveredTarget(state, null);
     return;
@@ -5349,7 +5346,8 @@ function handleSketchToolClick(state, screenPoint, event) {
     state.toolDraft = {
       points: nextPoints,
       previewPoint: null,
-      dimensionValues
+      dimensionValues,
+      originSnapUsed
     };
     state.pendingDimensionFocusKey = getNextSketchToolDimensionFocusKey(tool, nextPoints);
     setHoveredTarget(state, null);
@@ -5783,6 +5781,7 @@ function advanceCurrentSketchToolPoint(state) {
   }
 
   const nextPoints = state.toolDraft.points.concat(state.toolDraft.previewPoint);
+  const originSnapUsed = Boolean(state.toolDraft.originSnapUsed || state.hoveredTarget?.entityId === "$origin");
   if (isVariablePointSketchTool(tool)) {
     const previousPoint = state.toolDraft.points[state.toolDraft.points.length - 1];
     if (distanceBetweenWorldPoints(previousPoint, state.toolDraft.previewPoint) <= WORLD_GEOMETRY_TOLERANCE) {
@@ -5792,7 +5791,8 @@ function advanceCurrentSketchToolPoint(state) {
     state.toolDraft = {
       points: nextPoints,
       previewPoint: null,
-      dimensionValues: {}
+      dimensionValues: {},
+      originSnapUsed
     };
     setHoveredTarget(state, null);
     return true;
@@ -5813,7 +5813,8 @@ function advanceCurrentSketchToolPoint(state) {
   state.toolDraft = {
     points: nextPoints,
     previewPoint: null,
-    dimensionValues
+    dimensionValues,
+    originSnapUsed
   };
   state.pendingDimensionFocusKey = getNextSketchToolDimensionFocusKey(tool, nextPoints);
   setHoveredTarget(state, null);
@@ -5826,6 +5827,7 @@ function commitSketchToolPoints(state, tool, points) {
   }
 
   const dimensionLocks = getSketchToolDimensionLocks(state.toolDraft);
+  const originSnapUsed = Boolean(state.toolDraft.originSnapUsed || state.hoveredTarget?.entityId === "$origin");
   const tangentReferenceKey = tool === "centercircle"
     && state.hoveredTarget?.tangentReferenceKey
     && sameOptionalWorldPoint(points[points.length - 1], state.hoveredTarget.point)
@@ -5851,7 +5853,8 @@ function commitSketchToolPoints(state, tool, points) {
     flattenPointCoordinates(points),
     dimensionLocks.keys,
     dimensionLocks.values,
-    tangentReferenceKey);
+    tangentReferenceKey,
+    originSnapUsed);
   if (toolModeChanged) {
     invokeDotNet(state, "OnSketchToolModeChanged", nextTool);
   }
@@ -5913,7 +5916,7 @@ function handleKeyDown(state, event) {
     event.preventDefault();
     return;
   }
-  if (event.key === "Escape" && activeTool !== "select") {
+  if (event.key === "Escape") {
     cancelActiveTool(state);
     event.preventDefault();
     return;
@@ -5926,11 +5929,12 @@ function handleKeyDown(state, event) {
 }
 
 function cancelActiveTool(state) {
-  const activeTool = normalizeToolName(state.activeTool);
-  if (activeTool === "select") {
-    return false;
-  }
-
+  cancelGeometryDrag(state);
+  state.clickCandidate = null;
+  state.selectionBox = null;
+  state.selectedKeys.clear();
+  state.activeSelectionKey = null;
+  notifySelectionChanged(state);
   state.activeTool = "select";
   state.cornerDrag = null;
   state.cornerPreview = null;
@@ -5945,6 +5949,7 @@ function cancelActiveTool(state) {
   clearTransientDimensionInputs(state);
   setHoveredTarget(state, null);
   invokeDotNet(state, "OnSketchToolCanceled");
+  focusCanvasWithoutDimensionCommit(state);
   updateDebugAttributes(state);
   draw(state);
   return true;
@@ -8253,7 +8258,7 @@ function createOriginTarget() {
 
 function canPickOrigin(state) {
   const tool = normalizeToolName(state.activeTool);
-  return tool === "select" || isDimensionTool(state)
+  return tool === "select" || Boolean(getSketchCreationTool(state)) || isDimensionTool(state)
     || ["coincident", "horizontal", "vertical", "midpoint", "concentric"].includes(tool);
 }
 
@@ -10053,6 +10058,7 @@ function propagatePreviewLineRelationConstraint(
       document,
       fixedReferences,
       pair.firstReference,
+      pair.secondReference,
       pair.secondLine,
       changedReference,
       perpendicular,
@@ -10065,6 +10071,7 @@ function propagatePreviewLineRelationConstraint(
       document,
       fixedReferences,
       pair.secondReference,
+      pair.firstReference,
       pair.firstLine,
       changedReference,
       perpendicular,
@@ -10079,6 +10086,7 @@ function tryApplyPreviewLineRelationPreservingPoint(
   document,
   fixedReferences,
   lineReference,
+  peerReference,
   referenceLine,
   changedReference,
   perpendicular,
@@ -10091,8 +10099,24 @@ function tryApplyPreviewLineRelationPreservingPoint(
   const otherReference = outPreviewReference.value;
   const changedPoint = getPreviewReferencePoint(document, changedReference);
   const otherPoint = getPreviewReferencePoint(document, otherReference);
-  if (!changedPoint || !otherPoint || !canMovePreviewPoint(fixedReferences, otherReference)) {
+  if (!changedPoint || !otherPoint) {
     return false;
+  }
+
+  if (!canMovePreviewPoint(fixedReferences, otherReference)) {
+    const changedLine = resolveSketchLineReference({document}, sketchReferenceToKey(lineReference));
+    if (!changedLine || distanceBetweenWorldPoints(changedLine.start, changedLine.end) <= WORLD_GEOMETRY_TOLERANCE) return false;
+    const start = {...peerReference, target: "start"}, end = {...peerReference, target: "end"};
+    const movingEnd = canMovePreviewPoint(fixedReferences, end);
+    if (!movingEnd && !canMovePreviewPoint(fixedReferences, start)) return false;
+    const anchor = movingEnd ? referenceLine.start : referenceLine.end;
+    const current = movingEnd ? referenceLine.end : referenceLine.start;
+    const length = distanceBetweenWorldPoints(anchor, current);
+    if (length <= WORLD_GEOMETRY_TOLERANCE) return false;
+    const angle = degreesToRadians(getClosestPreviewLineRelationAngle(getPreviewLineAngleDegrees(changedLine),
+      radiansToDegrees(Math.atan2(current.y - anchor.y, current.x - anchor.x)), perpendicular));
+    return trySetAndQueuePreviewPoint(document, movingEnd ? end : start,
+      {x: anchor.x + Math.cos(angle) * length, y: anchor.y + Math.sin(angle) * length}, queue, queued);
   }
 
   const referenceAngle = getPreviewLineAngleDegrees(referenceLine);
@@ -10367,9 +10391,11 @@ function getPreviewFixedReferenceKeys(document) {
         if (![first, second].every(ref => ref.entityId === "$origin" || getPreviewCircleLike(document, ref))) continue;
         first = { ...first, target: "center" }; second = { ...second, target: "center" };
       }
-      const isCurveCenter = ref => ref.target === "center" && getPreviewCircleLike(document, ref);
-      if (isPreviewReferenceFixed(fixedReferences, first) && isCurveCenter(second)) fixedReferences.add(sketchReferenceToKey(second));
-      if (isPreviewReferenceFixed(fixedReferences, second) && isCurveCenter(first)) fixedReferences.add(sketchReferenceToKey(first));
+      const isPoint = ref => ref.entityId !== "$origin"
+        && (ref.target !== "entity" || getEntityKind(findCanvasDocumentEntity(document, ref.entityId)) === "point")
+        && getPreviewReferencePoint(document, ref);
+      if (isPreviewReferenceFixed(fixedReferences, first) && isPoint(second)) fixedReferences.add(sketchReferenceToKey(second));
+      if (isPreviewReferenceFixed(fixedReferences, second) && isPoint(first)) fixedReferences.add(sketchReferenceToKey(first));
     }
     if (before === fixedReferences.size) break;
   }

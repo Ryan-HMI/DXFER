@@ -1001,7 +1001,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         string toolName,
         IReadOnlyList<CanvasPointDto> points,
         IReadOnlyDictionary<string, double> dimensionValues,
-        string? tangentReferenceKey)
+        string? tangentReferenceKey,
+        bool originSnapUsed)
     {
         var toolPoints = points.Select(ToPoint).ToArray();
         var newEntities = CreateEntitiesForTool(toolName, toolPoints, dimensionValues).ToArray();
@@ -1020,7 +1021,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             _document.Entities,
             newEntities,
             CreateConstraintId,
-            tangentReferenceKey);
+            tangentReferenceKey,
+            originSnapUsed);
 
         if (tangentReferenceKey is not null
             && (NormalizeToolName(toolName) != "centercircle"
@@ -1275,13 +1277,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         ClearCornerPreview();
         _solveFailureStatus = null;
-        if (_activeTool is null)
-        {
-            return;
-        }
-
         _pendingCircleSplit = null;
         _activeTool = null;
+        ResetSelection();
         _status = "Selection active.";
         _ = InvokeAsync(StateHasChanged);
     }

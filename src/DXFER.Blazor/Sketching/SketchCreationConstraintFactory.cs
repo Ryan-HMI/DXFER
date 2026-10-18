@@ -50,13 +50,20 @@ public static class SketchCreationConstraintFactory
         IReadOnlyList<DrawingEntity> existingEntities,
         IReadOnlyList<DrawingEntity> createdEntities,
         Func<SketchConstraintKind, string> createConstraintId,
-        string? tangentReferenceKey = null)
+        string? tangentReferenceKey = null,
+        bool originSnapUsed = false)
     {
         ArgumentNullException.ThrowIfNull(existingEntities);
         ArgumentNullException.ThrowIfNull(createdEntities);
         ArgumentNullException.ThrowIfNull(createConstraintId);
 
         var constraints = CreateConstraintsForTool(toolName, createdEntities, createConstraintId).ToList();
+        if (originSnapUsed)
+        {
+            foreach (var point in EnumeratePointReferences(createdEntities).Where(p => AreClose(p.Point, new Point2(0, 0))))
+                AddConstraintIfMissing(constraints, SketchConstraintKind.Coincident, createConstraintId,
+                    "$origin:center", point.Reference.ToString());
+        }
         AddPointSnapConstraints(constraints, existingEntities, createdEntities, createConstraintId);
         AddPerpendicularSnapConstraints(constraints, existingEntities, createdEntities, createConstraintId);
         AddTangentArcConstraints(constraints, existingEntities, createdEntities, createConstraintId);

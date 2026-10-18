@@ -3017,6 +3017,11 @@ public static class SketchGeometryDragService
         Point2 draggedPoint,
         out SketchReference anchorReference)
     {
+        if (SketchGeometryEditor.AreClose(draggedPoint, new Point2(0, 0)))
+        {
+            anchorReference = new SketchReference(SketchReference.OriginEntityId, SketchReferenceTarget.Center);
+            return true;
+        }
         foreach (var candidate in EnumeratePointReferences(entities))
         {
             if (StringComparer.Ordinal.Equals(candidate.EntityId, draggedReference.EntityId)

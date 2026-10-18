@@ -455,6 +455,7 @@ internal static class SketchConstraintPropagationService
                 fixedReferences,
                 firstReference,
                 changedReference,
+                secondReference,
                 secondLine,
                 perpendicular,
                 queue,
@@ -468,6 +469,7 @@ internal static class SketchConstraintPropagationService
                 fixedReferences,
                 secondReference,
                 changedReference,
+                firstReference,
                 firstLine,
                 perpendicular,
                 queue,
@@ -482,6 +484,7 @@ internal static class SketchConstraintPropagationService
         SketchFixedReferences fixedReferences,
         SketchReference lineReference,
         SketchReference changedReference,
+        SketchReference peerReference,
         LineEntity referenceLine,
         bool perpendicular,
         Queue<SketchReference> queue,
@@ -490,10 +493,26 @@ internal static class SketchConstraintPropagationService
         if (!TryGetOppositeEndpointReference(lineReference, changedReference, out var otherReference)
             || !SketchGeometryEditor.TryGetLineDirection(referenceLine, out _, out _, out _)
             || !SketchGeometryEditor.TryGetPoint(entities, changedReference, out var changedPoint)
-            || !SketchGeometryEditor.TryGetPoint(entities, otherReference, out var otherPoint)
-            || !fixedReferences.CanMovePoint(otherReference))
+            || !SketchGeometryEditor.TryGetPoint(entities, otherReference, out var otherPoint))
         {
             return false;
+        }
+
+        if (!fixedReferences.CanMovePoint(otherReference))
+        {
+            if (!SketchGeometryEditor.TryGetLine(entities, lineReference, out _, out var changedLine)
+                || !SketchGeometryEditor.TryGetLineDirection(changedLine, out _, out _, out _)
+                || !SketchGeometryEditor.TryGetLineDirection(referenceLine, out _, out _, out var length)) return false;
+            var peerStart = new SketchReference(peerReference.EntityId, SketchReferenceTarget.Start, peerReference.SegmentIndex);
+            var peerEnd = new SketchReference(peerReference.EntityId, SketchReferenceTarget.End, peerReference.SegmentIndex);
+            var movingEnd = fixedReferences.CanMovePoint(peerEnd);
+            if (!movingEnd && !fixedReferences.CanMovePoint(peerStart)) return false;
+            var anchor = movingEnd ? referenceLine.Start : referenceLine.End;
+            var current = movingEnd ? referenceLine.End : referenceLine.Start;
+            var angle = GetClosestLineRelationAngle(GetLineAngleDegrees(changedLine),
+                Math.Atan2(current.Y - anchor.Y, current.X - anchor.X) * 180 / Math.PI, perpendicular) * Math.PI / 180;
+            return TrySetAndQueuePoint(entities, movingEnd ? peerEnd : peerStart,
+                new Point2(anchor.X + Math.Cos(angle) * length, anchor.Y + Math.Sin(angle) * length), queue, queued);
         }
 
         var referenceAngle = GetLineAngleDegrees(referenceLine);

@@ -117,8 +117,8 @@ public sealed class WorkbenchCircleTangentCreationTests
     private static DrawingCanvas Canvas(DrawingWorkbench workbench)
     {
         var canvas = new DrawingCanvas();
-        Action<string, IReadOnlyList<CanvasPointDto>, IReadOnlyDictionary<string, double>, string?> handler =
-            (tool, points, locks, key) => Invoke(workbench, "OnToolCommitRequested", tool, points, locks, key!);
+        Action<string, IReadOnlyList<CanvasPointDto>, IReadOnlyDictionary<string, double>, string?, bool> handler =
+            (tool, points, locks, key, origin) => Invoke(workbench, "OnToolCommitRequested", tool, points, locks, key!, origin);
         typeof(DrawingCanvas).GetProperty(nameof(DrawingCanvas.ToolCommitRequested))!.SetValue(canvas, handler);
         return canvas;
     }

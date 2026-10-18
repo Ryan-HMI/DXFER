@@ -181,15 +181,15 @@ for (const fixture of fixtures) for (const grip of grips) {
         h.pointer('pointerdown', start);
         h.pointer('pointermove', end);
         h.assertPainted(refused ? p(0, 0) : center, refused ? 3 : radius);
-        const key = h.instance.getActiveSelectionKey();
-        assert.ok(key.startsWith(`circle|point|${grip}|`), key);
+        assert.equal(h.instance.getActiveSelectionKey(), null, 'drag must not create persistent selection');
         assert.equal(h.calls.filter(call => call[0] === 'OnGeometryDragRequested').length, 0);
         h.pointer('pointerup', end);
         await new Promise(resolve => setImmediate(resolve));
         h.assertPainted(refused ? p(0, 0) : center, refused ? 3 : radius);
         const requests = h.calls.filter(call => call[0] === 'OnGeometryDragRequested');
         assert.equal(requests.length, 1);
-        assert.equal(requests[0][1], key);
+        assert.ok(requests[0][1].startsWith(`circle|point|${grip}|`), requests[0][1]);
+        assert.equal(h.instance.getActiveSelectionKey(), null);
         assertPoint(p(requests[0][2], requests[0][3]), start);
         assertPoint(p(requests[0][4], requests[0][5]), end);
         assert.equal(requests[0][6], false);

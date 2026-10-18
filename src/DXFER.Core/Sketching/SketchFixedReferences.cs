@@ -47,8 +47,8 @@ internal sealed class SketchFixedReferences
             }
         }
         var result = new SketchFixedReferences(fixedReferences);
-        // An anchored center removes translation freedom, not radius freedom.
-        // Close only satisfied center relationships; do not turn whole curves into Fix.
+        // Close satisfied point anchors without fixing the containing entity.
+        // An anchored endpoint still permits rotation; an anchored center permits resizing.
         for (var pass = 0; pass < constraintList.Length; pass++)
         {
             var changed = false;
@@ -64,8 +64,8 @@ internal sealed class SketchFixedReferences
                     first = new SketchReference(first.EntityId, SketchReferenceTarget.Center);
                     second = new SketchReference(second.EntityId, SketchReferenceTarget.Center);
                 }
-                if (result.IsFixed(first) && IsCurveCenter(second)) changed |= fixedReferences.Add(second.ToString());
-                if (result.IsFixed(second) && IsCurveCenter(first)) changed |= fixedReferences.Add(first.ToString());
+                if (result.IsFixed(first) && IsPoint(second)) changed |= fixedReferences.Add(second.ToString());
+                if (result.IsFixed(second) && IsPoint(first)) changed |= fixedReferences.Add(first.ToString());
             }
             if (!changed) break;
         }
@@ -73,8 +73,9 @@ internal sealed class SketchFixedReferences
 
         bool IsCurveOrOrigin(SketchReference reference) => reference.IsOrigin
             || SketchGeometryEditor.TryGetCircleLike(entities, reference, out _, out _, out _);
-        bool IsCurveCenter(SketchReference reference) => reference.Target == SketchReferenceTarget.Center
-            && !reference.IsOrigin && IsCurveOrOrigin(reference);
+        bool IsPoint(SketchReference reference) => !reference.IsOrigin
+            && (!reference.IsEntity || entities.Any(entity => entity.Id.Value == reference.EntityId && entity is PointEntity))
+            && SketchGeometryEditor.TryGetPoint(entities, reference, out _);
     }
 
     public bool IsFixed(SketchReference reference)

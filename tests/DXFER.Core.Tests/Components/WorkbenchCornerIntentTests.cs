@@ -47,11 +47,14 @@ public sealed class WorkbenchCornerIntentTests
             Invoke(workbench, "OnCornerSizeDragged", 3.0);
             Get<DrawingDocument>(workbench, "_cornerPreview").Dimensions.Single(d => d.Id == "length").Value.Should().BeApproximately(7, 1e-10);
             Invoke(workbench, "OnToolCanceled");
+            Get<HashSet<string>>(workbench, "_selectedEntityIds").Should().BeEmpty();
+            Get<WorkbenchTool?>(workbench, "_activeTool").Should().BeNull();
             Get<DrawingDocument?>(workbench, "_cornerPreview").Should().BeNull();
             Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
             Get<Stack<DrawingDocument>>(workbench, "_undoStack").Should().BeEmpty();
 
             Set(workbench, "_activeTool", fillet ? WorkbenchTool.Fillet : WorkbenchTool.Chamfer);
+            Get<HashSet<string>>(workbench, "_selectedEntityIds").UnionWith(new[] { "h", "v" });
             Invoke(workbench, "RefreshCornerPreview");
             Invoke(workbench, "CommitCornerPreview");
             Get<Stack<DrawingDocument>>(workbench, "_undoStack").Should().HaveCount(1);

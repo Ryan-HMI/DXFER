@@ -200,15 +200,15 @@ for (const fixture of ['free', 'fixed', 'weld-free', 'weld-fixed']) for (const g
             harness.assertPainted(p(1, 1));
         }
         assert.equal(harness.calls.filter(call => call[0] === 'OnGeometryDragRequested').length, 0);
-        const key = harness.instance.getActiveSelectionKey();
-        if (grip === 'whole') assert.equal(key, 'polygon');
-        else assert.ok(key.startsWith(`polygon|point|${grip}|`), key);
+        assert.equal(harness.instance.getActiveSelectionKey(), null, 'drag must not create persistent selection');
         harness.pointer('pointerup', end);
         await new Promise(resolve => setImmediate(resolve));
         harness.assertPainted(locked ? p(0, 0) : p(1, 1));
         const requests = harness.calls.filter(call => call[0] === 'OnGeometryDragRequested');
         assert.equal(requests.length, 1);
-        assert.equal(requests[0][1], key);
+        if (grip === 'whole') assert.equal(requests[0][1], 'polygon');
+        else assert.ok(requests[0][1].startsWith(`polygon|point|${grip}|`), requests[0][1]);
+        assert.equal(harness.instance.getActiveSelectionKey(), null);
         assertPoint(p(requests[0][2], requests[0][3]), start);
         assertPoint(p(requests[0][4], requests[0][5]), end);
         assert.equal(requests[0][6], false);
