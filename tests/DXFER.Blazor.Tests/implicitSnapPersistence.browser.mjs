@@ -32,6 +32,7 @@ try {
     await menu('New drawing'); await expect(canvas).toHaveAttribute('data-entity-count', '0');
     await page.locator('input[type=file]').setInputFiles({name: 'implicit-snaps.dxf', mimeType: 'application/dxf', buffer: Buffer.from(buffer)});
     await expect(canvas).toHaveAttribute('data-entity-count', String(count)); await tool('Fit extents');
+    await page.waitForTimeout(250);
   };
   const screen = point => canvas.evaluate((c, p) => {
     const d = c.dataset, r = c.getBoundingClientRect();
@@ -40,14 +41,21 @@ try {
   const click = async point => {const p = await screen(point); await page.mouse.click(p.x, p.y);};
   const drag = async (start, end, label) => {
     const a = await screen(start), b = await screen(end);
+    // Real pointer coordinates need not hit the mathematical grip exactly.
+    if (process.env.DXFER_OFFSET_DRAG === '1') {
+      a.x = Math.round(a.x) + 2; a.y = Math.round(a.y) - 2;
+      b.x = Math.round(b.x); b.y = Math.round(b.y);
+    }
     await page.mouse.move(a.x, a.y); await page.waitForTimeout(120);
-    await page.mouse.down(); await page.mouse.move(b.x, b.y, {steps: 12});
+    console.log('GRAB',label,await canvas.getAttribute('data-hovered-id'));
+    await page.mouse.down(); await page.mouse.move(b.x, b.y, {steps: process.env.DXFER_OFFSET_DRAG === '1' ? 1 : 12});
     await page.waitForTimeout(120);
+    console.log('HELD',label,await canvas.getAttribute('data-hovered-id'));
     await page.screenshot({path: `${output}/${label}.png`});
     await page.mouse.up(); await page.waitForTimeout(250);
   };
   const close = (a, b) => assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < 0.04, JSON.stringify({a, b}));
-  for (const kind of ['ellipse', 'spline', 'line', 'polyline']) {
+  for (const kind of ['line', 'ellipse', 'spline', 'polyline']) {
     const baseline = await readFile(new URL(`./fixtures/drag-matrix/implicit-snap-${kind}.dxf`, import.meta.url));
     const midpoint = kind === 'line' || kind === 'polyline';
     const target = {x: midpoint ? 4 : 2, y: 3};
@@ -57,7 +65,8 @@ try {
     const text = await download(`${kind}-snap`), snapped = native(text);
     const relation = midpoint ? 'Midpoint' : 'Coincident';
     assert.ok(snapped.constraints.some(c => c.kind === relation && c.state === 'Satisfied' && c.referenceKeys.includes('line:start')));
-    close(snapped.entities.find(e => e.id === 'line').start, target);
+    const endpoint=snapped.entities.find(e => e.id === 'line').start;
+    assert.ok(Math.hypot(endpoint.x-target.x,endpoint.y-target.y)<1e-9,'Snapped endpoint must be exact, not merely near the target');
     assert.deepEqual(snapped.entities.find(e => e.id === 'source'), original.entities.find(e => e.id === 'source'));
     await tool('Undo'); assert.deepEqual(native(await download()).constraints, original.constraints);
     await tool('Redo'); assert.deepEqual(native(await download()).constraints, snapped.constraints);

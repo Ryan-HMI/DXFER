@@ -4914,7 +4914,10 @@ function handlePointerDown(state, event) {
       pointerId: event.pointerId,
       cancelled: false,
       target: dragTarget,
-      startWorldPoint: screenToWorld(state, screenPoint)
+      // A grip's hit area is larger than the point; do not carry that pick offset into a snap.
+      startWorldPoint: dragTarget?.kind === "point" && dragTarget.point
+        ? dragTarget.point
+        : screenToWorld(state, screenPoint)
     };
 
     if (getSketchCreationTool(state) || getModifyTool(state) || isPowerTrimTool(state) || isSplitAtPointTool(state) || isConstructionTool(state)) {
