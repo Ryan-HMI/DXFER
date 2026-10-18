@@ -51,3 +51,16 @@ No automatic repair of previously unsnapped drawings: endpoints and missing
 relations must be deliberately resnapped after the code fix. This does not
 complete unsupported virtual/quadrant/intersection snap persistence. Flux's
 specific ellipse attempt still needs independent replay on the installed fix.
+
+## Deployment
+
+Installed `9072a31e514aa8ef0b9ce23f3a2e718795a08b7b` on DXFer Dev at
+2026-10-18T19:53Z. Four installed assembly hashes match, ten runtime settings
+preserved, health200/anonymous302. Normal sign-in and disabled Sync callbacks
+retained; Production/Test runtimes unchanged.
+
+Public rounded/off-center browser replay passes all four sources with rendered
+build9072a31, exact endpoints, persistent relations, source preservation,
+history, reopen and another coupled edit. Twelve exports audit0/0; held
+ellipse screenshot inspected. Evidence `/tmp/offset-snap-dev` and matching log.
+Local QA processes stopped. Independent Flux replay pending.
