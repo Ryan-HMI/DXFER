@@ -32,7 +32,12 @@ try {
  await tool('Redo');await expect(dimension).toHaveValue('(10)');
  await load(driven.text);await expect(dimension).toHaveValue('(10)');
  // Remove the three independent overlapping-corner edges so the endpoint pick is unambiguous.
- for (const p of [{x:10,y:2},{x:3,y:6},{x:0,y:2}]) {await click(p);await canvas.press('Delete');await page.waitForTimeout(200);}
+ let remaining=4;
+ for (const p of [{x:10,y:2},{x:3,y:6},{x:0,y:2}]) {
+  await click(p);await expect(canvas).toHaveAttribute('data-selected-count','1');await canvas.press('Delete');
+  await expect(canvas).toHaveAttribute('data-entity-count',String(--remaining));
+  await expect(canvas).toHaveAttribute('data-selected-count','0');
+ }
  await expect(canvas).toHaveAttribute('data-entity-count','1');
  const a=await screen({x:10,y:0}),b=await screen({x:12,y:0});
  await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:10});await page.mouse.up();

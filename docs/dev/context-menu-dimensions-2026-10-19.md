@@ -22,4 +22,6 @@
 - Mode changes are atomic and do not move geometry. Promotion uses the current measurement and existing redundancy/validity checks; this does not claim complete general solver rank analysis.
 - No saved drawings, Sync artifacts or business records are rewritten. No historical repair required. Existing dimensions remain Driving unless deliberately changed.
 - Context menu is available in selection mode; active creation tools retain their existing right-click gestures. Production/Test unchanged. Independent acceptance pending.
-- Dev deployment and public browser verification follow the reviewed clean/pushed candidate.
+- Installed Dev `0937e6bace6c3824ed32611c1efef4060763e22d` at 2026-10-19 04:20 UTC. Candidate clean/pushed; four assembly hashes match, all ten tracked runtime settings retained, health200/anonymous302, Production/Test process IDs unchanged. Rollback: `/home/ryan/dxfer-runtime/dev-publish-before-0937e6b`.
+- Public authenticated browser repeated the full bounded workflow and independently read build `0937e6b` from its rendered tooltip. Eleven public exports audit0/0; screenshots reviewed in `/tmp/context-commands-dev/`; no page/circuit or new service warning/error entries.
+- Public replay initially outran the asynchronous selection-reset during fixture setup; the harness now waits for each actual deletion/count/selection result instead of a fixed delay. No application code changed after deployment for that synchronization correction.
