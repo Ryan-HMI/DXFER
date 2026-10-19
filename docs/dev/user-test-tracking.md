@@ -2,7 +2,7 @@
 
 ## Current preview/input repair, 2026-10-19
 
-- CONTINUOUS-PREVIEW-INPUT-20261019: USER-FAILED; focused automatic regressions pass after reproducing preview starvation before the fix. Browser verification pending. Preserve continuous previews, raw decimal input, focus and input identity; reject late results after document/selection/tool changes and drag release. No Ryan acceptance claimed.
+- CONTINUOUS-PREVIEW-INPUT-20261019: USER-FAILED awaiting retest; AUTOMATED-PASSED and APP-VERIFIED on Dev5a21cd4. Old browser code reproduces starvation/dropped digits/clear overwrite. Public normal and180ms-delayed replays pass continuous previews, raw decimal input/focus/node identity, exact commits, invalid-inset recovery, history/native reopen.20 exports audit clean.1852 core/942 JS/build pass; late context/released-drag guards covered. No Ryan acceptance claimed and no saved drawings rewritten.
 
 ## Resumed implementation, 2026-10-15
 

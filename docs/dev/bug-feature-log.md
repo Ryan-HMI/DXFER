@@ -4,7 +4,7 @@ Use this log for bugs and feature requests that arrive while another task is act
 
 ## Open
 
-- [ ] CONTINUOUS-PREVIEW-INPUT-20261019: Ryan reports preview waits for a stationary cursor and dimension typing drops characters. Reproduced cache starvation in Offset and shared drag previews with failing unit tests. Same Offset result gap removes/recreates its input; live draft edits also lose editing ownership during redraw. Fix coded with focused passing tests; browser and deployment verification in progress. See `continuous-preview-input-2026-10-19.md`. No geometry or record repair intended.
+- [x] CONTINUOUS-PREVIEW-INPUT-20261019: Reproduced preview starvation and dropped/overwritten dimension input in the old browser code. Shared scheduling, stable Offset input and live draft edit ownership fixed on Dev5a21cd4.1852 core/942 JS/build pass; public normal and180ms-delayed browser replays pass all5 scenarios,20 DXFs audit clean. Source relationships, history/native reopen and invalid-inset recovery verified. Flux/Ryan acceptance pending. See `continuous-preview-input-2026-10-19.md`. No existing drawings rewritten; previously committed wrong values require deliberate review, not guessed repair.
 
 - SPLINE-EXTEND-FEEDBACK-20261015 implementation: shared refusal status now
   survives the core candidate builder; actual canvas pointer dispatch and
