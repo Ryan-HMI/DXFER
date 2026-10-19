@@ -38,16 +38,17 @@ try {
     const signature = 'export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, constraintIcons = {}) {';
     assert.equal(source.split(signature).length, 2, 'latency hook must match exactly one canvas factory');
     const hook = `
-      window.__continuousPreview = {requests: 0, responses: 0};
+      window.__continuousPreview = {requests: 0, responses: 0, dragRequests: 0, dragResponses: 0};
       const qaInvoke = dotnetRef.invokeMethodAsync.bind(dotnetRef);
       dotnetRef = new Proxy(dotnetRef, {get(target, key) {
         if (key !== 'invokeMethodAsync') return Reflect.get(target, key);
         return async (method, ...args) => {
-          if (method !== 'GetOffsetPreview') return qaInvoke(method, ...args);
-          window.__continuousPreview.requests++;
+          if (!['GetOffsetPreview', 'GetOffsetDragPreview'].includes(method)) return qaInvoke(method, ...args);
+          const isDrag = method === 'GetOffsetDragPreview';
+          window.__continuousPreview[isDrag ? 'dragRequests' : 'requests']++;
           const result = await qaInvoke(method, ...args);
           await new Promise(resolve => setTimeout(resolve, ${previewDelayMs}));
-          window.__continuousPreview.responses++;
+          window.__continuousPreview[isDrag ? 'dragResponses' : 'responses']++;
           return result;
         };
       }});
@@ -62,6 +63,9 @@ try {
   const ready = async () => {
     await page.goto(url);
     await page.waitForFunction(() => document.querySelector('input[type=file]')?._blazorInputFileNextFileId !== undefined);
+    if (process.env.DXFER_EXPECTED_REVISION) {
+      await expect(page.locator('.app-brand')).toHaveAttribute('title', new RegExp(process.env.DXFER_EXPECTED_REVISION));
+    }
   };
   await ready();
   const canvas = page.locator('canvas.drawing-canvas');
@@ -144,17 +148,137 @@ try {
         const y2 = Math.round((1.8 * +c.dataset.scale + +c.dataset.offsetY) * ratio);
         // Span several dash periods so a gap cannot masquerade as a missing contour.
         const pixels = c.getContext('2d').getImageData(x - 16, y1, 32, y2 - y1).data;
-        let ink = 0;
-        for (let j = 0; j < pixels.length; j += 4) if (Math.max(pixels[j], pixels[j + 1], pixels[j + 2]) > 160) ink++;
-        return {ink, input: Boolean(document.querySelector('input[data-dimension-key="offset"]')), ...window.__continuousPreview};
+        let ink = 0, rowSum = 0;
+        const rows = [];
+        for (let j = 0; j < pixels.length; j += 4) if (Math.max(pixels[j], pixels[j + 1], pixels[j + 2]) > 160) {
+          const row = Math.floor(j / 4 / 32);
+          ink++; rowSum += row; rows[row] = (rows[row] ?? 0) + 1;
+        }
+        const centroidRow = ink ? y1 + rowSum / ink : null;
+        return {ink, centroidRow, worldY: ink ? (+c.dataset.offsetY - centroidRow / ratio) / +c.dataset.scale : null,
+          rows: rows.map((count, row) => count ? {row: y1 + row, count} : null).filter(Boolean),
+          time: performance.now(), input: Boolean(document.querySelector('input[data-dimension-key="offset"]')), ...window.__continuousPreview};
       }));
+      samples.at(-1).pointerWorldY = -.8 - i * .025;
     }
     await writeFile(`${output}/continuous-samples.json`, JSON.stringify(samples, null, 2));
     await page.screenshot({path: `${output}/continuous-motion.png`});
     if (previewDelayMs > 0) assert.ok(samples.at(-1).responses >= 3, 'multiple delayed responses arrive during motion');
     assert.ok(samples.slice(5).every(s => s.ink > 0 && s.input), 'last valid preview and dimension remain visible throughout ongoing motion');
+    const positions = samples.slice(5).map(s => s.worldY);
+    assert.ok(positions[0] - positions.at(-1) > .3, 'preview edge advances at least 0.3 world units while the pointer is still moving, not just after it stops');
+    assert.ok(new Set(positions.map(y => Math.round(y / .05))).size >= 4, 'ongoing motion produces at least four distinct preview edge positions, not a frozen visible frame');
     await expect(canvas).toHaveAttribute('data-entity-count', '4');
     await expect(page.getByRole('button', {name: 'Undo', exact: true})).toBeDisabled();
+  });
+
+  for (const whileMoving of [false, true]) await run(whileMoving ? 'offset-direct-replace-while-moving' : 'offset-direct-replace-prefixes', async () => {
+    const label = whileMoving ? 'offset-direct-replace-moving' : 'offset-direct-replace';
+    await beginOffset();
+    const input = field('offset');
+    await input.focus();
+    const node = await input.elementHandle();
+    const readState = () => node.evaluate(el => ({connected: el.isConnected, focused: document.activeElement === el,
+      sameNode: document.querySelector('input[data-dimension-key="offset"]') === el,
+      type: el.type, value: el.value, selectionStart: el.selectionStart, selectionEnd: el.selectionEnd,
+      selectionDirection: el.selectionDirection, selectedText: window.getSelection()?.toString(),
+      badInput: el.validity.badInput, time: performance.now()}));
+    const trace = [{phase: 'before', ...await readState()}];
+    await page.keyboard.press('ControlOrMeta+A');
+    trace.push({phase: 'select-all', ...await readState()});
+    const failures = [];
+    let prefix = '';
+    for (const key of ['1', '.', '2', '5']) {
+      await page.keyboard.press(key);
+      if (whileMoving) await move({x: 5 + prefix.length * .2, y: -.9 - prefix.length * .15});
+      await page.waitForTimeout(35);
+      prefix += key;
+      const sample = await readState();
+      // Number inputs expose neither a caret API nor the editor's trailing decimal point.
+      const expectedValue = sample.type === 'number' && prefix.endsWith('.') ? prefix.slice(0, -1) : prefix;
+      const passed = sample.connected && sample.focused && sample.sameNode && sample.value === expectedValue;
+      trace.push({phase: 'keypress', key, prefix, expectedValue, passed, ...sample});
+      if (!passed) failures.push(`prefix ${prefix}: ${JSON.stringify(sample)}`);
+      await writeFile(`${output}/${label}-trace.json`, JSON.stringify(trace, null, 2));
+    }
+    await page.waitForTimeout(450);
+    const settled = await readState();
+    trace.push({phase: 'settled', ...settled});
+    await writeFile(`${output}/${label}-trace.json`, JSON.stringify(trace, null, 2));
+    await page.screenshot({path: `${output}/${label}.png`});
+    if (!(settled.connected && settled.focused && settled.sameNode && settled.value === '1.25')) failures.push('settled input lost exact 1.25 or its focused node');
+    await page.keyboard.press('Enter');
+    await expect(canvas).toHaveAttribute('data-entity-count', '5'); await canvas.press('Escape');
+    const saved = await download(`${label}-committed`);
+    const dimension = saved.doc.dimensions.find(d => d.kind === 'Offset');
+    if (!(dimension?.isDriving && dimension.value === 1.25)) failures.push(`committed offset was ${JSON.stringify(dimension)}`);
+    assert.deepEqual(failures, [], 'every direct Ctrl+A replacement prefix, original input node/focus and committed 1.25 must survive');
+    const polyline = saved.doc.entities.at(-1);
+    near(Math.min(...polyline.vertices.map(p => p.x)), -1.25);
+    near(Math.min(...polyline.vertices.map(p => p.y)), -1.25);
+    await tool('Undo'); await expect(canvas).toHaveAttribute('data-entity-count', '4');
+    await tool('Redo'); assert.deepEqual((await download(`${label}-redo`)).doc, saved.doc);
+    await load(saved.text, 5);
+    const reopened = (await download(`${label}-reopened`)).doc;
+    assert.deepEqual(reopened, {...saved.doc, metadata: {...saved.doc.metadata, sourceSha256: createHash('sha256').update(saved.text).digest('hex')}});
+  });
+
+  await run('linked-offset-held-source-motion', async () => {
+    await load(await readFile(new URL('./fixtures/selection-offset/unsupported.dxf', import.meta.url)), 2);
+    await click({x: 7, y: 0});
+    await tool('Offset'); await move({x: 7, y: 1});
+    await typeExact('offset', '1', 'held-drag-gap');
+    await page.keyboard.press('Enter');
+    await expect(canvas).toHaveAttribute('data-entity-count', '3'); await canvas.press('Escape');
+    const linked = await download('held-drag-linked');
+    assert.equal(linked.doc.constraints.find(c => c.kind === 'Offset')?.state, 'Satisfied');
+    await canvas.press('Escape'); await page.waitForTimeout(250);
+    await move({x: 2, y: 0});
+    await expect(canvas).toHaveAttribute('data-hovered-id', 'line');
+    const samples = [];
+    await page.mouse.down();
+    try {
+      for (let i = 0; i < 30; i++) {
+        const pointerWorldY = .05 + i * .05;
+        await move({x: 2, y: pointerWorldY}); await page.waitForTimeout(25);
+        const sample = await canvas.evaluate(c => {
+          const ratio = c.width / c.getBoundingClientRect().width;
+          const x = Math.round((8 * +c.dataset.scale + +c.dataset.offsetX) * ratio);
+          const y1 = Math.round((-3 * +c.dataset.scale + +c.dataset.offsetY) * ratio);
+          const y2 = Math.round((-.5 * +c.dataset.scale + +c.dataset.offsetY) * ratio);
+          const pixels = c.getContext('2d').getImageData(x - 4, y1, 9, y2 - y1).data;
+          const rows = [];
+          for (let j = 0; j < pixels.length; j += 4) {
+            if (pixels[j + 1] > 130 && pixels[j + 1] > pixels[j] + 70 && pixels[j + 1] > pixels[j + 2] + 50) {
+              const row = Math.floor(j / 4 / 9);
+              rows[row] = (rows[row] ?? 0) + 1;
+            }
+          }
+          // The upper green line is the dependent offset, away from pointer, labels and source highlight.
+          const firstRow = rows.findIndex(count => count > 0);
+          return {time: performance.now(), topWorldY: firstRow < 0 ? null : (+c.dataset.offsetY - (y1 + firstRow) / ratio) / +c.dataset.scale,
+            rows: rows.map((count, row) => count ? {row: y1 + row, count} : null).filter(Boolean), ...window.__continuousPreview};
+        });
+        samples.push({pointerWorldY, pointerHeld: true, ...sample});
+      }
+      await writeFile(`${output}/held-drag-samples.json`, JSON.stringify(samples, null, 2));
+      await page.screenshot({path: `${output}/linked-offset-during-held-motion.png`});
+      const positions = samples.slice(5).map(s => s.topWorldY);
+      assert.ok(positions.every(y => y !== null), 'dependent offset remains visible throughout held source movement');
+      assert.ok(positions.at(-1) - positions[0] > .7, 'dependent offset advances during held movement, before pointer-up');
+      assert.ok(new Set(positions.map(y => Math.round(y / .1))).size >= 4, 'dependent offset has at least four distinct held preview positions');
+      if (previewDelayMs > 0) assert.ok(samples.at(-1).dragResponses >= 3, 'multiple delayed shared drag previews arrive while pointer is held');
+    } finally { await page.mouse.up(); }
+    await page.waitForTimeout(450);
+    const moved = await download('held-drag-released');
+    near(moved.doc.entities.find(e => e.id === 'line').start.y, 1.5);
+    near(moved.doc.entities.at(-1).start.y, 2.5);
+    assert.deepEqual(moved.doc.entities.find(e => e.id === 'point'), linked.doc.entities.find(e => e.id === 'point'));
+    assert.equal(moved.doc.constraints.find(c => c.kind === 'Offset')?.state, 'Satisfied');
+    await tool('Undo'); assert.deepEqual((await download('held-drag-undo')).doc.entities, linked.doc.entities);
+    await tool('Redo'); assert.deepEqual((await download('held-drag-redo')).doc, moved.doc);
+    await load(moved.text, 3);
+    assert.deepEqual((await download('held-drag-reopened')).doc.entities, moved.doc.entities);
   });
 
   await run('offset-decimal-history', async () => {
