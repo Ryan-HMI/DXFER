@@ -51,6 +51,12 @@ virtual crossings do not become new vertices or silently split geometry.
   relations and its endpoint moves independently. This does not verify a welded
   junction. Explicit welded-junction coverage and Ryan's original native drawing
   remain separate from this acceptance.
+- Subsequent independent control, delivery `4e56a901ada6742ffcec90b4`, on 456f536:
+  explicitly adding Coincident between the two split endpoints keeps them moving
+  together with Satisfied intent through Undo/Redo, native reopen and a second
+  drag. Far endpoints stay unchanged. This closes the explicit two-endpoint weld
+  checkpoint above. The third branch was deliberately unwelded, so this does not
+  accept a three-way weld or Ryan's exact original drawing.
 
 The identified shared picking defect is fixed, not worked around by deleting
 constraints or treating a synthetic intersection as a new vertex. Existing saved
