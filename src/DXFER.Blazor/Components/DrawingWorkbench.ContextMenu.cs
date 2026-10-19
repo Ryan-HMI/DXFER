@@ -73,6 +73,17 @@ public partial class DrawingWorkbench
         CloseContextMenu();
     }
 
+    private void ContextDimensionRadialKind(SketchDimensionKind kind)
+    {
+        if (ContextEditable && ContextDimension is { } dimension)
+        {
+            if (SketchDimensionModeService.TrySetRadialKind(_document, dimension.Id, kind, out var changed, out var reason))
+                ApplyDocumentChange(changed, reason);
+            else _status = reason;
+        }
+        CloseContextMenu();
+    }
+
     private void ContextMoveLayer(ChangeEventArgs args)
     {
         var name = args.Value?.ToString();

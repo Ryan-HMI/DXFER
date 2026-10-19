@@ -1,6 +1,7 @@
 @namespace DXFER.Blazor.Components
 @using Microsoft.AspNetCore.Components.Routing
 @using DXFER.Core.Operations
+@using DXFER.Core.Sketching
 
 <NavigationLock ConfirmExternalNavigation="HasUnsavedChanges"
                 OnBeforeInternalNavigation="ConfirmNavigationAsync" />
@@ -65,6 +66,14 @@
                     <label><input type="radio" name="dimension-mode" checked="@dimension.IsDriving" @onchange="() => ContextDimensionMode(true)" />Driving</label>
                     <label><input type="radio" name="dimension-mode" checked="@(!dimension.IsDriving)" @onchange="() => ContextDimensionMode(false)" />Driven</label>
                 </fieldset>
+                @if (dimension.Kind is SketchDimensionKind.Radius or SketchDimensionKind.Diameter)
+                {
+                    <fieldset disabled="@(!ContextEditable)">
+                        <legend>Display</legend>
+                        <label><input type="radio" name="dimension-radial-kind" checked="@(dimension.Kind == SketchDimensionKind.Radius)" @onchange="() => ContextDimensionRadialKind(SketchDimensionKind.Radius)" />Radius (R)</label>
+                        <label><input type="radio" name="dimension-radial-kind" checked="@(dimension.Kind == SketchDimensionKind.Diameter)" @onchange="() => ContextDimensionRadialKind(SketchDimensionKind.Diameter)" />Diameter (&#8960;)</label>
+                    </fieldset>
+                }
             }
             else if (_contextEntities.Length > 0)
             {
