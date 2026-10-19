@@ -142,7 +142,8 @@ try {
         const x = Math.round((1.5 * +c.dataset.scale + +c.dataset.offsetX) * ratio);
         const y1 = Math.round((.55 * +c.dataset.scale + +c.dataset.offsetY) * ratio);
         const y2 = Math.round((1.8 * +c.dataset.scale + +c.dataset.offsetY) * ratio);
-        const pixels = c.getContext('2d').getImageData(x - 2, y1, 5, y2 - y1).data;
+        // Span several dash periods so a gap cannot masquerade as a missing contour.
+        const pixels = c.getContext('2d').getImageData(x - 16, y1, 32, y2 - y1).data;
         let ink = 0;
         for (let j = 0; j < pixels.length; j += 4) if (Math.max(pixels[j], pixels[j + 1], pixels[j + 2]) > 160) ink++;
         return {ink, input: Boolean(document.querySelector('input[data-dimension-key="offset"]')), ...window.__continuousPreview};
