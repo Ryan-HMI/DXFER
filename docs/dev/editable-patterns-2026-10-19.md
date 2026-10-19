@@ -42,4 +42,11 @@ No existing drawings/business records are rewritten. Old independent copies rema
 - Evidence: `/tmp/dxfer-editable-patterns-retry4/`; executable `tests/DXFER.Blazor.Tests/editablePatterns.browser.mjs`. Earlier failed runs retained and distinguished from final passing evidence.
 - Final current-code replay `/tmp/editable-patterns-final/` also passes a 400-hole staggered grid, expansion-limit refusal, history and native reopen. 72 exports audit clean. Existing context/dimension workflows pass separately in `/tmp/pattern-context-regression/`.
 
-Deployment verification will be recorded after the reviewed candidate is installed. Production/Test remain outside this change.
+## Deployment
+
+- Installed DXFer Dev revision `882ac4408a7d5a1050ba8708aba5c30ab7d72051` at 2026-10-19T04:44:37Z, https://dxferdev.sync.harrisonmetals.com.
+- Public browser replay independently read `DXFER build 882ac44`: defaults/cancel, rectangular, staggered, radial and 400-hole perforation scenarios all passed, with no browser errors. All 72 exported DXFs audit with zero errors/fixes. Public desktop screenshots inspected.
+- Evidence: `/tmp/editable-patterns-dev/results.json` and neighboring screenshots/exports. Core 1852/1852 and JavaScript 940/940 tests pass; Web build has zero warnings/errors.
+- Four installed assemblies match the published candidate; ten runtime settings retained. Health 200 and anonymous root 302 preserve normal sign-in. Sync callbacks remain disabled. Production/Test runtime PIDs unchanged; no application records changed. No warning/error journal entries during initial verification.
+- Rollback publish: `/home/ryan/dxfer-runtime/dev-publish-before-882ac44`.
+- Owner verification is complete for this scope; independent Flux and Ryan acceptance remain pending. This is not blanket solver acceptance.
