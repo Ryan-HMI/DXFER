@@ -1670,23 +1670,33 @@ export function getOffsetPreviewGeometry(state, throughPoint) {
   const requestedDistance = state.toolDraft?.dimensionValues?.offset ?? null;
   const key = JSON.stringify([ids, throughPoint.x, throughPoint.y, requestedDistance]);
   const source = state.document;
-  const cached = state.offsetPreviewCache;
-  if (!cached || cached.key !== key || cached.source !== source) {
-    // One request at a time; drawing again after completion picks up the latest pointer.
+  const draft = state.toolDraft;
+  const selection = JSON.stringify(ids);
+  const previous = state.offsetPreviewCache;
+  const cached = previous?.source === source && previous.draft === draft && previous.selection === selection
+    ? previous : null;
+  if (!cached || cached.key !== key) {
+    // Serial responses remain useful during motion; only the next request is coalesced.
     if (!state.offsetPreviewPending && state.dotnetRef?.invokeMethodAsync) {
       state.offsetPreviewPending = true;
+      const remember = result => {
+        if (state.document !== source || state.toolDraft !== draft) return;
+        state.offsetPreviewCache = { key, source, draft, selection, requestedDistance,
+          throughPoint: { ...throughPoint }, result,
+          inputResult: result?.anchor ? result : cached?.inputResult };
+      };
       state.dotnetRef.invokeMethodAsync("GetOffsetPreview", ids, throughPoint, requestedDistance).then(result => {
-        state.offsetPreviewCache = { key, source, result };
+        remember(result);
       }).catch(() => {
-        state.offsetPreviewCache = { key, source, result: null };
+        remember(null);
       }).finally(() => {
         state.offsetPreviewPending = false;
         if (!state.disposed) draw(state);
       });
     }
-    return { offsetPointSets: [], dimension: null };
   }
-  const result = cached.result;
+  const result = cached?.requestedDistance === requestedDistance ? cached.result : null;
+  const inputResult = cached?.inputResult;
   return {
     offsetPointSets: getDocumentEntities(result?.document).map(entity => {
       const kind = getEntityKind(entity);
@@ -1694,7 +1704,8 @@ export function getOffsetPreviewGeometry(state, throughPoint) {
       if (kind === "arc") return getArcWorldPoints(entity);
       return getEntityPoints(entity);
     }),
-    dimension: result?.anchor ? getOffsetPreviewDimensionDescriptor(state, result.anchor, throughPoint, result.distance) : null
+    dimension: inputResult?.anchor ? getOffsetPreviewDimensionDescriptor(state, inputResult.anchor,
+      cached.throughPoint, requestedDistance ?? inputResult.distance) : null
   };
 }
 
@@ -4177,7 +4188,7 @@ function getOrCreateDimensionInput(state, dimension) {
   input.addEventListener("input", () => {
     clearDimensionInputSkipNextCommit(input);
     input.dataset.dimensionEditing = "true";
-    commitDimensionInputValue(state, input);
+    commitDimensionInputValue(state, input, true);
   });
   input.addEventListener("keydown", event => handleDimensionInputKeyDown(state, input, event));
   input.addEventListener("change", () => {
@@ -4208,8 +4219,10 @@ function handleDimensionInputKeyDown(state, input, event) {
   }
 
   if (event.key === "Enter") {
-    input.dataset.dimensionEditing = "false";
-    commitDimensionInputValue(state, input);
+    if (!commitDimensionInputValue(state, input)) {
+      event.preventDefault();
+      return;
+    }
     const dimensions = getVisibleDimensionDescriptors(state);
     if (isLastDimensionInput(dimensions, input)) {
       if (commitCurrentSketchTool(state) || commitCurrentModifyTool(state)) {
@@ -4242,10 +4255,10 @@ function handleDimensionInputKeyDown(state, input, event) {
   }
 }
 
-function commitDimensionInputValue(state, input) {
+function commitDimensionInputValue(state, input, live = false) {
   const text = String(input.value || "").trim();
   if (!text) {
-    input.dataset.dimensionEditing = "false";
+    input.dataset.dimensionEditing = live ? "true" : "false";
     if (clearDraftDimensionValue(state, input.dataset.dimensionKey)) {
       updateDebugAttributes(state);
       draw(state);
@@ -4266,7 +4279,7 @@ function commitDimensionInputValue(state, input) {
     return false;
   }
 
-  input.dataset.dimensionEditing = "false";
+  input.dataset.dimensionEditing = live ? "true" : "false";
   updateDebugAttributes(state);
   draw(state);
   return true;
@@ -5172,14 +5185,15 @@ export function requestOffsetDragPreview(state, drag) {
   drag.offsetPreviewKey = key;
   if (drag.offsetPreviewPending || drag.offsetPreviewApplied === key) return;
   drag.offsetPreviewPending = true;
+  const constrain = Boolean(drag.constrainToCurrentVector);
   const invocation = invokeDotNet(state, "GetOffsetDragPreview", drag.targetKey,
     drag.startWorldPoint, drag.currentWorldPoint, Boolean(drag.constrainToCurrentVector));
   Promise.resolve(invocation).then(result => {
-    if (state.geometryDrag !== drag || drag.offsetPreviewKey !== key) return;
+    if (state.geometryDrag !== drag || Boolean(drag.constrainToCurrentVector) !== constrain) return;
     drag.offsetPreviewApplied = key;
     state.document = result || drag.originalDocument;
   }).catch(() => {
-    if (state.geometryDrag === drag && drag.offsetPreviewKey === key) {
+    if (state.geometryDrag === drag && Boolean(drag.constrainToCurrentVector) === constrain) {
       drag.offsetPreviewApplied = key;
       state.document = drag.originalDocument;
     }

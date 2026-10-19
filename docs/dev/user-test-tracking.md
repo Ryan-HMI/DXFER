@@ -1,5 +1,9 @@
 # User Test Tracking
 
+## Current preview/input repair, 2026-10-19
+
+- CONTINUOUS-PREVIEW-INPUT-20261019: USER-FAILED; focused automatic regressions pass after reproducing preview starvation before the fix. Browser verification pending. Preserve continuous previews, raw decimal input, focus and input identity; reject late results after document/selection/tool changes and drag release. No Ryan acceptance claimed.
+
 ## Resumed implementation, 2026-10-15
 
 - SPLINE-EXTEND-FEEDBACK-20261015: AUTOMATED-TESTED, not yet APP-VERIFIED.

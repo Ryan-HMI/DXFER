@@ -12,7 +12,25 @@ test('Offset shares its tool glyph and renders a true gap witness',()=>{
   assert.deepEqual(descriptor.geometry,{type:'linear',start:dimension.offsetStart,end:dimension.offsetEnd,anchorPoint:dimension.anchor});
 });
 
-test('shared-core offset drag preview discards stale and released requests',async()=>{
+test('shared drag does not display a response computed with a superseded modifier mode',async()=>{
+  const requests=[];
+  const original={entities:[]};
+  const drag={targetKey:'a',originalDocument:original,startWorldPoint:{x:0,y:0},currentWorldPoint:{x:1,y:1}};
+  const state={disposed:true,canvas:{dataset:{}},geometryDrag:drag,document:original,
+    dotnetRef:{invokeMethodAsync:(...args)=>new Promise(resolve=>requests.push({args,resolve}))}};
+  requestOffsetDragPreview(state,drag);
+  drag.constrainToCurrentVector=true;
+  requestOffsetDragPreview(state,drag);
+  requests[0].resolve({entities:['wrong modifier']});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(state.document,original);
+  requestOffsetDragPreview(state,drag);
+  assert.equal(requests[1].args.at(-1),true);
+  const projected={entities:['projected']};
+  requests[1].resolve(projected);await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(state.document,projected);
+});
+
+test('shared-core drag preview advances during motion but discards released requests',async()=>{
   const requests=[];
   const original={entities:[]};
   const drag={targetKey:'a',originalDocument:original,startWorldPoint:{x:0,y:0},currentWorldPoint:{x:1,y:1}};
@@ -20,8 +38,9 @@ test('shared-core offset drag preview discards stale and released requests',asyn
   requestOffsetDragPreview(state,drag);
   drag.currentWorldPoint={x:2,y:2};requestOffsetDragPreview(state,drag);
   assert.equal(requests.length,1);
-  requests[0].resolve({entities:['stale']});await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(state.document,original);
+  const intermediate={entities:['intermediate']};
+  requests[0].resolve(intermediate);await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(state.document,intermediate,'a continuous pointer must not starve completed previews');
   requestOffsetDragPreview(state,drag);
   const accepted={entities:['current']};requests[1].resolve(accepted);await new Promise(resolve=>setImmediate(resolve));
   assert.equal(state.document,accepted);
