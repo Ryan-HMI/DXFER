@@ -19,7 +19,7 @@
 ## Verification
 
 - 1,757 Core/component tests and 921 JavaScript tests pass; Web build passes.
-- New regression coverage: enabled/disabled origin, standalone H/V, normal/
+- New regression coverage: enabled/disabled origin, standalone H/V,
   perpendicular, tangent and typed projection intent; rectangle topology retained;
   drag capture disabled without disabling existing anchor constraints.
 - Settings joins the observer lifecycle regression matrix (reentrant close,
@@ -29,7 +29,18 @@
   Midpoint still enforced while off; preference survives reload; repeated dialog
   close/open and Escape focus return; 1188x761 and 1100x705 screenshots.
 - Five local exported DXFs audit with zero errors/fixes. No page/circuit errors.
-- Public Dev deployment/replay pending. No Production/Test changes intended.
+- DEV `dc108c0f4d5b70127d4d493d1ded8ec9a8d83415` installed
+  2026-10-19T02:01Z. Public replay of the above browser scope passes, rendered
+  revision matches, and five public DXFs audit with zero errors/fixes. Screenshots
+  inspected at both desktop sizes. No page/circuit errors or server warnings.
+- Four installed assembly hashes match, ten runtime settings preserved, health
+  200, anonymous root 302. Normal sign-in and disabled Sync callbacks retained.
+  Production/Test process IDs unchanged. Rollback:
+  `/home/ryan/dxfer-runtime/dev-publish-before-dc108c0`.
+- Evidence: `/tmp/automatic-snap-{core,js,build,publish,local,dev}.log`, screenshots
+  and DXFs in `/tmp/automatic-snap-local` and `/tmp/automatic-snap-dev`.
+- Owner verification only; independent replay requested, no blanket solver or
+  all-snap acceptance.
 
 ## Scope and remaining work
 
