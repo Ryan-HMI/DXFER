@@ -37,6 +37,14 @@ label instead of creating another driving value.
   dimensions, unchanged source, Undo/Redo and native reopen/edit. Screenshots
   and exported fixtures under `/tmp/offset-gap-dimension`.
 - Core suite: 2042 passed. JavaScript suite: 1008 passed.
+- Installed Dev `a6f3e881fe6433c885ad4c95bbcfd604725a04c1`, verified
+  2026-10-19T15:02Z. Public-URL replay passes both pointer/keyed cases, including
+  dimension creation, edit 1 to 2, history and native reopen/edit to 1.5. Rendered
+  build tooltip matches. Evidence: `/tmp/offset-gap-dimension-dev` and
+  `/tmp/offset-gap-dev-browser.log`. No browser/circuit errors or new service
+  warnings. Four assemblies match staging; ten runtime settings preserved;
+  health 200 and anonymous root 302; Production/Test PIDs unchanged.
+  Rollback: `/home/ryan/dxfer-runtime/dev-publish-before-a6f3e88`.
 
 ## Scope and Existing Drawings
 
