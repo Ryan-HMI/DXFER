@@ -74,6 +74,7 @@ public static class SketchConstraintService
             SketchConstraintKind.Offset => SketchOffsetRelation.IsSatisfied(document.Entities, constraint.ReferenceKeys),
             SketchConstraintKind.Coincident => IsCoincident(document.Entities, constraint),
             SketchConstraintKind.PointOnLine or SketchConstraintKind.Collinear => SketchLineIncidence.IsSatisfied(document.Entities, constraint),
+            SketchConstraintKind.PointOnCircle => SketchCircleIncidence.IsSatisfied(document.Entities, constraint),
             SketchConstraintKind.Horizontal => IsAxisAligned(document.Entities, constraint, isHorizontal: true),
             SketchConstraintKind.Vertical => IsAxisAligned(document.Entities, constraint, isHorizontal: false),
             SketchConstraintKind.Parallel => IsParallel(document.Entities, constraint),
@@ -100,6 +101,9 @@ public static class SketchConstraintService
 
         switch (constraint.Kind)
         {
+            case SketchConstraintKind.PointOnCircle:
+                SketchCircleIncidence.Apply(entities, fixedReferences, constraint);
+                break;
             case SketchConstraintKind.PointOnLine:
             case SketchConstraintKind.Collinear:
                 SketchLineIncidence.Apply(entities, fixedReferences, constraint);

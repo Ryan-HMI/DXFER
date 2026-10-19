@@ -75,7 +75,7 @@ import {
   isPanPointerDownForTool,
   isTargetEligibleForConstraintTool,
   shouldDrawSelectionTargetOverlay
-} from "./canvas/targets.js?v=20261019-midpoint-axis";
+} from "./canvas/targets.js?v=20261019-point-on-circle";
 import {
   CONSTRAINT_KEY_PREFIX,
   POINT_KEY_SEPARATOR,
@@ -123,7 +123,7 @@ export {
   isPanPointerDownForTool,
   isTargetEligibleForConstraintTool,
   shouldDrawSelectionTargetOverlay
-} from "./canvas/targets.js?v=20261018-line-incidence";
+} from "./canvas/targets.js?v=20261019-point-on-circle";
 
 const DEFAULT_FIT_MARGIN = 32;
 const DEFAULT_BLANK_VIEW_SCALE = 24;
@@ -4128,6 +4128,7 @@ export function getConstraintGlyphIcon(kind) {
     case "offset":
       return "offset";
     case "pointonline":
+    case "pointoncircle":
     case "collinear":
     case "coincident":
       return "coincident";
@@ -10022,6 +10023,8 @@ function isPreviewConstraintSatisfied(originalDocument, document, constraint) {
     && distanceBetweenWorldPoints(first, second) <= WORLD_GEOMETRY_TOLERANCE);
   const kind = getSketchConstraintKind(constraint);
   switch (kind) {
+    case "pointoncircle":
+      return isPreviewCircleIncidenceSatisfied(document, constraint);
     case "pointonline":
     case "collinear":
       return isPreviewLineIncidenceSatisfied(document, constraint);
@@ -10423,6 +10426,9 @@ function propagatePreviewDrivenConstraints(originalDocument, previewDocument, co
   let changed = false;
   for (const constraint of constraints) {
     switch (getSketchConstraintKind(constraint)) {
+      case "pointoncircle":
+        changed = propagatePreviewCircleIncidence(originalDocument, previewDocument, fixedReferences, constraint) || changed;
+        break;
       case "pointonline":
       case "collinear":
         changed = propagatePreviewLineIncidence(originalDocument, previewDocument, fixedReferences, constraint) || changed;
@@ -10443,6 +10449,75 @@ function propagatePreviewDrivenConstraints(originalDocument, previewDocument, co
   }
 
   return changed;
+}
+
+function getPreviewCircleIncidencePair(document, constraint) {
+  const keys = getSketchReferenceKeys(constraint);
+  if (keys.length !== 2) return null;
+  const refs = keys.map(key => {
+    const text = String(key || "").trim();
+    const pointIndex = text.indexOf(POINT_KEY_SEPARATOR);
+    if (pointIndex >= 0) {
+      const label = text.slice(pointIndex + POINT_KEY_SEPARATOR.length).split("|")[0];
+      if (!/^(start|end|center|vertex-\d+)$/i.test(label)) return null;
+    } else {
+      const colon = text.lastIndexOf(":");
+      if (colon > 0 && colon < text.length - 1 && !/^(start|end|center|mid)$/i.test(text.slice(colon + 1))) return null;
+    }
+    return parseSketchReference(text);
+  });
+  if (refs.some(reference => !reference) || StringComparer(refs[0].entityId, refs[1].entityId)) return null;
+  for (const index of [0, 1]) {
+    const pointRef = refs[index], circleRef = refs[1 - index];
+    if (circleRef.target !== "entity" || Number.isInteger(circleRef.segmentIndex)) continue;
+    const circle = getPreviewCircleLike(document, circleRef);
+    const point = getPreviewReferencePoint(document, pointRef);
+    if (circle?.kind === "circle" && point
+      && [point.x, point.y, circle.center.x, circle.center.y, circle.radius].every(Number.isFinite)
+      && circle.radius > WORLD_GEOMETRY_TOLERANCE) {
+      return {point, pointRef, circle, circleRef};
+    }
+  }
+  return null;
+}
+
+function isPreviewCircleIncidenceSatisfied(document, constraint) {
+  const pair = getPreviewCircleIncidencePair(document, constraint);
+  return Boolean(pair && Math.abs(distanceBetweenWorldPoints(pair.point, pair.circle.center)
+    - pair.circle.radius) <= WORLD_GEOMETRY_TOLERANCE);
+}
+
+function propagatePreviewCircleIncidence(original, document, fixedReferences, constraint) {
+  if (isPreviewCircleIncidenceSatisfied(document, constraint)) return false;
+  const pair = getPreviewCircleIncidencePair(document, constraint);
+  if (!pair) return false;
+  const {point, pointRef, circle, circleRef} = pair;
+  const beforePoint = getPreviewReferencePoint(original, pointRef);
+  const beforeCircle = getPreviewCircleLike(original, circleRef);
+  let dx = point.x - circle.center.x, dy = point.y - circle.center.y;
+  let length = Math.hypot(dx, dy);
+  // A center hit has no radial direction; retain the original contact direction when available.
+  if (length <= WORLD_GEOMETRY_TOLERANCE) {
+    dx = beforePoint && beforeCircle ? beforePoint.x - beforeCircle.center.x : 0;
+    dy = beforePoint && beforeCircle ? beforePoint.y - beforeCircle.center.y : 0;
+    length = Math.hypot(dx, dy);
+    if (!Number.isFinite(length) || length <= WORLD_GEOMETRY_TOLERANCE) {
+      dx = 1; dy = 0; length = 1;
+    }
+  }
+  const projection = {x: circle.center.x + dx / length * circle.radius,
+    y: circle.center.y + dy / length * circle.radius};
+  if (![projection.x, projection.y].every(Number.isFinite)) return false;
+  const pointMoved = beforePoint && distanceBetweenWorldPoints(beforePoint, point) > WORLD_GEOMETRY_TOLERANCE;
+  const circleMoved = beforeCircle && (beforeCircle.center.x !== circle.center.x
+    || beforeCircle.center.y !== circle.center.y || beforeCircle.radius !== circle.radius);
+  if ((pointMoved && !circleMoved || !canMovePreviewPoint(fixedReferences, pointRef))
+    && canMovePreviewCircleLikeCenter(fixedReferences, circleRef)) {
+    const center = {x: point.x - dx / length * circle.radius, y: point.y - dy / length * circle.radius};
+    return [center.x, center.y].every(Number.isFinite)
+      && trySetPreviewCircleLikeCenter(document, circleRef, center);
+  }
+  return canMovePreviewPoint(fixedReferences, pointRef) && trySetPreviewPoint(document, pointRef, projection);
 }
 
 function getPreviewLineIncidencePair(document, constraint) {

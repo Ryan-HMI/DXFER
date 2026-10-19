@@ -106,6 +106,7 @@ internal static class SketchConstraintPropagationService
             {
                 SketchConstraintKind.Offset => SketchOffsetRelation.Propagate(originalEntities, entities, fixedReferences, constraint, allowOffsetDependentTranslation),
                 SketchConstraintKind.PointOnLine or SketchConstraintKind.Collinear => SketchLineIncidence.Apply(entities, fixedReferences, constraint, originalEntities),
+                SketchConstraintKind.PointOnCircle => SketchCircleIncidence.Apply(entities, fixedReferences, constraint, originalEntities),
                 SketchConstraintKind.Equal => PropagateEqual(originalEntities, entities, fixedReferences, constraint),
                 SketchConstraintKind.Concentric => PropagateConcentric(originalEntities, entities, fixedReferences, constraint),
                 SketchConstraintKind.Midpoint => PropagateMidpoint(originalEntities, entities, fixedReferences, constraint),

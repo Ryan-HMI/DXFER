@@ -204,16 +204,21 @@ public static class SketchCommandFactory
         var axisConstraint = kind is SketchConstraintKind.Horizontal or SketchConstraintKind.Vertical;
         var picks = kind == SketchConstraintKind.Concentric
             ? selectionKeys.Select(key => NormalizeConcentricPick(document, key))
+            : kind == SketchConstraintKind.Coincident ? selectionKeys.Select(key => NormalizeCircleIncidencePick(document, key))
             : axisConstraint ? selectionKeys.Select(key => NormalizeAxisPick(document, key)) : selectionKeys;
         var selections = NormalizeSelections(document, picks,
-            axisConstraint && activeSelectionKey is not null ? NormalizeAxisPick(document, activeSelectionKey) : activeSelectionKey);
+            activeSelectionKey is null ? null : axisConstraint ? NormalizeAxisPick(document, activeSelectionKey)
+            : kind == SketchConstraintKind.Coincident ? NormalizeCircleIncidencePick(document, activeSelectionKey) : activeSelectionKey);
         var pointSelections = selections.Where(selection => selection.Point.HasValue).ToArray();
         var lineSelections = selections.Where(selection => selection.Line is not null).ToArray();
         var circleLikeSelections = selections.Where(selection => selection.CircleLike is not null).ToArray();
+        var circleSelections = selections.Where(selection => !selection.Point.HasValue
+            && TryFindEntity(document, selection.Key, out var entity) && entity is CircleEntity).ToArray();
 
         if (kind == SketchConstraintKind.Coincident && selections.Length == 2)
         {
             if (pointSelections.Length == 1 && lineSelections.Length == 1) kind = SketchConstraintKind.PointOnLine;
+            else if (pointSelections.Length == 1 && circleSelections.Length == 1) kind = SketchConstraintKind.PointOnCircle;
             else if (pointSelections.Length == 0 && lineSelections.Length == 2) kind = SketchConstraintKind.Collinear;
         }
 
@@ -223,6 +228,11 @@ public static class SketchCommandFactory
                 Keys(pointSelections),
             SketchConstraintKind.PointOnLine when pointSelections.Length == 1 && lineSelections.Length == 1 =>
                 Keys(selections),
+            SketchConstraintKind.PointOnCircle when selections.Length == 2 && pointSelections.Length == 1
+                && circleSelections.Length == 1
+                && SketchReference.TryParse(pointSelections[0].Key, out var pointReference)
+                && pointReference.EntityId != circleSelections[0].Key =>
+                new[] { pointReference.ToString(), circleSelections[0].Key },
             SketchConstraintKind.Collinear when lineSelections.Length == 2 =>
                 Keys(lineSelections),
             SketchConstraintKind.Horizontal when lineSelections.Length == 1 && selections.Length == 1 =>
@@ -389,6 +399,15 @@ public static class SketchCommandFactory
 
         return midpoint.HasValue && SketchReferenceResolver.TryGetPoint(document, midpoint.Value.ToString(), out _)
             ? midpoint.Value.ToString() : key;
+    }
+
+    private static string NormalizeCircleIncidencePick(DrawingDocument document, string key)
+    {
+        if (SketchReference.TryParseCanvasPointCoordinates(key, out var entityId, out var label, out _)
+            && !StringComparer.OrdinalIgnoreCase.Equals(label, "center")
+            && TryFindEntity(document, entityId, out var entity) && entity is CircleEntity)
+            return entityId;
+        return key;
     }
 
     private static string NormalizeSelectionKey(string? selectionKey)

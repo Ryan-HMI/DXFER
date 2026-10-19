@@ -56,7 +56,11 @@ public sealed class SketchCommandFactoryTests
         SketchCommandFactory.TryBuildConstraint(document, keys, SketchConstraintKind.Coincident,
             "join", out var pointConstraint, out _);
         if (circleKey.Contains("|point|", StringComparison.Ordinal))
-            pointConstraint.ReferenceKeys.Should().Equal(keys);
+        {
+            pointConstraint.Kind.Should().Be(SketchConstraintKind.PointOnCircle);
+            SketchReference.TryNormalize(arcKey, out var arcPoint).Should().BeTrue();
+            pointConstraint.ReferenceKeys.Should().Equal(arcPoint, "circle");
+        }
     }
 
     [Theory]
