@@ -42,8 +42,15 @@ virtual crossings do not become new vertices or silently split geometry.
   Production/Test process IDs unchanged. Rollback:
   `/home/ryan/dxfer-runtime/dev-publish-before-456f536`.
 - Evidence `/tmp/junction-{pick-before,pick-after,core,js,build,publish,local,dev}.log`;
-  screenshots/exports `/tmp/junction-local` and `/tmp/junction-dev`. Independent
-  replay requested using checked-in fixtures, not yet independently accepted.
+  screenshots/exports `/tmp/junction-local` and `/tmp/junction-dev`.
+- Independent Flux acceptance, delivery `64b26efe45956ce483a7f362`, on 456f536:
+  original PointOnLine fixture drags with satisfied incidence; both entity orders
+  pass Undo/Redo, native reopen and another edit. Fixed endpoints refuse without
+  changing geometry or adding history. This closes the reproduced picking case.
+- Split-at-point variant also drags, but the operation created no Coincident
+  relations and its endpoint moves independently. This does not verify a welded
+  junction. Explicit welded-junction coverage and Ryan's original native drawing
+  remain separate from this acceptance.
 
 The identified shared picking defect is fixed, not worked around by deleting
 constraints or treating a synthetic intersection as a new vertex. Existing saved
