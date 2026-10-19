@@ -33,7 +33,17 @@ virtual crossings do not become new vertices or silently split geometry.
   held preview/release, unchanged stored constraints, Undo/Redo, native reopen and
   editing again. Ten exported DXFs audit with zero errors/fixes. Held screenshot
   inspected; no browser circuit errors.
-- Public Dev rollout/replay pending. No Production/Test changes intended.
+- DEV `456f536f9e81f406a5b31143b658ffd9fbd0dbbc` installed
+  2026-10-19T02:08Z. Public browser repeats all four fixtures successfully; rendered
+  build matches. Ten public DXFs audit zero errors/fixes. Public held screenshot
+  inspected; no browser errors or server warning/error entries during replay.
+- Four installed assembly hashes match; ten runtime settings retained, health200,
+  anonymous root302, normal sign-in and disabled Sync callbacks retained.
+  Production/Test process IDs unchanged. Rollback:
+  `/home/ryan/dxfer-runtime/dev-publish-before-456f536`.
+- Evidence `/tmp/junction-{pick-before,pick-after,core,js,build,publish,local,dev}.log`;
+  screenshots/exports `/tmp/junction-local` and `/tmp/junction-dev`. Independent
+  replay requested using checked-in fixtures, not yet independently accepted.
 
 The identified shared picking defect is fixed, not worked around by deleting
 constraints or treating a synthetic intersection as a new vertex. Existing saved
