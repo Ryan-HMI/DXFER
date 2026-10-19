@@ -1,6 +1,7 @@
 using System.Globalization;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
+using DXFER.Core.Operations;
 using DXFER.Core.Sketching;
 
 namespace DXFER.Blazor.Selection;
@@ -14,6 +15,42 @@ public static class SelectionDeleteResolver
 
     public static bool CanDeleteSelection(DrawingDocument document, IEnumerable<string> selectionKeys) =>
         DeleteSelection(document, selectionKeys).DeletedCount > 0;
+
+    public static SelectionDeleteResult RecoverAxisConstraints(DrawingDocument before, SelectionDeleteResult deletion)
+    {
+        if (deletion.DeletedGeometryCount != 0 || deletion.DeletedConstraints == 0)
+            return deletion;
+
+        var after = deletion.Document;
+        var removedAxes = before.Constraints.Where(c => c.State != SketchConstraintState.Suppressed
+            && TryGetAxisReference(c, out _)
+            && !after.Constraints.Any(remaining => remaining.Id == c.Id)).ToArray();
+        var retry = after.Constraints.Where(c => c.State == SketchConstraintState.Unsatisfied
+            && TryGetAxisReference(c, out var reference)
+            && removedAxes.Any(removed => removed.Kind != c.Kind
+                && TryGetAxisReference(removed, out var removedReference) && reference == removedReference)).ToArray();
+        if (retry.Length == 0) return deletion;
+        if (after.Constraints.Any(c => c.State == SketchConstraintState.Unsatisfied && !retry.Any(axis => axis.Id == c.Id))
+            || after.Dimensions.Any(d => d.IsDriving && !SketchDimensionSolverService.IsDimensionSatisfied(after, d)))
+            return deletion;
+
+        // Retry only the freed axis intent, from the post-deletion snapshot. Failed
+        // recovery must not undo the deletion or move unrelated/protected geometry.
+        var solved = new LegacySketchSolverAdapter().Solve(new SketchSolveRequest(after, retry, Array.Empty<SketchDimension>()));
+        return solved.Status == SketchSolveStatus.Solved
+            && DrawingLayerService.PreservesProtectedGeometry(after, solved.Document)
+            ? deletion with { Document = solved.Document }
+            : deletion;
+    }
+
+    private static bool TryGetAxisReference(SketchConstraint constraint, out SketchReference reference)
+    {
+        reference = default;
+        return constraint.Kind is SketchConstraintKind.Horizontal or SketchConstraintKind.Vertical
+            && constraint.ReferenceKeys.Count == 1
+            && SketchReference.TryParse(constraint.ReferenceKeys[0], out reference)
+            && reference.IsEntity;
+    }
 
     public static SelectionDeleteResult DeleteSelection(
         DrawingDocument document,

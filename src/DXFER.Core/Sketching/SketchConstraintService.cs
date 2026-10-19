@@ -205,6 +205,18 @@ public static class SketchConstraintService
             return;
         }
 
+        var projectedLength = Math.Abs(isHorizontal ? line.End.X - line.Start.X : line.End.Y - line.Start.Y);
+        if (projectedLength <= SketchGeometryEditor.Tolerance)
+        {
+            if (SketchGeometryEditor.TryGetLineDirection(line, out _, out _, out var length) && double.IsFinite(length))
+            {
+                // Only a collapsing projection rotates at the original length. Exact angular ties prefer +X / +Y.
+                var angle = GetClosestLineRelationAngle(isHorizontal ? 0 : 90, GetLineAngleDegrees(line), perpendicular: false);
+                SketchDimensionSolverService.TryApplyLineDirection(entities, lineReference, angle, fixedReferences);
+            }
+            return;
+        }
+
         if (fixedReferences.CanChangeLineEndpoint(lineReference, SketchReferenceTarget.End))
         {
             // A polyline segment is a line proxy; write through to its owning entity.

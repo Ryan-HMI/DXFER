@@ -217,16 +217,19 @@ public sealed class PolylineAxisConstraintTests
     [InlineData(SketchConstraintKind.Horizontal, true)]
     [InlineData(SketchConstraintKind.Vertical, false)]
     [InlineData(SketchConstraintKind.Vertical, true)]
-    public void PerpendicularBareLineProjectionStillRefusesRatherThanCommittingZeroLength(SketchConstraintKind kind, bool fixEnd)
+    public void PerpendicularBareLineUsesLengthPreservingFallbackAroundMovableEndpoint(SketchConstraintKind kind, bool fixEnd)
     {
-        // A length-preserving quarter-turn is a separate orientation contract, not part of the proxy-write fix.
         var line = new LineEntity(EntityId.Create("line"), new Point2(0, 0),
             kind == SketchConstraintKind.Horizontal ? new Point2(0, 10) : new Point2(10, 0));
         var document = new DrawingDocument(new DrawingEntity[] { line }, Array.Empty<SketchDimension>(),
             fixEnd ? new[] { new SketchConstraint("fix", SketchConstraintKind.Fix, new[] { "line:end" }) } : Array.Empty<SketchConstraint>());
         var result = Solve(document, new SketchConstraint("axis", kind, new[] { "line" }));
-        result.Status.Should().NotBe(SketchSolveStatus.Solved);
-        result.Document.Entities.Single().Should().BeSameAs(line);
-        result.Document.Constraints.Single(c => c.Id == "axis").State.Should().Be(SketchConstraintState.Unsatisfied);
+        result.Status.Should().Be(SketchSolveStatus.Solved);
+        var aligned = result.Document.Entities.Single().Should().BeOfType<LineEntity>().Subject;
+        var delta = kind == SketchConstraintKind.Horizontal ? new Point2(10, 0) : new Point2(0, 10);
+        aligned.Start.Should().Be(fixEnd ? new Point2(line.End.X - delta.X, line.End.Y - delta.Y) : line.Start);
+        aligned.End.Should().Be(fixEnd ? line.End : delta);
+        aligned.Id.Should().Be(line.Id);
+        result.Document.Constraints.Single(c => c.Id == "axis").State.Should().Be(SketchConstraintState.Satisfied);
     }
 }

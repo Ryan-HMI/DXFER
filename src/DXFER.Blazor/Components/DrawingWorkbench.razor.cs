@@ -1455,9 +1455,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
+        var recovered = SelectionDeleteResolver.RecoverAxisConstraints(_document, result);
         ApplyDocumentChange(
-            result.Document,
-            FormatDeleteStatus(result));
+            recovered.Document,
+            FormatDeleteStatus(result) + (!ReferenceEquals(result.Document, recovered.Document)
+                ? " Remaining axis constraint applied." : ""));
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);
     }
