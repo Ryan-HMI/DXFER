@@ -3,7 +3,8 @@
 ## Current polyline axis investigation, 2026-10-19
 
 - POLYLINE-AXIS-20261019: USER-FAILED awaiting retest; AUTOMATED-PASSED and APP-VERIFIED on Dev9692551. Shared H/V writeback preserves whole contour.1890 core/942 JS/build pass;7 public browser scenarios and41 clean export audits cover open/closed edges, Fixed/driving conflicts, linked Offset refusal, actual unlink then alignment, history/native reopen/edit again. No automatic saved-data repair; Flux/Ryan acceptance not claimed.
-- AXIS-RECOVERY-20261019, CIRCLE-DIAMETER-20261019 and SNAP-CUE-INFO-20261019: recovered user reports recorded in bug-feature-log; queued, not implemented or ready for acceptance.
+- AXIS-RECOVERY-20261019: USER-FAILED awaiting retest; AUTOMATED-PASSED and APP-VERIFIED on Dev4551c41.1932 core/942 JS/build,10 public axis/recovery cases and3 polyline/Offset regressions pass;79 exports audit clean. Removing the opposite axis on the same line retries failed H/V in one history transaction; other failures/protected geometry remain unchanged. No record repair or blanket solver acceptance.
+- CIRCLE-DIAMETER-20261019 and SNAP-CUE-INFO-20261019: recovered user reports recorded in bug-feature-log; queued, not implemented or ready for acceptance.
 
 ## Current preview/input repair, 2026-10-19
 
