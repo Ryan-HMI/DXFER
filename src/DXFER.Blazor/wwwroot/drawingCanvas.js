@@ -75,7 +75,7 @@ import {
   isPanPointerDownForTool,
   isTargetEligibleForConstraintTool,
   shouldDrawSelectionTargetOverlay
-} from "./canvas/targets.js?v=20261018-line-incidence";
+} from "./canvas/targets.js?v=20261019-midpoint-axis";
 import {
   CONSTRAINT_KEY_PREFIX,
   POINT_KEY_SEPARATOR,

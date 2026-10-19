@@ -54,7 +54,9 @@ export function isTargetEligibleForConstraintTool(tool, target) {
       return isPoint || isLine;
     case "horizontal":
     case "vertical":
-      return isPoint || isLine;
+      return isPoint || isLine || target.kind === "point"
+        && (kind === "line" && target.label === "mid"
+          || kind === "polyline" && /^mid-\d+$/.test(target.label || ""));
     case "parallel":
     case "perpendicular":
       return isLine;

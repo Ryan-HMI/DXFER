@@ -62,5 +62,12 @@ test("constraint tool eligibility filters target categories", () => {
   assert.equal(isTargetEligibleForConstraintTool("coincident", midpoint), false);
   assert.equal(isTargetEligibleForConstraintTool("horizontal", lineTarget), true);
   assert.equal(isTargetEligibleForConstraintTool("horizontal", circleTarget), false);
+  for (const tool of ["horizontal", "vertical"]) {
+    assert.equal(isTargetEligibleForConstraintTool(tool, midpoint), true);
+    assert.equal(isTargetEligibleForConstraintTool(tool,
+      {kind: "point", entity: {kind: "polyline"}, label: "mid-2"}), true);
+    assert.equal(isTargetEligibleForConstraintTool(tool,
+      {kind: "point", entity: {kind: "arc"}, label: "mid"}), false);
+  }
   assert.equal(isTargetEligibleForConstraintTool("parallel", startPoint), false);
 });

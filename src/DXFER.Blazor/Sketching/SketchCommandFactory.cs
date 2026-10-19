@@ -201,9 +201,12 @@ public static class SketchCommandFactory
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(selectionKeys);
 
-        var selections = NormalizeSelections(document,
-            kind == SketchConstraintKind.Concentric ? selectionKeys.Select(key => NormalizeConcentricPick(document, key)) : selectionKeys,
-            activeSelectionKey);
+        var axisConstraint = kind is SketchConstraintKind.Horizontal or SketchConstraintKind.Vertical;
+        var picks = kind == SketchConstraintKind.Concentric
+            ? selectionKeys.Select(key => NormalizeConcentricPick(document, key))
+            : axisConstraint ? selectionKeys.Select(key => NormalizeAxisPick(document, key)) : selectionKeys;
+        var selections = NormalizeSelections(document, picks,
+            axisConstraint && activeSelectionKey is not null ? NormalizeAxisPick(document, activeSelectionKey) : activeSelectionKey);
         var pointSelections = selections.Where(selection => selection.Point.HasValue).ToArray();
         var lineSelections = selections.Where(selection => selection.Line is not null).ToArray();
         var circleLikeSelections = selections.Where(selection => selection.CircleLike is not null).ToArray();
@@ -367,6 +370,25 @@ public static class SketchCommandFactory
             && entity is CircleEntity or ArcEntity)
             return reference.EntityId;
         return key;
+    }
+
+    private static string NormalizeAxisPick(DrawingDocument document, string key)
+    {
+        if (SketchReference.TryParse(key, out var reference) && !reference.IsEntity)
+            return reference.ToString();
+        if (!SketchReference.TryParseCanvasPointCoordinates(key, out var entityId, out var label, out _)
+            || !TryFindEntity(document, entityId, out var entity)) return key;
+
+        SketchReference? midpoint = null;
+        if (entity is LineEntity && label == "mid")
+            midpoint = new SketchReference(entityId, SketchReferenceTarget.Midpoint);
+        else if (entity is PolylineEntity && label.StartsWith("mid-", StringComparison.Ordinal)
+            && int.TryParse(label.AsSpan(4), System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var segment) && segment >= 0)
+            midpoint = new SketchReference(entityId, SketchReferenceTarget.Midpoint, segment);
+
+        return midpoint.HasValue && SketchReferenceResolver.TryGetPoint(document, midpoint.Value.ToString(), out _)
+            ? midpoint.Value.ToString() : key;
     }
 
     private static string NormalizeSelectionKey(string? selectionKey)
