@@ -2031,13 +2031,22 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        ApplySketchSolveResult(
-            SolveSketchChange(
-                _document,
-                Array.Empty<SketchConstraint>(),
-                new[] { dimension }),
-            status);
+        PlaceSketchDimension(dimension, status);
         _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void PlaceSketchDimension(SketchDimension dimension, string status)
+    {
+        if (dimension.Kind == SketchDimensionKind.Offset && _document.Dimensions.Any(d => d.Id == dimension.Id))
+        {
+            // Reposition the existing parameter without retrying unrelated failed intent.
+            ApplyDocumentChange(new DrawingDocument(_document.Entities,
+                _document.Dimensions.Select(d => d.Id == dimension.Id ? dimension : d),
+                _document.Constraints, _document.Metadata), status);
+            return;
+        }
+
+        ApplySketchSolveResult(SolveSketchChange(_document, Array.Empty<SketchConstraint>(), new[] { dimension }), status);
     }
 
     private void OnSketchDimensionPlacementRequested(
@@ -2059,12 +2068,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        ApplySketchSolveResult(
-            SolveSketchChange(
-                _document,
-                Array.Empty<SketchConstraint>(),
-                new[] { dimension }),
-            status);
+        PlaceSketchDimension(dimension, status);
         _activeTool = WorkbenchTool.Dimension;
         _status = $"{_status} Dimension tool stays active; pick another reference or Esc to cancel.";
         ResetSelection();

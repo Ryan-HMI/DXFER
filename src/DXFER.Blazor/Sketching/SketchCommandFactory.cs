@@ -22,6 +22,11 @@ public static class SketchCommandFactory
         ArgumentNullException.ThrowIfNull(selectionKeys);
 
         var selections = NormalizeSelections(document, selectionKeys, activeSelectionKey);
+        if (TryBuildOffsetDimension(document, selections, id, anchorOverride, out dimension))
+        {
+            status = "Placed offset distance dimension. Edit this distance to resize the linked offset.";
+            return true;
+        }
         if (selections.Length == 1 && selections[0].Line is { } line)
         {
             var value = Distance(line.Start, line.End);
@@ -137,6 +142,51 @@ public static class SketchCommandFactory
             out dimension,
             out status,
             "Select one line, one circle or arc, two points, a point and line, or two lines before dimensioning.");
+    }
+
+    private static bool TryBuildOffsetDimension(DrawingDocument document, SketchSelection[] selections,
+        string id, Point2? anchor, out SketchDimension dimension)
+    {
+        dimension = default!;
+        if (selections.Length != 2) return false;
+        string EntityKey(string key) => SketchReference.TryParse(key, out var reference)
+            ? reference.EntityId : GetCircleLikeEntityReferenceKey(key);
+        var firstId = EntityKey(selections[0].Key);
+        var secondId = EntityKey(selections[1].Key);
+        if (firstId == secondId) return false;
+
+        var matches = document.Constraints.Where(c => c.Kind == SketchConstraintKind.Offset
+            && c.State != SketchConstraintState.Suppressed && c.ReferenceKeys.Count >= 2
+            && (c.ReferenceKeys[^1] == firstId && c.ReferenceKeys.SkipLast(1).Contains(secondId)
+                || c.ReferenceKeys[^1] == secondId && c.ReferenceKeys.SkipLast(1).Contains(firstId)))
+            .ToArray();
+        if (matches.Length != 1) return false;
+        var keys = matches[0].ReferenceKeys;
+        if (!SketchOffsetRelation.IsSatisfied(document.Entities, keys)
+            || !SketchOffsetRelation.TryMeasure(document.Entities, keys, out var gap, out var start, out var end))
+            return false;
+
+        // Only a normal gap between matching edges denotes the offset parameter.
+        // Opposite sides, corner diagonals and a single edge still mean ordinary dimensions.
+        double? pickedGap = null;
+        if (selections[0].Line is { } firstLine && selections[1].Line is { } secondLine
+            && AreLinesParallel(firstLine, secondLine))
+            pickedGap = Distance(secondLine.Start, ProjectPointToLine(secondLine.Start, firstLine));
+        else if (selections[0].Line is { } lineA && selections[1].Point is { } pointB)
+            pickedGap = Distance(pointB, ProjectPointToLine(pointB, lineA));
+        else if (selections[1].Line is { } lineB && selections[0].Point is { } pointA)
+            pickedGap = Distance(pointA, ProjectPointToLine(pointA, lineB));
+        else if (selections.All(s => s.CircleLike.HasValue && !s.Point.HasValue))
+            pickedGap = Math.Abs(selections[0].CircleLike!.Value.Radius - selections[1].CircleLike!.Value.Radius);
+        if (!pickedGap.HasValue || Math.Abs(pickedGap.Value - gap) > GeometryTolerance) return false;
+
+        var existing = document.Dimensions.Where(d => d.Kind == SketchDimensionKind.Offset
+            && d.ReferenceKeys.SequenceEqual(keys)).ToArray();
+        if (existing.Length > 1) return false;
+        var previous = existing.SingleOrDefault();
+        dimension = new SketchDimension(previous?.Id ?? id, SketchDimensionKind.Offset, keys,
+            previous?.Value ?? gap, anchor ?? previous?.Anchor ?? Midpoint(start, end), previous?.IsDriving ?? true);
+        return true;
     }
 
     public static bool TryBuildConstraint(
