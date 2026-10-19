@@ -114,7 +114,7 @@ public sealed class WorkbenchRenderBoundaryTests
     {
         var workbench = FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs");
         var source = File.ReadAllText(workbench);
-        var methodStart = source.IndexOf("private void ApplyDocumentChange(DrawingDocument nextDocument, string status)", StringComparison.Ordinal);
+        var methodStart = source.IndexOf("private bool ApplyDocumentChangeCore(DrawingDocument nextDocument, string status, bool patternCommand)", StringComparison.Ordinal);
         var methodEnd = source.IndexOf("    private void ClearHistory()", StringComparison.Ordinal);
 
         methodStart.Should().BeGreaterThanOrEqualTo(0);
@@ -123,7 +123,8 @@ public sealed class WorkbenchRenderBoundaryTests
 
         methodBody.Should().Contain("DrawingDocumentMode.ReferenceOnly");
         methodBody.Should().Contain("Reference-only document cannot be edited");
-        methodBody.Should().Contain("return;");
+        methodBody.Should().Contain("return false;");
+        source.Should().Contain("ApplyDocumentChangeCore(nextDocument, status, false)");
     }
 
     [Fact]

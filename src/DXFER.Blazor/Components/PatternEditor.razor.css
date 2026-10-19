@@ -1,0 +1,13 @@
+.pattern-editor { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; font-size: 12px; min-width: 0; }
+.pattern-editor label { display: grid; gap: 4px; min-width: 0; color: var(--dx-muted); overflow-wrap: anywhere; }
+.pattern-editor input, .pattern-editor select { box-sizing: border-box; width: 100%; min-width: 0; min-height: 30px; padding: 4px 6px; color: var(--dx-text); background: var(--dx-chrome); border: 1px solid var(--dx-border); border-radius: 3px; font: inherit; }
+.pattern-editor .pattern-check { display: flex; align-items: center; gap: 6px; }
+.pattern-check input { width: 16px; min-height: 16px; }
+.pattern-wide { grid-column: 1 / -1; }
+.pattern-editor p { margin: 0; color: var(--dx-danger, #f49b91); overflow-wrap: anywhere; }
+.pattern-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.pattern-actions button { display: flex; align-items: center; gap: 5px; min-height: 30px; padding: 4px 8px; background: var(--dx-chrome); color: var(--dx-text); border: 1px solid var(--dx-border); border-radius: 3px; font: inherit; }
+.pattern-actions button:disabled { opacity: .45; }
+.pattern-actions button:hover:not(:disabled) { border-color: var(--dx-accent); }
+.pattern-editor :focus-visible { outline: 2px solid var(--dx-accent); outline-offset: 1px; }
+.pattern-actions ::deep svg { width: 16px; height: 16px; }

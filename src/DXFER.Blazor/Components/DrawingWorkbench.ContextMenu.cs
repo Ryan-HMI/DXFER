@@ -31,7 +31,7 @@ public partial class DrawingWorkbench
         _contextDocument = _document;
         _contextCornerSelection = key is not null && DrawingModifyService.CanModifySelectedCorner(_document, [key])
             ? [key] : selection;
-        _contextEntities = selection.Select(k => SketchReference.TryParse(k, out var r) ? r.EntityId : "")
+        _contextEntities = selection.Select(k => TryGetEntityIdForOperationTarget(k, out var id) ? id : "")
             .Where(id => _document.Entities.Any(e => e.Id.Value == id)).Distinct(StringComparer.Ordinal).ToArray();
         if (ContextDimension is { } dimension)
             _contextEntities = dimension.ReferenceKeys.Select(k => SketchReference.TryParse(k, out var r) ? r.EntityId : "")

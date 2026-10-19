@@ -1,10 +1,20 @@
 using DXFER.Core.Documents;
+using DXFER.Core.Operations;
 
 namespace DXFER.Core.Sketching;
 
 public sealed class LegacySketchSolverAdapter : ISketchSolver
 {
     public SketchSolveResult Solve(SketchSolveRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var result = SolveCore(request);
+        if (!DrawingPatternService.TryReconcile(request.Document, result.Document, out var reconciled, out var reason))
+            return new SketchSolveResult(SketchSolveStatus.Failed, request.Document, new[] { reason });
+        return new SketchSolveResult(result.Status, reconciled, result.Diagnostics, result.AffectedDiagnostics);
+    }
+
+    private static SketchSolveResult SolveCore(SketchSolveRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 

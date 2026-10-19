@@ -30,6 +30,8 @@ public sealed record DrawingDocumentMetadata
         new Dictionary<string, DxfEntityStyle>(StringComparer.OrdinalIgnoreCase);
 
     public string ActiveLayerName { get; init; } = "0";
+
+    public IReadOnlyList<PatternDefinition> Patterns { get; init; } = Array.Empty<PatternDefinition>();
 }
 
 public enum DrawingUnits

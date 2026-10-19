@@ -139,6 +139,7 @@ public static class DxferDocumentSerializer
         Require(metadata.UnsupportedEntityCounts!.All(p => !string.IsNullOrWhiteSpace(p.Key) && p.Value >= 0)
             && metadata.EntityStyles!.All(p => !string.IsNullOrWhiteSpace(p.Key) && p.Value is not null),
             "Invalid entity metadata.");
+        Require(DXFER.Core.Operations.DrawingPatternService.TryValidate(document, out var patternReason), patternReason);
     }
 
     private static void UniqueIds(IEnumerable<string> ids, string kind)

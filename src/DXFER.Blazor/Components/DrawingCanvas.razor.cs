@@ -9,7 +9,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261019-context-dimensions";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261019-editable-patterns";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -24,6 +24,7 @@ public partial class DrawingCanvas : IAsyncDisposable
     private string? _renderedMeasurementUnits;
     private DrawingDocument? _renderedCornerPreview;
     private double _renderedCornerSize = double.NaN;
+    private bool _renderedPatternEditing;
 
     [Parameter]
     public MeasurementSpan? Measurement { get; set; }
@@ -51,11 +52,13 @@ public partial class DrawingCanvas : IAsyncDisposable
     }
 
     [Parameter] public DrawingDocument? CornerPreview { get; set; }
+    [Parameter] public DrawingDocument? PatternPreview { get; set; }
+    [Parameter] public bool PatternEditing { get; set; }
 
     [JSInvokable]
     public CanvasDocumentDto? GetOffsetDragPreview(string key, CanvasPointDto start, CanvasPointDto end, bool constrain)
     {
-        if (Document is null || !Document.Constraints.Any(c => c.Kind == SketchConstraintKind.Offset)) return null;
+        if (Document is null || (!Document.Constraints.Any(c => c.Kind == SketchConstraintKind.Offset) && Document.Metadata.Patterns.Count == 0)) return null;
         return SketchGeometryDragService.TryApplyDrag(Document, key, new(start.X,start.Y), new(end.X,end.Y),
             constrain, out var next, out _, automaticSnapConstraints: false)
             && DrawingLayerService.PreservesProtectedGeometry(Document, next) ? CanvasDocumentDto.FromDocument(next) : null;
@@ -81,10 +84,12 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     private async Task SetCornerPreviewAsync()
     {
-        if (_canvasInstance is null || (ReferenceEquals(_renderedCornerPreview, CornerPreview) && _renderedCornerSize == CornerSize)) return;
-        _renderedCornerPreview = CornerPreview;
+        var preview = PatternEditing ? PatternPreview : CornerPreview;
+        if (_canvasInstance is null || (ReferenceEquals(_renderedCornerPreview, preview) && _renderedCornerSize == CornerSize && _renderedPatternEditing == PatternEditing)) return;
+        _renderedCornerPreview = preview;
         _renderedCornerSize = CornerSize;
-        await _canvasInstance.InvokeVoidAsync("setCornerPreview", CornerPreview is null ? null : CanvasDocumentDto.FromDocument(CornerPreview), CornerHandle, CornerSize);
+        _renderedPatternEditing = PatternEditing;
+        await _canvasInstance.InvokeVoidAsync("setCornerPreview", preview is null ? null : CanvasDocumentDto.FromDocument(preview), PatternEditing ? null : CornerHandle, CornerSize, PatternEditing);
     }
 
     [Parameter]

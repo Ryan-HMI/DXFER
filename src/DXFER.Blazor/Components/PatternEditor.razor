@@ -1,0 +1,51 @@
+@namespace DXFER.Blazor.Components
+@using Microsoft.AspNetCore.Components.Web
+
+<section class="pattern-editor" aria-label="Pattern settings" @onkeydown="OnKeyDown" @onkeydown:stopPropagation="true">
+    <label class="pattern-wide">Layout
+        <select aria-label="Pattern layout" @bind="Draft.Mode" @bind:after="NotifyChanged">
+            <option>Rectangular</option><option>Staggered</option><option>Radial</option>
+        </select>
+    </label>
+    @if (Draft.Mode == "Radial")
+    {
+        <label>Instances<input type="number" min="2" step="1" aria-label="Pattern instances" @bind="Draft.Count" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
+        <label class="pattern-check"><input type="checkbox" aria-label="Full circle" @bind="Draft.FullCircle" @bind:after="NotifyChanged" />Full circle</label>
+        <label>Center X (@Units)<input type="number" step="any" aria-label="Pattern center X" @bind="Draft.CenterX" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
+        <label>Center Y (@Units)<input type="number" step="any" aria-label="Pattern center Y" @bind="Draft.CenterY" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
+        @if (!Draft.FullCircle)
+        {
+            <label class="pattern-wide">Angle between instances (deg)<input type="number" step="any" aria-label="Pattern step angle" @bind="Draft.StepAngle" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
+        }
+    }
+    else
+    {
+        <label>Columns<input type="number" min="1" step="1" aria-label="Pattern columns" @bind="Draft.Columns" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
+        <label>Rows<input type="number" min="1" step="1" aria-label="Pattern rows" @bind="Draft.Rows" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
+        <label>X pitch (@Units)<input type="number" step="any" aria-label="Pattern X pitch" @bind="Draft.PitchX" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
+        <label>Y pitch (@Units)<input type="number" step="any" aria-label="Pattern Y pitch" @bind="Draft.PitchY" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
+        <label class="pattern-wide">Rotation (deg)<input type="number" step="any" aria-label="Pattern rotation" @bind="Draft.Angle" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
+    }
+    @if (Error is not null) { <p class="pattern-wide" role="alert">@Error</p> }
+    <div class="pattern-actions pattern-wide">
+        <button type="button" title="Fit pattern preview" aria-label="Fit pattern preview" disabled="@(!CanConfirm)" @onclick="Fit"><CadIcon Name="CadIconName.Fit" /></button>
+        <button type="button" disabled="@(!CanConfirm)" @onclick="Confirm"><CadIcon Name="CadIconName.LinearPattern" />Confirm</button>
+        <button type="button" @onclick="Cancel"><CadIcon Name="CadIconName.Close" />Cancel</button>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public PatternDraft Draft { get; set; } = new();
+    [Parameter] public string Units { get; set; } = "in";
+    [Parameter] public bool CanConfirm { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public EventCallback Changed { get; set; }
+    [Parameter] public EventCallback Confirm { get; set; }
+    [Parameter] public EventCallback Cancel { get; set; }
+    [Parameter] public EventCallback Fit { get; set; }
+    private Task NotifyChanged() => Changed.InvokeAsync();
+    private async Task OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape") await Cancel.InvokeAsync();
+    }
+}

@@ -1,6 +1,7 @@
 using System.Globalization;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
+using DXFER.Core.Operations;
 
 namespace DXFER.Core.Sketching;
 
@@ -24,6 +25,14 @@ public static class SketchGeometryDragService
         out string status,
         bool automaticSnapConstraints = true)
     {
+        ArgumentNullException.ThrowIfNull(document);
+        if (document.Metadata.Patterns.SelectMany(p => p.Members).Any(m => selectionKey == m.EntityId
+                || selectionKey?.StartsWith(m.EntityId + "|", StringComparison.Ordinal) == true))
+        {
+            nextDocument = document;
+            status = "Generated pattern members cannot be dragged independently. Edit the source or unlink the pattern.";
+            return false;
+        }
         var accepted = TryApplyDragCore(document, selectionKey, dragStart, dragEnd,
             constrainToCurrentVector, out nextDocument, out status, automaticSnapConstraints);
         if (accepted && !FixedReferencesRemainUnchanged(document, nextDocument))
@@ -34,7 +43,13 @@ public static class SketchGeometryDragService
         }
         if (accepted)
         {
-            nextDocument = FollowDimensionAnchors(document, nextDocument);
+            if (!DrawingPatternService.TryReconcile(document, nextDocument, out var reconciled, out var reason))
+            {
+                nextDocument = document;
+                status = reason;
+                return false;
+            }
+            nextDocument = FollowDimensionAnchors(document, reconciled);
         }
         return accepted;
     }

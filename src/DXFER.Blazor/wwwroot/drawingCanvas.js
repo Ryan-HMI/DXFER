@@ -308,9 +308,16 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
       draw(state);
     },
 
-    setCornerPreview(document, handle, value) {
+    setCornerPreview(document, handle, value, patternEditing = false) {
+      if (!patternEditing) state.patternPreviewFitted = false;
+      state.patternEditing = patternEditing;
+      state.canvas.dataset.patternEditing = patternEditing ? "true" : "false";
       state.cornerPreview = document ? { document, handle, value } : null;
       state.canvas.dataset.cornerPreview = document ? "true" : "false";
+      if (patternEditing && document && !state.patternPreviewFitted) {
+        fitToExtents(state);
+        state.patternPreviewFitted = true;
+      }
       if (!document) {
         state.canvas.style.cursor = "";
         state.canvas.removeAttribute("title");
@@ -4791,7 +4798,7 @@ export function contextSelectionForTarget(selectedKeys, target) {
 function openDrawingContextMenu(state, event, dimensionId = null) {
   event.preventDefault();
   event.stopPropagation();
-  if (state.disposed || state.activeTool !== "select" || state.geometryDrag || state.dimensionDrag) return;
+  if (state.disposed || state.patternEditing || state.activeTool !== "select" || state.geometryDrag || state.dimensionDrag) return;
   const target = dimensionId ? null : findNearestTarget(state, getPointerScreenPoint(state, event));
   dimensionId ||= target?.dimensionId;
   if (dimensionId && state.persistentDimensionInputs?.has(dimensionId)) {
@@ -4837,6 +4844,12 @@ function handlePointerDown(state, event) {
   }
 
   if (isPrimaryPointerButton(event)) {
+    if (state.patternEditing) {
+      state.clickCandidate = null;
+      releasePointer(state.canvas, event.pointerId);
+      event.preventDefault();
+      return;
+    }
     if (state.cornerPreview?.handle && distanceBetweenScreenPoints(screenPoint, worldToScreen(state, state.cornerPreview.handle)) <= 14) {
       state.cornerDrag = { pointerId: event.pointerId, startX: screenPoint.x, value: state.cornerPreview.value, scale: state.view.scale };
       state.clickCandidate = null;
@@ -5117,6 +5130,11 @@ function startGeometryDrag(state, candidate, screenPoint, event = {}) {
   return true;
 }
 
+export function requiresSharedGeometryDragPreview(document) {
+  return Boolean(document?.hasPatterns) || getDocumentConstraints(document).some(c =>
+    getSketchItemKind(c) === "offset" && getSketchConstraintState(c) !== "suppressed");
+}
+
 export function updateGeometryDrag(state, screenPoint, event = {}) {
   const drag = state.geometryDrag;
   if (!drag) {
@@ -5128,7 +5146,7 @@ export function updateGeometryDrag(state, screenPoint, event = {}) {
   drag.currentWorldPoint = dragPoint.point;
   drag.constrainToCurrentVector = Boolean(event.shiftKey);
   drag.moved = distanceBetweenScreenPoints(drag.startScreenPoint, screenPoint) > CLICK_MOVE_TOLERANCE;
-  if (getDocumentConstraints(drag.originalDocument).some(c => getSketchItemKind(c) === "offset" && getSketchConstraintState(c) !== "suppressed")) {
+  if (requiresSharedGeometryDragPreview(drag.originalDocument)) {
     requestOffsetDragPreview(state, drag);
     return true;
   }
@@ -5170,6 +5188,7 @@ export function requestOffsetDragPreview(state, drag) {
     if (state.geometryDrag !== drag || state.disposed) return;
     setHoveredTarget(state, resolveSelectionTarget(state, drag.targetKey));
     if (drag.offsetPreviewKey !== key) requestOffsetDragPreview(state, drag);
+    updateDebugAttributes(state);
     draw(state);
   });
 }
@@ -5999,6 +6018,7 @@ function cancelActiveTool(state) {
   state.activeTool = "select";
   state.cornerDrag = null;
   state.cornerPreview = null;
+  state.patternEditing = false;
   state.toolDraft = createEmptyToolDraft();
   state.powerTrimDrag = null;
   state.sketchChainContext = null;
@@ -6115,7 +6135,7 @@ function fitToExtents(state) {
   const size = getCanvasCssSize(state);
   const viewport = getClearCanvasViewport(state);
   if (!viewport) return;
-  const view = getFitViewForDocument(state.document, size, viewport);
+  const view = getFitViewForDocument(state.patternEditing && state.cornerPreview ? state.cornerPreview.document : state.document, size, viewport);
 
   state.view.scale = view.scale;
   state.view.offsetX = view.offsetX;
@@ -13221,6 +13241,9 @@ function updateDebugAttributes(state) {
   state.canvas.dataset.canvasHeight = String(rect.height);
 
   const firstEntity = entities[0];
+  const firstCenter = firstEntity ? getEntityCenter(firstEntity) : null;
+  state.canvas.dataset.firstCenter = firstCenter ? `${firstCenter.x},${firstCenter.y}` : "";
+  state.canvas.dataset.firstRadius = firstEntity ? String(getEntityRadius(firstEntity) ?? "") : "";
   if (!firstEntity) {
     state.canvas.dataset.firstEntity = "";
     state.canvas.dataset.firstPointCount = "0";

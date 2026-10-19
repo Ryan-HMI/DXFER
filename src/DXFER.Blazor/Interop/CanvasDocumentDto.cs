@@ -12,6 +12,7 @@ public sealed record CanvasDocumentDto(
     [property: JsonPropertyName("dimensions")] IReadOnlyList<CanvasSketchDimensionDto> Dimensions,
     [property: JsonPropertyName("constraints")] IReadOnlyList<CanvasSketchConstraintDto> Constraints)
 {
+    [JsonPropertyName("hasPatterns")] public bool HasPatterns { get; init; }
     public static CanvasDocumentDto Empty { get; } = new(
         Array.Empty<CanvasEntityDto>(),
         new CanvasBoundsDto(0, 0, 0, 0),
@@ -35,7 +36,7 @@ public sealed record CanvasDocumentDto(
         var dimensions = document.Dimensions.Where(d => IsVisible(d.ReferenceKeys)).Select(dimension => FromDimension(document, dimension)).ToArray();
         var constraints = document.Constraints.Where(c => IsVisible(c.ReferenceKeys)).Select(FromConstraint).ToArray();
 
-        return new CanvasDocumentDto(entities, FromBounds(bounds), dimensions, constraints);
+        return new CanvasDocumentDto(entities, FromBounds(bounds), dimensions, constraints) { HasPatterns = document.Metadata.Patterns.Count > 0 };
     }
 
     private static CanvasEntityDto FromEntity(DrawingEntity entity, DrawingDocumentMetadata metadata)

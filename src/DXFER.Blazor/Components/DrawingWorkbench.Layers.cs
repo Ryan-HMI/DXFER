@@ -79,6 +79,7 @@ public partial class DrawingWorkbench
     private async Task SelectLayerEntities()
     {
         if (SelectedLayer.IsHidden || SelectedLayer.IsLocked) return;
+        ClearPatternEditor();
         _activeTool = null;
         ClearCornerPreview();
         var ids = _document.Entities.Where(e => DrawingLayerService.LayerName(_document, e.Id.Value).Equals(SelectedLayerName, StringComparison.OrdinalIgnoreCase))

@@ -15,10 +15,12 @@
         <DrawingCanvas @ref="_canvas"
                        Document="_document"
                        CornerPreview="CornerPreview"
+                       PatternPreview="PatternPreview"
+                       PatternEditing="PatternEditing"
                        CornerHandle="@(CornerPreview is not null && _cornerPreviewHandle is not null ? new CanvasPointDto(_cornerPreviewHandle.Value.X, _cornerPreviewHandle.Value.Y) : null)"
                        CornerSize="GetCornerModifyDistance()"
                        CornerSizeChanged="OnCornerSizeDragged"
-                       CornerApplyRequested="CommitCornerPreview"
+                       CornerApplyRequested="CommitStagedPreview"
                        ShowToolbar="false"
                        DocumentFitToken="_documentFitToken"
                        ActiveTool="_activeTool"
@@ -66,6 +68,11 @@
             }
             else if (_contextEntities.Length > 0)
             {
+                @foreach (var pattern in ContextPatterns)
+                {
+                    <button type="button" disabled="@(!ContextEditable)" @onclick="() => OpenPatternEditor(pattern)"><CadIcon Name="CadIconName.LinearPattern" />Edit @PatternLabel(pattern) pattern</button>
+                }
+                <button type="button" disabled="@(!ContextEditable)" @onclick="() => ContextCommand(WorkbenchCommandId.LinearPattern)"><CadIcon Name="CadIconName.LinearPattern" />Pattern</button>
                 @if (ContextCorner)
                 {
                     <button type="button" disabled="@(!ContextEditable)" @onclick="() => ContextCommand(WorkbenchCommandId.Fillet, true)"><CadIcon Name="CadIconName.Fillet" />Fillet</button>
@@ -98,7 +105,7 @@
     <aside class="dxfer-information-panel" aria-label="Drawing information">
     @if (IsOperationInspectorVisible)
     {
-        <aside class="dxfer-operation-inspector" aria-label="Active operation" @onkeydown="HandleInspectorEscape">
+        <aside class="dxfer-operation-inspector @(PatternEditing ? "dxfer-pattern-active" : "")" aria-label="Active operation" @onkeydown="HandleInspectorEscape">
             <header class="dxfer-operation-heading">
                 <h2>@(_activeTool.HasValue ? ActiveToolLabel : "Information")</h2>
                 <button type="button" class="dxfer-inspector-toggle" @ref="_inspectorToggle"
@@ -112,7 +119,29 @@
                 {
                     @CornerSizeControl
                 }
+                @if (_patternDraft is not null)
+                {
+                    <PatternEditor Draft="_patternDraft" Units="@DocumentUnitsText" CanConfirm="@(PatternPreview is not null)"
+                                   Error="@_patternError" Changed="RefreshPatternPreview" Confirm="CommitPatternPreview" Cancel="ExitInspectorTool" Fit="FitAsync" />
+                    @if (_document.Metadata.Patterns.Any(p => p.Id == _editingPattern?.Id))
+                    {
+                        @if (_confirmDissolvePattern)
+                        {
+                            <div class="dxfer-pattern-unlink" role="group" aria-label="Unlink pattern confirmation">
+                                <span>Unlink copies from source?</span>
+                                <button type="button" class="dxfer-exit-tool" @onclick="DissolvePattern">Unlink</button>
+                                <button type="button" class="dxfer-exit-tool" @onclick="() => _confirmDissolvePattern = false">Keep linked</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <button type="button" class="dxfer-exit-tool" @onclick="() => _confirmDissolvePattern = true">Unlink pattern</button>
+                        }
+                    }
+                }
             </div>
+            @if (!PatternEditing)
+            {
             <dl class="dxfer-operation-readouts" aria-label="Operation selection and measurements">
                 @foreach (var item in LiveMeasurementReadouts)
                 {
@@ -127,7 +156,7 @@
                 {
                     @CornerActions
                 }
-                else if (_activeTool.HasValue)
+                else if (_activeTool.HasValue && !PatternEditing)
                 {
                 <button type="button" class="dxfer-exit-tool" title="Exit current tool" @onclick="ExitInspectorTool">
                     <CadIcon Name="CadIconName.Close" />
@@ -135,8 +164,21 @@
                 </button>
                 }
             </footer>
+            }
         </aside>
     }
+        @if (_document.Metadata.Patterns.Count > 0 && !PatternEditing)
+        {
+            <section class="dxfer-pattern-list" aria-label="Patterns">
+                <header class="dxfer-operation-heading"><h2>Patterns</h2></header>
+                @foreach (var pattern in _document.Metadata.Patterns)
+                {
+                    <button type="button" class="dxfer-exit-tool" disabled="@LayersReadOnly" @onclick="() => OpenPatternEditor(pattern)">
+                        <CadIcon Name="@(pattern.Kind == DXFER.Core.Documents.PatternKind.Radial ? CadIconName.CircularPattern : CadIconName.LinearPattern)" />@PatternLabel(pattern)
+                    </button>
+                }
+            </section>
+        }
         <section class="dxfer-layers" aria-label="Layers">
             <header class="dxfer-operation-heading">
                 <h2>Layers</h2>

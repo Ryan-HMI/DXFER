@@ -19,6 +19,7 @@
                 aria-label="Drawing canvas"></canvas>
         <div @ref="_dimensionOverlay"
              class="drawing-dimension-overlay"
+             inert="@(PatternEditing ? "" : null)"
              aria-label="Sketch dimension inputs"></div>
     </div>
 </div>

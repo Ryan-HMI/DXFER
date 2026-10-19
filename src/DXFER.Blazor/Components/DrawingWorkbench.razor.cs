@@ -35,7 +35,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private const long MaxDxfFileSize = 25 * 1024 * 1024;
     private const string SegmentKeySeparator = "|segment|";
     private const string PointKeySeparator = "|point|";
-    private const int DefaultPatternInstanceCount = 3;
     private const int SyncCloseDelayMilliseconds = 250;
 
     private DrawingCanvas? _canvas;
@@ -417,8 +416,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }, "Move"),
         new WorkbenchToolGroup("Pattern", new[]
         {
-            Command(WorkbenchCommandId.LinearPattern, WorkbenchTool.LinearPattern, CadIconName.LinearPattern, "Linear pattern", !CanModifySelectedGeometry),
-            Command(WorkbenchCommandId.CircularPattern, WorkbenchTool.CircularPattern, CadIconName.CircularPattern, "Circular pattern", !CanModifySelectedGeometry)
+            Command(WorkbenchCommandId.LinearPattern, WorkbenchTool.LinearPattern, CadIconName.LinearPattern, "Rectangular / staggered pattern", !CanModifySelectedGeometry),
+            Command(WorkbenchCommandId.CircularPattern, WorkbenchTool.CircularPattern, CadIconName.CircularPattern, "Radial pattern", !CanModifySelectedGeometry)
         }, "Repeat", InitiallyOpen: false),
         new WorkbenchToolGroup("Constraints", new[]
         {
@@ -532,8 +531,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.Scale => "Scale",
         WorkbenchTool.Mirror => "Mirror",
         WorkbenchTool.Dimension => "Dimension",
-        WorkbenchTool.LinearPattern => "Linear pattern",
-        WorkbenchTool.CircularPattern => "Circular pattern",
+        WorkbenchTool.LinearPattern or WorkbenchTool.CircularPattern => "Pattern",
         _ => _activeTool?.ToString() ?? "Selection"
     };
 
@@ -593,8 +591,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.Rotate => "Rotate: select whole geometry, click center, reference point, then target point. Esc: cancel.",
         WorkbenchTool.Scale => "Scale: select whole geometry, click center, reference radius, then target radius. Esc: cancel.",
         WorkbenchTool.Mirror => "Mirror: select whole geometry, click two points for the mirror axis. Esc: cancel.",
-        WorkbenchTool.LinearPattern => "Linear pattern: select whole geometry, click from point, then spacing point. Creates three instances. Esc: cancel.",
-        WorkbenchTool.CircularPattern => "Circular pattern: select whole geometry, click center, reference point, then angle point. Creates three instances. Esc: cancel.",
+        WorkbenchTool.LinearPattern or WorkbenchTool.CircularPattern => _status,
         WorkbenchTool.Dimension => "Dimension: click geometry or points, move to place, then click to set. Shift: diameter for arcs. Esc: cancel.",
         not null => $"{ActiveToolLabel}: follow canvas prompts. Esc: cancel.",
         null => _status
@@ -906,8 +903,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchCommandId.Rotate:
             case WorkbenchCommandId.Scale:
             case WorkbenchCommandId.Mirror:
-            case WorkbenchCommandId.LinearPattern:
-            case WorkbenchCommandId.CircularPattern:
                 await SyncSelectionFromCanvasAsync();
                 if (commandId == WorkbenchCommandId.AddSplinePoint && !CanAddSplinePoint)
                 {
@@ -928,6 +923,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                         $"{FormatCommandName(commandId)} active. {GetToolPrompt(modifyTool)} Press Esc to cancel.");
                 }
 
+                break;
+            case WorkbenchCommandId.LinearPattern:
+            case WorkbenchCommandId.CircularPattern:
+                await SyncSelectionFromCanvasAsync();
+                BeginPattern(commandId == WorkbenchCommandId.CircularPattern);
                 break;
             case WorkbenchCommandId.Fillet:
             case WorkbenchCommandId.Chamfer:
@@ -1173,6 +1173,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         IReadOnlyList<CanvasPointDto> points,
         IReadOnlyDictionary<string, double> dimensionValues)
     {
+        if (toolName.Equals("linearpattern", StringComparison.OrdinalIgnoreCase) || toolName.Equals("circularpattern", StringComparison.OrdinalIgnoreCase))
+        {
+            _status = "Confirm the pattern in its settings.";
+            return;
+        }
         var wholeEntityIds = GetWholeEntityIdsForOperations().ToArray();
         if (wholeEntityIds.Length == 0)
         {
@@ -1309,6 +1314,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void OnToolCanceled()
     {
+        ClearPatternEditor();
         ClearCornerPreview();
         _solveFailureStatus = null;
         _pendingCircleSplit = null;
@@ -1320,6 +1326,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void ActivateTool(WorkbenchTool tool, string status)
     {
+        ClearPatternEditor();
         ClearCornerPreview();
         _solveFailureStatus = null;
         if (tool != WorkbenchTool.SplitAtPoint)
@@ -1334,6 +1341,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void UndoLastDocumentChange()
     {
+        if (PatternEditing) { OnToolCanceled(); return; }
         if (!_undoStack.TryPop(out var previousDocument))
         {
             return;
@@ -1348,6 +1356,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void RedoLastDocumentChange()
     {
+        if (PatternEditing) { OnToolCanceled(); return; }
         if (!_redoStack.TryPop(out var nextDocument))
         {
             return;
@@ -1396,14 +1405,19 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         var normalization = DrawingNormalizationService.AutoNormalize(_document);
-        if (!DrawingLayerService.PreservesProtectedGeometry(_document, normalization.NormalizedDocument))
+        if (!DrawingPatternService.TryReconcile(_document, normalization.NormalizedDocument, out var normalized, out var patternReason))
+        {
+            _status = patternReason;
+            return;
+        }
+        if (!DrawingLayerService.PreservesProtectedGeometry(_document, normalized))
         {
             _status = "Show and unlock affected layers before normalizing. Geometry unchanged.";
             return;
         }
         _undoStack.Push(_document);
         _redoStack.Clear();
-        _document = normalization.NormalizedDocument;
+        _document = normalized;
         _documentFitToken++;
         _lastAutoNormalization = normalization;
         _manualOverride = false;
@@ -1562,41 +1576,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 }
 
                 status = $"Created {offsetCount} offset contours.";
-                break;
-            case "linearpattern" when points.Count >= 2:
-                if (!DrawingModifyService.TryLinearPatternSelected(
-                        _document,
-                        selectedEntityIds,
-                        points[0],
-                        points[1],
-                        DefaultPatternInstanceCount,
-                        CreateEntityId,
-                        out nextDocument,
-                        out var linearCount))
-                {
-                    _status = "Linear pattern needs a nonzero spacing vector.";
-                    return false;
-                }
-
-                status = $"Linear pattern added {linearCount} entities.";
-                break;
-            case "circularpattern" when points.Count >= 3:
-                if (!DrawingModifyService.TryCircularPatternSelected(
-                        _document,
-                        selectedEntityIds,
-                        points[0],
-                        points[1],
-                        points[2],
-                        DefaultPatternInstanceCount,
-                        CreateEntityId,
-                        out nextDocument,
-                        out var circularCount))
-                {
-                    _status = "Circular pattern needs a center, reference point, and distinct angle point.";
-                    return false;
-                }
-
-                status = $"Circular pattern added {circularCount} entities.";
                 break;
             default:
                 _status = $"{FormatCreatedToolName(toolName)} needs more points.";
@@ -2246,9 +2225,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return false;
         }
 
-        ApplyDocumentChange(nextDocument, status);
+        var accepted = ApplyDocumentChange(nextDocument, status);
         _ = InvokeAsync(StateHasChanged);
-        return ReferenceEquals(_document, nextDocument);
+        return accepted;
     }
 
     private bool TryGetLineIdForSplitTarget(string targetKey, out string lineEntityId)
@@ -2380,35 +2359,48 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _solveFailureStatus = result.Status == SketchSolveStatus.Solved ? null : status;
     }
 
-    private void ApplyDocumentChange(DrawingDocument nextDocument, string status)
+    private bool ApplyDocumentChange(DrawingDocument nextDocument, string status) => ApplyDocumentChangeCore(nextDocument, status, false);
+
+    private bool ApplyDocumentChangeCore(DrawingDocument nextDocument, string status, bool patternCommand)
     {
+        if (!patternCommand && !DrawingPatternService.TryReconcile(_document, nextDocument, out nextDocument, out var patternReason))
+        {
+            _status = patternReason;
+            return false;
+        }
         nextDocument = SketchDimensionModeService.RefreshMeasurements(nextDocument);
         _solveFailureStatus = null;
         if (!DrawingLayerService.PreservesProtectedGeometry(_document, nextDocument))
         {
             _status = "A hidden or locked layer would change. Geometry unchanged; show and unlock it first.";
-            return;
+            return false;
         }
         try { nextDocument = DrawingLayerService.AssignNewEntities(_document, nextDocument); }
-        catch (ArgumentException ex) { _status = ex.Message; return; }
+        catch (ArgumentException ex) { _status = ex.Message; return false; }
         if (ReferenceEquals(_document, nextDocument))
         {
             _status = status;
-            return;
+            return true;
         }
 
         if (_document.Metadata.Mode == DrawingDocumentMode.ReferenceOnly)
         {
             _status = "Reference-only document cannot be edited.";
             _ = InvokeAsync(StateHasChanged);
-            return;
+            return false;
         }
 
         _undoStack.Push(_document);
         _redoStack.Clear();
+        if (!patternCommand && PatternEditing)
+        {
+            ClearPatternEditor();
+            _activeTool = null;
+        }
         _document = nextDocument;
         MarkManualOverride();
         _status = status;
+        return true;
     }
 
     private void MarkManualOverride()
@@ -2421,6 +2413,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void ClearHistory()
     {
+        ClearPatternEditor();
         _solveFailureStatus = null;
         _undoStack.Clear();
         _redoStack.Clear();
@@ -3730,8 +3723,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.Rotate => "Pick center, reference point, then target point.",
         WorkbenchTool.Scale => "Pick center, reference radius, then target radius.",
         WorkbenchTool.Mirror => "Pick two points for the mirror axis.",
-        WorkbenchTool.LinearPattern => "Pick from point, then spacing point.",
-        WorkbenchTool.CircularPattern => "Pick center, reference point, then target angle point.",
+        WorkbenchTool.LinearPattern or WorkbenchTool.CircularPattern => "Pattern preview.",
         _ => "Pick two points on the canvas."
     };
 
@@ -3800,8 +3792,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchCommandId.SaveDxf => "Save DXF",
         WorkbenchCommandId.SendToSync => "Save to Sync",
         WorkbenchCommandId.ReturnToSync => "Return to Sync",
-        WorkbenchCommandId.LinearPattern => "Linear pattern",
-        WorkbenchCommandId.CircularPattern => "Circular pattern",
+        WorkbenchCommandId.LinearPattern => "Rectangular / staggered pattern",
+        WorkbenchCommandId.CircularPattern => "Radial pattern",
         WorkbenchCommandId.AutoCleanup => "Auto",
         WorkbenchCommandId.Rotate90Clockwise => "Rotate 90 CW",
         WorkbenchCommandId.Rotate90CounterClockwise => "Rotate 90 CCW",
