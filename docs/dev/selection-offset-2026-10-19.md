@@ -11,7 +11,7 @@
 
 ## Status
 
-Local verification passed; Dev rollout pending.
+Installed on DXFer DEV only at `11d3f606240769deb26910e9ac2319e9dbca9248`, 2026-10-19T03:42Z. Production/Test untouched. Normal sign-in and disabled Sync callbacks retained.
 
 ## Root cause and implementation
 
@@ -28,6 +28,8 @@ Rectangles remain four constrained lines. New straight offset contours are polyl
 - Additional tests cover open chains, polygons, multiple contours, topology/branch refusal, metadata and native intent, circle/arc preservation, exact numeric distance, collapsed inset and mixed-style refusal, and async preview coalescing.
 - Actual local browser: rectangle, closed polyline, polygon and open chain selection/preview/commit, original intent preservation, Undo/Redo and native download/reopen. Unsupported selection makes no edit; keyed inset 4 refuses without history, correction to 2 succeeds. No circuit/page errors. Preview and inset screenshots inspected.
 - 15 local DXF exports audit with zero errors/fixes.
+- Public Dev replay passes the same actual browser cases, including unsupported-selection refusal and keyed-inset refusal/recovery. Rendered build `11d3f60` verified; 15 public DXFs audit zero errors/fixes, served screenshot inspected, no page/circuit errors or service warning entries.
+- Installed assemblies match the published candidate; all 10 tracked runtime settings retained, health 200 and anonymous root 302. Production/Test runtime PIDs unchanged. Rollback directory: `/home/ryan/dxfer-runtime/dev-publish-before-11d3f60`. Independent Flux/Ryan acceptance remains pending.
 
 ## Bounded limitations
 
