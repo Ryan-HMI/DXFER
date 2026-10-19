@@ -8,7 +8,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261018-junction-grip";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261019-contour-offset";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -35,6 +35,19 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public DrawingDocument? Document { get; set; }
+
+    [JSInvokable]
+    public object GetOffsetPreview(string[] ids, CanvasPointDto through, double? requestedDistance)
+    {
+        var index = 0;
+        if (Document is null) return new { document = (CanvasDocumentDto?)null };
+        var accepted = SelectionOffsetService.TryOffset(Document, ids, new(through.X, through.Y),
+            kind => EntityId.Create($"offset-preview-{++index}"),
+            out var next, out var count, out var reason, out var anchor, out var distance, requestedDistance);
+        var preview = accepted ? new DrawingDocument(next.Entities.TakeLast(count), [], [], next.Metadata) : null;
+        return new { document = preview is null ? null : CanvasDocumentDto.FromDocument(preview),
+            anchor = new CanvasPointDto(anchor.X, anchor.Y), distance, reason };
+    }
 
     [Parameter] public DrawingDocument? CornerPreview { get; set; }
     [Parameter] public CanvasPointDto? CornerHandle { get; set; }

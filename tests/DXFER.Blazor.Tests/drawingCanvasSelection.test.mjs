@@ -1518,7 +1518,7 @@ test("locked draft dimensions reapply after cursor movement", () => {
   assert.deepEqual(state.toolDraft.previewPoint, { x: 0, y: 10 });
 });
 
-test("offset draft dimension updates the preview point on the picked side", () => {
+test("offset draft dimension keeps the side pick independent of the keyed distance", () => {
   const state = createHitTestState([
     {
       id: "edge",
@@ -1538,7 +1538,7 @@ test("offset draft dimension updates the preview point on the picked side", () =
 
   assert.equal(changed, true);
   assertApproxEqual(state.toolDraft.previewPoint.x, 2);
-  assertApproxEqual(state.toolDraft.previewPoint.y, 5);
+  assertApproxEqual(state.toolDraft.previewPoint.y, 3);
   assert.equal(state.toolDraft.dimensionValues.offset, 5);
 });
 

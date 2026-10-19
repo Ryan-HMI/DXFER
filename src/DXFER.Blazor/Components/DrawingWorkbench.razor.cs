@@ -582,7 +582,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.PowerTrim => _status,
         WorkbenchTool.SplitAtPoint => _status,
         WorkbenchTool.AddSplinePoint => "Add spline point: select one fit-point spline, then click the spline where the new fit point belongs. Esc: cancel.",
-        WorkbenchTool.Offset => "Offset: select whole geometry, then click the through side or radius point. Esc: cancel.",
+        WorkbenchTool.Offset => _status,
         WorkbenchTool.Fillet or WorkbenchTool.Chamfer => _status,
         WorkbenchTool.Translate => "Translate: select whole geometry, click from point, then to point. Esc: cancel.",
         WorkbenchTool.Rotate => "Rotate: select whole geometry, click center, reference point, then target point. Esc: cancel.",
@@ -1543,19 +1543,20 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 status = "Added spline fit point.";
                 break;
             case "offset" when points.Count >= 1:
-                if (!DrawingModifyService.TryOffsetSelected(
+                if (!SelectionOffsetService.TryOffset(
                         _document,
                         selectedEntityIds,
                         points[0],
                         CreateEntityId,
                         out nextDocument,
-                        out var offsetCount))
+                        out var offsetCount, out var offsetReason, out _, out _,
+                        dimensionValues.TryGetValue("offset", out var requestedOffset) ? requestedOffset : null))
                 {
-                    _status = "Offset needs a line, circle, arc, or polyline and a distinct through point.";
+                    _status = offsetReason;
                     return false;
                 }
 
-                status = $"Offset {offsetCount} selected entities.";
+                status = $"Created {offsetCount} offset contours.";
                 break;
             case "linearpattern" when points.Count >= 2:
                 if (!DrawingModifyService.TryLinearPatternSelected(

@@ -72,7 +72,7 @@ public sealed class DrawingModifyServiceTests
     }
 
     [Fact]
-    public void OffsetSelectedSplineCreatesSplineCopyThroughPickedSide()
+    public void OffsetSelectedSplineRefusesInsteadOfCallingTranslationAnOffset()
     {
         var document = new DrawingDocument(new DrawingEntity[]
         {
@@ -91,11 +91,9 @@ public sealed class DrawingModifyServiceTests
             out var next,
             out var createdCount);
 
-        offset.Should().BeTrue();
-        createdCount.Should().Be(1);
-        var spline = next.Entities[1].Should().BeOfType<SplineEntity>().Subject;
-        spline.Id.Should().Be(EntityId.Create("spline-copy"));
-        spline.ControlPoints.Should().Equal(new Point2(0, 3), new Point2(10, 3));
+        offset.Should().BeFalse();
+        createdCount.Should().Be(0);
+        next.Should().BeSameAs(document);
     }
 
     [Fact]

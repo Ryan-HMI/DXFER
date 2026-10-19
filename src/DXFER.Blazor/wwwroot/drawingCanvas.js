@@ -1658,28 +1658,37 @@ function drawOffsetModifyPreview(state, throughPoint, dimensions) {
   }
 }
 
-function getOffsetPreviewGeometry(state, throughPoint) {
-  const preview = {
-    offsetPointSets: [],
-    dimension: null
-  };
-  const targets = getOffsetPreviewTargets(state);
-  let firstDimension = null;
-
-  for (const target of targets) {
-    const offset = getOffsetPreviewForEntity(state, target.entity, throughPoint);
-    if (!offset) {
-      continue;
+export function getOffsetPreviewGeometry(state, throughPoint) {
+  const ids = getOffsetPreviewTargets(state).map(t => getEntityId(t.entity)).sort();
+  const requestedDistance = state.toolDraft?.dimensionValues?.offset ?? null;
+  const key = JSON.stringify([ids, throughPoint.x, throughPoint.y, requestedDistance]);
+  const source = state.document;
+  const cached = state.offsetPreviewCache;
+  if (!cached || cached.key !== key || cached.source !== source) {
+    // One request at a time; drawing again after completion picks up the latest pointer.
+    if (!state.offsetPreviewPending && state.dotnetRef?.invokeMethodAsync) {
+      state.offsetPreviewPending = true;
+      state.dotnetRef.invokeMethodAsync("GetOffsetPreview", ids, throughPoint, requestedDistance).then(result => {
+        state.offsetPreviewCache = { key, source, result };
+      }).catch(() => {
+        state.offsetPreviewCache = { key, source, result: null };
+      }).finally(() => {
+        state.offsetPreviewPending = false;
+        if (!state.disposed) draw(state);
+      });
     }
-
-    preview.offsetPointSets.push(offset.points);
-    if (!firstDimension && offset.dimension) {
-      firstDimension = offset.dimension;
-    }
+    return { offsetPointSets: [], dimension: null };
   }
-
-  preview.dimension = firstDimension;
-  return preview;
+  const result = cached.result;
+  return {
+    offsetPointSets: getDocumentEntities(result?.document).map(entity => {
+      const kind = getEntityKind(entity);
+      if (kind === "circle") return getCircleWorldPoints(getEntityCenter(entity), getEntityRadius(entity));
+      if (kind === "arc") return getArcWorldPoints(entity);
+      return getEntityPoints(entity);
+    }),
+    dimension: result?.anchor ? getOffsetPreviewDimensionDescriptor(state, result.anchor, throughPoint, result.distance) : null
+  };
 }
 
 function getOffsetPreviewTargets(state) {
@@ -1707,115 +1716,21 @@ function getOffsetPreviewTargets(state) {
   return targets;
 }
 
-function getOffsetPreviewForEntity(state, entity, throughPoint) {
-  const kind = getEntityKind(entity);
-  if (kind === "circle" || kind === "arc") {
-    return getOffsetPreviewForCircleLike(state, entity, throughPoint);
-  }
 
-  return getOffsetPreviewForLinearizedEntity(state, entity, throughPoint);
-}
-
-function getOffsetPreviewForCircleLike(state, entity, throughPoint) {
-  const center = getEntityCenter(entity);
-  const currentRadius = getEntityRadius(entity);
-  const nextRadius = center ? distanceBetweenWorldPoints(center, throughPoint) : Number.NaN;
-  if (!center || !isFinitePositive(currentRadius) || !isFinitePositive(nextRadius)) {
-    return null;
-  }
-
-  const kind = getEntityKind(entity);
-  const previewEntity = kind === "arc"
-    ? {
-      kind: "arc",
-      center,
-      radius: nextRadius,
-      startAngleDegrees: getEntityStartAngle(entity),
-      endAngleDegrees: getEntityEndAngle(entity)
-    }
-    : null;
-  const points = kind === "arc"
-    ? getArcWorldPoints(previewEntity)
-    : getCircleWorldPoints(center, nextRadius);
-  const direction = normalizeScreenVector(subtractPoints(throughPoint, center)) || { x: 1, y: 0 };
-  const originalEdge = {
-    x: center.x + direction.x * currentRadius,
-    y: center.y + direction.y * currentRadius
-  };
-  return {
-    points,
-    dimension: getOffsetPreviewDimensionDescriptor(state, originalEdge, throughPoint, Math.abs(nextRadius - currentRadius))
-  };
-}
-
-function getOffsetPreviewForLinearizedEntity(state, entity, throughPoint) {
-  const points = getOffsetPreviewSourcePoints(entity);
-  if (points.length < 2) {
-    return null;
-  }
-
-  const projection = getClosestWorldSegmentProjection(throughPoint, points, getEntityKind(entity) === "polygon");
-  if (!projection || Math.abs(projection.signedDistance) <= WORLD_GEOMETRY_TOLERANCE) {
-    return null;
-  }
-
-  const offsetVector = {
-    x: projection.normal.x * projection.signedDistance,
-    y: projection.normal.y * projection.signedDistance
-  };
-  const offsetPoints = points.map(point => ({
-    x: point.x + offsetVector.x,
-    y: point.y + offsetVector.y
-  }));
-
-  if (getEntityKind(entity) === "polygon" && offsetPoints.length > 2) {
-    offsetPoints.push(offsetPoints[0]);
-  }
-
-  const originalClosestPoint = projection.point;
-  const offsetClosestPoint = {
-    x: originalClosestPoint.x + offsetVector.x,
-    y: originalClosestPoint.y + offsetVector.y
-  };
-  return {
-    points: offsetPoints,
-    dimension: getOffsetPreviewDimensionDescriptor(
-      state,
-      originalClosestPoint,
-      offsetClosestPoint,
-      Math.abs(projection.signedDistance))
-  };
-}
-
-function getOffsetPreviewSourcePoints(entity) {
-  const kind = getEntityKind(entity);
-  if (kind === "line" || kind === "polyline" || kind === "spline" || kind === "polygon") {
-    return getEntityPoints(entity);
-  }
-
-  if (kind === "ellipse") {
-    return getEllipseWorldPointsFromEntity(entity);
-  }
-
-  return [];
-}
 
 function getOffsetPreviewDimensionDescriptor(state, first, second, value) {
   if (!formatDimensionValue(value)) {
     return null;
   }
 
-  const start = worldToScreen(state, first);
   const end = worldToScreen(state, second);
-  const midpointScreen = midpointScreenPoint(start, end);
-  const normal = getScreenNormal(start, end);
   return {
     key: "offset",
     label: "Offset",
     value,
     point: {
-      x: midpointScreen.x + normal.x * 18,
-      y: midpointScreen.y + normal.y * 18
+      x: end.x + 30,
+      y: end.y + 24
     }
   };
 }
@@ -1829,22 +1744,6 @@ function getCircleWorldPoints(center, radius) {
   return points;
 }
 
-function getClosestWorldSegmentProjection(point, points, closed = false) {
-  let closest = null;
-  const segmentCount = closed ? points.length : points.length - 1;
-  for (let index = 0; index < segmentCount; index += 1) {
-    const start = points[index];
-    const end = points[(index + 1) % points.length];
-    const projection = projectPointToWorldSegment(point, start, end);
-    if (!projection || (closest && projection.distance >= closest.distance)) {
-      continue;
-    }
-
-    closest = projection;
-  }
-
-  return closest;
-}
 
 function projectPointToWorldSegment(point, start, end) {
   const segment = subtractPoints(end, start);
@@ -5536,15 +5435,19 @@ function commitModifyToolPoints(state, tool, points) {
   }
 
   const dimensionLocks = getModifyToolDimensionLocks(state.toolDraft);
-  if (tool !== "addsplinepoint") {
+  if (tool !== "addsplinepoint" && tool !== "offset") {
     state.activeTool = "select";
     if (state.canvas && state.canvas.dataset) {
       state.canvas.dataset.activeTool = state.activeTool;
     }
   }
 
-  state.toolDraft = createEmptyToolDraft();
-  clearTransientDimensionInputs(state);
+  // Offset keeps its side and key-in available after a rejected inset. A successful
+  // server commit exits the tool and clears the draft through setActiveTool.
+  if (tool !== "offset") {
+    state.toolDraft = createEmptyToolDraft();
+    clearTransientDimensionInputs(state);
+  }
   setHoveredTarget(state, null);
   invokeDotNet(
     state,
@@ -12514,22 +12417,10 @@ function applyRotateDraftDimensionValue(state, angleDegrees) {
 }
 
 function applyOffsetDraftDimensionValue(state, numericValue) {
-  if (!state || !state.toolDraft) {
+  if (!state?.toolDraft?.previewPoint || !Number.isFinite(numericValue) || numericValue <= 0) {
     return false;
   }
-
-  const throughPoint = state.toolDraft.previewPoint;
-  const target = getPrimaryOffsetPreviewTarget(state);
-  if (!target || !target.entity || !throughPoint) {
-    return false;
-  }
-
-  const nextPreviewPoint = getOffsetThroughPointAtDistance(target.entity, throughPoint, numericValue);
-  if (!nextPreviewPoint) {
-    return false;
-  }
-
-  state.toolDraft.previewPoint = nextPreviewPoint;
+  // Keep the side pick independent of the numeric distance, including collapsed insets.
   state.toolDraft.dimensionValues = {
     ...(state.toolDraft.dimensionValues || {}),
     offset: numericValue
@@ -12537,46 +12428,6 @@ function applyOffsetDraftDimensionValue(state, numericValue) {
   return true;
 }
 
-function getPrimaryOffsetPreviewTarget(state) {
-  const targets = getOffsetPreviewTargets(state);
-  return targets.length > 0 ? targets[0] : null;
-}
-
-function getOffsetThroughPointAtDistance(entity, throughPoint, distance) {
-  const kind = getEntityKind(entity);
-  if (kind === "circle" || kind === "arc") {
-    const center = getEntityCenter(entity);
-    const radius = getEntityRadius(entity);
-    if (!center || !isFinitePositive(radius)) {
-      return null;
-    }
-
-    const direction = normalizeScreenVector(subtractPoints(throughPoint, center)) || { x: 1, y: 0 };
-    const currentDistance = distanceBetweenWorldPoints(center, throughPoint);
-    const sign = currentDistance < radius ? -1 : 1;
-    const nextRadius = Math.max(WORLD_GEOMETRY_TOLERANCE, radius + distance * sign);
-    return {
-      x: center.x + direction.x * nextRadius,
-      y: center.y + direction.y * nextRadius
-    };
-  }
-
-  const points = getOffsetPreviewSourcePoints(entity);
-  if (points.length < 2) {
-    return null;
-  }
-
-  const projection = getClosestWorldSegmentProjection(throughPoint, points, kind === "polygon");
-  if (!projection) {
-    return null;
-  }
-
-  const sign = projection.signedDistance < 0 ? -1 : 1;
-  return {
-    x: projection.point.x + projection.normal.x * distance * sign,
-    y: projection.point.y + projection.normal.y * distance * sign
-  };
-}
 
 function getLockedDraftDimensionValue(state, dimensionKey) {
   const dimension = String(dimensionKey || "").toLowerCase();
