@@ -853,6 +853,7 @@ export function getCurrentSnapCue(state) {
 
 export function positionSnapCue(anchor, size, width, height, obstacles = []) {
   const margin = 8, gap = 22;
+  if (width > size.width - margin * 2 || height > size.height - margin * 2) return null;
   const candidates = [
     { x: anchor.x + gap, y: anchor.y - height - gap },
     { x: anchor.x + gap, y: anchor.y + gap },
@@ -862,7 +863,22 @@ export function positionSnapCue(anchor, size, width, height, obstacles = []) {
     y: Math.max(margin, Math.min(p.y, size.height - height - margin)), width, height }));
   const overlaps = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x
     && a.y < b.y + b.height && a.y + a.height > b.y;
-  return candidates.find(candidate => !obstacles.some(obstacle => overlaps(candidate, obstacle))) || candidates[0];
+  const clear = candidate => !obstacles.some(obstacle => overlaps(candidate, obstacle));
+  const preferred = candidates.find(clear);
+  if (preferred) return preferred;
+  // A free placement can be slid to a canvas or obstruction boundary.
+  const xs = [...new Set([margin, size.width - width - margin, ...candidates.map(p => p.x),
+    ...obstacles.flatMap(r => [r.x - width - margin, r.x + r.width + margin])])];
+  const ys = [...new Set([margin, size.height - height - margin, ...candidates.map(p => p.y),
+    ...obstacles.flatMap(r => [r.y - height - margin, r.y + r.height + margin])])];
+  let best = null, distance = Infinity;
+  for (const x of xs) for (const y of ys) {
+    if (x < margin || y < margin || x + width > size.width - margin || y + height > size.height - margin) continue;
+    const candidate = { x, y, width, height };
+    const d = Math.hypot(x + width / 2 - anchor.x, y + height / 2 - anchor.y);
+    if (d < distance && clear(candidate)) { best = candidate; distance = d; }
+  }
+  return best;
 }
 
 function drawSnapCue(state, size) {
@@ -873,6 +889,7 @@ function drawSnapCue(state, size) {
     if (text) state.canvas.setAttribute?.("aria-description", text);
     else state.canvas.removeAttribute?.("aria-description");
   }
+  delete state.canvas.dataset.snapCueBox;
   if (!cue) return;
   const context = state.context;
   const detail = cue.detail;
@@ -884,7 +901,10 @@ function drawSnapCue(state, size) {
     .map(input => ({ x: parseFloat(input.style.left) - 80, y: parseFloat(input.style.top) - 20, width: 160, height: 40 }));
   const pointer = state.pointerScreenPoint;
   obstacles.push({ x: pointer.x - 10, y: pointer.y - 10, width: 20, height: 20 });
+  obstacles.push(...getCanvasControlBounds(state));
   const box = positionSnapCue(worldToScreen(state, cue.point), size, width, 44, obstacles);
+  if (!box) { context.restore(); return; }
+  state.canvas.dataset.snapCueBox = JSON.stringify(box);
   context.fillStyle = canvasInk(state, "#17232e", "#ffffff");
   context.strokeStyle = canvasInk(state, "#66d9ff", "#005a75");
   context.lineWidth = 1;
@@ -6237,16 +6257,18 @@ function handleDoubleClick(state, event) {
   event.preventDefault();
 }
 
-function getClearCanvasViewport(state) {
-  const size = getCanvasCssSize(state);
+export function getCanvasControlBounds(state) {
   const canvasRect = state.canvas.getBoundingClientRect();
   const workbench = state.canvas.closest?.(".dxfer-workbench");
   const panels = workbench?.querySelectorAll(".dxfer-tool-group, .dxfer-sync-control-bar") ?? [];
-  const occlusions = Array.from(panels, panel => {
+  return Array.from(panels, panel => {
     const r = panel.getBoundingClientRect();
     return { x: r.left - canvasRect.left, y: r.top - canvasRect.top, width: r.width, height: r.height };
-  });
-  return getUnobscuredViewport(size, occlusions);
+  }).filter(r => r.width > 0 && r.height > 0);
+}
+
+function getClearCanvasViewport(state) {
+  return getUnobscuredViewport(getCanvasCssSize(state), getCanvasControlBounds(state));
 }
 
 function fitToExtents(state) {

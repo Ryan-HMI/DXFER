@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {getCurrentSnapCue, positionSnapCue} from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.js';
+import {getCurrentSnapCue, positionSnapCue, getCanvasControlBounds} from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.js';
 
 const point = {x: 5, y: 0};
 const source = {id: 'source', kind: 'line', points: [{x: 0, y: 0}, {x: 10, y: 0}]};
@@ -51,4 +51,32 @@ test('cue placement stays inside canvas and avoids the dimension field', () => {
     const b = positionSnapCue(anchor, size, 240, 44);
     assert.ok(b.x >= 8 && b.y >= 8 && b.x + b.width <= 1092 && b.y + b.height <= 692);
   }
+});
+
+test('floating Grain and other visible controls use canvas-relative bounds', () => {
+  const panels = [{left: 724, top: 250, width: 160, height: 82},
+    {left: 16, top: 60, width: 150, height: 400}, {left: 0, top: 0, width: 0, height: 0}];
+  const value = {canvas: {getBoundingClientRect: () => ({left: 8, top: 48}), closest: () => ({
+    querySelectorAll: selector => {
+      assert.equal(selector, '.dxfer-tool-group, .dxfer-sync-control-bar');
+      return panels.map(rect => ({getBoundingClientRect: () => rect}));
+    }
+  })}};
+  const obstacles = getCanvasControlBounds(value);
+  assert.equal(obstacles.length, 2);
+  assert.deepEqual(obstacles[0], {x: 716, y: 202, width: 160, height: 82});
+  const box = positionSnapCue({x: 600, y: 300}, {width: 890, height: 660}, 246, 44, obstacles);
+  assert.ok(box && (box.x + box.width <= 716 || box.y >= 284 || box.y + box.height <= 202));
+});
+
+test('blocked quadrants fall back to a clear location, never underneath a palette', () => {
+  const obstacles = [{x: 200, y: 160, width: 600, height: 300}];
+  const box = positionSnapCue({x: 500, y: 300}, {width: 1000, height: 700}, 240, 44, obstacles);
+  assert.ok(box && (box.y + box.height <= 160 || box.y >= 460));
+});
+
+test('fully covered or too-small canvas has no visible cue box', () => {
+  assert.equal(positionSnapCue({x: 100, y: 100}, {width: 300, height: 200}, 240, 44,
+    [{x: 0, y: 0, width: 300, height: 200}]), null);
+  assert.equal(positionSnapCue({x: 10, y: 10}, {width: 100, height: 40}, 84, 44), null);
 });
