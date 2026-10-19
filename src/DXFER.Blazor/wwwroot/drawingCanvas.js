@@ -60,7 +60,7 @@ import {
 } from "./canvas/dimensionInputState.js";
 import {
   getPersistentDimensionCommitValue
-} from "./canvas/dimensionInputParsing.js";
+} from "./canvas/dimensionInputParsing.js?v=20261019-persistent-input-precision";
 import {
   DEFAULT_DIMENSION_INPUT_SCREEN_MARGIN_X,
   DEFAULT_DIMENSION_INPUT_SCREEN_MARGIN_Y,
@@ -113,7 +113,7 @@ export {
 } from "./canvas/dimensionInputState.js";
 export {
   getPersistentDimensionCommitValue
-} from "./canvas/dimensionInputParsing.js";
+} from "./canvas/dimensionInputParsing.js?v=20261019-persistent-input-precision";
 export {
   getClampedDimensionInputScreenPoint
 } from "./canvas/dimensionInputLayout.js";
@@ -2298,8 +2298,11 @@ function getPersistentDimensionDescriptor(state, dimension) {
     affectedReferenceKeys,
     anchorPoint,
     point: worldToScreen(state, anchorPoint),
-    geometry: kind === "offset" && dimension.offsetStart && dimension.offsetEnd
-      ? { type: "linear", start: dimension.offsetStart, end: dimension.offsetEnd, anchorPoint }
+    geometry: kind === "offset"
+      ? getCircularOffsetDimensionGeometry(state, referenceKeys, anchorPoint)
+        || (dimension.offsetStart && dimension.offsetEnd
+          ? { type: "linear", start: dimension.offsetStart, end: dimension.offsetEnd, anchorPoint }
+          : getDimensionGeometry(state, kind, referenceKeys, anchorPoint))
       : getDimensionGeometry(state, kind, referenceKeys, anchorPoint)
   };
 }
@@ -2379,7 +2382,7 @@ function drawDimensionToolPreview(state) {
   drawDimensionGraphics(state, descriptor, true);
 }
 
-function getDimensionDescriptorFromReferences(state, referenceKeys, anchorPoint, radialDiameter, id) {
+export function getDimensionDescriptorFromReferences(state, referenceKeys, anchorPoint, radialDiameter, id) {
   const model = getDimensionModelFromReferences(state, referenceKeys, radialDiameter);
   if (!model) {
     return null;
@@ -2433,6 +2436,10 @@ function getDimensionModelFromReferences(state, referenceKeys, radialDiameter = 
   }
 
   if (referenceKeys.length >= 2) {
+    if (getCirclePerimeterDimensionPairIds(state, referenceKeys)) {
+      return getCircularOffsetDimensionModel(state, referenceKeys);
+    }
+
     const firstPoint = resolveSketchReferencePoint(state, referenceKeys[0]);
     const secondPoint = resolveSketchReferencePoint(state, referenceKeys[1]);
     if (firstPoint && secondPoint) {
@@ -2473,6 +2480,68 @@ function getDimensionModelFromReferences(state, referenceKeys, radialDiameter = 
   }
 
   return null;
+}
+
+function getCirclePerimeterDimensionPairIds(state, referenceKeys) {
+  if (referenceKeys.length !== 2) return null;
+  const ids = referenceKeys.map(key => {
+    const reference = parseSketchReference(key);
+    const entity = reference && findDocumentEntity(state, reference.entityId);
+    if (!entity || getEntityKind(entity) !== "circle" || reference.target === "center"
+      || Number.isInteger(reference.segmentIndex)) return null;
+    const pointTarget = parsePointTargetKey(state, key);
+    if (key !== reference.entityId && (!pointTarget || !isCurvePerimeterPointTarget(pointTarget))) return null;
+    return getEntityId(entity);
+  });
+  return ids.every(Boolean) && ids[0] !== ids[1] ? ids : null;
+}
+
+function getCircularOffsetDimensionModel(state, referenceKeys) {
+  const ids = getCirclePerimeterDimensionPairIds(state, referenceKeys);
+  if (!ids) return null;
+  const circles = ids.map(key => {
+    const circle = resolveSketchCircleLikeReference(state, key);
+    return circle ? { ...circle, id: key } : null;
+  });
+  if (circles.some(circle => !circle)) return null;
+
+  // Match the directional relation, never infer an offset from concentric geometry alone.
+  const matches = getDocumentConstraints(state.document).filter(constraint => {
+    if (getSketchItemKind(constraint) !== "offset" || getSketchConstraintState(constraint) === "suppressed") return false;
+    const keys = getSketchReferenceKeys(constraint);
+    return keys.length >= 2 && (keys.at(-1) === circles[0].id && keys.slice(0, -1).includes(circles[1].id)
+      || keys.at(-1) === circles[1].id && keys.slice(0, -1).includes(circles[0].id));
+  });
+  if (matches.length !== 1) return null;
+  const keys = getSketchReferenceKeys(matches[0]);
+  if (keys.length !== 2) return null;
+  const gap = Math.abs(circles[0].radius - circles[1].radius);
+  // SketchOffsetRelation uses 1e-7 for its round-contour witness checks.
+  if (!Number.isFinite(gap) || gap <= 1e-7
+    || distanceBetweenWorldPoints(circles[0].center, circles[1].center) > 1e-7) return null;
+  const dimensions = getDocumentDimensions(state.document).filter(dimension =>
+    getSketchItemKind(dimension) === "offset"
+    && getSketchReferenceKeys(dimension).length === 2
+    && getSketchReferenceKeys(dimension).every((key, index) => key === keys[index]));
+  if (dimensions.length > 1) return null;
+  return { kind: "offset", referenceKeys: keys, value: gap };
+}
+
+function getCircularOffsetDimensionGeometry(state, referenceKeys, anchorPoint) {
+  const model = getCircularOffsetDimensionModel(state, referenceKeys);
+  if (!model) return null;
+  const source = resolveSketchCircleLikeReference(state, model.referenceKeys[0]);
+  const dependent = resolveSketchCircleLikeReference(state, model.referenceKeys[1]);
+  const dx = anchorPoint.x - source.center.x, dy = anchorPoint.y - source.center.y;
+  const length = Math.hypot(dx, dy);
+  const direction = Number.isFinite(length) && length > 1e-7
+    ? { x: dx / length, y: dy / length } : { x: 1, y: 0 };
+  return {
+    type: "linear",
+    start: { x: source.center.x + direction.x * source.radius, y: source.center.y + direction.y * source.radius },
+    end: { x: source.center.x + direction.x * dependent.radius, y: source.center.y + direction.y * dependent.radius },
+    anchorPoint
+  };
 }
 
 function getDimensionAnchorPoint(state, kind, referenceKeys) {
@@ -2517,6 +2586,10 @@ function getDimensionAnchorPoint(state, kind, referenceKeys) {
 }
 
 function getDimensionGeometry(state, kind, referenceKeys, anchorPoint) {
+  if (kind === "offset") {
+    return getCircularOffsetDimensionGeometry(state, referenceKeys, anchorPoint);
+  }
+
   if (kind === "radius" || kind === "diameter") {
     const circleLike = resolveSketchCircleLikeReference(state, referenceKeys[0]);
     return circleLike
@@ -3124,6 +3197,7 @@ function getOrCreatePersistentDimensionInput(state, dimension) {
   input.addEventListener("contextmenu", event => openDrawingContextMenu(state, event, input.dataset.dimensionId));
   input.addEventListener("focus", () => {
     clearDimensionInputSkipNextCommit(input);
+    input.dataset.dimensionValueEdited = "false";
     input.dataset.dimensionEditing = "true";
     input.dataset.dimensionDragging = "false";
     input.classList.add("drawing-dimension-input-active");
@@ -3142,6 +3216,7 @@ function getOrCreatePersistentDimensionInput(state, dimension) {
   input.addEventListener("keydown", event => handlePersistentDimensionInputKeyDown(state, input, event));
   input.addEventListener("input", () => {
     clearDimensionInputSkipNextCommit(input);
+    input.dataset.dimensionValueEdited = "true";
     input.dataset.dimensionEditing = "true";
   });
   input.addEventListener("change", () => {
@@ -3275,7 +3350,9 @@ function handlePersistentDimensionInputKeyDown(state, input, event) {
 function commitPersistentDimensionInputValue(state, input) {
   if (input.readOnly) return false;
   const id = input.dataset.dimensionId;
-  const commit = getPersistentDimensionCommitValue(input.value, input.dataset.dimensionValue);
+  const commit = getPersistentDimensionCommitValue(input.value, input.dataset.dimensionValue,
+    input.dataset.dimensionValueEdited === "true");
+  input.dataset.dimensionValueEdited = "false";
   input.dataset.dimensionEditing = "false";
   if (!id || !commit.shouldCommit) {
     input.value = getDimensionDisplayText({
@@ -5774,6 +5851,13 @@ function handleDimensionToolClick(state, screenPoint, event) {
       return false;
     }
 
+    const attemptedPair = draft.selectionKeys.concat(selectionKey);
+    if (getCirclePerimeterDimensionPairIds(state, attemptedPair)) {
+      // Let core report an unsupported circle pair, not silently place the first diameter.
+      request.selectionKeys = attemptedPair;
+      request.radialDiameter = false;
+    }
+
     state.pendingPersistentDimensionEditIds = getCurrentPersistentDimensionIds(state);
     clearTransientDimensionInputs(state);
     state.dimensionDraft = createEmptyDimensionDraft();
@@ -5860,10 +5944,11 @@ export function getDimensionPlacementRequest(state, screenPoint, event = {}) {
     return null;
   }
 
+  const circularOffset = getCircularOffsetDimensionModel(state, selectionKeys);
   return {
-    selectionKeys,
+    selectionKeys: circularOffset ? circularOffset.referenceKeys : selectionKeys,
     anchor: screenToWorld(state, screenPoint),
-    radialDiameter: Boolean(state.dimensionDraft.radialDiameter || event.shiftKey)
+    radialDiameter: !circularOffset && Boolean(state.dimensionDraft.radialDiameter || event.shiftKey)
   };
 }
 

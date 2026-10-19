@@ -581,7 +581,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.Scale => "Scale: select whole geometry, click center, reference radius, then target radius. Esc: cancel.",
         WorkbenchTool.Mirror => "Mirror: select whole geometry, click two points for the mirror axis. Esc: cancel.",
         WorkbenchTool.LinearPattern or WorkbenchTool.CircularPattern => _status,
-        WorkbenchTool.Dimension => "Dimension: click geometry or points, move to place, then click to set. Shift: diameter for arcs. Esc: cancel.",
+        WorkbenchTool.Dimension => _status,
         not null => $"{ActiveToolLabel}: follow canvas prompts. Esc: cancel.",
         null => _status
     });

@@ -27,6 +27,8 @@ public static class SketchCommandFactory
             status = "Placed offset distance dimension. Edit this distance to resize the linked offset.";
             return true;
         }
+        if (selections.Length == 2 && selections.All(s => s.CircleLike is { IsFullCircle: true }))
+            return FailDimension(out dimension, out status, "No single editable Offset relationship between these circles.");
         if (selections.Length == 1 && selections[0].Line is { } line)
         {
             var value = Distance(line.Start, line.End);
@@ -176,7 +178,7 @@ public static class SketchCommandFactory
             pickedGap = Distance(pointB, ProjectPointToLine(pointB, lineA));
         else if (selections[1].Line is { } lineB && selections[0].Point is { } pointA)
             pickedGap = Distance(pointA, ProjectPointToLine(pointA, lineB));
-        else if (selections.All(s => s.CircleLike.HasValue && !s.Point.HasValue))
+        else if (selections.All(s => s.CircleLike.HasValue && (!s.Point.HasValue || s.CircleLike.Value.IsFullCircle)))
             pickedGap = Math.Abs(selections[0].CircleLike!.Value.Radius - selections[1].CircleLike!.Value.Radius);
         if (!pickedGap.HasValue || Math.Abs(pickedGap.Value - gap) > GeometryTolerance) return false;
 
