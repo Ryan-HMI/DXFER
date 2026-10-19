@@ -16,6 +16,7 @@ const native = text => {
 };
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-8, `${a} != ${b}`);
 const results = [], errors = [];
+const selectedCases = process.env.DXFER_CASES?.split(',').filter(Boolean);
 const previewDelayMs = Number(process.env.DXFER_PREVIEW_DELAY_MS ?? 180);
 assert.ok(Number.isFinite(previewDelayMs) && previewDelayMs >= 0 && previewDelayMs <= 5000);
 const baselineRevision = process.env.DXFER_CANVAS_REVISION;
@@ -26,6 +27,7 @@ const sourceReads = [];
 const browser = await chromium.launch({headless: true});
 try {
   const page = await browser.newPage({viewport: {width: 1188, height: 761}, extraHTTPHeaders: {'X-DXFER-API-Key': process.env.DXFER_QA_API_KEY}});
+  const cdp = await page.context().newCDPSession(page);
   page.setDefaultTimeout(10000);
   page.on('dialog', d => d.accept());
   page.on('pageerror', e => errors.push(e.message));
@@ -56,9 +58,9 @@ try {
     await route.fulfill({response, body: previewDelayMs > 0 ? source.replace(signature, signature + hook) : source});
   });
   else page.on('response', response => {
-    if (/\/drawingCanvas\.js(?:\?|$)/.test(response.url())) sourceReads.push(response.body().then(body => {
+    if (/\/drawingCanvas\.js(?:\?|$)/.test(response.url()) && response.status() === 200) sourceReads.push(response.body().then(body => {
       canvasSha256 = createHash('sha256').update(body).digest('hex');
-    }));
+    }).catch(error => errors.push(`Canvas source hash read: ${error.message}`)));
   });
   const ready = async () => {
     await page.goto(url);
@@ -106,6 +108,7 @@ try {
     await expect(field('offset')).toBeVisible();
   };
   const run = async (name, action) => {
+    if (selectedCases && !selectedCases.includes(name)) return;
     try { await action(); results.push({name, passed: true}); console.log(`PASS ${name}`); }
     catch (e) {
       results.push({name, passed: false, error: e.stack}); console.error(`FAIL ${name}: ${e.message}`);
@@ -133,6 +136,159 @@ try {
     assert.deepEqual(state, {connected: true, focused: true, value}, 'typing preserves the same focused input and every decimal character');
     await expect(input).toHaveValue(value);
   };
+
+  const pressDecimalSequence = async (input, keys, label, {pauseAfterDecimal = false, whileMoving = false} = {}) => {
+    await expect(input).toBeVisible(); await input.focus();
+    const node = await input.elementHandle();
+    await node.evaluate(el => {
+      window.__decimalEvents = [];
+      for (const name of ['keydown', 'beforeinput', 'input', 'blur']) el.addEventListener(name, e => {
+        window.__decimalEvents.push({event: name, key: e.key, code: e.code, location: e.location, data: e.data,
+          value: el.value, focused: document.activeElement === el, time: performance.now()});
+      });
+    });
+    const state = () => node.evaluate(el => ({value: el.value, type: el.type, connected: el.isConnected,
+      focused: document.activeElement === el, selectionStart: el.selectionStart, selectionEnd: el.selectionEnd,
+      selectedText: window.getSelection()?.toString(), badInput: el.validity.badInput, time: performance.now()}));
+    await page.keyboard.press('ControlOrMeta+A');
+    const trace = [{phase: 'select-all', ...await state()}];
+    let prefix = '';
+    for (const key of keys) {
+      if (key === 'NumpadDecimal') {
+        // Avoid Playwright's NumLock-off/Delete mapping: send the actual keypad decimal text.
+        const event = {key: '.', code: 'NumpadDecimal', windowsVirtualKeyCode: 110, nativeVirtualKeyCode: 110, location: 3, isKeypad: true};
+        await cdp.send('Input.dispatchKeyEvent', {type: 'keyDown', ...event, text: '.', unmodifiedText: '.'});
+        await cdp.send('Input.dispatchKeyEvent', {type: 'keyUp', ...event});
+      } else await page.keyboard.press(key);
+      if (whileMoving) await move({x: 5 + trace.length * .1, y: -1 - trace.length * .1});
+      const decimal = key === '.' || key === 'NumpadDecimal';
+      await page.waitForTimeout(pauseAfterDecimal && decimal ? 650 : 35);
+      prefix += decimal ? '.' : key;
+      const sample = await state();
+      const expectedValue = sample.type === 'number'
+        ? ['-', '.', '-.'].includes(prefix) ? '' : prefix.replace(/\.$/, '') : prefix;
+      trace.push({phase: 'keypress', key, prefix, expectedValue, prefixPassed: sample.value === expectedValue, ...sample});
+      await writeFile(`${output}/${label}-trace.json`, JSON.stringify({trace, events: await page.evaluate(() => window.__decimalEvents)}, null, 2));
+    }
+    await page.waitForTimeout(450);
+    trace.push({phase: 'settled', ...await state()});
+    await writeFile(`${output}/${label}-trace.json`, JSON.stringify({trace, events: await page.evaluate(() => window.__decimalEvents)}, null, 2));
+    await page.screenshot({path: `${output}/${label}.png`});
+    return trace;
+  };
+
+  const inspectorVariants = [
+    {suffix: 'decimal', keys: ['1', '.', '2', '5'], value: 1.25},
+    {suffix: 'paused-decimal', keys: ['1', '.', '2', '5'], value: 1.25, pauseAfterDecimal: true},
+    {suffix: 'paused-leading-decimal', keys: ['.', '2', '5'], value: .25, pauseAfterDecimal: true}
+  ];
+  await run('numpad-plain-input-control', async () => {
+    const control = await browser.newPage({viewport: {width: 600, height: 200}});
+    try {
+      await control.setContent('<label>Standalone number input <input type="number" value="0.75" step="any"></label>');
+      const session = await control.context().newCDPSession(control);
+      const evidence = [];
+      for (const method of ['playwright-shift', 'cdp-text']) {
+        const input = control.locator('input'); await input.fill('0.75'); await input.focus();
+        await input.evaluate(el => {
+          window.__plainDecimalEvents = [];
+          if (el.dataset.traced) return;
+          el.dataset.traced = 'true';
+          for (const name of ['keydown', 'beforeinput', 'input']) el.addEventListener(name, e => window.__plainDecimalEvents.push({
+            event: name, key: e.key, code: e.code, location: e.location, data: e.data, value: el.value}));
+        });
+        await control.keyboard.press('ControlOrMeta+A'); await control.keyboard.press('1'); await control.waitForTimeout(35);
+        if (method === 'playwright-shift') await control.keyboard.press('Shift+NumpadDecimal');
+        else {
+          const event = {key: '.', code: 'NumpadDecimal', windowsVirtualKeyCode: 110, nativeVirtualKeyCode: 110, location: 3, isKeypad: true};
+          await session.send('Input.dispatchKeyEvent', {type: 'keyDown', ...event, text: '.', unmodifiedText: '.'});
+          await session.send('Input.dispatchKeyEvent', {type: 'keyUp', ...event});
+        }
+        await control.waitForTimeout(650);
+        await control.keyboard.press('2'); await control.waitForTimeout(35);
+        await control.keyboard.press('5'); await control.waitForTimeout(450);
+        evidence.push({method, value: await input.inputValue(), events: await control.evaluate(() => window.__plainDecimalEvents)});
+        await control.screenshot({path: `${output}/plain-numpad-${method}.png`});
+      }
+      await writeFile(`${output}/plain-numpad-control.json`, JSON.stringify(evidence, null, 2));
+      assert.equal(evidence[0].value, '125', 'the textless Shift keypad sequence also fails in a plain input outside DXFer');
+      assert.ok(!evidence[0].events.some(e => e.event === 'beforeinput' && e.data === '.'));
+      assert.equal(evidence[1].value, '1.25');
+      assert.ok(evidence[1].events.some(e => e.event === 'keydown' && e.key === '.' && e.code === 'NumpadDecimal' && e.location === 3));
+      assert.ok(evidence[1].events.some(e => e.event === 'beforeinput' && e.data === '.'));
+    } finally { await control.close(); }
+  });
+  for (const name of ['Fillet', 'Chamfer']) for (const variant of inspectorVariants) await run(`${name.toLowerCase()}-inspector-${variant.suffix}`, async () => {
+    const label = `${name.toLowerCase()}-inspector-${variant.suffix}`;
+    const dxf = ['0','SECTION','2','ENTITIES','0','LINE','8','0','10','0','20','0','11','10','21','0',
+      '0','LINE','8','0','10','0','20','0','11','0','21','10','0','ENDSEC','0','EOF',''].join('\n');
+    await load(dxf, 2); await tool(name); await click({x: 0, y: 0});
+    await expect(canvas).toHaveAttribute('data-corner-preview', 'true');
+    const input = page.locator('.dxfer-corner-size-control input');
+    const trace = await pressDecimalSequence(input, variant.keys, label, variant);
+    assert.equal(Number(trace.at(-1).value), variant.value, `${name} inspector must preserve decimal typing`);
+    assert.ok(trace.every(s => s.connected && s.focused), 'inspector retains original focused node');
+    await page.getByRole('button', {name: 'Confirm', exact: true}).click();
+    const saved = await download(`${label}-committed`);
+    if (name === 'Fillet') near(saved.doc.entities.find(e => e.kind === 'arc').radius, variant.value);
+    else assert.ok(saved.doc.entities.some(e => e.kind === 'line' && Math.abs(e.start.x - variant.value) < 1e-8 && Math.abs(e.end.y - variant.value) < 1e-8));
+  });
+
+  const decimalVariants = [
+    {suffix: 'leading-decimal', keys: ['.', '2', '5'], value: .25, pauseAfterDecimal: true},
+    {suffix: 'zero-leading-decimal', keys: ['0', '.', '2', '5'], value: .25, pauseAfterDecimal: true},
+    {suffix: 'paused-decimal', keys: ['1', '.', '2', '5'], value: 1.25, pauseAfterDecimal: true},
+    {suffix: 'numpad-decimal', keys: ['1', 'NumpadDecimal', '2', '5'], value: 1.25, pauseAfterDecimal: true},
+    {suffix: 'paused-decimal-moving', keys: ['1', '.', '2', '5'], value: 1.25, pauseAfterDecimal: true, whileMoving: true}
+  ];
+  for (const surface of ['offset', 'existing-dimension']) for (const variant of decimalVariants) {
+    if (surface === 'existing-dimension' && variant.whileMoving) continue;
+    const label = `${surface}-${variant.suffix}`;
+    await run(label, async () => {
+      let input, dimensionId;
+      if (surface === 'offset') { await beginOffset(); input = field('offset'); }
+      else {
+        await load();
+        const original = await download(`${label}-before`);
+        dimensionId = original.doc.dimensions.find(d => d.isDriving).id;
+        input = page.locator(`input[data-dimension-id="${dimensionId}"]`);
+        await input.dblclick();
+      }
+      const trace = await pressDecimalSequence(input, variant.keys, label, variant);
+      assert.ok(trace.filter(s => s.phase === 'keypress').every(s => s.prefixPassed), 'each prefix survives input sanitization and rerenders');
+      assert.ok(trace.every(s => s.connected && s.focused), 'decimal typing keeps original node and focus');
+      assert.equal(Number(trace.at(-1).value), variant.value);
+      if (variant.suffix === 'numpad-decimal') {
+        assert.ok(await page.evaluate(() => window.__decimalEvents.some(e => e.event === 'keydown' && e.code === 'NumpadDecimal' && e.key === '.' && e.location === 3)
+          && window.__decimalEvents.some(e => e.event === 'beforeinput' && e.data === '.')), 'actual keypad decimal key and text events');
+      }
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(350); await canvas.press('Escape');
+      const saved = await download(`${label}-committed`);
+      const dimension = saved.doc.dimensions.find(d => surface === 'offset' ? d.kind === 'Offset' : d.id === dimensionId);
+      assert.equal(dimension.value, variant.value, 'native committed dimension matches typed decimal');
+      assert.equal(dimension.isDriving, true);
+    });
+  }
+
+  for (const negative of [false, true]) await run(negative ? 'pattern-center-negative-decimal' : 'pattern-pitch-paused-decimal', async () => {
+    const label = negative ? 'pattern-center-negative-decimal' : 'pattern-pitch-paused-decimal';
+    const circle = '0\nSECTION\n2\nENTITIES\n0\nCIRCLE\n8\n0\n10\n10\n20\n10\n40\n1\n0\nENDSEC\n0\nEOF\n';
+    await load(circle, 1); await click({x: 11, y: 10});
+    const pick = await screen({x: 11, y: 10}); await page.mouse.click(pick.x, pick.y, {button: 'right'});
+    await page.getByRole('dialog', {name: 'Drawing context commands'}).getByRole('button', {name: 'Pattern', exact: true}).click();
+    const editor = page.getByRole('region', {name: 'Pattern settings', exact: true});
+    await expect(editor).toBeVisible();
+    if (negative) await editor.getByLabel('Pattern layout', {exact: true}).selectOption('Radial');
+    const input = editor.getByLabel(negative ? 'Pattern center X' : 'Pattern X pitch', {exact: true});
+    const trace = await pressDecimalSequence(input, negative ? ['-', '.', '2', '5'] : ['1', '.', '2', '5'], label, {pauseAfterDecimal: true});
+    assert.ok(trace.every(s => s.connected && s.focused), 'pattern decimal entry retains node and focus');
+    assert.equal(Number(trace.at(-1).value), negative ? -.25 : 1.25);
+    await editor.getByRole('button', {name: 'Confirm', exact: true}).click(); await expect(editor).toBeHidden();
+    const saved = await download(`${label}-committed`);
+    const pattern = saved.doc.metadata.patterns[0];
+    near(negative ? (pattern.center.x ?? pattern.center[0]) : pattern.xPitch, negative ? -.25 : 1.25);
+  });
 
   await run('offset-continuous-motion', async () => {
     await beginOffset();
@@ -363,5 +519,6 @@ try {
   assert.ok(canvasSha256, 'capture the actual tested canvas source hash');
   await writeFile(`${output}/results.json`, JSON.stringify({url, build, baselineRevision, previewDelayMs, canvasSha256, results, errors}, null, 2));
   assert.deepEqual(errors, []);
+  assert.ok(results.length > 0, 'at least one requested case must run');
   assert.ok(results.every(r => r.passed), `Continuous-preview regression failed; see ${output}/results.json`);
 } finally { await browser.close(); }
