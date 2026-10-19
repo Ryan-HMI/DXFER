@@ -1,6 +1,7 @@
 # Persistent offset intent
 
-Dev-only candidate; no production/test changes.
+Installed on DXFer Dev as `2ba99278fa867349406dd8380f02474aa44804de`
+at 2026-10-19 04:07 UTC. No production/test changes.
 
 ## Contract
 
@@ -55,3 +56,18 @@ source edges. Existing vertex indices are preserved across ring rotation/reversa
 General simultaneous solving of arbitrary additional target
 constraints is not claimed. Failed edits retain geometry and report unresolved intent.
 Production/Test remain on older native readers; use this feature in DXFer Dev.
+
+## Installed Verification
+
+Public browser replay at https://dxferdev.sync.harrisonmetals.com passes the same
+creation, gap-edit, held-pointer, rejection/recovery, history and native reopen cases.
+Rendered build tooltip independently reads `2ba9927`. Screenshots inspected at
+`/tmp/offset-intent-dev`; all 20 public DXF fixtures audit with zero errors/fixes.
+No browser exceptions or post-deploy warning/error journal entries.
+
+Four installed assemblies match the published candidate; ten runtime settings
+preserved, health 200 and anonymous root 302. Normal Google authentication and
+disabled Sync integration remain. Production/Test process IDs unchanged.
+Rollback: `/home/ryan/dxfer-runtime/dev-publish-before-2ba9927`.
+
+Independent Flux/Ryan acceptance remains pending, not implied by owner browser QA.
