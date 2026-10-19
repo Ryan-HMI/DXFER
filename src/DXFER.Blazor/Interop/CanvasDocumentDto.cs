@@ -186,7 +186,8 @@ public sealed record CanvasDocumentDto(
             dimension.Id,
             dimension.Kind.ToString(),
             dimension.ReferenceKeys,
-            dimension.Value,
+            !dimension.IsDriving && SketchDimensionSolverService.TryGetDimensionMeasurement(document, dimension, out var measured)
+                ? measured : dimension.Value,
             dimension.Anchor is null ? null : FromPoint(dimension.Anchor.Value),
             dimension.IsDriving,
             state.ToString(),

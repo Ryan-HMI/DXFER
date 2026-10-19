@@ -9,7 +9,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261019-offset-intent";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261019-context-dimensions";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -122,6 +122,12 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public Action<string?>? ActiveSelectionChanged { get; set; }
+
+    [Parameter] public Func<string?, string[], double, double, Task>? ContextMenuRequested { get; set; }
+
+    [JSInvokable]
+    public Task OnContextMenuRequested(string? key, string[] selection, double x, double y) =>
+        ContextMenuRequested?.Invoke(key, selection, x, y) ?? Task.CompletedTask;
 
     [Parameter]
     public Action<string, IReadOnlyList<CanvasPointDto>, IReadOnlyDictionary<string, double>, string?, bool, IReadOnlyList<CanvasCreationSnapDto>?>? ToolCommitRequested { get; set; }

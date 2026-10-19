@@ -1,5 +1,18 @@
 export function createToolHotkeyListener(dotNetReference) {
     const handleKeyDown = async (event) => {
+        const context = event.target?.closest?.('.dxfer-context-menu');
+        if (context) {
+            if (['Tab', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)
+                && event.target.tagName !== 'SELECT') {
+                const controls = [...context.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled)')];
+                const index = controls.indexOf(document.activeElement);
+                const backward = event.key === 'ArrowUp' || (event.key === 'Tab' && event.shiftKey);
+                const next = event.key === 'Home' ? 0 : event.key === 'End' ? controls.length - 1
+                    : (index + (backward ? -1 : 1) + controls.length) % controls.length;
+                event.preventDefault(); controls[next]?.focus();
+            }
+            return;
+        }
         const key = getToolHotkeyEventKey(event);
         const editableTarget = isEditableTarget(event.target);
 

@@ -1,0 +1,86 @@
+import assert from 'node:assert/strict';
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+const {chromium,expect}=await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright/test');
+const url=process.env.DXFER_QA_URL ?? 'http://127.0.0.1:5049';
+assert.ok(['127.0.0.1','dxferdev.sync.harrisonmetals.com'].includes(new URL(url).hostname));
+const output=process.env.DXFER_SCREENSHOTS ?? '/tmp/context-commands';await mkdir(output,{recursive:true});
+const native=text=>{const a=text.trim().split(/\r?\n/);let hex='';for(let i=0;i<a.length;i+=2)if(a[i].trim()==='310')hex+=a[i+1].trim();return JSON.parse(Buffer.from(hex,'hex'));};
+const fixture=await readFile(new URL('./fixtures/selection-offset/rectangle.dxf',import.meta.url));
+const browser=await chromium.launch({headless:true});
+try {
+ const page=await browser.newPage({viewport:{width:1188,height:761},extraHTTPHeaders:{'X-DXFER-API-Key':process.env.DXFER_QA_API_KEY}});
+ page.setDefaultTimeout(10000);page.on('dialog',d=>d.accept());
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ page.on('console',m=>{if(m.type()==='error' && /unhandled|circuit|exception/i.test(m.text()))errors.push(m.text());});
+ await page.goto(url);await page.waitForFunction(()=>document.querySelector('input[type=file]')?._blazorInputFileNextFileId!==undefined);
+ const canvas=page.locator('canvas.drawing-canvas'), context=page.getByRole('dialog',{name:'Drawing context commands'});
+ const tool=async name=>{await page.getByRole('button',{name,exact:true}).click();await page.waitForTimeout(150);};
+ const menu=async name=>{await tool('Open application menu');await page.getByRole('button',{name:'File',exact:true}).hover();await tool(name);};
+ const load=async(buffer,count=4)=>{await menu('New drawing');await expect(canvas).toHaveAttribute('data-entity-count','0');await page.locator('input[type=file]').setInputFiles({name:'context.dxf',mimeType:'application/dxf',buffer:Buffer.from(buffer)});await expect(canvas).toHaveAttribute('data-entity-count',String(count));await tool('Fit extents');await canvas.press('Escape');};
+ const download=async name=>{const pending=page.waitForEvent('download');await menu('Download DXF');const text=await readFile(await(await pending).path(),'utf8');await writeFile(`${output}/${name}.dxf`,text);return {text,doc:native(text)};};
+ const screen=p=>canvas.evaluate((c,p)=>({x:c.getBoundingClientRect().left+p.x*+c.dataset.scale+ +c.dataset.offsetX,y:c.getBoundingClientRect().top-p.y*+c.dataset.scale+ +c.dataset.offsetY}),p);
+ const click=async(p,button='left')=>{const s=await screen(p);await page.mouse.click(s.x,s.y,{button});};
+ const dimension=page.locator('input[data-dimension-id="length"]');
+ await load(fixture);const before=await download('before');
+ await dimension.click({button:'right'});await expect(context).toBeVisible();
+ await page.screenshot({path:`${output}/dimension-menu.png`});
+ await expect(page.getByRole('button',{name:'Undo',exact:true})).toBeDisabled();
+ await context.getByRole('radio',{name:'Driven',exact:true}).check();await expect(context).toBeHidden();
+ await expect(dimension).toHaveAttribute('readonly','');await expect(dimension).toHaveValue('(10)');
+ const driven=await download('driven');assert.equal(driven.doc.dimensions[0].isDriving,false);assert.deepEqual(driven.doc.entities,before.doc.entities);
+ await tool('Undo');await expect(dimension).not.toHaveAttribute('readonly','');
+ await tool('Redo');await expect(dimension).toHaveValue('(10)');
+ await load(driven.text);await expect(dimension).toHaveValue('(10)');
+ // Remove the three independent overlapping-corner edges so the endpoint pick is unambiguous.
+ for (const p of [{x:10,y:2},{x:3,y:6},{x:0,y:2}]) {await click(p);await canvas.press('Delete');await page.waitForTimeout(200);}
+ await expect(canvas).toHaveAttribute('data-entity-count','1');
+ const a=await screen({x:10,y:0}),b=await screen({x:12,y:0});
+ await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:10});await page.mouse.up();
+ await page.waitForTimeout(400);const resized=await download('driven-resized');
+ assert.ok(resized.doc.dimensions[0].value>11.9);assert.equal(resized.doc.dimensions[0].isDriving,false);
+ await dimension.click({button:'right'});await context.getByRole('radio',{name:'Driving',exact:true}).check();
+ const promoted=await download('promoted');assert.equal(promoted.doc.dimensions[0].isDriving,true);assert.deepEqual(promoted.doc.entities,resized.doc.entities);
+ await load(promoted.text,1);await expect(dimension).not.toHaveAttribute('readonly','');
+ console.log('PASS mode toggle, visible/read-only Driven, drag measurement, history, reopen, promotion without geometry changes');
+
+ await load(fixture);
+ const top=await screen({x:-0.5,y:6.5}),bottom=await screen({x:10.5,y:-0.5});
+ await page.mouse.move(top.x,top.y);await page.mouse.down();await page.mouse.move(bottom.x,bottom.y,{steps:10});await page.mouse.up();
+ await expect(canvas).toHaveAttribute('data-selected-count','4');await click({x:10,y:3},'right');
+ await context.getByRole('button',{name:'Offset',exact:true}).click();await expect(canvas).toHaveAttribute('data-selected-count','4');
+ await expect(canvas).toHaveAttribute('data-active-tool','offset');
+ await click({x:5,y:-1});await expect(canvas).toHaveAttribute('data-entity-count','5');await canvas.press('Escape');
+ const offset=await download('context-offset');assert.equal(offset.doc.entities.at(-1).kind,'polyline');assert.equal(offset.doc.constraints.at(-1).kind,'Offset');
+ await tool('Undo');await expect(canvas).toHaveAttribute('data-entity-count','4');
+ await canvas.press('Escape');await click({x:0,y:6},'right');
+ await expect(context.getByRole('button',{name:'Chamfer',exact:true})).toBeVisible();
+ await page.screenshot({path:`${output}/corner-menu.png`});
+ await context.getByRole('button',{name:'Chamfer',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Confirm',exact:true})).toBeEnabled();
+ await tool('Confirm');await expect(canvas).toHaveAttribute('data-entity-count','5');
+ await download('context-chamfer');await tool('Undo');await expect(canvas).toHaveAttribute('data-entity-count','4');
+ console.log('PASS retained selection offset and contextual corner staged confirmation');
+
+ await canvas.press('Escape');await click({x:2,y:6},'right');
+ await context.getByRole('button',{name:'Toggle construction',exact:true}).click();
+ const construction=await download('construction');assert.equal(construction.doc.entities.filter(e=>e.isConstruction).length,1);
+ await tool('Undo');
+ await tool('Add layer');await page.getByLabel('Layer name',{exact:true}).fill('DETAILS');await tool('Rename');
+ await canvas.press('Escape');await click({x:2,y:6},'right');await context.getByLabel('Move to layer',{exact:true}).selectOption('DETAILS');
+ const moved=await download('layer-moved');assert.equal(moved.doc.metadata.entityStyles.edge2.layerName,'DETAILS');
+ await tool('Undo');assert.equal((await download('layer-undo')).doc.metadata.entityStyles.edge2.layerName,'Parts');await tool('Redo');
+ await tool('Lock layer DETAILS');
+ const lockBefore=await download('locked');await click({x:2,y:6},'right');
+ if(await context.getByRole('button',{name:'Toggle construction',exact:true}).count())await expect(context.getByRole('button',{name:'Toggle construction',exact:true})).toBeDisabled();
+ await context.press('Escape');assert.deepEqual((await download('locked-after')).doc,lockBefore.doc);
+ await tool('Unlock layer DETAILS');
+ await page.setViewportSize({width:1100,height:705});await tool('Fit extents');
+ await click({x:10,y:0},'right');await expect(context).toBeVisible();
+ const bounds=await context.boundingBox();assert.ok(bounds.x>=0 && bounds.y>=0 && bounds.x+bounds.width<=1100 && bounds.y+bounds.height<=705);
+ await context.press('Tab');assert.equal(await context.evaluate(c=>c.contains(document.activeElement)),true);
+ await page.screenshot({path:`${output}/desktop-menu.png`});await page.keyboard.press('Escape');await expect(context).toBeHidden();await expect(canvas).toBeFocused();
+ await click({x:10,y:3},'right');await page.mouse.click(5,5);await expect(context).toBeHidden();
+ assert.deepEqual(errors,[]);
+ const build=await page.locator('.app-brand').getAttribute('title');if(process.env.DXFER_EXPECTED_REVISION)assert.ok(build.includes(process.env.DXFER_EXPECTED_REVISION));console.log('PASS construction/layer/lock, keyboard/outside dismissal and desktop bounds',build);
+} catch(error) {for(const p of browser.contexts().flatMap(c=>c.pages()))await p.screenshot({path:`${output}/failure.png`});throw error;}
+finally {await browser.close();}

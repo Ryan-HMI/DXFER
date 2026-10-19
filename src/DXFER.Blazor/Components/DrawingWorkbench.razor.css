@@ -10,6 +10,48 @@
     color: var(--dx-text, #f4f7fb);
 }
 
+.dxfer-context-dismiss { position: fixed; inset: 0; z-index: 100; }
+.dxfer-context-menu {
+    position: fixed;
+    z-index: 101;
+    box-sizing: border-box;
+    width: min(240px, calc(100vw - 16px));
+    max-height: min(332px, calc(100vh - 16px));
+    overflow: auto;
+    padding: 6px;
+    border: 1px solid var(--dx-border-strong);
+    border-radius: 6px;
+    background: var(--dx-panel);
+    color: var(--dx-text);
+    box-shadow: 0 8px 24px #0006;
+    font-size: 13px;
+}
+.dxfer-context-menu button, .dxfer-context-menu fieldset label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 32px;
+    padding: 5px 8px;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 3px;
+    color: inherit;
+    background: transparent;
+    text-align: left;
+    font: inherit;
+    overflow-wrap: anywhere;
+}
+.dxfer-context-menu button:hover:not(:disabled), .dxfer-context-menu fieldset label:hover { background: var(--dx-chrome); }
+.dxfer-context-menu :focus-visible { outline: 2px solid var(--dx-accent, #72b6e8); outline-offset: -2px; }
+.dxfer-context-menu button:disabled, .dxfer-context-menu fieldset:disabled { opacity: 0.45; }
+.dxfer-context-menu ::deep svg { width: 18px; height: 18px; flex: 0 0 18px; }
+.dxfer-context-menu fieldset { border: 0; padding: 0; margin: 0; }
+.dxfer-context-menu legend, .dxfer-context-empty { padding: 5px 8px; color: var(--dx-muted); }
+.dxfer-context-menu legend { margin: 0; font-size: 12px; font-weight: 600; float: none; }
+.dxfer-context-layer { display: grid; gap: 4px; padding: 6px 8px; }
+.dxfer-context-layer select { width: 100%; min-width: 0; min-height: 30px; color: var(--dx-text); background: var(--dx-chrome); border: 1px solid var(--dx-border); border-radius: 3px; }
+
 .dxfer-canvas-panel {
     grid-row: 1;
     min-width: 0;

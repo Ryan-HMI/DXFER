@@ -29,7 +29,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     [Parameter]
     public bool EnableSyncIntegration { get; set; } = true;
 
-    private const string HotkeyModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js?v=20260506-all-hotkey-keys";
+    private const string HotkeyModulePath = "./_content/DXFER.Blazor/workbenchHotkeys.js?v=20261019-context-dimensions";
     private const string DownloadModulePath = "./_content/DXFER.Blazor/downloadFile.js?v=20260504-save";
     private const string SyncWindowModulePath = "./_content/DXFER.Blazor/syncWindow.js?v=20261013-document-lifecycle";
     private const long MaxDxfFileSize = 25 * 1024 * 1024;
@@ -129,6 +129,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         PublishDocumentState();
+        if (_contextOpen && _contextFocus)
+        {
+            _contextFocus = false;
+            await _contextMenu.FocusAsync(preventScroll: true);
+        }
         if (_focusInspectorToggleAfterRender)
         {
             _focusInspectorToggleAfterRender = false;
@@ -2170,6 +2175,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         var nextValue = existing.Kind == SketchDimensionKind.Count
             ? PolygonEntity.NormalizeSideCount(value)
             : value;
+        if (!existing.IsDriving)
+        {
+            _status = "Driven dimensions are measurements. Use the context menu to switch to Driving.";
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
         var nextDimension = new SketchDimension(
             existing.Id,
             existing.Kind,
@@ -2371,6 +2382,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void ApplyDocumentChange(DrawingDocument nextDocument, string status)
     {
+        nextDocument = SketchDimensionModeService.RefreshMeasurements(nextDocument);
         _solveFailureStatus = null;
         if (!DrawingLayerService.PreservesProtectedGeometry(_document, nextDocument))
         {

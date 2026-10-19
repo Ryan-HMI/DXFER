@@ -33,6 +33,7 @@
                        HoveredEntityChanged="OnHoveredEntityChanged"
                        SelectionChanged="OnSelectionChanged"
                        ActiveSelectionChanged="OnActiveSelectionChanged"
+                       ContextMenuRequested="OpenContextMenu"
                        ToolCommitRequested="OnToolCommitRequested"
                        ToolModeChanged="OnCanvasToolModeChanged"
                        SplitAtPointRequested="OnSplitAtPointRequested"
@@ -48,6 +49,49 @@
                        GeometryDragRequested="OnGeometryDragRequested"
                        DeleteSelectionRequested="DeleteSelectedGeometry" />
     </main>
+
+    @if (_contextOpen)
+    {
+        <div class="dxfer-context-dismiss" @onpointerdown="CloseContextMenu" @oncontextmenu:preventDefault="true"></div>
+        <section class="dxfer-context-menu" style="@ContextStyle" role="dialog" aria-label="Drawing context commands"
+                 tabindex="-1" @ref="_contextMenu" @onkeydown="ContextKeyDown" @onkeydown:stopPropagation="true"
+                 @oncontextmenu:preventDefault="true">
+            @if (ContextDimension is { } dimension)
+            {
+                <fieldset disabled="@(!ContextEditable)">
+                    <legend>Dimension</legend>
+                    <label><input type="radio" name="dimension-mode" checked="@dimension.IsDriving" @onchange="() => ContextDimensionMode(true)" />Driving</label>
+                    <label><input type="radio" name="dimension-mode" checked="@(!dimension.IsDriving)" @onchange="() => ContextDimensionMode(false)" />Driven</label>
+                </fieldset>
+            }
+            else if (_contextEntities.Length > 0)
+            {
+                @if (ContextCorner)
+                {
+                    <button type="button" disabled="@(!ContextEditable)" @onclick="() => ContextCommand(WorkbenchCommandId.Fillet, true)"><CadIcon Name="CadIconName.Fillet" />Fillet</button>
+                    <button type="button" disabled="@(!ContextEditable)" @onclick="() => ContextCommand(WorkbenchCommandId.Chamfer, true)"><CadIcon Name="CadIconName.Chamfer" />Chamfer</button>
+                }
+                <button type="button" disabled="@(!ContextEditable)" @onclick="() => ContextCommand(WorkbenchCommandId.Offset)"><CadIcon Name="CadIconName.Offset" />Offset</button>
+                <button type="button" disabled="@(!ContextEditable)" @onclick="() => ContextCommand(WorkbenchCommandId.Translate)"><CadIcon Name="CadIconName.Move" />Move</button>
+                <button type="button" disabled="@(!ContextEditable)" @onclick="() => ContextCommand(WorkbenchCommandId.Dimension)"><CadIcon Name="CadIconName.Dimension" />Dimension</button>
+                <button type="button" disabled="@(!ContextEditable)" @onclick="() => ContextCommand(WorkbenchCommandId.Construction)"><CadIcon Name="CadIconName.Construction" />Toggle construction</button>
+                <label class="dxfer-context-layer">Move to layer
+                    <select aria-label="Move to layer" value="@_contextLayer" disabled="@(!ContextEditable)" @onchange="ContextMoveLayer">
+                        <option value="" disabled>Select layer</option>
+                        @foreach (var layer in Layers)
+                        {
+                            <option value="@layer.Key" disabled="@(layer.Value.IsHidden || layer.Value.IsLocked)">@layer.Key</option>
+                        }
+                    </select>
+                </label>
+            }
+            else
+            {
+                <span class="dxfer-context-empty">No editable geometry</span>
+            }
+            <button type="button" @onclick="CloseContextMenu"><CadIcon Name="CadIconName.Close" />Close</button>
+        </section>
+    }
 
     @if (EnableFullEditing)
     {

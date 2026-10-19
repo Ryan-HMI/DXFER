@@ -64,6 +64,8 @@ export function getDimensionRenderStyle(isPreview, visualState = null, lightBack
 }
 
 export function getDimensionDisplayText(dimension) {
+  if (dimension?.isDriving === false)
+    return `(${getDimensionDisplayText({ ...dimension, isDriving: true })})`;
   if (String(dimension && dimension.kind || "").toLowerCase() === "count") {
     const value = Number(dimension && dimension.value);
     return Number.isFinite(value) ? String(clamp(Math.round(value), 3, 64)) : "";

@@ -1848,6 +1848,9 @@ public static class DrawingModifyService
         return true;
     }
 
+    public static bool CanModifySelectedCorner(DrawingDocument document, IEnumerable<string> selectionKeys) =>
+        TryResolveSelectedCornerEdges(document, selectionKeys, out _, out _);
+
     private static bool TryResolveSelectedCornerEdges(
         DrawingDocument document,
         IEnumerable<string> selectionKeys,

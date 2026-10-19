@@ -48,7 +48,7 @@ import {
   shouldCommitDimensionInputOnBlur,
   shouldCommitDimensionInputOnChange,
   shouldRefreshDimensionInputValue
-} from "./canvas/dimensionPresentation.js?v=20261019-offset-intent";
+} from "./canvas/dimensionPresentation.js?v=20261019-context-dimensions";
 import {
   getDefaultActiveDimensionKey,
   getDimensionKeys,
@@ -232,7 +232,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
   const onPointerLeave = () => handlePointerLeave(state);
   const onWheel = event => handleWheel(state, event);
   const onDoubleClick = event => handleDoubleClick(state, event);
-  const onContextMenu = event => event.preventDefault();
+  const onContextMenu = event => openDrawingContextMenu(state, event);
   const onKeyDown = event => handleKeyDown(state, event);
 
   state.canvas.style.touchAction = "none";
@@ -337,7 +337,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
     selectEntities(ids) {
       clearInteractionState(state);
       const allowed = new Set(getDocumentEntities(state.document).filter(e => !e.isLocked).map(getEntityId));
-      state.selectedKeys = new Set(ids.filter(id => allowed.has(id)));
+      state.selectedKeys = new Set(ids.filter(key => allowed.has(getReferenceEntityId(key)) && resolveSelectionTarget(state, key)));
       state.activeSelectionKey = Array.from(state.selectedKeys)[0] || null;
       updateDebugAttributes(state);
       draw(state);
@@ -2174,6 +2174,7 @@ function getPersistentDimensionDescriptor(state, dimension) {
     id,
     kind,
     label: getDimensionLabel(kind),
+    isDriving: isDrivingPreviewDimension(dimension),
     value,
     state: stateText,
     affectedReferenceKeys,
@@ -2965,6 +2966,10 @@ function updatePersistentDimensionInputs(state, dimensions) {
     input.dataset.dimensionLabel = dimension.label;
     input.dataset.dimensionKind = dimension.kind;
     input.dataset.dimensionValue = String(dimension.value);
+    input.readOnly = dimension.isDriving === false;
+    input.dataset.dimensionDriving = String(dimension.isDriving !== false);
+    input.title = `${dimension.label} (${input.readOnly ? "Driven" : "Driving"})`;
+    input.setAttribute("aria-label", input.title);
     input.dataset.dimensionEditing = isEditing ? "true" : "false";
     const inputPoint = clampDimensionInputScreenPoint(state, dimension.point);
     input.style.left = `${inputPoint.x}px`;
@@ -2998,6 +3003,7 @@ function getOrCreatePersistentDimensionInput(state, dimension) {
   input.addEventListener("pointercancel", event => handlePersistentDimensionPointerCancel(state, input, event));
   input.addEventListener("click", event => event.stopPropagation());
   input.addEventListener("dblclick", event => handlePersistentDimensionDoubleClick(state, input, event));
+  input.addEventListener("contextmenu", event => openDrawingContextMenu(state, event, input.dataset.dimensionId));
   input.addEventListener("focus", () => {
     clearDimensionInputSkipNextCommit(input);
     input.dataset.dimensionEditing = "true";
@@ -3036,6 +3042,7 @@ function getOrCreatePersistentDimensionInput(state, dimension) {
 function handlePersistentDimensionPointerDown(state, input, event) {
   event.stopPropagation();
   if (!isPrimaryPointerButton(event)) {
+    event.preventDefault();
     return;
   }
 
@@ -3146,6 +3153,7 @@ function handlePersistentDimensionInputKeyDown(state, input, event) {
 }
 
 function commitPersistentDimensionInputValue(state, input) {
+  if (input.readOnly) return false;
   const id = input.dataset.dimensionId;
   const commit = getPersistentDimensionCommitValue(input.value, input.dataset.dimensionValue);
   input.dataset.dimensionEditing = "false";
@@ -3164,6 +3172,7 @@ function commitPersistentDimensionInputValue(state, input) {
 function handlePersistentDimensionDoubleClick(state, input, event) {
   event.preventDefault();
   event.stopPropagation();
+  if (input.readOnly) return;
   clearDimensionInputSkipNextCommit(input);
   selectPersistentDimension(state, input.dataset.dimensionId);
   focusElement(input);
@@ -4773,6 +4782,29 @@ function handlePointerMove(state, event) {
   }
 }
 
+export function contextSelectionForTarget(selectedKeys, target) {
+  if (!target || target.dynamic || !target.entityId || target.entityId === "$origin") return [];
+  const selected = Array.from(selectedKeys || []);
+  return selected.some(key => getReferenceEntityId(key) === target.entityId) ? selected : [target.key];
+}
+
+function openDrawingContextMenu(state, event, dimensionId = null) {
+  event.preventDefault();
+  event.stopPropagation();
+  if (state.disposed || state.activeTool !== "select" || state.geometryDrag || state.dimensionDrag) return;
+  const target = dimensionId ? null : findNearestTarget(state, getPointerScreenPoint(state, event));
+  dimensionId ||= target?.dimensionId;
+  if (dimensionId && state.persistentDimensionInputs?.has(dimensionId)) {
+    const input = state.persistentDimensionInputs.get(dimensionId);
+    input.dataset.skipNextBlurCommit = "true";
+    input.dataset.dimensionEditing = "false";
+  }
+  const selection = dimensionId ? [] : contextSelectionForTarget(state.selectedKeys, target);
+  const key = dimensionId ? `dimension:${dimensionId}` : target?.key || null;
+  state.clickCandidate = null;
+  invokeDotNet(state, "OnContextMenuRequested", key, selection, event.clientX, event.clientY);
+}
+
 function handlePointerDown(state, event) {
   if (state.disposed) {
     return;
@@ -5932,6 +5964,7 @@ function handlePointerLeave(state) {
 }
 
 function handleKeyDown(state, event) {
+  if (event.target?.closest?.('.dxfer-context-menu')) return;
   if (state.disposed || isEditableKeyTarget(event.target)) {
     return;
   }

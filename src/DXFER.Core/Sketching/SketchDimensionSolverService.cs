@@ -69,6 +69,9 @@ public static class SketchDimensionSolverService
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(dimension);
 
+        if (!dimension.IsDriving)
+            return TryGetDimensionMeasurement(document, dimension, out var measured) && double.IsFinite(measured);
+
         if (dimension.Kind == SketchDimensionKind.Offset && (dimension.Value <= 0
             || !SketchOffsetRelation.IsSatisfied(document.Entities, dimension.ReferenceKeys))) return false;
 

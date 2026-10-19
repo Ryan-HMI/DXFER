@@ -51,7 +51,7 @@ function assertAxisProjection(state, axis, textWidth = 20) {
   const references = [dimension.geometry.start, dimension.geometry.end].map(point => toScreen(state, point));
   assert.deepEqual(dimension.point, anchor);
   assert.equal(dimension.value, before.dimensions[0].value);
-  assert.equal(getDimensionDisplayText(dimension), String(dimension.value));
+  assert.equal(getDimensionDisplayText(dimension), dimension.isDriving === false ? `(${dimension.value})` : String(dimension.value));
 
   for (let index = 0; index < 2; index++) {
     const reference = references[index];
