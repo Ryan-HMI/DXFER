@@ -23,3 +23,13 @@ Real canvas baseline on installed Dev5a21cd4 reproduces both H and V refusal. Fi
 Existing drawings will not be rewritten. The reproduced solver failure retains the original geometry with failed intent; it needs deliberate reapplication, not geometric repair. If a separately damaged save exists, use Undo or a verified original rather than guessed reconstruction. No existing-record repair was performed or established necessary by this reproduction.
 
 Final local replay: all seven browser scenarios pass with no page/circuit errors (`/tmp/dxfer-polyline-axis-final/results.json`). Owner inspected the applied-contour screenshot. Tests use disposable fixtures and actual pointer targets; rendered badge rectangles are observed only to locate the Offset glyph for a real click/delete. No application selection or document state is changed through browser evaluation.
+
+## Deployment
+
+Committed/pushed 969255146c5a322da253e28d43fe0578198f8fde and installed only at https://dxferdev.sync.harrisonmetals.com on 2026-10-19T05:06Z. Four installed assemblies match the candidate, ten runtime settings are unchanged, health is 200 and anonymous root redirects to normal sign-in (302). Sync callbacks remain disabled; Production/Test runtime PIDs are unchanged. Rollback directory: `/home/ryan/dxfer-runtime/dev-publish-before-9692551`. Public browser replay is running, not yet independently accepted by Flux/Ryan.
+
+Public replay completed: all seven scenarios pass on rendered build9692551, no page/circuit errors. All 41 public exports audit with zero errors/fixes; the final local suite also has 41 clean exports. Owner inspected installed applied-contour and linked-refusal screenshots. Runtime warning journal is empty since deployment. Evidence: `/tmp/polyline-axis-dev/results.json`, matching DXFs and PNGs. This supersedes the in-progress notes above; independent Flux/Ryan acceptance remains pending.
+
+## Separate recovery issue
+
+Read-only investigation of AXIS-RECOVERY-20261019 found that a perpendicular bare line projects to zero length, so validation correctly refuses that candidate. Deleting the earlier opposing constraint does not re-solve the remaining failed intent. A follow-on needs a non-collapsing axis candidate and a deliberate deletion/recovery contract; automatic retry of arbitrary old failed intent must not be introduced casually. This deployment does not change those semantics.

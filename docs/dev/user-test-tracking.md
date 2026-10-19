@@ -2,7 +2,7 @@
 
 ## Current polyline axis investigation, 2026-10-19
 
-- POLYLINE-AXIS-20261019: USER-FAILED; automated and browser reproduction in progress. Horizontal/Vertical on offset polyline edges must preserve the whole contour. Linked Offset refusal and unlinked-copy editing are distinct checks.
+- POLYLINE-AXIS-20261019: USER-FAILED awaiting retest; AUTOMATED-PASSED and APP-VERIFIED on Dev9692551. Shared H/V writeback preserves whole contour.1890 core/942 JS/build pass;7 public browser scenarios and41 clean export audits cover open/closed edges, Fixed/driving conflicts, linked Offset refusal, actual unlink then alignment, history/native reopen/edit again. No automatic saved-data repair; Flux/Ryan acceptance not claimed.
 - AXIS-RECOVERY-20261019, CIRCLE-DIAMETER-20261019 and SNAP-CUE-INFO-20261019: recovered user reports recorded in bug-feature-log; queued, not implemented or ready for acceptance.
 
 ## Current preview/input repair, 2026-10-19
