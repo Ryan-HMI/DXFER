@@ -6374,7 +6374,8 @@ function getNearestEntityHits(state, screenPoint, constraintTool = null, include
     const pointHit = getEntityPointHit(state, entity, screenPoint);
     if (pointHit
       && (!constraintTool || isTargetEligibleForConstraintTool(constraintTool, pointHit.target))
-      && (!nearestPointHit || pointHit.distance < nearestPointHit.distance)) {
+      && (preferRealGripAtSamePoint(state, pointHit, nearestPointHit)
+        ?? (!nearestPointHit || pointHit.distance < nearestPointHit.distance))) {
       nearestPointHit = pointHit;
     }
 
@@ -6391,6 +6392,16 @@ function getNearestEntityHits(state, screenPoint, constraintTool = null, include
   }
 
   return { nearestPointHit, nearestEdgeHit, edgeHits };
+}
+
+function preferRealGripAtSamePoint(state, candidate, current) {
+  if (state.activeTool !== "select" || !candidate || !current) return null;
+  const a = getTargetWorldSnapPoint(candidate.target), b = getTargetWorldSnapPoint(current.target);
+  if (!a || !b || !sameOptionalWorldPoint(a, b)) return null;
+  const synthetic = target => target.kind === "point" && /^(intersection|tangent)-/.test(target.label || "");
+  const candidateSynthetic = synthetic(candidate.target), currentSynthetic = synthetic(current.target);
+  // A crossing is a snap location, not an editable vertex of the carrier entity.
+  return candidateSynthetic !== currentSynthetic ? !candidateSynthetic : null;
 }
 
 function findNearestWholeEntityTarget(state, screenPoint) {
@@ -6572,18 +6583,15 @@ function getEntityPointHit(state, entity, screenPoint) {
     const distance = distanceBetweenScreenPoints(screenPoint, screenSnapPoint);
     const priority = Number(snapPoint.priority || 0);
     const nearestPriority = nearestHit ? Number(nearestHit.priority || 0) : 0;
-    if (!nearestHit
+    const candidate = { target: createPointTarget(entity, snapPoint.label, snapPoint.point), distance, priority };
+    if (preferRealGripAtSamePoint(state, candidate, nearestHit) ?? (!nearestHit
       || distance < nearestHit.distance
       || (priority > nearestPriority
         && distance <= PRIORITY_POINT_HIT_TOLERANCE
         && nearestHit.distance <= SNAP_POINT_TOLERANCE
         && nearestHit.distance > STRONG_POINT_HIT_TOLERANCE)
-      || (Math.abs(distance - nearestHit.distance) <= 0.000001 && priority > nearestPriority)) {
-      nearestHit = {
-        target: createPointTarget(entity, snapPoint.label, snapPoint.point),
-        distance,
-        priority
-      };
+      || (Math.abs(distance - nearestHit.distance) <= 0.000001 && priority > nearestPriority))) {
+      nearestHit = candidate;
     }
   }
 
