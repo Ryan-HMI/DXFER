@@ -1,4 +1,5 @@
 import { sampleControlSpline } from "./canvas/splineGeometry.js";
+import { getSnapCue } from "./canvas/snapCue.js?v=20261019";
 import {
   addUniqueNumber,
   addUniquePoint,
@@ -188,6 +189,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
     grainDirection: "none",
     grainAngleDegrees: null,
     constructionMode: false,
+    automaticSnapConstraints: true,
     polarSnapIncrementDegrees: 15,
     activeTool: "select",
     toolDraft: createEmptyToolDraft(),
@@ -299,6 +301,12 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
       state.constructionMode = Boolean(enabled);
       state.canvas.dataset.constructionMode = state.constructionMode ? "true" : "false";
       updateDebugAttributes(state);
+      draw(state);
+    },
+
+    setAutomaticSnapConstraints(enabled) {
+      if (state.automaticSnapConstraints === Boolean(enabled)) return;
+      state.automaticSnapConstraints = Boolean(enabled);
       draw(state);
     },
 
@@ -806,6 +814,7 @@ function draw(state) {
   }
   drawDimensionToolPreview(state);
   drawGrainDirection(state, size);
+  drawSnapCue(state, size);
 
   if (state.cornerPreview?.handle) {
     const point = worldToScreen(state, state.cornerPreview.handle);
@@ -824,6 +833,69 @@ function draw(state) {
     delete state.canvas.dataset.cornerHandleY;
   }
 
+  context.restore();
+}
+
+export function getCurrentSnapCue(state) {
+  if (!state.pointerScreenPoint || state.panning || state.selectionBox || state.cornerPreview) return null;
+  const drag = state.geometryDrag;
+  const tool = drag ? "point" : getSketchCreationTool(state);
+  if (!tool) return null;
+  const target = drag ? drag.acceptedSnapTarget : state.hoveredTarget;
+  const point = drag ? drag.acceptedSnapPoint : state.toolDraft?.points?.length
+    ? state.toolDraft.previewPoint : getTargetWorldSnapPoint(target);
+  let intents = getCreationSnapIntents(state, target, point);
+  if (drag) intents = intents.filter(intent => ["Coincident", "Midpoint"].includes(intent.kind));
+  const cue = getSnapCue({ target, point, tool, pointCount: drag ? 0 : state.toolDraft?.points?.length || 0,
+    intents, automaticConstraints: state.automaticSnapConstraints !== false, draftPoints: drag ? [] : state.toolDraft?.points });
+  return cue ? { ...cue, point } : null;
+}
+
+export function positionSnapCue(anchor, size, width, height, obstacles = []) {
+  const margin = 8, gap = 22;
+  const candidates = [
+    { x: anchor.x + gap, y: anchor.y - height - gap },
+    { x: anchor.x + gap, y: anchor.y + gap },
+    { x: anchor.x - width - gap, y: anchor.y - height - gap },
+    { x: anchor.x - width - gap, y: anchor.y + gap }
+  ].map(p => ({ x: Math.max(margin, Math.min(p.x, size.width - width - margin)),
+    y: Math.max(margin, Math.min(p.y, size.height - height - margin)), width, height }));
+  const overlaps = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x
+    && a.y < b.y + b.height && a.y + a.height > b.y;
+  return candidates.find(candidate => !obstacles.some(obstacle => overlaps(candidate, obstacle))) || candidates[0];
+}
+
+function drawSnapCue(state, size) {
+  const cue = getCurrentSnapCue(state);
+  const text = cue?.text || "";
+  if (state.canvas.dataset.snapCue !== text) {
+    state.canvas.dataset.snapCue = text;
+    if (text) state.canvas.setAttribute?.("aria-description", text);
+    else state.canvas.removeAttribute?.("aria-description");
+  }
+  if (!cue) return;
+  const context = state.context;
+  const detail = cue.detail;
+  context.save();
+  context.font = "12px sans-serif";
+  const width = Math.min(size.width - 16, Math.max(context.measureText(cue.snapType).width, context.measureText(detail).width) + 16);
+  const obstacles = [...(state.dimensionInputs?.values() || []), ...(state.persistentDimensionInputs?.values() || [])]
+    .filter(input => input.style.display !== "none")
+    .map(input => ({ x: parseFloat(input.style.left) - 80, y: parseFloat(input.style.top) - 20, width: 160, height: 40 }));
+  const pointer = state.pointerScreenPoint;
+  obstacles.push({ x: pointer.x - 10, y: pointer.y - 10, width: 20, height: 20 });
+  const box = positionSnapCue(worldToScreen(state, cue.point), size, width, 44, obstacles);
+  context.fillStyle = canvasInk(state, "#17232e", "#ffffff");
+  context.strokeStyle = canvasInk(state, "#66d9ff", "#005a75");
+  context.lineWidth = 1;
+  context.setLineDash([]);
+  context.fillRect(box.x, box.y, box.width, box.height);
+  context.strokeRect(box.x, box.y, box.width, box.height);
+  context.textBaseline = "top";
+  context.fillStyle = canvasInk(state, "#b7efff", "#004557");
+  context.fillText(cue.snapType, box.x + 8, box.y + 6, box.width - 16);
+  context.fillStyle = canvasInk(state, "#d3e1ed", "#202020");
+  context.fillText(detail, box.x + 8, box.y + 24, box.width - 16);
   context.restore();
 }
 
@@ -3093,6 +3165,8 @@ function handlePersistentDimensionPointerMove(state, input, event) {
 
   const screenPoint = getPointerScreenPoint(state, event);
   drag.currentScreenPoint = screenPoint;
+  drag.acceptedSnapTarget = null;
+  drag.acceptedSnapPoint = null;
   if (drag.moved || distanceBetweenScreenPoints(screenPoint, drag.startScreenPoint) > CLICK_MOVE_TOLERANCE) {
     drag.moved = true;
     input.dataset.dimensionDragging = "true";
@@ -4753,7 +4827,7 @@ function handlePointerMove(state, event) {
       }
       updateDebugAttributes(state);
       draw(state);
-    } else if (nearestTarget) {
+    } else if (nearestTarget || sketchTool) {
       draw(state);
     }
 
@@ -5199,6 +5273,13 @@ export function updateGeometryDrag(state, screenPoint, event = {}) {
   }
 
   state.document = previewDocument;
+  const movedTarget = resolveSelectionTarget(state, drag.targetKey);
+  const movedPoint = movedTarget?.kind === "point" ? movedTarget.point
+    : getEntityKind(movedTarget?.entity) === "point" ? getPointEntityLocation(movedTarget.entity) : null;
+  if (movedPoint && sameOptionalWorldPoint(movedPoint, getTargetWorldSnapPoint(dragPoint.target))) {
+    drag.acceptedSnapTarget = dragPoint.target;
+    drag.acceptedSnapPoint = movedPoint;
+  }
   setHoveredTarget(state, dragPoint.target || resolveSelectionTarget(state, drag.targetKey));
   return true;
 }

@@ -9,7 +9,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261019-circle-diameter";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261019-snap-cues";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -117,6 +117,9 @@ public partial class DrawingCanvas : IAsyncDisposable
     public bool ConstructionMode { get; set; }
 
     [Parameter]
+    public bool AutomaticSnapConstraints { get; set; } = true;
+
+    [Parameter]
     public int SelectionResetToken { get; set; }
 
     [Parameter]
@@ -216,6 +219,7 @@ public partial class DrawingCanvas : IAsyncDisposable
             await SetConstraintVisibilityAsync();
             await SetGrainDirectionAsync();
             await SetConstructionModeAsync();
+            await _canvasInstance.InvokeVoidAsync("setAutomaticSnapConstraints", AutomaticSnapConstraints);
             await SetMeasurementAsync();
             await SetCornerPreviewAsync();
         }
@@ -239,6 +243,7 @@ public partial class DrawingCanvas : IAsyncDisposable
         await SetConstraintVisibilityAsync();
         await SetGrainDirectionAsync();
         await SetConstructionModeAsync();
+        await _canvasInstance.InvokeVoidAsync("setAutomaticSnapConstraints", AutomaticSnapConstraints);
         await SetMeasurementAsync();
         await SetCornerPreviewAsync();
     }

@@ -18,7 +18,18 @@ public sealed class WorkbenchMenuCommandService
     public event Action? DocumentStateChanged;
 
     public bool HasSyncDocument { get; private set; }
-    public bool AutomaticSnapConstraints { get; set; } = true;
+    public event Action? SnapSettingsChanged;
+    private bool _automaticSnapConstraints = true;
+    public bool AutomaticSnapConstraints
+    {
+        get => _automaticSnapConstraints;
+        set
+        {
+            if (_automaticSnapConstraints == value) return;
+            _automaticSnapConstraints = value;
+            SnapSettingsChanged?.Invoke();
+        }
+    }
     public WorkbenchDocumentState DocumentState { get; private set; } = new(string.Empty, string.Empty, false, false, false);
 
     public void SetDocumentState(string fileName, string units, bool hasUnsavedChanges, bool hasDocument, bool isReferenceOnly)
