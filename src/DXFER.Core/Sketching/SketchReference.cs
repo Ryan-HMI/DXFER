@@ -144,6 +144,7 @@ public readonly record struct SketchReference
             SketchReferenceTarget.Start => $"{baseKey}:start",
             SketchReferenceTarget.End => $"{baseKey}:end",
             SketchReferenceTarget.Center => $"{baseKey}:center",
+            SketchReferenceTarget.Midpoint => $"{baseKey}:mid",
             _ => baseKey
         };
     }
@@ -172,7 +173,8 @@ public readonly record struct SketchReference
                 : new SketchReference(entityId, SketchReferenceTarget.End, vertexIndex - 1);
             return true;
         }
-        if (parts.Length == 0 || !TryParsePointTarget(parts[0], out var target))
+        if (parts.Length == 0 || !TryParsePointTarget(parts[0], out var target)
+            || target == SketchReferenceTarget.Midpoint)
         {
             reference = default;
             return false;
@@ -211,6 +213,12 @@ public readonly record struct SketchReference
 
     private static bool TryParsePointTarget(string value, out SketchReferenceTarget target)
     {
+        if (StringComparer.OrdinalIgnoreCase.Equals(value, "mid"))
+        {
+            target = SketchReferenceTarget.Midpoint;
+            return true;
+        }
+
         if (StringComparer.OrdinalIgnoreCase.Equals(value, "start"))
         {
             target = SketchReferenceTarget.Start;

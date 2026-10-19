@@ -35,7 +35,7 @@ internal static class SketchConstraintPropagationService
         SketchFixedReferences fixedReferences)
     {
         var changed = false;
-        var queue = new Queue<SketchReference>(GetChangedPointReferences(previousEntities, entities));
+        var queue = new Queue<SketchReference>(GetChangedPointReferences(previousEntities, entities, constraints));
         var queued = new HashSet<string>(queue.Select(reference => reference.ToString()), StringComparer.Ordinal);
         var guard = 0;
         var guardLimit = Math.Max(128, constraints.Count * 32);
@@ -825,10 +825,16 @@ internal static class SketchConstraintPropagationService
 
     private static IReadOnlyList<SketchReference> GetChangedPointReferences(
         IReadOnlyList<DrawingEntity> originalEntities,
-        IReadOnlyList<DrawingEntity> entities)
+        IReadOnlyList<DrawingEntity> entities,
+        IReadOnlyList<SketchConstraint> constraints)
     {
         var changedReferences = new List<SketchReference>();
-        foreach (var reference in EnumeratePointReferences(originalEntities))
+        // Only explicitly referenced midpoints participate; automatic point discovery stays unchanged.
+        var midpoints = constraints.Where(c => c.State != SketchConstraintState.Suppressed)
+            .SelectMany(c => c.ReferenceKeys)
+            .Select(key => SketchReference.TryParse(key, out var reference) ? reference : default)
+            .Where(reference => reference.Target == SketchReferenceTarget.Midpoint);
+        foreach (var reference in EnumeratePointReferences(originalEntities).Concat(midpoints).Distinct())
         {
             if (SketchGeometryEditor.TryGetPoint(originalEntities, reference, out var before)
                 && SketchGeometryEditor.TryGetPoint(entities, reference, out var after)

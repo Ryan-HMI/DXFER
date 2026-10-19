@@ -64,6 +64,11 @@ public static class SketchConstraintService
             return constraint;
         }
 
+        if (constraint.ReferenceKeys.Any(key => SketchReference.TryParse(key, out var reference)
+                && reference.Target == SketchReferenceTarget.Midpoint
+                && !SketchReferenceResolver.TryGetPoint(document, key, out _)))
+            return WithState(constraint, SketchConstraintState.Unsatisfied);
+
         var satisfied = constraint.Kind switch
         {
             SketchConstraintKind.Offset => SketchOffsetRelation.IsSatisfied(document.Entities, constraint.ReferenceKeys),

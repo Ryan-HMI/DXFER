@@ -105,7 +105,7 @@ internal sealed class SketchFixedReferences
         || (reference.SegmentIndex.HasValue && fixedReferences.Contains(reference.ToString()));
 
     public bool CanMovePoint(SketchReference reference) =>
-        !IsFixed(reference);
+        reference.Target != SketchReferenceTarget.Midpoint && !IsFixed(reference);
 
     public bool CanMoveWholeLine(SketchReference reference) =>
         !IsWholeEntityFixed(reference)

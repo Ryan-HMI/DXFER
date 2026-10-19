@@ -5,5 +5,6 @@ public enum SketchReferenceTarget
     Entity,
     Start,
     End,
-    Center
+    Center,
+    Midpoint
 }

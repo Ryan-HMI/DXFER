@@ -10785,7 +10785,7 @@ function isPreviewWholeEntityFixed(fixedReferences, reference) {
 }
 
 function canMovePreviewPoint(fixedReferences, reference) {
-  return !isPreviewReferenceFixed(fixedReferences, reference);
+  return reference.target !== "mid" && !isPreviewReferenceFixed(fixedReferences, reference);
 }
 
 function canMovePreviewWholeLine(fixedReferences, reference) {
@@ -11078,7 +11078,11 @@ function tryMoveOrResizePreviewCircleLikeForTangency(
 
 function getChangedPreviewPointReferences(originalDocument, previewDocument) {
   const changed = [];
-  for (const reference of enumeratePreviewPointReferences(originalDocument)) {
+  const midpointReferences = getDocumentConstraints(previewDocument)
+    .flatMap(getSketchReferenceKeys).map(parseSketchReference).filter(reference => reference?.target === "mid");
+  const references = new Map([...enumeratePreviewPointReferences(originalDocument), ...midpointReferences]
+    .map(reference => [sketchReferenceToKey(reference), reference]));
+  for (const reference of references.values()) {
     const before = getPreviewReferencePoint(originalDocument, reference);
     const after = getPreviewReferencePoint(previewDocument, reference);
     if (before && after && distanceBetweenWorldPoints(before, after) > WORLD_GEOMETRY_TOLERANCE) {
@@ -11277,6 +11281,13 @@ function getPreviewReferencePoint(document, reference) {
   }
 
   const kind = getEntityKind(entity);
+  if (reference.target === "mid") {
+    const points = getEntityPoints(entity);
+    const index = kind === "line" && !Number.isInteger(reference.segmentIndex) ? 0
+      : kind === "polyline" ? reference.segmentIndex : null;
+    return Number.isInteger(index) && index >= 0 && index < points.length - 1
+      ? midpoint(points[index], points[index + 1]) : null;
+  }
   if (kind === "spline" && Number.isInteger(reference.segmentIndex)) return null;
   if (kind === "spline" && !Number.isInteger(reference.segmentIndex)
     && (reference.target === "start" || reference.target === "end")) {
@@ -13270,7 +13281,7 @@ function sameOptionalWorldPoint(first, second) {
   return distanceBetweenWorldPoints(first, second) <= WORLD_GEOMETRY_TOLERANCE;
 }
 
-function rememberAcquiredSnapPoint(state, target) {
+export function rememberAcquiredSnapPoint(state, target) {
   pruneExpiredAcquiredSnapPoints(state);
   const isPersistentPointTarget = target
     && target.kind === "entity"
@@ -13296,7 +13307,7 @@ function rememberAcquiredSnapPoint(state, target) {
 
   state.acquiredSnapPoints.push({
     key: target.key,
-    ...(isPersistentPointTarget ? { referenceKey: target.entityId } : {}),
+    referenceKey: isPersistentPointTarget ? target.entityId : acquiredMidpointReference(target),
     label: sanitizeKeyPart(target.label || target.entityId || "point"),
     point: acquiredPoint,
     acquiredAt: getInteractionTimestamp()
@@ -13305,6 +13316,14 @@ function rememberAcquiredSnapPoint(state, target) {
   while (state.acquiredSnapPoints.length > MAX_ACQUIRED_SNAP_POINTS) {
     state.acquiredSnapPoints.shift();
   }
+}
+
+function acquiredMidpointReference(target) {
+  if (target.kind !== "point") return null;
+  const kind = getEntityKind(target.entity);
+  if (kind === "line" && target.label === "mid") return `${target.entityId}:mid`;
+  const segment = kind === "polyline" && /^mid-(\d+)$/.exec(target.label || "");
+  return segment ? `${target.entityId}|segment|${segment[1]}:mid` : null;
 }
 
 function pruneInteractionState(state, removePointTargets = false) {
@@ -14367,6 +14386,7 @@ function resolveSketchReferencePoint(state, referenceKey) {
   if (!reference) {
     return null;
   }
+  if (reference.target === "mid") return getPreviewReferencePoint(state.document, reference);
 
   const entity = findDocumentEntity(state, reference.entityId);
   if (!entity) {
@@ -14582,7 +14602,7 @@ function parseSketchReference(referenceKey) {
     }
     return {
       entityId,
-      target: normalizeSketchReferenceTarget(label)
+      target: label === "mid" ? "entity" : normalizeSketchReferenceTarget(label)
     };
   }
 
@@ -14642,7 +14662,7 @@ function getSketchReferenceBaseKey(reference) {
 
 function normalizeSketchReferenceTarget(target) {
   const normalized = String(target || "").toLowerCase();
-  if (normalized === "start" || normalized === "end" || normalized === "center") {
+  if (normalized === "start" || normalized === "end" || normalized === "center" || normalized === "mid") {
     return normalized;
   }
 

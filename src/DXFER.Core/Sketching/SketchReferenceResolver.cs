@@ -1,5 +1,6 @@
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
+using DXFER.Core.Operations;
 using System.Globalization;
 
 namespace DXFER.Core.Sketching;
@@ -50,6 +51,15 @@ public static class SketchReferenceResolver
     public static bool TryGetPoint(DrawingDocument document, string key, out Point2 point)
     {
         ArgumentNullException.ThrowIfNull(document);
+
+        if (SketchReference.TryParse(key, out var midpointReference)
+            && midpointReference.Target == SketchReferenceTarget.Midpoint
+            && document.Entities.Any(e => e.Id.Value == midpointReference.EntityId && e is PolylineEntity)
+            && document.Metadata.Warnings.Any(w => w.Code == CutPathLengthService.UnsafeImportCode))
+        {
+            point = default;
+            return false;
+        }
 
         if (SketchReference.TryParse(key, out var reference)
             && SketchGeometryEditor.TryGetPoint(document.Entities, reference, out point))

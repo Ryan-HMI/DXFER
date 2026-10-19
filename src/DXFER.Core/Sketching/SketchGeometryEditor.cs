@@ -69,6 +69,21 @@ internal static class SketchGeometryEditor
             return false;
         }
 
+        if (reference.Target == SketchReferenceTarget.Midpoint)
+        {
+            Point2 start;
+            Point2 end;
+            if (entity is LineEntity midpointLine && !reference.SegmentIndex.HasValue)
+                (start, end) = (midpointLine.Start, midpointLine.End);
+            else if (!TryGetPolylineSegment(entity, reference, out _, out start, out end))
+            {
+                point = default;
+                return false;
+            }
+            point = new Point2(start.X / 2 + end.X / 2, start.Y / 2 + end.Y / 2);
+            return double.IsFinite(point.X) && double.IsFinite(point.Y) && Distance(start, end) > Tolerance;
+        }
+
         if (TryGetPolylineSegment(entity, reference, out var segmentIndex, out var segmentStart, out var segmentEnd))
         {
             if (reference.Target == SketchReferenceTarget.Start)
@@ -127,7 +142,8 @@ internal static class SketchGeometryEditor
         SketchReference reference,
         Point2 point)
     {
-        if (reference.EntityId == SketchReference.OriginEntityId) return false;
+        // Midpoints are derived acquisition references, not independently writable grips.
+        if (reference.EntityId == SketchReference.OriginEntityId || reference.Target == SketchReferenceTarget.Midpoint) return false;
 
         if (!TryGetEntity(entities, reference, out var index, out var entity))
         {
