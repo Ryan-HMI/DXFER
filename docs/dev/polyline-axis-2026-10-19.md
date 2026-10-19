@@ -33,3 +33,11 @@ Public replay completed: all seven scenarios pass on rendered build9692551, no p
 ## Separate recovery issue
 
 Read-only investigation of AXIS-RECOVERY-20261019 found that a perpendicular bare line projects to zero length, so validation correctly refuses that candidate. Deleting the earlier opposing constraint does not re-solve the remaining failed intent. A follow-on needs a non-collapsing axis candidate and a deliberate deletion/recovery contract; automatic retry of arbitrary old failed intent must not be introduced casually. This deployment does not change those semantics.
+
+Follow-on4551c41 fixes the bounded line-axis/deletion cases; see `axis-recovery-2026-10-19.md`.
+
+## Recovered independent baseline
+
+Flux delivery33b27e0accff23b1db533bd4 reports on older11d3f60: rectangle out1/in2, refused inset4 with correction, joined polygon/open-chain contours, original intent/layer, history and native reopen pass. That build lacks the later persistent Offset relation/driving gap. Already-horizontal polyline H reports failure text despite saved Satisfied state; slanted polyline H refuses unchanged/Unsatisfied while slanted standalone LINE works. Screenshot distortion was not reproduced. Dropped key entry is independently confirmed on that baseline.
+
+Do not treat this as failure or acceptance of installed4551c41. Current retest must check both visible status and stored constraint state for already-aligned edges, not just geometry/native persistence. Current owner coverage and prior input fix remain recorded separately; independent current-build acceptance is pending.
