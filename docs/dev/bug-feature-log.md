@@ -4,6 +4,11 @@ Use this log for bugs and feature requests that arrive while another task is act
 
 ## Open
 
+- [ ] POLYLINE-AXIS-20261019: Ryan screenshot/top-edge Horizontal failure on offset polyline. Inspect shared proxy-segment writeback; preserve whole contour and protected intent. Active investigation, see `polyline-axis-2026-10-19.md`.
+- [ ] AXIS-RECOVERY-20261019: Recovered Slack1792382090.612399/Flux1792382397.841359: deleting Vertical after failed Horizontal leaves bare vertical line unsolved; fresh vertical-to-Horizontal also refuses. Separate projection-collapse/re-solve check, not accepted as fixed by polyline writeback alone.
+- [ ] CIRCLE-DIAMETER-20261019: Recovered Ryan1792383276.245409/1792383327.579589: default circle creation dimensions to Diameter with symbol; Radius/Diameter toggle in right-click menu. Queued behind active geometry fix.
+- [ ] SNAP-CUE-INFO-20261019: Recovered Ryan1792384060.390769/1792384144.846289: show implicit snap/impending constraint type and remove generic Info panel. Preserve necessary editing/layer/pattern controls when implementing; no changes yet.
+
 - [x] CONTINUOUS-PREVIEW-INPUT-20261019: Reproduced preview starvation and dropped/overwritten dimension input in the old browser code. Shared scheduling, stable Offset input and live draft edit ownership fixed on Dev5a21cd4.1852 core/942 JS/build pass; public normal and180ms-delayed browser replays pass all5 scenarios,20 DXFs audit clean. Source relationships, history/native reopen and invalid-inset recovery verified. Flux/Ryan acceptance pending. See `continuous-preview-input-2026-10-19.md`. No existing drawings rewritten; previously committed wrong values require deliberate review, not guessed repair.
 
 - SPLINE-EXTEND-FEEDBACK-20261015 implementation: shared refusal status now

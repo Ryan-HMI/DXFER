@@ -164,9 +164,9 @@ public static class SketchConstraintService
     {
         if (constraint.ReferenceKeys.Count == 1
             && SketchReference.TryParse(constraint.ReferenceKeys[0], out var lineReference)
-            && SketchGeometryEditor.TryGetLine(entities, lineReference, out var index, out var line))
+            && SketchGeometryEditor.TryGetLine(entities, lineReference, out _, out var line))
         {
-            ApplyLineAxisAlignment(entities, fixedReferences, lineReference, index, line, isHorizontal);
+            ApplyLineAxisAlignment(entities, fixedReferences, lineReference, line, isHorizontal);
             return;
         }
 
@@ -197,7 +197,6 @@ public static class SketchConstraintService
         DrawingEntity[] entities,
         SketchFixedReferences fixedReferences,
         SketchReference lineReference,
-        int index,
         LineEntity line,
         bool isHorizontal)
     {
@@ -208,17 +207,18 @@ public static class SketchConstraintService
 
         if (fixedReferences.CanChangeLineEndpoint(lineReference, SketchReferenceTarget.End))
         {
-            entities[index] = isHorizontal
+            // A polyline segment is a line proxy; write through to its owning entity.
+            SketchGeometryEditor.TrySetLine(entities, lineReference, isHorizontal
                 ? line with { End = new Point2(line.End.X, line.Start.Y) }
-                : line with { End = new Point2(line.Start.X, line.End.Y) };
+                : line with { End = new Point2(line.Start.X, line.End.Y) });
             return;
         }
 
         if (fixedReferences.CanChangeLineEndpoint(lineReference, SketchReferenceTarget.Start))
         {
-            entities[index] = isHorizontal
+            SketchGeometryEditor.TrySetLine(entities, lineReference, isHorizontal
                 ? line with { Start = new Point2(line.Start.X, line.End.Y) }
-                : line with { Start = new Point2(line.End.X, line.Start.Y) };
+                : line with { Start = new Point2(line.End.X, line.Start.Y) });
         }
     }
 

@@ -1,5 +1,10 @@
 # User Test Tracking
 
+## Current polyline axis investigation, 2026-10-19
+
+- POLYLINE-AXIS-20261019: USER-FAILED; automated and browser reproduction in progress. Horizontal/Vertical on offset polyline edges must preserve the whole contour. Linked Offset refusal and unlinked-copy editing are distinct checks.
+- AXIS-RECOVERY-20261019, CIRCLE-DIAMETER-20261019 and SNAP-CUE-INFO-20261019: recovered user reports recorded in bug-feature-log; queued, not implemented or ready for acceptance.
+
 ## Current preview/input repair, 2026-10-19
 
 - CONTINUOUS-PREVIEW-INPUT-20261019: USER-FAILED awaiting retest; AUTOMATED-PASSED and APP-VERIFIED on Dev5a21cd4. Old browser code reproduces starvation/dropped digits/clear overwrite. Public normal and180ms-delayed replays pass continuous previews, raw decimal input/focus/node identity, exact commits, invalid-inset recovery, history/native reopen.20 exports audit clean.1852 core/942 JS/build pass; late context/released-drag guards covered. No Ryan acceptance claimed and no saved drawings rewritten.
