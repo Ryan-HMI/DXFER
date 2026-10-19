@@ -99,8 +99,11 @@ public static class SelectionDeleteResolver
         }
 
         var deletedGeometry = deletedEntities > 0 || deletedSegments > 0;
+        var removedOffsets = document.Constraints.Where(c => c.Kind == SketchConstraintKind.Offset && constraintIds.Contains(c.Id)).ToArray();
         var nextDimensions = document.Dimensions
             .Where(dimension => !dimensionIds.Contains(dimension.Id))
+            .Where(dimension => dimension.Kind != SketchDimensionKind.Offset
+                || !removedOffsets.Any(c => c.ReferenceKeys.SequenceEqual(dimension.ReferenceKeys)))
             .Where(dimension => !deletedGeometry || SketchItemReferencesAreValid(dimension.ReferenceKeys, nextEntities))
             .ToArray();
         var nextConstraints = document.Constraints

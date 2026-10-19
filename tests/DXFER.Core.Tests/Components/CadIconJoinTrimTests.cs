@@ -28,7 +28,7 @@ public sealed class CadIconJoinTrimTests
         ConstraintIconGeometry.All.Keys.Should().BeEquivalentTo(new[]
         {
             "coincident", "concentric", "parallel", "tangent", "horizontal", "vertical",
-            "perpendicular", "equal", "midpoint", "fix"
+            "perpendicular", "equal", "midpoint", "fix", "offset"
         });
     }
 

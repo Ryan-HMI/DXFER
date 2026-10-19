@@ -7,6 +7,7 @@ public static class ConstraintIconGeometry
 
     public static IReadOnlyDictionary<string, Shape> All { get; } = new Dictionary<string, Shape>
     {
+        ["offset"] = new("M3 18V6h14M7 22V10h14M12 14v5m-2-2 2 2 2-2"),
         ["coincident"] = new("M3 12h18M12 3v18", "M14.8 12a2.8 2.8 0 1 0-5.6 0a2.8 2.8 0 1 0 5.6 0Z"),
         ["concentric"] = new("M20 12a8 8 0 1 0-16 0a8 8 0 1 0 16 0ZM16 12a4 4 0 1 0-8 0a4 4 0 1 0 8 0Z", Dot(12, 12)),
         ["parallel"] = new("M4 17 16 5M8 21 20 9"),

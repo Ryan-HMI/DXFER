@@ -102,6 +102,7 @@ internal static class SketchConstraintPropagationService
 
             changed |= constraint.Kind switch
             {
+                SketchConstraintKind.Offset => SketchOffsetRelation.Propagate(originalEntities, entities, fixedReferences, constraint),
                 SketchConstraintKind.PointOnLine or SketchConstraintKind.Collinear => SketchLineIncidence.Apply(entities, fixedReferences, constraint, originalEntities),
                 SketchConstraintKind.Equal => PropagateEqual(originalEntities, entities, fixedReferences, constraint),
                 SketchConstraintKind.Concentric => PropagateConcentric(originalEntities, entities, fixedReferences, constraint),

@@ -66,6 +66,7 @@ public static class SketchConstraintService
 
         var satisfied = constraint.Kind switch
         {
+            SketchConstraintKind.Offset => SketchOffsetRelation.IsSatisfied(document.Entities, constraint.ReferenceKeys),
             SketchConstraintKind.Coincident => IsCoincident(document.Entities, constraint),
             SketchConstraintKind.PointOnLine or SketchConstraintKind.Collinear => SketchLineIncidence.IsSatisfied(document.Entities, constraint),
             SketchConstraintKind.Horizontal => IsAxisAligned(document.Entities, constraint, isHorizontal: true),

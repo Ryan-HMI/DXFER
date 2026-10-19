@@ -14,5 +14,6 @@ public enum SketchConstraintKind
     Symmetric,
     Fix,
     PointOnLine,
-    Collinear
+    Collinear,
+    Offset
 }

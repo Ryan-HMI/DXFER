@@ -48,7 +48,7 @@ import {
   shouldCommitDimensionInputOnBlur,
   shouldCommitDimensionInputOnChange,
   shouldRefreshDimensionInputValue
-} from "./canvas/dimensionPresentation.js?v=20261018-background";
+} from "./canvas/dimensionPresentation.js?v=20261019-offset-intent";
 import {
   getDefaultActiveDimensionKey,
   getDimensionKeys,
@@ -2179,7 +2179,9 @@ function getPersistentDimensionDescriptor(state, dimension) {
     affectedReferenceKeys,
     anchorPoint,
     point: worldToScreen(state, anchorPoint),
-    geometry: getDimensionGeometry(state, kind, referenceKeys, anchorPoint)
+    geometry: kind === "offset" && dimension.offsetStart && dimension.offsetEnd
+      ? { type: "linear", start: dimension.offsetStart, end: dimension.offsetEnd, anchorPoint }
+      : getDimensionGeometry(state, kind, referenceKeys, anchorPoint)
   };
 }
 
@@ -3994,6 +3996,8 @@ export function drawConstraintGlyphIcon(context, shape, point, color) {
 
 export function getConstraintGlyphIcon(kind) {
   switch (kind) {
+    case "offset":
+      return "offset";
     case "pointonline":
     case "collinear":
     case "coincident":
@@ -5092,6 +5096,10 @@ export function updateGeometryDrag(state, screenPoint, event = {}) {
   drag.currentWorldPoint = dragPoint.point;
   drag.constrainToCurrentVector = Boolean(event.shiftKey);
   drag.moved = distanceBetweenScreenPoints(drag.startScreenPoint, screenPoint) > CLICK_MOVE_TOLERANCE;
+  if (getDocumentConstraints(drag.originalDocument).some(c => getSketchItemKind(c) === "offset" && getSketchConstraintState(c) !== "suppressed")) {
+    requestOffsetDragPreview(state, drag);
+    return true;
+  }
   const previewDocument = applyGeometryDragPreview(
     drag.originalDocument,
     drag.targetKey,
@@ -5107,6 +5115,31 @@ export function updateGeometryDrag(state, screenPoint, event = {}) {
   state.document = previewDocument;
   setHoveredTarget(state, dragPoint.target || resolveSelectionTarget(state, drag.targetKey));
   return true;
+}
+
+export function requestOffsetDragPreview(state, drag) {
+  const key = JSON.stringify([drag.currentWorldPoint, drag.constrainToCurrentVector]);
+  drag.offsetPreviewKey = key;
+  if (drag.offsetPreviewPending || drag.offsetPreviewApplied === key) return;
+  drag.offsetPreviewPending = true;
+  const invocation = invokeDotNet(state, "GetOffsetDragPreview", drag.targetKey,
+    drag.startWorldPoint, drag.currentWorldPoint, Boolean(drag.constrainToCurrentVector));
+  Promise.resolve(invocation).then(result => {
+    if (state.geometryDrag !== drag || drag.offsetPreviewKey !== key) return;
+    drag.offsetPreviewApplied = key;
+    state.document = result || drag.originalDocument;
+  }).catch(() => {
+    if (state.geometryDrag === drag && drag.offsetPreviewKey === key) {
+      drag.offsetPreviewApplied = key;
+      state.document = drag.originalDocument;
+    }
+  }).finally(() => {
+    drag.offsetPreviewPending = false;
+    if (state.geometryDrag !== drag || state.disposed) return;
+    setHoveredTarget(state, resolveSelectionTarget(state, drag.targetKey));
+    if (drag.offsetPreviewKey !== key) requestOffsetDragPreview(state, drag);
+    draw(state);
+  });
 }
 
 function getGeometryDragWorldPoint(state, drag, screenPoint) {

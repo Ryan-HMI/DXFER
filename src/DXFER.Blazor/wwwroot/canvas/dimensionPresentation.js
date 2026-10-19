@@ -88,6 +88,8 @@ export function getDimensionDisplayText(dimension) {
 
 export function getDimensionLabel(kind) {
   switch (kind) {
+    case "offset":
+      return "Offset distance";
     case "radius":
       return "Radius";
     case "diameter":

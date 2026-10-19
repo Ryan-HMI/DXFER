@@ -1,5 +1,6 @@
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
+using DXFER.Core.Sketching;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.Operation.Buffer;
 using NetTopologySuite.Operation.Linemerge;
@@ -15,7 +16,7 @@ public static class SelectionOffsetService
 
     public static bool TryOffset(DrawingDocument document, IEnumerable<string> ids, Point2 through,
         Func<string, EntityId> createId, out DrawingDocument result, out int count, out string reason,
-        out Point2 anchor, out double distance, double? requestedDistance = null)
+        out Point2 anchor, out double distance, double? requestedDistance = null, bool retainIntent = false)
     {
         result = document;
         count = 0;
@@ -92,6 +93,7 @@ public static class SelectionOffsetService
             distance = requestedDistance ?? Length(anchor, through);
             if (!double.IsFinite(distance) || distance <= Tolerance) return false;
             var additions = new List<DrawingEntity>();
+            var relationships = new List<string[]>();
             var styles = new Dictionary<string, DxfEntityStyle>(document.Metadata.EntityStyles, StringComparer.Ordinal);
             foreach (var contour in contours)
             {
@@ -137,6 +139,7 @@ public static class SelectionOffsetService
                     ? new LineEntity(createId("line"), outputPoints[0], outputPoints[1], source.IsConstruction)
                     : new PolylineEntity(createId("polyline"), outputPoints, source.IsConstruction);
                 additions.Add(addition);
+                relationships.Add(sourcePaths.Select(p => p.Source.Id.Value).Append(addition.Id.Value).ToArray());
                 if (document.Metadata.EntityStyles.ContainsKey(source.Id.Value)) styles[addition.Id.Value] = style;
             }
             foreach (var entity in round)
@@ -148,13 +151,43 @@ public static class SelectionOffsetService
                     ? new ArcEntity(createId("arc"), center, newRadius, arc.StartAngleDegrees, arc.EndAngleDegrees, arc.IsConstruction)
                     : new CircleEntity(createId("circle"), center, newRadius, entity.IsConstruction);
                 additions.Add(addition);
+                relationships.Add([entity.Id.Value, addition.Id.Value]);
                 if (document.Metadata.EntityStyles.ContainsKey(entity.Id.Value)) styles[addition.Id.Value] = Style(document, entity);
             }
             if (additions.Any(e => document.Entities.Any(original => original.Id == e.Id))
                 || additions.Select(e => e.Id).Distinct().Count() != additions.Count) return false;
             count = additions.Count;
-            result = new DrawingDocument(document.Entities.Concat(additions), document.Dimensions, document.Constraints,
+            var constraints = document.Constraints.ToList();
+            var dimensions = document.Dimensions.ToList();
+            var resultEntities = document.Entities.Concat(additions).ToArray();
+            if (retainIntent)
+                foreach (var references in relationships)
+                {
+                    var id = Guid.NewGuid().ToString("N");
+                    constraints.Add(new SketchConstraint($"offset-{id}", SketchConstraintKind.Offset, references, SketchConstraintState.Satisfied));
+                    if (requestedDistance.HasValue)
+                    {
+                        var label = through;
+                        if (SketchOffsetRelation.TryMeasure(resultEntities, references, out var gap, out var first, out var second))
+                        {
+                            var ux = (second.X-first.X)/gap; var uy = (second.Y-first.Y)/gap;
+                            var middle = new Point2((first.X+second.X)/2, (first.Y+second.Y)/2);
+                            var along = (through.X-middle.X)*ux+(through.Y-middle.Y)*uy;
+                            label = new(through.X-along*ux, through.Y-along*uy);
+                            if (Length(label,middle) < gap/4) label = new(middle.X-uy*gap/2,middle.Y+ux*gap/2);
+                        }
+                        dimensions.Add(new SketchDimension($"offset-gap-{id}", SketchDimensionKind.Offset, references, distance, label, true));
+                    }
+                }
+            result = new DrawingDocument(resultEntities, dimensions, constraints,
                 styles.Count == document.Metadata.EntityStyles.Count ? document.Metadata : document.Metadata with { EntityStyles = styles });
+            var offsetDocument = result;
+            if (retainIntent && relationships.Any(keys => !SketchOffsetRelation.IsSatisfied(offsetDocument.Entities, keys)))
+            {
+                result = document; count = 0;
+                reason = "Cannot retain a reliable Offset relationship for this contour. Nothing changed.";
+                return false;
+            }
             reason = "";
             return count > 0;
         }

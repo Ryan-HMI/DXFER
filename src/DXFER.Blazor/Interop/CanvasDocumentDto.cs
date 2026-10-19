@@ -178,6 +178,10 @@ public sealed record CanvasDocumentDto(
     private static CanvasSketchDimensionDto FromDimension(DrawingDocument document, SketchDimension dimension)
     {
         var state = SketchDimensionSolverService.GetDimensionState(document, dimension);
+        CanvasPointDto? offsetStart = null, offsetEnd = null;
+        if (dimension.Kind == SketchDimensionKind.Offset
+            && SketchOffsetRelation.TryMeasure(document.Entities, dimension.ReferenceKeys, out _, out var start, out var end))
+        { offsetStart = FromPoint(start); offsetEnd = FromPoint(end); }
         return new CanvasSketchDimensionDto(
             dimension.Id,
             dimension.Kind.ToString(),
@@ -188,7 +192,7 @@ public sealed record CanvasDocumentDto(
             state.ToString(),
             state == SketchConstraintState.Unsatisfied
                 ? dimension.ReferenceKeys
-                : Array.Empty<string>());
+                : Array.Empty<string>(), offsetStart, offsetEnd);
     }
 
     private static CanvasSketchConstraintDto FromConstraint(SketchConstraint constraint) =>
@@ -252,7 +256,9 @@ public sealed record CanvasSketchDimensionDto(
     [property: JsonPropertyName("anchor")] CanvasPointDto? Anchor,
     [property: JsonPropertyName("isDriving")] bool IsDriving,
     [property: JsonPropertyName("state")] string State,
-    [property: JsonPropertyName("affectedReferenceKeys")] IReadOnlyList<string> AffectedReferenceKeys);
+    [property: JsonPropertyName("affectedReferenceKeys")] IReadOnlyList<string> AffectedReferenceKeys,
+    [property: JsonPropertyName("offsetStart")] CanvasPointDto? OffsetStart = null,
+    [property: JsonPropertyName("offsetEnd")] CanvasPointDto? OffsetEnd = null);
 
 public sealed record CanvasSketchConstraintDto(
     [property: JsonPropertyName("id")] string Id,

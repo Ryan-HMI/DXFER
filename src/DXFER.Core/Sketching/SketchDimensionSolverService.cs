@@ -69,6 +69,9 @@ public static class SketchDimensionSolverService
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(dimension);
 
+        if (dimension.Kind == SketchDimensionKind.Offset && (dimension.Value <= 0
+            || !SketchOffsetRelation.IsSatisfied(document.Entities, dimension.ReferenceKeys))) return false;
+
         if (TryGetEllipseAxis(document.Entities, dimension, out _, out var ellipse, out var isMajor)
             && !TryResizeEllipseAxis(ellipse, isMajor, dimension.Value, out _))
         {
@@ -251,6 +254,9 @@ public static class SketchDimensionSolverService
 
         switch (dimension.Kind)
         {
+            case SketchDimensionKind.Offset:
+                SketchOffsetRelation.ApplyGap(entities, dimension.ReferenceKeys, dimension.Value, fixedReferences);
+                break;
             case SketchDimensionKind.LinearDistance:
                 if (TryGetEllipseAxis(entities, dimension, out var ellipseIndex, out var ellipse, out var isMajor))
                 {
@@ -638,6 +644,8 @@ public static class SketchDimensionSolverService
         value = default;
         switch (dimension.Kind)
         {
+            case SketchDimensionKind.Offset:
+                return SketchOffsetRelation.TryMeasure(entities, dimension.ReferenceKeys, out value, out _, out _);
             case SketchDimensionKind.LinearDistance:
                 return TryGetTwoPointDimensionPoints(entities, dimension, out var linearFirstPoint, out var linearSecondPoint)
                     && TryAssign(Distance(linearFirstPoint, linearSecondPoint), out value);

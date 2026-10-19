@@ -1,6 +1,7 @@
 using DXFER.Blazor.Interop;
 using DXFER.Core.Documents;
 using DXFER.Core.Operations;
+using DXFER.Core.Sketching;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 
@@ -8,7 +9,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261019-contour-offset";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261019-offset-intent";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -50,6 +51,15 @@ public partial class DrawingCanvas : IAsyncDisposable
     }
 
     [Parameter] public DrawingDocument? CornerPreview { get; set; }
+
+    [JSInvokable]
+    public CanvasDocumentDto? GetOffsetDragPreview(string key, CanvasPointDto start, CanvasPointDto end, bool constrain)
+    {
+        if (Document is null || !Document.Constraints.Any(c => c.Kind == SketchConstraintKind.Offset)) return null;
+        return SketchGeometryDragService.TryApplyDrag(Document, key, new(start.X,start.Y), new(end.X,end.Y),
+            constrain, out var next, out _, automaticSnapConstraints: false)
+            && DrawingLayerService.PreservesProtectedGeometry(Document, next) ? CanvasDocumentDto.FromDocument(next) : null;
+    }
     [Parameter] public CanvasPointDto? CornerHandle { get; set; }
     [Parameter] public double CornerSize { get; set; }
     [Parameter] public Action<double>? CornerSizeChanged { get; set; }

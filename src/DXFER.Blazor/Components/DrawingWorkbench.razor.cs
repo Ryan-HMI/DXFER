@@ -1550,7 +1550,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                         CreateEntityId,
                         out nextDocument,
                         out var offsetCount, out var offsetReason, out _, out _,
-                        dimensionValues.TryGetValue("offset", out var requestedOffset) ? requestedOffset : null))
+                        dimensionValues.TryGetValue("offset", out var requestedOffset) ? requestedOffset : null, retainIntent: true))
                 {
                     _status = offsetReason;
                     return false;
