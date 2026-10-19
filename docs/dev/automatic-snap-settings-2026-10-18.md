@@ -39,8 +39,14 @@
   `/home/ryan/dxfer-runtime/dev-publish-before-dc108c0`.
 - Evidence: `/tmp/automatic-snap-{core,js,build,publish,local,dev}.log`, screenshots
   and DXFs in `/tmp/automatic-snap-local` and `/tmp/automatic-snap-dev`.
-- Owner verification only; independent replay requested, no blanket solver or
-  all-snap acceptance.
+- Independent Flux acceptance, delivery `42b35a19220a1c704f2a3ada`, across
+  dc108c0 -> 456f536: OFF preserves exact endpoint creation and line-endpoint
+  midpoint snap coordinates without new relations; ON stores Coincident/Midpoint.
+  Existing Midpoint follows its edited source while OFF. Deliberate length 10->12
+  survives Undo/Redo and native reopen. OFF and restored ON survive reload.
+  This closes those independent toggle checks only, not all-snap/solver acceptance.
+  Hover acquisition and curved/virtual snap gaps remain open; the junction-drag
+  retest is separate and still pending at this report.
 
 ## Scope and remaining work
 
