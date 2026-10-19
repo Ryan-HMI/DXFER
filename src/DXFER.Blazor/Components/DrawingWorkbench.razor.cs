@@ -1042,7 +1042,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 CreateConstraintId,
                 tangentReferenceKey,
                 originSnapUsed,
-                creationSnaps);
+                creationSnaps,
+                MenuCommandService?.AutomaticSnapConstraints ?? true);
         }
         catch (InvalidOperationException exception)
         {
@@ -1052,7 +1053,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        if (tangentReferenceKey is not null
+        if ((MenuCommandService?.AutomaticSnapConstraints ?? true) && tangentReferenceKey is not null
             && (NormalizeToolName(toolName) != "centercircle"
                 || !newConstraints.Any(constraint => constraint.Kind == SketchConstraintKind.Tangent)))
         {
@@ -2225,7 +2226,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 ToPoint(dragEnd),
                 constrainToCurrentVector,
                 out var nextDocument,
-                out var status))
+                out var status,
+                MenuCommandService?.AutomaticSnapConstraints ?? true))
         {
             _status = status;
             _ = InvokeAsync(StateHasChanged);

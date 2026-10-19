@@ -21,10 +21,11 @@ public static class SketchGeometryDragService
         Point2 dragEnd,
         bool constrainToCurrentVector,
         out DrawingDocument nextDocument,
-        out string status)
+        out string status,
+        bool automaticSnapConstraints = true)
     {
         var accepted = TryApplyDragCore(document, selectionKey, dragStart, dragEnd,
-            constrainToCurrentVector, out nextDocument, out status);
+            constrainToCurrentVector, out nextDocument, out status, automaticSnapConstraints);
         if (accepted && !FixedReferencesRemainUnchanged(document, nextDocument))
         {
             nextDocument = document;
@@ -143,7 +144,8 @@ public static class SketchGeometryDragService
         Point2 dragEnd,
         bool constrainToCurrentVector,
         out DrawingDocument nextDocument,
-        out string status)
+        out string status,
+        bool automaticSnapConstraints)
     {
         ArgumentNullException.ThrowIfNull(document);
 
@@ -257,7 +259,8 @@ public static class SketchGeometryDragService
             return false;
         }
 
-        draggedDocument = AddPersistentConstraintForSnappedPointDrag(document, draggedDocument, selectionKey, ref status);
+        if (automaticSnapConstraints)
+            draggedDocument = AddPersistentConstraintForSnappedPointDrag(document, draggedDocument, selectionKey, ref status);
         nextDocument = draggedDocument;
         return true;
     }

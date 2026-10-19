@@ -10,15 +10,16 @@ public sealed class DialogObserverLifecycleTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ReentrantClosedRenderCannotUseObserverAlreadyBeingDisposed(bool hotkeys)
+    [InlineData("appearance")]
+    [InlineData("hotkeys")]
+    [InlineData("settings")]
+    public async Task ReentrantClosedRenderCannotUseObserverAlreadyBeingDisposed(string dialog)
     {
-        var component = hotkeys ? (object)new ToolHotkeyOptions() : new CanvasAppearance();
+        var component = CreateDialog(dialog);
         var type = component.GetType();
         var observer = new Observer { HoldDisposal = true };
         var module = new Observer();
-        type.GetField(hotkeys ? "_dialogObserver" : "_observer", Private)!.SetValue(component, observer);
+        type.GetField(dialog == "hotkeys" ? "_dialogObserver" : "_observer", Private)!.SetValue(component, observer);
         type.GetField("_module", Private)!.SetValue(component, module);
         type.GetField("_loaded", Private)!.SetValue(component, true);
         Task Render() => (Task)type.GetMethod("OnAfterRenderAsync", Private)!.Invoke(component, new object[] { false })!;
@@ -39,14 +40,15 @@ public sealed class DialogObserverLifecycleTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ComponentDisposalDuringClosedRenderDoesNotDisposeObserverTwice(bool hotkeys)
+    [InlineData("appearance")]
+    [InlineData("hotkeys")]
+    [InlineData("settings")]
+    public async Task ComponentDisposalDuringClosedRenderDoesNotDisposeObserverTwice(string dialog)
     {
-        var component = hotkeys ? (object)new ToolHotkeyOptions() : new CanvasAppearance();
+        var component = CreateDialog(dialog);
         var type = component.GetType();
         var observer = new Observer { HoldDisposal = true };
-        type.GetField(hotkeys ? "_dialogObserver" : "_observer", Private)!.SetValue(component, observer);
+        type.GetField(dialog == "hotkeys" ? "_dialogObserver" : "_observer", Private)!.SetValue(component, observer);
         type.GetField("_module", Private)!.SetValue(component, new Observer());
         type.GetField("_loaded", Private)!.SetValue(component, true);
         var rendering = (Task)type.GetMethod("OnAfterRenderAsync", Private)!.Invoke(component, new object[] { false })!;
@@ -59,21 +61,29 @@ public sealed class DialogObserverLifecycleTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task DisconnectedCleanupStillReleasesBothReferencesAndRemainsIdempotent(bool hotkeys)
+    [InlineData("appearance")]
+    [InlineData("hotkeys")]
+    [InlineData("settings")]
+    public async Task DisconnectedCleanupStillReleasesBothReferencesAndRemainsIdempotent(string dialog)
     {
-        var component = hotkeys ? (object)new ToolHotkeyOptions() : new CanvasAppearance();
+        var component = CreateDialog(dialog);
         var type = component.GetType();
         var observer = new Observer { DisconnectOnCleanup = true };
         var module = new Observer();
-        type.GetField(hotkeys ? "_dialogObserver" : "_observer", Private)!.SetValue(component, observer);
+        type.GetField(dialog == "hotkeys" ? "_dialogObserver" : "_observer", Private)!.SetValue(component, observer);
         type.GetField("_module", Private)!.SetValue(component, module);
         await ((IAsyncDisposable)component).DisposeAsync();
         await ((IAsyncDisposable)component).DisposeAsync();
         observer.Disposals.Should().Be(1);
         module.Disposals.Should().Be(1);
     }
+
+    private static object CreateDialog(string dialog) => dialog switch
+    {
+        "hotkeys" => new ToolHotkeyOptions(),
+        "settings" => new WorkbenchSettings(),
+        _ => new CanvasAppearance()
+    };
 
     private sealed class Observer : IJSObjectReference
     {

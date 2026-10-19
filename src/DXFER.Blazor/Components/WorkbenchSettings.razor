@@ -1,0 +1,81 @@
+@namespace DXFER.Blazor.Components
+@implements IAsyncDisposable
+@inject IJSRuntime JsRuntime
+@inject WorkbenchMenuCommandService MenuCommands
+
+@if (IsOpen)
+{
+    <div class="settings-backdrop" @onclick="Close" @onkeydown:stopPropagation="true" @onkeydown="KeyDown">
+        <section class="settings-dialog" @ref="_panel" role="dialog" aria-modal="true" aria-label="Settings" @onclick:stopPropagation="true">
+            <header><h2>Settings</h2><button type="button" title="Close settings" aria-label="Close settings" @ref="_close" @onclick="Close"><CadIcon Name="CadIconName.Close" /></button></header>
+            <label class="setting-row"><input type="checkbox" checked="@MenuCommands.AutomaticSnapConstraints" disabled="@(!_loaded)" @onchange="ChangeAutomaticConstraints" /><span>Automatic snap constraints</span></label>
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    private ElementReference _panel, _close;
+    private IJSObjectReference? _module, _observer;
+    private bool _loaded, _disposed, _wasOpen, _focus;
+
+    protected override void OnParametersSet()
+    {
+        if (IsOpen && !_wasOpen) _focus = true;
+        _wasOpen = IsOpen;
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_disposed) return;
+        if (firstRender)
+        {
+            var module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./_content/DXFER.Blazor/workbenchSettings.js?v=20261018");
+            if (_disposed) { await module.DisposeAsync(); return; }
+            _module = module;
+            MenuCommands.AutomaticSnapConstraints = await module.InvokeAsync<bool>("loadAutomaticSnapConstraints");
+            if (_disposed) return;
+            _loaded = true;
+            StateHasChanged();
+        }
+        if (IsOpen && _module is not null)
+        {
+            _observer ??= await _module.InvokeAsync<IJSObjectReference>("observeSettingsDialog", _panel);
+            if (_focus) { _focus = false; await _close.FocusAsync(); }
+        }
+        else await ReleaseObserverAsync();
+    }
+    private async Task ChangeAutomaticConstraints(ChangeEventArgs args)
+    {
+        if (!_loaded || _module is null) return;
+        MenuCommands.AutomaticSnapConstraints = args.Value is true;
+        await _module.InvokeVoidAsync("saveAutomaticSnapConstraints", MenuCommands.AutomaticSnapConstraints);
+    }
+    private async Task Close()
+    {
+        await OnClose.InvokeAsync();
+        if (_module is not null) await _module.InvokeVoidAsync("focusDrawingCanvas");
+    }
+    private Task KeyDown(KeyboardEventArgs e) => e.Key == "Escape" ? Close() : Task.CompletedTask;
+    private async ValueTask ReleaseObserverAsync()
+    {
+        var observer = _observer;
+        _observer = null;
+        if (observer is null) return;
+        try { await observer.InvokeVoidAsync("dispose"); }
+        finally { await observer.DisposeAsync(); }
+    }
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        var module = _module;
+        _module = null;
+        try
+        {
+            try { await ReleaseObserverAsync(); }
+            finally { if (module is not null) await module.DisposeAsync(); }
+        }
+        catch (JSDisconnectedException) { }
+    }
+}

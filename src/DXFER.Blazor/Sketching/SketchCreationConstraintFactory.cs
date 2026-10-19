@@ -53,13 +53,20 @@ public static class SketchCreationConstraintFactory
         Func<SketchConstraintKind, string> createConstraintId,
         string? tangentReferenceKey = null,
         bool originSnapUsed = false,
-        IReadOnlyList<CanvasCreationSnapDto>? creationSnaps = null)
+        IReadOnlyList<CanvasCreationSnapDto>? creationSnaps = null,
+        bool automaticSnapConstraints = true)
     {
         ArgumentNullException.ThrowIfNull(existingEntities);
         ArgumentNullException.ThrowIfNull(createdEntities);
         ArgumentNullException.ThrowIfNull(createConstraintId);
 
         var constraints = CreateConstraintsForTool(toolName, createdEntities, createConstraintId).ToList();
+        if (!automaticSnapConstraints)
+        {
+            // Preserve shape topology, but standalone line axes are inferred snap intent.
+            if (NormalizeToolName(toolName) is "line" or "midpointline") constraints.Clear();
+            return constraints;
+        }
         if (originSnapUsed)
         {
             foreach (var point in EnumeratePointReferences(createdEntities).Where(p => AreClose(p.Point, new Point2(0, 0))))
