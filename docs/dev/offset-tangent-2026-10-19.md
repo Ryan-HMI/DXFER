@@ -38,6 +38,21 @@ only its dependent instead of translating the source to preserve the old gap.
   dimension fields and status feedback are retained.
 - DXFer Dev only; Production/Test, sign-in and Sync callbacks stay unchanged.
 
+## Installed Verification
+
+Dev `f18760764de147dd51e06eac564fd05c2ce1a624` verified at
+2026-10-19T15:15Z. Public-URL browser replay passes all four original/offset
+rectangle edge and pick-order combinations, including history and native
+reopen. Rendered build tooltip matches; screenshots inspected and no browser
+errors. Evidence: `/tmp/offset-tangent-dev`, `/tmp/offset-tangent-dev-browser.log`.
+The replay hides origin axes for unambiguous selection and picks clear of the
+existing gap dimension; earlier harness failures selected the dimension, not
+the edge, and are not solver failures.
+
+Four installed assembly hashes match staging; ten runtime settings preserved;
+health 200, anonymous root 302 and Production/Test PIDs unchanged. No new
+service warnings. Rollback: `/home/ryan/dxfer-runtime/dev-publish-before-f187607`.
+
 ## Existing Drawings
 
 No saved file or business record is rewritten. Old failed Tangent intent is
