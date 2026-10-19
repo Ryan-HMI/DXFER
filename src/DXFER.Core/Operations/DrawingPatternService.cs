@@ -131,6 +131,19 @@ public static class DrawingPatternService
         var reconciled = !geometryChanged && Same(styles, candidate.Metadata.EntityStyles) ? candidate
             : new DrawingDocument(candidate.Entities.Select(e => entities[e.Id.Value]), candidate.Dimensions,
                 candidate.Constraints, candidate.Metadata with { EntityStyles = styles });
+        if (geometryChanged && reconciled.Constraints.Count > 0)
+        {
+            // Follow point attachments only, not arbitrary inverse feature solves.
+            // Members remain read-only; validate every dependency below.
+            var following = reconciled.Entities.ToArray();
+            var pointRelations = reconciled.Constraints.Where(c => c.Kind is
+                SketchConstraintKind.Coincident or SketchConstraintKind.Horizontal or SketchConstraintKind.Vertical).ToArray();
+            SketchConstraintPropagationService.PropagateFromChanges(candidate.Entities, following,
+                pointRelations, SketchFixedReferences.FromDocument(reconciled));
+            reconciled = new DrawingDocument(following, reconciled.Dimensions,
+                reconciled.Constraints, reconciled.Metadata);
+            if (!TryValidate(reconciled, out reason)) return false;
+        }
         if (!PreservesDependencies(previous, reconciled, out reason)) return false;
         result = RefreshReferences(reconciled);
         reason = string.Empty;
@@ -287,7 +300,10 @@ public static class DrawingPatternService
                 if (SketchReference.TryParse(key, out var reference) && patternIds.Contains(reference.EntityId)) changed.Add(reference.EntityId);
         foreach (var dimension in candidate.Dimensions.Where(d => d.IsDriving && References(d.ReferenceKeys, changed)))
             if (!SketchDimensionSolverService.IsDimensionSatisfied(candidate, dimension))
-                return Refuse($"Pattern mutation conflicts with driving dimension '{dimension.Id}'.", out reason);
+                return Refuse($"Pattern mutation conflicts with driving dimension '{dimension.Id}'."
+                    + (dimension.ReferenceKeys.Any(key => SketchReference.TryParse(key, out var reference)
+                        && IsGeneratedMember(candidate, reference.EntityId))
+                        ? " Generated members cannot be edited independently; edit the source or pattern instead." : ""), out reason);
         foreach (var constraint in candidate.Constraints.Where(c => c.State != SketchConstraintState.Suppressed && References(c.ReferenceKeys, changed)))
             if (SketchConstraintService.ValidateConstraint(candidate, constraint).State != SketchConstraintState.Satisfied)
                 return Refuse($"Pattern mutation conflicts with constraint '{constraint.Id}'.", out reason);

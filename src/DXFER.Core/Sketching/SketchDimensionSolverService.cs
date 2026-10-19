@@ -33,12 +33,12 @@ public static class SketchDimensionSolverService
         var entities = document.Entities.ToArray();
         if (effectiveDimension.IsDriving)
         {
-            ApplyDimensionGeometry(entities, document.Constraints, effectiveDimension);
+            ApplyDimensionGeometry(entities, document.Constraints, SketchFixedReferences.FromDocument(document), effectiveDimension);
             SketchConstraintPropagationService.PropagateFromChanges(
                 originalEntities,
                 entities,
                 document.Constraints,
-                SketchFixedReferences.FromConstraints(document.Constraints, document.Entities));
+                SketchFixedReferences.FromDocument(document));
         }
 
         var dimensions = UpsertDimension(document.Dimensions, effectiveDimension);
@@ -251,10 +251,9 @@ public static class SketchDimensionSolverService
     private static void ApplyDimensionGeometry(
         DrawingEntity[] entities,
         IReadOnlyList<SketchConstraint> constraints,
+        SketchFixedReferences fixedReferences,
         SketchDimension dimension)
     {
-        var fixedReferences = SketchFixedReferences.FromConstraints(constraints, entities);
-
         switch (dimension.Kind)
         {
             case SketchDimensionKind.Offset:

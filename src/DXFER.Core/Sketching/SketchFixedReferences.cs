@@ -5,10 +5,22 @@ namespace DXFER.Core.Sketching;
 internal sealed class SketchFixedReferences
 {
     private readonly HashSet<string> fixedReferences;
+    private readonly HashSet<string> dependentEntities;
 
-    private SketchFixedReferences(HashSet<string> fixedReferences)
+    private SketchFixedReferences(HashSet<string> fixedReferences, IEnumerable<string>? dependentEntities = null)
     {
         this.fixedReferences = fixedReferences;
+        this.dependentEntities = new(dependentEntities ?? Array.Empty<string>(), StringComparer.Ordinal);
+    }
+
+    public static SketchFixedReferences FromDocument(DrawingDocument document)
+    {
+        var references = FromConstraints(document.Constraints, document.Entities);
+        if (document.Metadata.Patterns.Count == 0) return references;
+        // Generated members are directional references, not permanent Fix anchors.
+        // Do not spread their read-only status through coincident free peers.
+        return new(references.fixedReferences,
+            document.Metadata.Patterns.SelectMany(p => p.Members).Select(m => m.EntityId));
     }
 
     public static SketchFixedReferences FromConstraints(IEnumerable<SketchConstraint> constraints, IReadOnlyList<DrawingEntity> entities)
@@ -80,7 +92,7 @@ internal sealed class SketchFixedReferences
 
     public bool IsFixed(SketchReference reference)
     {
-        if (reference.IsOrigin || fixedReferences.Contains(reference.ToString()))
+        if (reference.IsOrigin || dependentEntities.Contains(reference.EntityId) || fixedReferences.Contains(reference.ToString()))
         {
             return true;
         }
@@ -101,6 +113,7 @@ internal sealed class SketchFixedReferences
 
     public bool IsWholeEntityFixed(SketchReference reference) =>
         reference.EntityId == SketchReference.OriginEntityId
+        || dependentEntities.Contains(reference.EntityId)
         || fixedReferences.Contains(reference.EntityId)
         || (reference.SegmentIndex.HasValue && fixedReferences.Contains(reference.ToString()));
 

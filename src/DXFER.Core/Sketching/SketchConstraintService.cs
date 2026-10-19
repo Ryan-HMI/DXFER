@@ -38,7 +38,7 @@ public static class SketchConstraintService
         var entities = document.Entities.ToArray();
         if (constraint.Kind != SketchConstraintKind.Fix)
         {
-            ApplyConstraintGeometry(entities, document.Constraints, constraint);
+            ApplyConstraintGeometry(entities, SketchFixedReferences.FromDocument(document), constraint);
         }
 
         var validated = constraint.Kind == SketchConstraintKind.Fix
@@ -94,11 +94,9 @@ public static class SketchConstraintService
 
     private static void ApplyConstraintGeometry(
         DrawingEntity[] entities,
-        IEnumerable<SketchConstraint> constraints,
+        SketchFixedReferences fixedReferences,
         SketchConstraint constraint)
     {
-        var fixedReferences = SketchFixedReferences.FromConstraints(constraints, entities);
-
         switch (constraint.Kind)
         {
             case SketchConstraintKind.PointOnCircle:
