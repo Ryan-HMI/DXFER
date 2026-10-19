@@ -44,7 +44,7 @@
         if (_disposed) return;
         if (firstRender)
         {
-            _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./_content/DXFER.Blazor/canvasAppearance.js?v=20261018-foundry-presets");
+            _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./_content/DXFER.Blazor/canvasAppearance.js?v=20261019-native-controls");
             _appearance = await _module.InvokeAsync<Appearance>("loadCanvasAppearance");
             await _module.InvokeVoidAsync("applyCanvasAppearance", _control, _appearance);
             _loaded = true;

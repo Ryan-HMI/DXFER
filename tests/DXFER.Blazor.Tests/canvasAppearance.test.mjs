@@ -57,6 +57,24 @@ test('panel colors are validated and shared surfaces adapt text contrast',()=>{
   assert.equal(properties['--dx-canvas-background'],FOUNDRY_BACKGROUND);
   assert.equal(canvas.dataset.backgroundPreset,'foundry');
 });
+test('native controls follow panel input surfaces independently of canvas color',()=>{
+  const properties={};
+  const root={style:{setProperty:(k,v)=>properties[k]=v},querySelectorAll:()=>[]};
+  const control={ownerDocument:{documentElement:root}};
+  for(const [appearance,expected] of [
+    [{preset:'foundry'},'dark'],
+    [{preset:'neutral'},'dark'],
+    [{preset:'custom',color:'#ffffff',panelColor:'#10141b'},'dark'],
+    [{preset:'foundry',panelColor:'#eeeeee'},'light'],
+    [{preset:'custom',color:'#000000',panelColor:'#ffffff'},'light'],
+    [{preset:'custom',color:'#ffffff',panelColor:'invalid'},'dark']
+  ]) {
+    applyCanvasAppearance(control,appearance);
+    assert.equal(properties['--dx-control-color-scheme'],expected);
+    const normalized=normalizeCanvasAppearance(appearance);
+    assert.equal(properties['--dx-input'],panelColors(normalized.panelColor).chrome);
+  }
+});
 test('renderer paints exact Foundry stops or solid color without leaking transform state',()=>{
   const calls=[],gradient={addColorStop:(...args)=>calls.push(['stop',...args])};
   const context={save:()=>calls.push(['save']),restore:()=>calls.push(['restore']),translate:(...args)=>calls.push(['translate',...args]),scale:(...args)=>calls.push(['scale',...args]),createRadialGradient:(...args)=>{calls.push(['gradient',...args]);return gradient;},fillRect:(...args)=>calls.push(['fill',...args])};

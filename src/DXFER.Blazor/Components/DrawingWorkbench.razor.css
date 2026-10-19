@@ -1,4 +1,5 @@
 .dxfer-workbench {
+    color-scheme: var(--dx-control-color-scheme, dark);
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;

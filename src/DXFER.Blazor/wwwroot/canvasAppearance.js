@@ -74,8 +74,10 @@ export function applyCanvasAppearance(control, value, persist = false) {
   if (!root) return appearance;
   const background = preset === 'foundry' ? FOUNDRY_BACKGROUND : color;
   root.style.setProperty('--dx-canvas-background',background);
-  for (const [key,value] of Object.entries(panelColors(appearance.panelColor))) root.style.setProperty(`--dx-${key}`,value);
-  root.style.setProperty('--dx-input',panelColors(appearance.panelColor).chrome);
+  const surfaces = panelColors(appearance.panelColor);
+  for (const [key,value] of Object.entries(surfaces)) root.style.setProperty(`--dx-${key}`,value);
+  root.style.setProperty('--dx-input',surfaces.chrome);
+  root.style.setProperty('--dx-control-color-scheme',isLightCanvasBackground(surfaces.chrome) ? 'light' : 'dark');
   const light = isLightCanvasBackground(color);
   root.style.setProperty('--dx-canvas-label',light ? '#202020' : '#f3f6fb');
   root.style.setProperty('--dx-canvas-label-selected',light ? '#005a75' : '#e0f2fe');
