@@ -56,7 +56,6 @@ public partial class DrawingWorkbench
             Count = Text(pattern.Count), CenterX = Text(pattern.Center.X), CenterY = Text(pattern.Center.Y),
             StepAngle = Text(pattern.StepAngleDegrees), FullCircle = pattern.FullCircle
         };
-        _operationInspectorCollapsed = false;
         RefreshPatternPreview();
     }
 

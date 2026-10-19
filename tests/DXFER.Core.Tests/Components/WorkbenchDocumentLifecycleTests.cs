@@ -47,7 +47,7 @@ public sealed class WorkbenchDocumentLifecycleTests
     [InlineData(WorkbenchTool.Fillet)]
     [InlineData(WorkbenchTool.PowerTrim)]
     [InlineData(WorkbenchTool.Line)]
-    public void InspectorVisibilityChangesPreserveActiveIntentAndHistory(WorkbenchTool tool)
+    public void OnlyActualToolControlsHaveAnInspector(WorkbenchTool tool)
     {
         var workbench = Create();
         typeof(DrawingWorkbench).GetProperty(nameof(DrawingWorkbench.EnableFullEditing))!.SetValue(workbench, true);
@@ -56,18 +56,32 @@ public sealed class WorkbenchDocumentLifecycleTests
         var original = Get<DrawingDocument>(workbench, "_document");
         var prompt = typeof(DrawingWorkbench).GetProperty("CommandPromptText", Private)!.GetValue(workbench);
         object? Property(string name) => typeof(DrawingWorkbench).GetProperty(name, Private)!.GetValue(workbench);
-        Property("IsOperationInspectorVisible").Should().Be(true);
-        Invoke(workbench, "ToggleOperationInspector");
-        Property("IsOperationInspectorVisible").Should().Be(false);
+        Property("IsOperationInspectorVisible").Should().Be(tool == WorkbenchTool.Fillet);
         Get<WorkbenchTool?>(workbench, "_activeTool").Should().Be(tool);
         Property("CornerModifyDistanceValue").Should().Be("0");
         Property("CommandPromptText").Should().Be(prompt);
-        Invoke(workbench, "ToggleOperationInspector");
-        Property("IsOperationInspectorVisible").Should().Be(true);
+        Set(workbench, "_activeTool", null!);
+        Property("IsOperationInspectorVisible").Should().Be(false);
         Get<DrawingDocument>(workbench, "_document").Should().BeSameAs(original);
         Get<Stack<DrawingDocument>>(workbench, "_undoStack").Should().BeEmpty();
         typeof(DrawingWorkbench).GetProperty(nameof(DrawingWorkbench.EnableFullEditing))!.SetValue(workbench, false);
         Property("IsOperationInspectorVisible").Should().Be(false);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(WorkbenchTool.Line)]
+    [InlineData(WorkbenchTool.Fillet)]
+    [InlineData(WorkbenchTool.Measure)]
+    public void RemovedInformationDoesNotMoveIntoTheFooter(WorkbenchTool? tool)
+    {
+        var workbench = Create();
+        Set(workbench, "_activeTool", tool!);
+        var values = (System.Collections.IEnumerable)typeof(DrawingWorkbench)
+            .GetProperty("FooterMeasurementReadouts", Private)!.GetValue(workbench)!;
+        var labels = values.Cast<object>().Select(value => (string)value.GetType().GetProperty("Label")!.GetValue(value)!).ToArray();
+        labels.Should().NotIntersectWith(new[] { "Sel", "Active", "Affects", "Construction", "Tool" });
+        if (tool != WorkbenchTool.Measure) labels.Should().BeEmpty();
     }
 
     [Theory]

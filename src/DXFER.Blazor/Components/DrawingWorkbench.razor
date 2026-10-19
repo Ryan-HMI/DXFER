@@ -112,19 +112,14 @@
 
     @if (EnableFullEditing)
     {
-    <aside class="dxfer-information-panel" aria-label="Drawing information">
+    <aside class="dxfer-information-panel" aria-label="Drawing controls">
     @if (IsOperationInspectorVisible)
     {
         <aside class="dxfer-operation-inspector @(PatternEditing ? "dxfer-pattern-active" : "")" aria-label="Active operation" @onkeydown="HandleInspectorEscape">
             <header class="dxfer-operation-heading">
-                <h2>@(_activeTool.HasValue ? ActiveToolLabel : "Information")</h2>
-                <button type="button" class="dxfer-inspector-toggle" @ref="_inspectorToggle"
-                        aria-label="Hide operation inspector" title="Hide operation inspector" @onclick="ToggleOperationInspector">
-                    <CadIcon Name="CadIconName.Info" />
-                </button>
+                <h2>@ActiveToolLabel</h2>
             </header>
             <div class="dxfer-operation-feedback">
-                <div class="dxfer-command-prompt">@CommandPromptText</div>
                 @if (IsCornerModifyToolActive)
                 {
                     @CornerSizeControl
@@ -152,15 +147,6 @@
             </div>
             @if (!PatternEditing)
             {
-            <dl class="dxfer-operation-readouts" aria-label="Operation selection and measurements">
-                @foreach (var item in LiveMeasurementReadouts)
-                {
-                    <div>
-                        <dt>@item.Label</dt>
-                        <dd>@item.Value</dd>
-                    </div>
-                }
-            </dl>
             <footer class="dxfer-operation-actions">
                 @if (IsCornerModifyToolActive)
                 {
@@ -245,20 +231,13 @@
 
     <footer class="dxfer-command-bar" aria-label="Command and measurement readout">
         <div class="dxfer-command-prompt" role="status">@CommandPromptText</div>
-        @if (!IsOperationInspectorVisible)
+        @if (!IsOperationInspectorVisible && IsCornerModifyToolActive)
         {
             <div class="dxfer-corner-toolbar">
             @if (IsCornerModifyToolActive)
             {
                 @CornerSizeControl
                 @CornerActions
-            }
-            @if (HasOperationInspector)
-            {
-                <button type="button" class="dxfer-inspector-toggle" @ref="_inspectorToggle"
-                        aria-label="Show operation inspector" title="Show operation inspector" @onclick="ToggleOperationInspector">
-                    <CadIcon Name="CadIconName.Info" />
-                </button>
             }
             </div>
         }
@@ -276,7 +255,7 @@
                     <span class="dxfer-live-readout-value">@ContourCountText</span>
                 </div>
             }
-            @foreach (var item in IsOperationInspectorVisible ? Array.Empty<LiveReadoutItem>() : LiveMeasurementReadouts)
+            @foreach (var item in FooterMeasurementReadouts)
             {
                 <div class="dxfer-live-readout-item">
                     <span class="dxfer-live-readout-label">@item.Label</span>

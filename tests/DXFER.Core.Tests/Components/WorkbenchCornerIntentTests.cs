@@ -77,7 +77,7 @@ public sealed class WorkbenchCornerIntentTests
     [Theory]
     [InlineData(WorkbenchTool.Chamfer)]
     [InlineData(WorkbenchTool.Fillet)]
-    public async Task ActivatingCornerRevealsHiddenInspector(WorkbenchTool tool)
+    public async Task ActivatingCornerShowsRequiredControls(WorkbenchTool tool)
     {
         using var services = new ServiceCollection().BuildServiceProvider();
         await using var renderer = new TestRenderer(services);
@@ -85,9 +85,10 @@ public sealed class WorkbenchCornerIntentTests
         renderer.Attach(workbench);
         await renderer.Dispatcher.InvokeAsync(() =>
         {
-            Set(workbench, "_operationInspectorCollapsed", true);
+            typeof(DrawingWorkbench).GetProperty(nameof(DrawingWorkbench.EnableFullEditing))!.SetValue(workbench, true);
             Invoke(workbench, "ActivateTool", tool, "Corner active.");
-            Get<bool>(workbench, "_operationInspectorCollapsed").Should().BeFalse();
+            typeof(DrawingWorkbench).GetProperty("IsOperationInspectorVisible", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(workbench).Should().Be(true);
         });
     }
 

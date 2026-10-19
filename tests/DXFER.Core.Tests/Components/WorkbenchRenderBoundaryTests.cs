@@ -101,8 +101,13 @@ public sealed class WorkbenchRenderBoundaryTests
         markup.Should().NotContain("DXF Export");
         source.Should().NotContain("_exportText");
         source.Should().NotContain("BuildSyncMetadataJson");
-        source.Should().Contain("HasOperationInspector => EnableFullEditing;");
-        markup.Should().Contain("CadIconName.Info");
+        source.Should().Contain("EnableFullEditing && (IsCornerModifyToolActive || PatternEditing)");
+        markup.Should().NotContain("CadIconName.Info");
+        markup.Should().NotContain("Operation selection and measurements");
+        markup.Should().NotContain("Show operation inspector");
+        markup.Should().NotContain("Hide operation inspector");
+        markup.Should().Contain("aria-label=\"Layers\"");
+        markup.Should().Contain("@foreach (var item in FooterMeasurementReadouts)");
         markup.Should().Contain("@bind=\"LayerNameDraft\" @bind:event=\"oninput\"");
         css.Should().Contain(".dxfer-operation-inspector");
         css.Should().NotContain("dxfer-metadata");

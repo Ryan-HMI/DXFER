@@ -75,9 +75,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private double? _cornerModifyDistance;
     private string? _cornerModifyDistanceText;
     private bool _cornerModifyDistanceInvalid;
-    private bool _operationInspectorCollapsed;
-    private ElementReference _inspectorToggle;
-    private bool _focusInspectorToggleAfterRender;
     private bool _focusCanvasAfterRender;
     private CornerModifyEqualChain? _cornerModifyEqualChain;
     private DrawingDocument? _cornerPreview;
@@ -133,11 +130,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         {
             _contextFocus = false;
             await _contextMenu.FocusAsync(preventScroll: true);
-        }
-        if (_focusInspectorToggleAfterRender)
-        {
-            _focusInspectorToggleAfterRender = false;
-            await _inspectorToggle.FocusAsync(preventScroll: true);
         }
         if (_focusCanvasAfterRender && _canvas is not null)
         {
@@ -468,20 +460,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         ? "--dxfer-inspector-width:18.5rem;"
         : "--dxfer-inspector-width:0px;";
 
-    private bool HasOperationInspector => EnableFullEditing;
-    private bool IsOperationInspectorVisible => HasOperationInspector && !_operationInspectorCollapsed;
+    private bool IsOperationInspectorVisible => EnableFullEditing && (IsCornerModifyToolActive || PatternEditing);
     private string DocumentUnitsText => _document.Metadata.Units switch
     {
         DrawingUnits.Inches => "in",
         DrawingUnits.Millimeters => "mm",
         _ => "Unspecified"
     };
-
-    private void ToggleOperationInspector()
-    {
-        _operationInspectorCollapsed = !_operationInspectorCollapsed;
-        _focusInspectorToggleAfterRender = true;
-    }
 
     private void ExitInspectorTool()
     {
@@ -615,6 +600,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     }
 
     private IReadOnlyList<LiveReadoutItem> LiveMeasurementReadouts => BuildLiveMeasurementReadouts();
+    private IReadOnlyList<LiveReadoutItem> FooterMeasurementReadouts => _activeTool == WorkbenchTool.Measure
+        ? LiveMeasurementReadouts.Where(item => item.Label is not ("Sel" or "Active" or "Affects" or "Construction" or "Tool")).ToArray()
+        : Array.Empty<LiveReadoutItem>();
 
     private async Task OpenFileAsync(IBrowserFile file)
     {
@@ -1339,7 +1327,6 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         _activeTool = tool;
-        if (TryGetCornerModifyCommand(tool, out _)) _operationInspectorCollapsed = false;
         _status = status;
     }
 
