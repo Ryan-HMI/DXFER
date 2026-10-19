@@ -16,4 +16,5 @@
 - Fourteen native exports have valid checksums and zero ezdxf audit errors/fixes. No browser errors. Idle and Chamfer screenshots inspected for top alignment, preserved controls and readable layout.
 - Evidence: `/tmp/dxfer-no-information-panel-local`. Runner stopped, disposable local listener removed.
 - Shared rendering/lifecycle changed, not a CSS-only hide. No drawing or record repair required. Historical QA that expected an Information show/hide toggle is superseded by this explicit removal request.
-- Public Dev verification follows rollout; Production/Test are unchanged.
+- Deployed `10c51770c0d7e2b6408411e8479d56172cfabecf` to https://dxferdev.sync.harrisonmetals.com at approximately 2026-10-19T06:17Z. Installed assembly hashes match; all ten tracked settings, normal sign-in and disabled Sync callbacks remain intact. Production/Test process IDs unchanged.
+- Public replay: all six scenarios pass on the rendered revision, fourteen native exports pass checksum and ezdxf audit (zero errors/fixes), no browser errors or Dev warning journal entries. Idle screenshot inspected. Evidence: `/tmp/dxfer-no-information-panel-public`. Runner and browser stopped.
