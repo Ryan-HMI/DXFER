@@ -48,7 +48,13 @@ public sealed class LegacySketchSolverAdapter : ISketchSolver
         var propagatedEntities = constrained.Entities.ToArray();
         SketchConstraintPropagationService.PropagateFromChanges(
             request.Document.Entities, propagatedEntities, constrained.Constraints,
-            SketchFixedReferences.FromConstraints(constrained.Constraints, constrained.Entities));
+            SketchFixedReferences.FromConstraints(constrained.Constraints, constrained.Entities),
+            // Tangency can translate a free offset family from a dependent curve.
+            // Dimension edits must retain their directional source/gap semantics.
+            allowOffsetDependentTranslation: request.Constraints.Count == 1 && request.Dimensions.Count == 0
+                && request.Constraints.Any(c => c.Kind == SketchConstraintKind.Tangent
+                    && c.State != SketchConstraintState.Suppressed
+                    && !request.Document.Constraints.Any(existing => existing.Id == c.Id)));
         constrained = new DrawingDocument(propagatedEntities, constrained.Dimensions,
             constrained.Constraints, constrained.Metadata);
         var dimensions = constrained.Dimensions

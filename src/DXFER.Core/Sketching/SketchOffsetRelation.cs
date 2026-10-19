@@ -25,15 +25,41 @@ public static class SketchOffsetRelation
         && SameGeometry(expected, entities.First(e => e.Id.Value == references[^1]));
 
     internal static bool Propagate(IReadOnlyList<DrawingEntity> original, DrawingEntity[] entities,
-        SketchFixedReferences fixedReferences, SketchConstraint constraint)
+        SketchFixedReferences fixedReferences, SketchConstraint constraint, bool allowDependentTranslation = false)
     {
         var keys = constraint.ReferenceKeys;
-        if (keys.Count < 2 || !keys.SkipLast(1).Any(id =>
+        if (keys.Count < 2) return false;
+        if (!keys.SkipLast(1).Any(id =>
             original.FirstOrDefault(e => e.Id.Value == id) is { } before
-            && entities.FirstOrDefault(e => e.Id.Value == id) is { } after && !SameGeometry(before, after))) return false;
+            && entities.FirstOrDefault(e => e.Id.Value == id) is { } after && !SameGeometry(before, after)))
+            return allowDependentTranslation && TryFollowDependentTranslation(original, entities, fixedReferences, keys);
         return IsSatisfied(original, keys) && TryWitness(original, keys, out var witness)
             && TryBuild(entities, keys, witness, witness.Gap, out var output, original)
             && Replace(entities, output, fixedReferences);
+    }
+
+    private static bool TryFollowDependentTranslation(IReadOnlyList<DrawingEntity> original, DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences, IReadOnlyList<string> keys)
+    {
+        var before = original.FirstOrDefault(e => e.Id.Value == keys[^1]);
+        var after = entities.FirstOrDefault(e => e.Id.Value == keys[^1]);
+        if (before is null || after is null || SameGeometry(before, after) || !IsSatisfied(original, keys)) return false;
+        var oldBounds = before.GetBounds();
+        var newBounds = after.GetBounds();
+        var translation = Transform2.Translation(newBounds.MinX - oldBounds.MinX, newBounds.MinY - oldBounds.MinY);
+        if (!SameGeometry(before.Transform(translation), after)) return false;
+
+        // A newly applied relation may position a dependent contour. Only a rigid
+        // translation can flow back to its sources; never infer a resize or gap edit.
+        var candidate = entities.ToArray();
+        foreach (var id in keys.SkipLast(1))
+        {
+            var source = candidate.FirstOrDefault(e => e.Id.Value == id);
+            if (source is null || !Replace(candidate, source.Transform(translation), fixedReferences)) return false;
+        }
+        if (!IsSatisfied(candidate, keys)) return false;
+        Array.Copy(candidate, entities, entities.Length);
+        return true;
     }
 
     internal static bool ApplyGap(DrawingEntity[] entities, IReadOnlyList<string> references,

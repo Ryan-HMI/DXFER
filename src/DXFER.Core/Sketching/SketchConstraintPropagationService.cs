@@ -9,7 +9,8 @@ internal static class SketchConstraintPropagationService
         IReadOnlyList<DrawingEntity> originalEntities,
         DrawingEntity[] entities,
         IReadOnlyList<SketchConstraint> constraints,
-        SketchFixedReferences fixedReferences)
+        SketchFixedReferences fixedReferences,
+        bool allowOffsetDependentTranslation = false)
     {
         var previousEntities = originalEntities.ToArray();
         var guardLimit = Math.Max(128, constraints.Count * 32);
@@ -17,7 +18,7 @@ internal static class SketchConstraintPropagationService
         {
             var beforeIteration = entities.ToArray();
             var changed = PropagatePointConstraints(previousEntities, entities, constraints, fixedReferences);
-            changed |= PropagateDrivenConstraintGeometry(originalEntities, entities, constraints, fixedReferences);
+            changed |= PropagateDrivenConstraintGeometry(originalEntities, entities, constraints, fixedReferences, allowOffsetDependentTranslation);
             if (!changed)
             {
                 return;
@@ -90,7 +91,8 @@ internal static class SketchConstraintPropagationService
         IReadOnlyList<DrawingEntity> originalEntities,
         DrawingEntity[] entities,
         IReadOnlyList<SketchConstraint> constraints,
-        SketchFixedReferences fixedReferences)
+        SketchFixedReferences fixedReferences,
+        bool allowOffsetDependentTranslation)
     {
         var changed = false;
         foreach (var constraint in constraints)
@@ -102,7 +104,7 @@ internal static class SketchConstraintPropagationService
 
             changed |= constraint.Kind switch
             {
-                SketchConstraintKind.Offset => SketchOffsetRelation.Propagate(originalEntities, entities, fixedReferences, constraint),
+                SketchConstraintKind.Offset => SketchOffsetRelation.Propagate(originalEntities, entities, fixedReferences, constraint, allowOffsetDependentTranslation),
                 SketchConstraintKind.PointOnLine or SketchConstraintKind.Collinear => SketchLineIncidence.Apply(entities, fixedReferences, constraint, originalEntities),
                 SketchConstraintKind.Equal => PropagateEqual(originalEntities, entities, fixedReferences, constraint),
                 SketchConstraintKind.Concentric => PropagateConcentric(originalEntities, entities, fixedReferences, constraint),
