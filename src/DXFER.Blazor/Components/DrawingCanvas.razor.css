@@ -120,6 +120,18 @@
     box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.28), 0 0 14px rgba(56, 189, 248, 0.42);
 }
 
+::deep .drawing-dimension-symbol {
+    position: absolute;
+    z-index: 6;
+    transform: translate(-50%, -50%);
+    color: #dff7ff;
+    background: rgba(15, 23, 42, 0.92);
+    padding: 1px 2px;
+    border-radius: 2px;
+    font: 650 0.85rem/1 "Segoe UI", system-ui, sans-serif;
+    pointer-events: none;
+}
+
 ::deep .drawing-dimension-input-active {
     border-color: #bae6fd;
     background: #102b3b;

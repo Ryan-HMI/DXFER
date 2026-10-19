@@ -566,7 +566,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.TwoPointRectangle => "Corner rectangle: click first corner, then opposite corner. Shift: polar snap. Esc: cancel.",
         WorkbenchTool.CenterRectangle => "Center rectangle: click center, then corner. Shift: polar snap. Esc: cancel.",
         WorkbenchTool.AlignedRectangle => "Aligned rectangle: click baseline start, baseline end, then depth. Esc: cancel.",
-        WorkbenchTool.CenterCircle => "Center circle: click center, then radius point. Shift: polar snap. Esc: cancel.",
+        WorkbenchTool.CenterCircle => "Center circle: click center, then edge point or enter diameter. Shift: polar snap. Esc: cancel.",
         WorkbenchTool.ThreePointCircle => "Three-point circle: click three points on the circumference. Esc: cancel.",
         WorkbenchTool.Ellipse => "Ellipse: click center, major radius point, then minor radius point. Esc: cancel.",
         WorkbenchTool.ThreePointArc => "Three-point arc: click start point, through point, then end point. Esc: cancel.",

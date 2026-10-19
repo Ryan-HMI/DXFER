@@ -17,6 +17,7 @@ import {
   getAngleDimensionScreenGeometry,
   getArcAngleDimensionScreenGeometry,
   getCenterRectangleCorners,
+  getCenterCirclePreviewDimensions,
   getConstraintGlyphGroups,
   getConstraintGlyphIcon,
   getConstraintGlyphLeader,
@@ -890,7 +891,7 @@ test("draft midpoint line dimension uses full mirrored line length", () => {
   assert.deepEqual(state.toolDraft.previewPoint, { x: 13, y: 14 });
 });
 
-test("draft circle dimension updates radius along current direction", () => {
+test("draft circle diameter updates half-sized radius along current direction", () => {
   const state = {
     activeTool: "centercircle",
     toolDraft: {
@@ -899,10 +900,23 @@ test("draft circle dimension updates radius along current direction", () => {
     }
   };
 
-  const changed = applyDraftDimensionValue(state, "radius", 10);
+  const changed = applyDraftDimensionValue(state, "diameter", 10);
 
   assert.equal(changed, true);
-  assert.deepEqual(state.toolDraft.previewPoint, { x: 11, y: 13 });
+  assert.deepEqual(state.toolDraft.previewPoint, { x: 8, y: 9 });
+  assert.deepEqual(getSketchToolDimensionLocks(state.toolDraft), { keys: ["diameter"], values: [10] });
+});
+
+test("circle creation preview measures diameter and leaves arc radius semantics intact", () => {
+  const state = createHitTestState([]);
+  const dimensions = getCenterCirclePreviewDimensions(state, { x: 5, y: 5 }, { x: 8, y: 9 });
+  assert.equal(dimensions.length, 1);
+  assert.equal(dimensions[0].key, "diameter");
+  assert.equal(dimensions[0].label, "Diameter");
+  assert.equal(dimensions[0].value, 10);
+  assert.equal(applyDraftDimensionValue({activeTool: "centercircle", toolDraft: {
+    points: [{x: 0, y: 0}], previewPoint: {x: 1, y: 0}
+  }}, "diameter", 0), false);
 });
 
 test("draft rectangle dimensions preserve dragged quadrant", () => {

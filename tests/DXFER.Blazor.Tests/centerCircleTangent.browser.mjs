@@ -53,15 +53,15 @@ try {
         await load('line');const before=native(await download());
         await tool('Center circle');await click([4,4]);await move(typed?[4,0]:[6,0]);
         if(typed) {
-            const input=page.locator('input[data-dimension-key="radius"]');
-            await input.fill(String(radius));await input.press('Enter');await page.waitForTimeout(200);
+            const input=page.locator('input[data-dimension-key="diameter"]');
+            await input.fill(String(radius*2));await input.press('Enter');await page.waitForTimeout(200);
         } else {await page.mouse.down();await page.mouse.up();await page.waitForTimeout(200);}
         await page.keyboard.press('Escape');const after=native(await download(typed?`radius-${radius}`:'ordinary-edge'));
         const created=after.entities.find(e=>!before.entities.some(b=>b.id===e.id));assert.equal(created?.kind,'circle');
         assert.equal(after.constraints.filter(c=>c.kind==='Tangent').length,before.constraints.filter(c=>c.kind==='Tangent').length+(radius===4?1:0));
         if(typed)assert.ok(Math.abs(created.radius-radius)<1e-6);
         assert.deepEqual(after.entities.filter(e=>e.id!==created.id),before.entities);
-        console.log(`${typed?`Typed radius ${radius}`:'Ordinary edge click'}: ${radius===4?'matching snap retained':'no spurious tangent relation'}`);
+        console.log(`${typed?`Typed diameter ${radius*2}`:'Ordinary edge click'}: ${radius===4?'matching snap retained':'no spurious tangent relation'}`);
     }
     assert.deepEqual(errors,[]);
 } finally {await browser.close();}

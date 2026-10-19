@@ -77,7 +77,9 @@ public static class SketchCreationEntityFactory
 
                 break;
             case "centercircle":
-                var radius = GetPositiveDimensionValue(dimensionValues, "radius") ?? Distance(first, second);
+                var radius = GetPositiveDimensionValue(dimensionValues, "diameter") / 2.0
+                    ?? GetPositiveDimensionValue(dimensionValues, "radius")
+                    ?? Distance(first, second);
                 if (radius > GeometryTolerance)
                 {
                     entities.Add(new CircleEntity(createEntityId("circle"), first, radius, isConstruction));

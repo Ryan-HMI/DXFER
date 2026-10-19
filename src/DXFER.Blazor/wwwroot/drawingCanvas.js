@@ -1422,7 +1422,7 @@ function drawToolPreview(state) {
       context.beginPath();
       context.arc(center.x, center.y, radius, 0, Math.PI * 2);
       context.stroke();
-      addRadiusPreviewDimension(dimensions, state, first, second);
+      dimensions.push(...getCenterCirclePreviewDimensions(state, first, second));
     }
   } else if (tool === "threepointcircle") {
     if (points.length === 1) {
@@ -2002,6 +2002,13 @@ function addAlignedRectangleDepthDimension(dimensions, state, corners) {
   });
 }
 
+export function getCenterCirclePreviewDimensions(state, center, edge) {
+  const dimensions = [];
+  const opposite = { x: 2 * center.x - edge.x, y: 2 * center.y - edge.y };
+  addLinearPreviewDimension(dimensions, state, "diameter", "Diameter", opposite, edge);
+  return dimensions;
+}
+
 function addRadiusPreviewDimension(dimensions, state, center, edge) {
   const value = distanceBetweenWorldPoints(center, edge);
   if (!formatDimensionValue(value)) {
@@ -2160,7 +2167,8 @@ function getArcSweepDimensionPoint(state, center, radius, startAngleDegrees, end
 
 function drawPreviewDimensionFallbackLabels(state, dimensions) {
   for (const dimension of dimensions) {
-    drawFloatingDimensionLabel(state, formatDimensionValue(dimension.value), dimension.point);
+    const prefix = dimension.key === "diameter" ? "\u2300" : "";
+    drawFloatingDimensionLabel(state, prefix + formatDimensionValue(dimension.value), dimension.point);
   }
 }
 
@@ -4066,6 +4074,7 @@ function updateDimensionInputs(state, dimensions) {
   for (const key of Array.from(state.dimensionInputs.keys())) {
     if (!activeKeys.has(key)) {
       const input = state.dimensionInputs.get(key);
+      input.dimensionSymbol?.remove();
       input.remove();
       state.dimensionInputs.delete(key);
     }
@@ -4104,9 +4113,14 @@ function updateDimensionInputs(state, dimensions) {
 
     input.dataset.dimensionKey = dimension.key;
     input.dataset.dimensionLabel = dimension.label;
-    const inputPoint = clampDimensionInputScreenPoint(state, dimension.point);
+    const inputPoint = clampDimensionInputScreenPoint(state, dimension.point,
+      dimension.key === "diameter" ? 64 : DEFAULT_DIMENSION_INPUT_SCREEN_MARGIN_X);
     input.style.left = `${inputPoint.x}px`;
     input.style.top = `${inputPoint.y}px`;
+    if (input.dimensionSymbol) {
+      input.dimensionSymbol.style.left = `${inputPoint.x - input.getBoundingClientRect().width / 2 - 9}px`;
+      input.dimensionSymbol.style.top = `${inputPoint.y}px`;
+    }
     input.classList.toggle("drawing-dimension-input-active", isActiveDimension);
   }
 
@@ -4200,6 +4214,14 @@ function getOrCreateDimensionInput(state, dimension) {
   });
 
   state.dimensionOverlay.appendChild(input);
+  if (dimension.key === "diameter") {
+    const symbol = document.createElement("span");
+    symbol.className = "drawing-dimension-symbol";
+    symbol.textContent = "\u2300";
+    symbol.setAttribute("aria-hidden", "true");
+    state.dimensionOverlay.appendChild(symbol);
+    input.dimensionSymbol = symbol;
+  }
   state.dimensionInputs.set(dimension.key, input);
   return input;
 }
@@ -4389,6 +4411,7 @@ function clearDimensionInputs(state) {
   }
 
   for (const input of state.dimensionInputs.values()) {
+    input.dimensionSymbol?.remove();
     input.remove();
   }
 
@@ -12402,8 +12425,8 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
     nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
   } else if (tool === "midpointline" && dimension === "length") {
     nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue / 2);
-  } else if (tool === "centercircle" && dimension === "radius") {
-    nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
+  } else if (tool === "centercircle" && (dimension === "diameter" || dimension === "radius")) {
+    nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, dimension === "diameter" ? numericValue / 2 : numericValue);
   } else if ((tool === "ellipse" || tool === "ellipticalarc") && dimension === "major") {
     const majorRadius = numericValue / 2;
     if (points.length === 1) {

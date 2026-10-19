@@ -68,10 +68,16 @@ public static class SketchCreationDimensionFactory
                     createDimensionId);
                 break;
             case "centercircle":
-                if (TryGetPositiveValue(dimensionValues, "radius", out var circleRadius)
-                    && createdEntities.OfType<CircleEntity>().FirstOrDefault() is { } circle)
+                if (createdEntities.OfType<CircleEntity>().FirstOrDefault() is { } circle)
                 {
-                    dimensions.Add(CreateRadialDimension(createDimensionId(), circle, circleRadius));
+                    if (TryGetPositiveValue(dimensionValues, "diameter", out var circleDiameter))
+                    {
+                        dimensions.Add(CreateRadialDimension(createDimensionId(), circle, circleDiameter, SketchDimensionKind.Diameter));
+                    }
+                    else if (TryGetPositiveValue(dimensionValues, "radius", out var circleRadius))
+                    {
+                        dimensions.Add(CreateRadialDimension(createDimensionId(), circle, circleRadius));
+                    }
                 }
 
                 break;
@@ -238,10 +244,14 @@ public static class SketchCreationDimensionFactory
             GetLineDimensionAnchor(line),
             isDriving: true);
 
-    private static SketchDimension CreateRadialDimension(string id, CircleEntity circle, double value) =>
+    private static SketchDimension CreateRadialDimension(
+        string id,
+        CircleEntity circle,
+        double value,
+        SketchDimensionKind kind = SketchDimensionKind.Radius) =>
         new(
             id,
-            SketchDimensionKind.Radius,
+            kind,
             new[] { circle.Id.Value },
             value,
             new Point2(circle.Center.X + circle.Radius, circle.Center.Y),
