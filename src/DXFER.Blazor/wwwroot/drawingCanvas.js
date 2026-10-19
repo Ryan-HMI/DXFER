@@ -9080,6 +9080,22 @@ function getDimensionPreservingPreviewTranslationCandidate(originalDocument, ent
   const isCircle = getEntityKind(entity) === "circle";
   const projectedDeltas = [];
   if (isCircle) {
+    const center = getEntityCenter(entity);
+    for (const constraint of getDocumentConstraints(originalDocument)) {
+      const kind = getSketchConstraintKind(constraint);
+      const refs = getSketchReferenceKeys(constraint).map(parseSketchReference);
+      if (!["horizontal", "vertical"].includes(kind)
+        || getSketchItemState(constraint) !== "satisfied" || refs.length !== 2) continue;
+      for (let index = 0; index < 2; index++) {
+        const ref = refs[index];
+        if (ref?.entityId !== entityId || ref.target !== "center" || Number.isInteger(ref.segmentIndex)) continue;
+        const peer = refs[1 - index] && getPreviewReferencePoint(originalDocument, refs[1 - index]);
+        if (!peer) continue;
+        projectedDeltas.push(kind === "horizontal"
+          ? {x: delta.x, y: peer.y - center.y}
+          : {x: peer.x - center.x, y: delta.y});
+      }
+    }
     for (const constraint of getDocumentConstraints(originalDocument)) {
       if (getSketchConstraintKind(constraint) !== "tangent" || getSketchItemState(constraint) === "suppressed") {
         continue;

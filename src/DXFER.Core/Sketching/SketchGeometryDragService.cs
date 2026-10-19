@@ -438,7 +438,7 @@ public static class SketchGeometryDragService
             }
 
             nextDocument = candidate;
-            status = "Moved dimensioned geometry along free direction.";
+            status = "Moved geometry along its free direction.";
             return true;
         }
 
@@ -451,10 +451,30 @@ public static class SketchGeometryDragService
         Point2 delta,
         bool allowCircleOrbit)
     {
-        // Tangency removes normal movement, not the circle's along-edge freedom.
-        // Use the original edge, then validate the complete candidate as usual.
+        // Project circle translation onto supported free directions, then validate
+        // the complete candidate rather than dropping any existing intent.
         if (document.Entities.FirstOrDefault(entity => entity.Id.Value == entityId) is CircleEntity circle)
         {
+            // A point-axis relation removes one coordinate, not all center movement.
+            // Keep the peer in place when ordinary propagation cannot move it (for
+            // example a derived midpoint), then validate the entire candidate.
+            foreach (var constraint in document.Constraints)
+            {
+                if (constraint.Kind is not (SketchConstraintKind.Horizontal or SketchConstraintKind.Vertical)
+                    || constraint.State != SketchConstraintState.Satisfied
+                    || constraint.ReferenceKeys.Count != 2) continue;
+                for (var index = 0; index < 2; index++)
+                {
+                    if (!SketchReference.TryParse(constraint.ReferenceKeys[index], out var reference)
+                        || reference.EntityId != entityId || reference.Target != SketchReferenceTarget.Center
+                        || reference.SegmentIndex.HasValue
+                        || !SketchReferenceResolver.TryGetPoint(document, constraint.ReferenceKeys[1 - index], out var peer))
+                        continue;
+                    yield return constraint.Kind == SketchConstraintKind.Horizontal
+                        ? new Point2(delta.X, peer.Y - circle.Center.Y)
+                        : new Point2(peer.X - circle.Center.X, delta.Y);
+                }
+            }
             foreach (var constraint in document.Constraints)
             {
                 if (constraint.Kind != SketchConstraintKind.Tangent
