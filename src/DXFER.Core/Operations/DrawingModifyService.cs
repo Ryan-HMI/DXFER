@@ -471,9 +471,9 @@ public static class DrawingModifyService
             status = refusalReason ?? status;
             return false;
         }
-        if (!TryFinalizeTrimReplacement(document, candidate, targetEntityId, out nextDocument))
+        if (!TryFinalizeTrimReplacementWithStatus(document, candidate, targetEntityId, out nextDocument, out var constraintFailure))
         {
-            status = "Power trim/extend could not preserve dimensions, constraints, or their references. Geometry unchanged.";
+            status = constraintFailure ?? "Power trim/extend could not preserve dimensions, constraints, or their references. Geometry unchanged.";
             return false;
         }
         status = "Power trim/extend applied.";
@@ -1723,8 +1723,17 @@ public static class DrawingModifyService
         DrawingDocument candidate,
         string targetEntityId,
         out DrawingDocument nextDocument)
+        => TryFinalizeTrimReplacementWithStatus(document, candidate, targetEntityId, out nextDocument, out _);
+
+    private static bool TryFinalizeTrimReplacementWithStatus(
+        DrawingDocument document,
+        DrawingDocument candidate,
+        string targetEntityId,
+        out DrawingDocument nextDocument,
+        out string? refusalReason)
     {
         nextDocument = document;
+        refusalReason = null;
         var replacedIds = new HashSet<string>(StringComparer.Ordinal) { targetEntityId };
         var original = document.Entities.FirstOrDefault(e => e.Id.Value == targetEntityId);
         var replacement = candidate.Entities.FirstOrDefault(e => e.Id.Value == targetEntityId);
@@ -1741,13 +1750,31 @@ public static class DrawingModifyService
                 SketchReference.TryParseCanvasPointCoordinates(key, out _, out var label, out _)
                 && label is not "start" and not "end"))) return false;
 
+        var retainedEnd = FindSplitLineRetainedEnd(document, candidate, original, replacement);
+        if (retainedEnd is not null && document.Metadata.EntityStyles.TryGetValue(targetEntityId, out var sourceStyle))
+        {
+            var styles = new Dictionary<string, DxfEntityStyle>(candidate.Metadata.EntityStyles, StringComparer.Ordinal)
+            {
+                [retainedEnd.Id.Value] = sourceStyle
+            };
+            candidate = new DrawingDocument(candidate.Entities, candidate.Dimensions, candidate.Constraints,
+                candidate.Metadata with { EntityStyles = styles });
+        }
         var constraints = candidate.Constraints.ToArray();
         foreach (var constraint in document.Constraints)
         {
             if (!ReferenceKeysContainAnyEntity(constraint.ReferenceKeys, replacedIds)) continue;
             var index = Array.FindIndex(constraints, c => c.Id == constraint.Id);
+            var remappedKeys = constraint.ReferenceKeys.Select(key =>
+                retainedEnd is not null && SketchReference.TryParse(key, out var reference)
+                    && reference.EntityId == targetEntityId && reference.Target == SketchReferenceTarget.End
+                    && !reference.SegmentIndex.HasValue
+                    ? SketchReference.TryParseCanvasPointCoordinates(key, out _, out _, out _)
+                        ? CreateCanvasPointReferenceKey(retainedEnd.Id.Value, "end", retainedEnd.End)
+                        : new SketchReference(retainedEnd.Id.Value, SketchReferenceTarget.End).ToString()
+                    : key);
             if (index < 0 || !TryRefreshDimensionReferenceKeys(candidate.Entities,
-                constraint.ReferenceKeys, replacedIds, out var keys)) return false;
+                remappedKeys, replacedIds, out var keys)) return false;
             constraints[index] = keys.SequenceEqual(constraint.ReferenceKeys)
                 ? constraint
                 : new SketchConstraint(constraint.Id, constraint.Kind, keys, constraint.State);
@@ -1760,9 +1787,33 @@ public static class DrawingModifyService
             var mapped = constraints.First(c => c.Id == constraint.Id);
             if (SketchConstraintService.ValidateConstraint(document, constraint).State == SketchConstraintState.Satisfied
                 && SketchConstraintService.ValidateConstraint(candidate, mapped).State != SketchConstraintState.Satisfied)
+            {
+                refusalReason = $"Power trim/extend would break the {constraint.Kind} constraint. Remove or revise conflicting constraints before trimming. Geometry unchanged.";
                 return false;
+            }
         }
-        return TryFinalizeGeometryReplacement(document, candidate, replacedIds, out nextDocument);
+        return TryFinalizeGeometryReplacement(document, candidate, replacedIds, out nextDocument, constraints);
+    }
+
+    private static LineEntity? FindSplitLineRetainedEnd(
+        DrawingDocument document, DrawingDocument candidate, DrawingEntity? original, DrawingEntity? replacement)
+    {
+        // Only a newly created, collinear second fragment can own the original outer endpoint.
+        // Dimensions deliberately keep their original span semantics and are not remapped here.
+        if (original is not LineEntity before || replacement is not LineEntity first
+            || !PointsCoincide(first.Start, before.Start) || PointsCoincide(first.End, before.End)
+            || DistancePointToSegment(first.End, before) > GeometryTolerance
+            || !TryProjectParameter(before, first.End, out var firstEnd) || firstEnd <= 0 || firstEnd >= 1)
+            return null;
+        var originalIds = document.Entities.Select(entity => entity.Id).ToHashSet();
+        var fragments = candidate.Entities.OfType<LineEntity>().Where(line => !originalIds.Contains(line.Id)).ToArray();
+        if (fragments.Length != 1) return null;
+        var second = fragments[0];
+        return PointsCoincide(second.End, before.End)
+            && DistancePointToSegment(second.Start, before) <= GeometryTolerance
+            && TryProjectParameter(before, second.Start, out var secondStart)
+            && secondStart >= firstEnd - GeometryTolerance && secondStart < 1
+            ? second : null;
     }
 
     private static bool CanPreservePolylineTrimReferences(PolylineEntity original, PolylineEntity candidate)
@@ -1806,7 +1857,8 @@ public static class DrawingModifyService
         DrawingDocument document,
         DrawingDocument candidate,
         IReadOnlySet<string> replacedIds,
-        out DrawingDocument nextDocument)
+        out DrawingDocument nextDocument,
+        IReadOnlyList<SketchConstraint>? remappedConstraints = null)
     {
         nextDocument = document;
         // Fix validation alone only checks the constraint kind, not movement from the original geometry.
@@ -1814,7 +1866,9 @@ public static class DrawingModifyService
         {
             if (constraint.Kind != SketchConstraintKind.Fix || constraint.State == SketchConstraintState.Suppressed
                 || !ReferenceKeysContainAnyEntity(constraint.ReferenceKeys, replacedIds)) continue;
-            if (!TryRefreshDimensionReferenceKeys(candidate.Entities, constraint.ReferenceKeys, replacedIds, out var keys)
+            var fixedKeys = remappedConstraints?.FirstOrDefault(item => item.Id == constraint.Id)?.ReferenceKeys
+                ?? constraint.ReferenceKeys;
+            if (!TryRefreshDimensionReferenceKeys(candidate.Entities, fixedKeys, replacedIds, out var keys)
                 || FixedCornerReferenceMoved(document, candidate, constraint,
                     new SketchConstraint(constraint.Id, constraint.Kind, keys, constraint.State))) return false;
         }
@@ -3962,31 +4016,47 @@ public static class DrawingModifyService
         var direction = Subtract(line.End, line.Start);
         var startFromCenter = Subtract(line.Start, circle.Center);
         var a = Dot(direction, direction);
-        if (a <= GeometryTolerance * GeometryTolerance || circle.Radius <= GeometryTolerance)
+        if (!double.IsFinite(a) || !double.IsFinite(circle.Radius)
+            || a <= GeometryTolerance * GeometryTolerance || circle.Radius <= GeometryTolerance)
         {
             intersections = Array.Empty<Point2>();
             return false;
         }
 
-        var b = 2.0 * Dot(startFromCenter, direction);
-        var c = Dot(startFromCenter, startFromCenter) - (circle.Radius * circle.Radius);
-        var discriminant = (b * b) - (4.0 * a * c);
-        if (discriminant < -GeometryTolerance)
+        // Work in distances: a fixed quadratic-discriminant tolerance collapses small secants
+        // into tangencies, and subtracting b*b - 4*a*c loses precision on long lines.
+        var length = Math.Sqrt(a);
+        var unit = new Point2(direction.X / length, direction.Y / length);
+        var perpendicularDistance = Math.Abs(Cross(startFromCenter, unit));
+        var gap = circle.Radius - perpendicularDistance;
+        // Do not widen tangency by the line length or distance along the line.
+        var roundoff = 16 * 2.2204460492503131e-16 * Math.Max(circle.Radius, perpendicularDistance);
+        var centerParameter = -Dot(startFromCenter, unit) / length;
+        if (!double.IsFinite(gap) || !double.IsFinite(centerParameter) || gap < -roundoff)
         {
             intersections = Array.Empty<Point2>();
             return false;
         }
 
         var points = new List<Point2>(2);
-        if (Math.Abs(discriminant) <= GeometryTolerance)
+        if (Math.Abs(gap) <= roundoff)
         {
-            AddLineCircleIntersectionPoint(line, -b / (2.0 * a), points, requireLineSegment);
+            AddLineCircleIntersectionPoint(line, centerParameter, points, requireLineSegment);
         }
         else
         {
-            var sqrt = Math.Sqrt(discriminant);
-            AddLineCircleIntersectionPoint(line, (-b - sqrt) / (2.0 * a), points, requireLineSegment);
-            AddLineCircleIntersectionPoint(line, (-b + sqrt) / (2.0 * a), points, requireLineSegment);
+            var chordSquared = gap * (circle.Radius + perpendicularDistance);
+            var halfChord = double.IsFinite(chordSquared)
+                ? Math.Sqrt(chordSquared)
+                : Math.Sqrt(gap) * Math.Sqrt(circle.Radius + perpendicularDistance);
+            var offset = halfChord / length;
+            if (!double.IsFinite(offset))
+            {
+                intersections = Array.Empty<Point2>();
+                return false;
+            }
+            AddLineCircleIntersectionPoint(line, centerParameter - offset, points, requireLineSegment);
+            AddLineCircleIntersectionPoint(line, centerParameter + offset, points, requireLineSegment);
         }
 
         intersections = points;
@@ -4540,6 +4610,8 @@ public static class DrawingModifyService
         parameter = GetCounterClockwiseDeltaDegrees(arc.StartAngleDegrees, AngleDegrees(arc.Center, point));
         if (allowEndpoints)
         {
+            // A point infinitesimally before the start wraps to almost 360, not a small negative angle.
+            if (360.0 - parameter <= GeometryTolerance) parameter = 0;
             return parameter >= -GeometryTolerance && parameter <= sweep + GeometryTolerance;
         }
 
