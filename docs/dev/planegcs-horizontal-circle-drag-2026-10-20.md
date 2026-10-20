@@ -88,3 +88,33 @@ Rollback publish is `/home/ryan/dxfer-runtime/dev-publish-before-3d641db`.
 These reproduced failures refused atomically. No drawing/data repair is needed
 for those cases, and no existing drawings have been modified. Ryan's original
 fixture still needs replay or his confirmation.
+
+## Follow-on coupled-freedom verification
+
+The same installed `3d641db` also passes three additional canvas workflows:
+
+- A fixed Point at (5,3), with a line Midpoint constrained to it: changing
+  driving length 10 to 12 preserves that midpoint, Undo/Redo and native reopen;
+  another edit to 14 after reopen also passes.
+- A length-12 line with its start fixed, Parallel to a free peer which is
+  Perpendicular to another free peer: dragging the endpoint rotates the chain.
+  Both relation orders pass held preview, release, Undo/Redo, native reopen
+  and another endpoint edit.
+
+`planeGcsCoupledFreedom.test.mjs` adds 36 actual-WASM checks for those chains,
+driving Angle/Parallel coupling, 90-degree rotations, off-length projection,
+Fixed-midpoint growth, Fixed-peer refusal/projection and recovery after
+removing Fix. Requests remain immutable. A solved projection that does not
+rotate is explicitly not counted as successful rotation.
+
+Sustained canvas dragging also passes again on `3d641db`: 43 distinct preview
+frames during 1,850 ms of pointer movement, with latest-pointer release and
+Escape cancellation covered. This is measured browser evidence, not inferred
+from endpoint screenshots.
+
+Evidence: `/tmp/dxfer-planegcs-fixed-midpoint-3d641db`,
+`/tmp/dxfer-planegcs-coupled-3d641db`, and
+`/tmp/dxfer-planegcs-sustained-3d641db`.
+No further application change or drawing repair was needed for these cases.
+The large radial-pattern timeout remains a separate open performance issue;
+these passes do not close every legacy matrix row or all sketch combinations.

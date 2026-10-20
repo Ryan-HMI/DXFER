@@ -393,6 +393,102 @@ try {
     assert.deepEqual([...relation.referenceKeys].sort(), [point.id, '$origin:center'].sort());
     await historyReopen(before, saved, 'point-origin-horizontal'); return {status: evidence.status, refs: relation.referenceKeys};
   });
+  for (const reverse of [false, true]) await run(`coupled-rotation-chain-${reverse}`, async () => {
+    const name = `coupled-rotation-chain-${reverse}`;
+    await load(fixture([[0, 0, 12, 0], [0, 5, 6, 5], [4, 7, 4, 12]]), 3); await autoSnap(false);
+    const seed = await download(`${name}-seed`), doc = structuredClone(seed.doc);
+    const [a, b, c] = doc.entities;
+    doc.constraints = [
+      {id: 'anchor', kind: 'Fix', referenceKeys: [`${a.id}:start`], state: 'Satisfied'},
+      {id: 'parallel', kind: 'Parallel', referenceKeys: [a.id, b.id], state: 'Satisfied'},
+      {id: 'perpendicular', kind: 'Perpendicular', referenceKeys: [b.id, c.id], state: 'Satisfied'}
+    ];
+    if (reverse) doc.constraints.reverse();
+    doc.dimensions = [{id: 'length', kind: 'LinearDistance', referenceKeys: [`${a.id}:start`, `${a.id}:end`],
+      value: 12, anchor: {x: 6, y: -1}, isDriving: true}];
+    await load(withNative(seed.text, doc), 3);
+    const before = (await download(`${name}-before`)).doc;
+    const check = document => {
+      const [first, second, third] = document.entities;
+      samePoint(first.start, {x: 0, y: 0}, 'Anchored start remains exact');
+      near(length(first), 12, 'Driving length survives coupled rotation');
+      assert.ok(document.constraints.every(constraint => constraint.state === 'Satisfied'));
+      assert.ok(document.entities.every(edge => length(edge) > 1e-6), 'No peer collapses');
+      const direction = edge => ({x: (edge.end.x - edge.start.x) / length(edge), y: (edge.end.y - edge.start.y) / length(edge)});
+      const u = direction(first), v = direction(second), w = direction(third);
+      near(u.x * v.y - u.y * v.x, 0, 'Parallel peer rotates');
+      near(v.x * w.x + v.y * w.y, 0, 'Perpendicular peer follows');
+    };
+    const move = async (start, target, suffix) => {
+      const from = await hover(start, key => key?.startsWith(`${a.id}|point|end|`));
+      const to = await screen(target);
+      await page.mouse.down();
+      try {
+        await page.mouse.move(to.x, to.y, {steps: 12});
+        await expect(canvas).toHaveAttribute('data-plane-gcs-preview-engine', 'PlaneGCS');
+        await expect.poll(async () => {
+          const value = await canvas.evaluate(c => {
+            const [x, y] = c.dataset.firstScreenEnd.split(',').map(Number);
+            return {x: (x - +c.dataset.offsetX) / +c.dataset.scale, y: (+c.dataset.offsetY - y) / +c.dataset.scale};
+          });
+          return Math.hypot(value.x - target.x, value.y - target.y);
+        }).toBeLessThan(1e-4);
+        await capture(`${name}-${suffix}-held`);
+      } finally { await page.mouse.up(); }
+      await expect(page.locator('.dxfer-command-bar')).toContainText('Moved geometry with PlaneGCS');
+      await canvas.press('Escape');
+      const saved = await download(`${name}-${suffix}`);
+      check(saved.doc); samePoint(saved.doc.entities[0].end, target, 'Released endpoint follows pointer');
+      return saved;
+    };
+    const saved = await move(a.end, {x: 9.6, y: 7.2}, 'after');
+    await historyReopen(before, saved, name);
+    await move(saved.doc.entities[0].end, {x: 7.2, y: 9.6}, 'reopened-edit');
+    return {reverse, length: 12, constraints: saved.doc.constraints};
+  });
+  await run('fixed-midpoint-length-edit', async () => {
+    const text = fixture([[0, 0, 10, 0]]).replace('0\nENDSEC\n0\nEOF',
+      '0\nPOINT\n5\n101\n8\n0\n10\n5\n20\n3\n0\nENDSEC\n0\nEOF');
+    await load(text, 2); await autoSnap(false);
+    const seed = (await download('fixed-midpoint-seed')).doc;
+    const line = seed.entities.find(e => e.kind === 'line'), point = seed.entities.find(e => e.kind === 'point');
+    await tool('Fix');
+    await pick(point.location, key => key === point.id || key?.startsWith(`${point.id}|point|`));
+    await canvas.press('Escape');
+    await tool('Midpoint');
+    await pick(point.location, key => key === point.id || key?.startsWith(`${point.id}|point|`));
+    await pick({x: 2, y: 0}, key => key === line.id);
+    await canvas.press('Escape');
+    const aligned = (await download('fixed-midpoint-aligned')).doc;
+    const alignedLine = aligned.entities.find(e => e.id === line.id);
+    samePoint(middle(alignedLine), point.location, 'Midpoint solves to the fixed point');
+    assert.ok(aligned.constraints.every(c => c.state === 'Satisfied'));
+    await tool('Dimension');
+    await pick({x: alignedLine.start.x * .7 + alignedLine.end.x * .3,
+      y: alignedLine.start.y * .7 + alignedLine.end.y * .3}, key => key === line.id);
+    await expect(canvas).toHaveAttribute('data-dimension-draft-complete', 'true');
+    const label = await screen({x: 5, y: 1});
+    await page.mouse.click(label.x, label.y);
+    await expect(page.locator('input[data-dimension-id]')).toHaveCount(1);
+    await page.keyboard.press('Escape'); await canvas.press('Escape');
+    const before = (await download('fixed-midpoint-dimensioned')).doc;
+    const dimension = before.dimensions[0], field = page.locator(`input[data-dimension-id="${dimension.id}"]`);
+    await field.dblclick(); await field.fill('12'); await field.press('Enter');
+    await expect(field).toHaveAttribute('data-dimension-value', '12');
+    await canvas.press('Escape');
+    const saved = await download('fixed-midpoint-length12'), changed = saved.doc.entities.find(e => e.id === line.id);
+    near(length(changed), 12, 'Length edit uses both free endpoints');
+    samePoint(middle(changed), point.location, 'Midpoint remains fixed after length edit');
+    samePoint(saved.doc.entities.find(e => e.id === point.id).location, point.location, 'Fixed point is unchanged');
+    assert.ok(saved.doc.constraints.every(c => c.state === 'Satisfied'));
+    await historyReopen(before, saved, 'fixed-midpoint-length');
+    await field.dblclick(); await field.fill('14'); await field.press('Enter');
+    await canvas.press('Escape');
+    const again = (await download('fixed-midpoint-reopened-length14')).doc;
+    near(length(again.entities.find(e => e.id === line.id)), 14, 'Reopened relation remains editable');
+    samePoint(middle(again.entities.find(e => e.id === line.id)), point.location, 'Reopened midpoint remains fixed');
+    return {length: 12, reopenedLength: 14, midpoint: point.location};
+  });
   await run('new-horizontal-and-length-dimension', async () => {
     await load(fixture([[2, 2, 8, 4]]), 1); await autoSnap(false);
     const before = (await download('length-before')).doc, line = before.entities[0];
