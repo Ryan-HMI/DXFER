@@ -52,3 +52,20 @@ No existing drawings were modified. Previously saved distorted geometry
 cannot be reconstructed reliably from current geometry alone; use Undo or
 a verified original. There is no automatic historical repair.
 Installed verification and final regression counts follow after deployment.
+
+## Installed Verification
+
+Deployed `4409521` to DXFer Dev on 2026-10-20 around 18:00 UTC. Public tooltip
+and served solver/pattern hashes match this revision. All five installed
+replays pass: rectangular-circle pattern, radial-circle pattern, radial-arc
+pattern, native ellipse edit and native spline edit. The arc test preserves
+radius 1, angles 10/110 and total cut length 6.981317 inches across four arcs,
+including native reopen and another drag.
+Evidence: `/tmp/dxfer-arc-pattern-installed-4409521`.
+
+The published 512-circle host check still passes in 2,315 ms. Dev PID 2118600
+retains PlaneGCS, full editing, disabled Sync callbacks and isolated Dev keys.
+Anonymous root redirects to the expected Google HTTPS callback.
+Production/Test PIDs 3584417/3584475 remain unchanged.
+Rollback: `/home/ryan/dxfer-runtime/dev-publish-before-4409521`.
+Constrained large-pattern timeout investigation remains separate and open.
