@@ -5,8 +5,9 @@ testing, not design or implementation. Unrelated feature work is paused.
 
 ## Current State
 
-The integration is locally verified and awaiting Dev rollout and independent
-acceptance. The previous Dev deployment still uses the procedural solver.
+Commit `25fb640` is installed on DXFer Dev with PlaneGCS explicitly enabled.
+Independent Flux acceptance is pending. Production and Test remain unchanged.
+See `planegcs-dev-rollout-2026-10-20.md` for installed evidence and rollback.
 
 Local verification has progressed beyond the smoke test:
 
@@ -84,7 +85,7 @@ Selecting an unknown engine is a configuration error, not a silent fallback.
 - [x] Offset, pattern and curve support mapped or explicitly scoped as unfinished.
 - [x] Undo/Redo, native reopen and repeated edit.
 - [x] Fixed/driving/locked-layer failure and recovery.
-- [ ] Installed Dev version and runtime verification.
+- [x] Installed Dev version and runtime verification.
 - [ ] Independent Flux acceptance of stated scope.
 
 The first tests target coupled Parallel/Perpendicular rotation, fixed-midpoint
