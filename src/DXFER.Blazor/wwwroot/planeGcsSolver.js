@@ -138,6 +138,7 @@ export async function createPlaneGcsSolver({ wasmBinary, wasmPath } = {}) {
                 wrapper.destroy_gcs_module();
                 wrapper = new NativeCurveWrapper(new module.GcsSystem(), module);
                 const mapped = mapRequest(request);
+                if (request.drag) mapped.tryPatternSeed();
                 wrapper.fixedParameterIds = mapped.fixedParameterIds;
                 const status = solveNative(wrapper, mapped.primitives);
                 const conflicts = wrapper.get_gcs_conflicting_constraints();
@@ -995,7 +996,8 @@ function mapRequest(request) {
             }
         }
     }
-    const patternMembers = mapPlaneGcsPatterns({ patterns, byId, model, relation, point, add, requireSupported });
+    const seedOperations = [];
+    const patternMembers = mapPlaneGcsPatterns({ patterns, byId, model, relation, point, add, requireSupported, seedOperations });
     mapPlaneGcsOffsets({ constraints, dimensions, model, nodes, relation, samePoint, requireSupported,
         add, point, fixSource: registerFixedReference });
     constraints.forEach(c => mapConstraint(c));
@@ -1249,6 +1251,22 @@ function mapRequest(request) {
         sources,
         relationDimensions,
         discreteDimensionIds,
+        tryPatternSeed() {
+            if (!seedOperations.length) return;
+            const before = geometries.filter(node => node.type === "point")
+                .map(node => ({ node, x: node.x, y: node.y }));
+            let accepted = false;
+            try {
+                // Keep dependent initial guesses feasible without changing the
+                // native equations, unknowns or soft pointer objective.
+                accepted = seedOperations.every(operation => operation())
+                    && before.every(({ node, x, y }) => !(node.fixed || fixedParameterIds.has(node.id))
+                        || (node.x === x && node.y === y))
+                    && this.validate(id => nodes.get(id)).length === 0;
+            } finally {
+                if (!accepted) for (const { node, x, y } of before) Object.assign(node, { x, y });
+            }
+        },
         validate(get) {
             const errors = [];
             for (const node of geometries) {

@@ -5,7 +5,7 @@ const parameter = (node, prop) => ({ o_id: node.id, prop });
 // Pattern settings remain explicit document parameters. Members and seeds share
 // simultaneous affine equations so another relation can move either side safely.
 export function mapPlaneGcsPatterns(context) {
-    const { patterns, byId, model, relation, point, add, requireSupported } = context;
+    const { patterns, byId, model, relation, point, add, requireSupported, seedOperations = [] } = context;
     requireSupported(Array.isArray(patterns) && patterns.length <= 64, "Invalid PlaneGCS pattern list.");
     const owned = new Set(), patternIds = new Set();
     const coefficientLines = new Map();
@@ -116,6 +116,13 @@ export function mapPlaneGcsPatterns(context) {
     return owned;
 
     function mapPoint(source, target, c, s, dx, dy, label, origin) {
+        seedOperations.push(() => {
+            const x = c * source.x - s * source.y + dx;
+            const y = s * source.x + c * source.y + dy;
+            if (target.fixed) return Math.hypot(target.x - x, target.y - y) <= 1e-6;
+            Object.assign(target, { x, y });
+            return true;
+        });
         if (Math.abs(s) < 1e-14 && Math.abs(c - 1) < 1e-14) {
             for (const [prop, difference] of [["x", dx], ["y", dy]])
                 relation("difference", { param1: parameter(source, prop), param2: parameter(target, prop), difference },

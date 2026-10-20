@@ -2,6 +2,20 @@
 
 Use this matrix for UT-SOLVER-005. Drag behavior is accepted only when the core result, canvas preview, and running app all follow the same constraint-driven rule.
 
+## PlaneGCS Migration
+
+The historical rows below describe the prior solver unless explicitly stated
+otherwise. They are not blanket acceptance of the PlaneGCS migration.
+Installed Dev `3d641db` has bounded browser coverage for actual-created rectangle
+corners, Horizontal circle freedom with compatible redundant peers, coupled
+Parallel/Perpendicular chains, Fixed-midpoint driving-length edits, and the
+other fixtures listed in
+[the PlaneGCS audit](planegcs-horizontal-circle-drag-2026-10-20.md).
+The coupled chains pass both relation orders with held preview, release,
+Undo/Redo, native reopen and another edit. Fixed-peer and angle-chain controls
+also have actual-WASM coverage. Large constrained radial-pattern capacity and
+arbitrary combinations remain open; safe refusal is not proof of inconsistency.
+
 Status values:
 
 - `OPEN` means not yet covered for this matrix.

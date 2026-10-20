@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
+import assert from 'node:assert/strict';
 
 // An opt-in bounded smoke benchmark, not a timing-sensitive CI assertion.
 // Each sample has a fresh process and a five-second wall-clock limit.
@@ -37,11 +38,26 @@ if (process.argv[2] !== '--sample') {
     }
     const start = performance.now();
     const solver = await createPlaneGcsSolver(), ready = performance.now();
-    const result = solver.solve({ document: { entities, constraints: [], dimensions: [],
+    const request = { document: { entities, constraints: [], dimensions: [],
         hasPatterns: true, metadata: { patterns: [pattern] } },
-    drag: { key: 'seed:center', start: { x: 30, y: 20 }, end: { x: 31, y: 21 } } });
+        drag: { key: 'seed:center', start: { x: 30, y: 20 }, end: { x: 31, y: 21 } } };
+    const before = structuredClone(request);
+    const result = solver.solve(request);
     const solved = performance.now();
     solver.dispose();
+    assert.deepEqual(request, before, 'Benchmark must not modify the drawing');
+    if (result.status === 'solved') {
+        assert.equal(result.entities.length, count);
+        for (let index = 0; index < count; index++) {
+            const actual = result.entities[index], angle = index * 2 * Math.PI / count;
+            const expected = kind === 'Radial'
+                ? { x: 31 * Math.cos(angle) - 21 * Math.sin(angle), y: 31 * Math.sin(angle) + 21 * Math.cos(angle) }
+                : { x: 31 + index % 8 * 10, y: 21 + Math.floor(index / 8) * 10 };
+            assert.equal(actual.id, entities[index].id);
+            assert.ok(Math.hypot(actual.center.x - expected.x, actual.center.y - expected.y) < 1e-6);
+            assert.ok(Math.abs(actual.radius - 1) < 1e-6);
+        }
+    }
     console.log(JSON.stringify({ kind, count, status: result.status,
         initializationMs: +(ready - start).toFixed(2), solveMs: +(solved - ready).toFixed(2),
         rssMiB: +(process.memoryUsage().rss / 1024 ** 2).toFixed(1),
