@@ -30,8 +30,8 @@ const fixture = edges => ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70',
     ['0', 'LINE', '5', String(100 + i), '8', '0', '10', x, '20', y, '11', ex, '21', ey]),
   '0', 'ENDSEC', '0', 'EOF', ''].join('\n');
 const rectangle = fixture([[-4, -2, -4, 8], [-4, 8, 18, 8], [18, 8, 18, -2], [18, -2, -4, -2]]);
-const circleFixture = radius => ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '1', '0', 'ENDSEC',
-  '0', 'SECTION', '2', 'ENTITIES', '0', 'CIRCLE', '5', '100', '8', '0', '10', '10', '20', '10', '40', radius,
+const circleFixture = (radius, center = {x: 10, y: 10}) => ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '1', '0', 'ENDSEC',
+  '0', 'SECTION', '2', 'ENTITIES', '0', 'CIRCLE', '5', '100', '8', '0', '10', center.x, '20', center.y, '40', radius,
   '0', 'ENDSEC', '0', 'EOF', ''].join('\n');
 const content = doc => ({entities: doc.entities, constraints: doc.constraints, dimensions: doc.dimensions, patterns: doc.metadata?.patterns ?? []});
 const near = (a, b, message, tolerance = 1e-6) => assert.ok(Math.abs(a - b) <= tolerance, `${message}: ${a} != ${b}`);
@@ -288,6 +288,68 @@ try {
     await load(refused.saved.text, 4);
     assert.deepEqual(content((await download('fixed-reopened')).doc), content(before));
     return {previewEngine: refused.held.dataset.planeGcsPreviewEngine, reason: refused.held.dataset.planeGcsPreviewReason};
+  });
+  for (const anchor of ['origin', 'line-midpoint', 'line-midpoint-redundant']) for (const dy of [0, 1]) for (const sized of [false, true]) await run(`circle-horizontal-${anchor}-drag-${dy}${sized ? '-sized' : ''}`, async () => {
+    const name = `circle-horizontal-${anchor}-drag-${dy}${sized ? '-sized' : ''}`;
+    let input = circleFixture(2, {x: 1, y: 0.5});
+    if (anchor !== 'origin') input = input.replace('0\nENDSEC\n0\nEOF',
+      '0\nLINE\n5\n101\n8\n0\n10\n-2\n20\n-2\n11\n-2\n21\n2\n0\nENDSEC\n0\nEOF');
+    await load(input, anchor === 'origin' ? 1 : 2); await autoSnap(false);
+    const seed = (await download(`${name}-seed`)).doc, circle = seed.entities[0];
+    if (sized) {
+      await tool('Dimension');
+      await pick({x: circle.center.x + Math.sqrt(2), y: circle.center.y + Math.sqrt(2)}, key => key === circle.id);
+      await expect(canvas).toHaveAttribute('data-dimension-draft-complete', 'true');
+      const label = await screen({x: circle.center.x + 1, y: circle.center.y + 0.5});
+      await page.mouse.click(label.x, label.y);
+      await expect(page.locator('input[data-dimension-id]')).toHaveCount(1);
+      await page.keyboard.press('Escape'); await canvas.press('Escape');
+    }
+    if (anchor !== 'origin') {
+      if (anchor.endsWith('-redundant')) {
+        await tool('Vertical');
+        await pick({x: -2, y: 1.2}, key => key === seed.entities[1].id);
+        await canvas.press('Escape');
+      }
+      await tool('Fix');
+      await pick({x: -2, y: 1.2}, key => key === seed.entities[1].id);
+      await canvas.press('Escape');
+    }
+    await tool('Horizontal');
+    await pick(circle.center, key => key?.startsWith(`${circle.id}|point|center|`));
+    if (anchor === 'origin') await pick({x: 0, y: 0}, key => key === '$origin:center');
+    else await pick({x: -2, y: 0}, key => key?.includes('|point|mid|'));
+    await canvas.press('Escape'); await tool('Fit extents');
+    const before = (await download(`${name}-before`)).doc;
+    assert.equal(before.constraints.length, anchor === 'origin' ? 1 : anchor.endsWith('-redundant') ? 3 : 2);
+    assert.ok(before.constraints.every(c => c.state === 'Satisfied'));
+    const initial = before.entities[0].center;
+    const start = await hover(initial, key => key?.startsWith(`${circle.id}|point|center|`));
+    const target = await screen({x: initial.x + 1, y: initial.y + dy});
+    await page.mouse.down();
+    try {
+      await page.mouse.move(target.x, target.y, {steps: 12});
+      await expect(canvas).toHaveAttribute('data-plane-gcs-preview-engine', 'PlaneGCS');
+      await expect.poll(async () => {
+        const center = (await canvas.getAttribute('data-first-center')).split(',').map(Number);
+        return Math.abs(center[0] - initial.x - 1);
+      }).toBeLessThan(1e-4);
+      const held = await capture(`${name}-held`);
+      near(+held.dataset.firstCenter.split(',')[1], initial.y, 'Held preview retains Y');
+    } finally { await page.mouse.up(); }
+    await expect(page.locator('.dxfer-command-bar')).toContainText('Moved geometry with PlaneGCS');
+    await canvas.press('Escape');
+    const saved = await download(`${name}-after`);
+    samePoint(saved.doc.entities[0].center, {x: initial.x + 1, y: initial.y}, 'Horizontal permits X movement');
+    near(saved.doc.entities[0].radius, circle.radius, 'Center drag retains radius');
+    assert.equal(saved.doc.dimensions.length, sized ? 1 : 0);
+    if (sized) {
+      assert.equal(saved.doc.dimensions[0].isDriving, true);
+      assert.equal(saved.doc.dimensions[0].value, before.dimensions[0].value);
+    }
+    assert.equal(saved.doc.constraints[0].state, 'Satisfied');
+    await historyReopen(before, saved, name);
+    return {start, center: saved.doc.entities[0].center};
   });
   await run('midpoint-origin-horizontal', async () => {
     const before = await rectangleFixture('midpoint-origin-horizontal'); await autoSnap(false);

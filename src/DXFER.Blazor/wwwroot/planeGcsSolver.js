@@ -96,6 +96,24 @@ function unionById(existing, updates, context) {
     return [...merged.values()];
 }
 
+function solveNative(wrapper, primitives) {
+    const preferences = primitives.filter(primitive => primitive.temporary === true);
+    wrapper.push_primitives_and_params(primitives.filter(primitive => primitive.temporary !== true));
+    wrapper.set_max_iterations(200);
+    if (preferences.length) {
+        // Diagnose hard intent before adding negative-tagged goals. Native
+        // redundancy checks must not mistake pointer preferences for conflicts.
+        const hardStatus = wrapper.solve(Algorithm.LevenbergMarquardt);
+        if (wrapper.get_gcs_conflicting_constraints().length) return hardStatus;
+        // Underdetermined geometry can need stability goals to converge.
+        // Only the final solve and validation may publish geometry.
+        if ([SolveStatus.Success, SolveStatus.Converged].includes(hardStatus))
+            wrapper.apply_solution();
+        wrapper.push_primitives_and_params(preferences);
+    }
+    return wrapper.solve(Algorithm.LevenbergMarquardt);
+}
+
 // Wire contract: {document:{entities,constraints,dimensions,metadata?,hasPatterns?},
 // constraints?,dimensions?,fixedReferenceKeys?,initialGuesses?:[{referenceKey,point}],
 // drag?:{key,start,end,constrain?,temporarySnapIntent?}}. Updates replace by ID.
@@ -121,9 +139,7 @@ export async function createPlaneGcsSolver({ wasmBinary, wasmPath } = {}) {
                 wrapper = new NativeCurveWrapper(new module.GcsSystem(), module);
                 const mapped = mapRequest(request);
                 wrapper.fixedParameterIds = mapped.fixedParameterIds;
-                wrapper.push_primitives_and_params(mapped.primitives);
-                wrapper.set_max_iterations(200);
-                const status = wrapper.solve(Algorithm.LevenbergMarquardt);
+                const status = solveNative(wrapper, mapped.primitives);
                 const conflicts = wrapper.get_gcs_conflicting_constraints();
                 const redundant = wrapper.get_gcs_redundant_constraints();
                 const partiallyRedundant = wrapper.get_gcs_partially_redundant_constraints();
@@ -160,11 +176,10 @@ export async function createPlaneGcsSolver({ wasmBinary, wasmPath } = {}) {
                     requireSupported(owned.size > 0, `Attempted dimension ${dimensionId} has no mapped driving equations.`);
                     const probe = new NativeCurveWrapper(new module.GcsSystem(), module);
                     try {
-                        probe.push_primitives_and_params(copy(mapped.primitives
+                        probe.fixedParameterIds = mapped.fixedParameterIds;
+                        const probeStatus = solveNative(probe, copy(mapped.primitives
                             .filter(primitive => !owned.has(primitive.id))
                             .map(primitive => get(primitive.id))));
-                        probe.set_max_iterations(200);
-                        const probeStatus = probe.solve(Algorithm.LevenbergMarquardt);
                         if (![SolveStatus.Success, SolveStatus.Converged].includes(probeStatus)
                             || probe.get_gcs_conflicting_constraints().length) {
                             return refuse("failed", [`PlaneGCS could not verify native rank for dimension ${dimensionId}.`, ...diagnostics]);
@@ -1055,10 +1070,12 @@ function mapRequest(request) {
         // These are initial guesses, not constraints or post-solve corrections.
         // Fixed points and all driving values still come from the original snapshot.
         seedPoint(shape.center, center);
-        curve.radius = radius;
+        if (!fixedParameterIds.has(curve.id)) curve.radius = radius;
         if (shape.kind === "arc") {
-            curve.start_angle = start;
-            curve.end_angle = finish;
+            if (!fixedParameterIds.has(curve.id)) {
+                curve.start_angle = start;
+                curve.end_angle = finish;
+            }
             const at = angle => ({ x: shape.center.x + radius * Math.cos(angle), y: shape.center.y + radius * Math.sin(angle) });
             seedPoint(shape.start, at(start));
             seedPoint(shape.end, at(finish));
