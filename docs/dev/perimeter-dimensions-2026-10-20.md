@@ -63,3 +63,18 @@ are inspectable at the desktop QA viewport; no phone scope is claimed.
 The missing dimension path is corrected. Existing documents are not rewritten;
 there is no identified data repair. The separate large-pattern performance
 limitation remains open and is not an acceptance claim of this change.
+
+## Installed Verification
+
+Installed and pushed `11634be6556d171c055cebadbb502730494fc453` to DXFer Dev.
+The public browser tooltip independently reports `11634be; sketch solver:
+PlaneGCS`. Both browser fixtures passed again against the installed endpoint,
+including native reopen/edit. The installed solver and perimeter module
+hashes match the worktree. Evidence: `/tmp/dxfer-perimeter-installed` and
+`/tmp/dxfer-perimeter-installed.log`; the arc screenshot was inspected again.
+
+Service PID 2186262 is active. Anonymous root access remains HTTP 302 and
+auth status confirms normal Google authentication. Runtime configuration,
+isolated keys and disabled Sync callbacks were retained. Rollback publication:
+`/home/ryan/dxfer-runtime/dev-publish-before-11634be`. The isolated local QA
+server was stopped. Flux received the bounded independent replay request.
