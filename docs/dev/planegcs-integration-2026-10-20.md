@@ -5,11 +5,16 @@ testing, not design or implementation. Unrelated feature work is paused.
 
 ## Current State
 
-Commit `25fb640` is installed on DXFer Dev with PlaneGCS explicitly enabled.
+Commit `65b56dd` is installed on DXFer Dev with PlaneGCS explicitly enabled,
+including the initial integration `25fb640` and the actual-created rectangle
+drag correction. Latest verification: 2,959 Core tests, 1,638 JavaScript tests
+and 20 installed browser workflows pass. See
+`planegcs-created-rectangle-2026-10-20.md` for the independently reported
+regression, shared correction and retest evidence.
 Independent Flux acceptance is pending. Production and Test remain unchanged.
 See `planegcs-dev-rollout-2026-10-20.md` for installed evidence and rollback.
 
-Local verification has progressed beyond the smoke test:
+Initial integration verification, before the rectangle follow-up above:
 
 - Current integrated Core run: **2,874 passed, none failed or skipped**.
   Full JavaScript suite: **1,605 passed**; the focused actual-WASM subset has

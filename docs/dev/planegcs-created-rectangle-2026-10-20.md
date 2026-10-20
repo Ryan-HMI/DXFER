@@ -59,4 +59,24 @@ No saved drawing or business record repair is required for this reproduced
 failure: rejected drags left geometry and intent unchanged. Existing unrelated
 saved-data issues are not repaired by this code change.
 
-Dev deployment and independent replay are pending at this source commit.
+## Dev Deployment
+
+`65b56dd` deployed to DXFer Dev at approximately 17:00 UTC on 2026-10-20.
+The public browser tooltip reports that build and PlaneGCS. All 20 installed
+browser workflows pass, including the four created-corner cases and the previous
+16 integration cases. No page exceptions; the API-key harness recorded its
+initial WebSocket upgrade 302 and continued through LongPolling. Evidence:
+`/tmp/dxfer-planegcs-installed-65b56dd/results.json`. Independent Flux acceptance
+remains pending.
+
+Installed four-assembly and four-solver-asset hashes match Release/source.
+Normal Google authentication, full editing, disabled Sync callbacks and
+independent persistent Dev keys remain configured. Public auth/status is 200;
+anonymous root redirects 302 to Google with the correct HTTPS callback.
+No completed interactive Google sign-in is claimed from API-key browser QA.
+
+Dev PID is 2077164; Production 3584417 and Test 3584475 are unchanged.
+Rollback publish: `/home/ryan/dxfer-runtime/dev-publish-before-65b56dd`.
+To roll back only this correction, stop Dev, retain the current publish,
+restore that directory to `dev-publish`, then restart Dev. Keep the existing
+PlaneGCS setting and all auth/state files unchanged.
