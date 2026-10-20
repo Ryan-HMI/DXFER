@@ -17,6 +17,25 @@ public partial class DrawingWorkbench
     private bool PatternEditing => _patternDraft is not null;
     private DrawingDocument? PatternPreview => ReferenceEquals(_patternSourceDocument, _document) ? _patternPreview : null;
 
+    private PatternDefinition? ViewportPattern => PatternEditing
+        ? PatternPreview?.Metadata.Patterns.FirstOrDefault(p => p.Id == _editingPattern?.Id) ?? _editingPattern
+        : _document.Metadata.Patterns.FirstOrDefault(p => p.SourceEntityIds.Concat(p.Members.Select(m => m.EntityId))
+            .Any(id => _selectedEntityIds.Any(key => key == id || key.StartsWith(id + "|", StringComparison.Ordinal))));
+
+    private DXFER.Core.Geometry.Point2 PatternSourceCenter(PatternDefinition pattern)
+    {
+        var bounds = new DrawingDocument(_document.Entities.Where(e => pattern.SourceEntityIds.Contains(e.Id.Value))).GetBounds();
+        return new((bounds.MinX + bounds.MaxX) / 2, (bounds.MinY + bounds.MaxY) / 2);
+    }
+
+    private bool CanEditViewportPattern(PatternDefinition pattern) => !LayersReadOnly
+        && pattern.SourceEntityIds.Concat(pattern.Members.Select(m => m.EntityId)).All(id => DrawingLayerService.CanEdit(_document, id));
+
+    private void EditViewportPattern(PatternDefinition pattern)
+    {
+        if (CanEditViewportPattern(pattern)) OpenPatternEditor(pattern);
+    }
+
     private static string PatternLabel(PatternDefinition pattern) => pattern.Kind == PatternKind.Radial
         ? $"Radial ({pattern.Count})" : $"{pattern.Kind} ({pattern.Columns} x {pattern.Rows})";
 

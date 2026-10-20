@@ -1,0 +1,80 @@
+@namespace DXFER.Blazor.Components
+@using System.Globalization
+@using DXFER.Core.Documents
+@using DXFER.Core.Geometry
+@using Microsoft.AspNetCore.Components.Web
+
+<section class="pattern-viewport-controls" aria-label="Viewport pattern parameters" data-pattern-id="@Pattern.Id"
+         data-source-x="@Number(SourceCenter.X)" data-source-y="@Number(SourceCenter.Y)"
+         data-pattern-kind="@Pattern.Kind" data-pitch-x="@Number(Pattern.XPitch)" data-pitch-y="@Number(Pattern.YPitch)"
+         data-angle="@Number(Pattern.AngleDegrees)" data-center-x="@Number(Pattern.Center.X)" data-center-y="@Number(Pattern.Center.Y)"
+         data-step="@Number(Pattern.FullCircle ? 360d / Pattern.Count : Pattern.StepAngleDegrees)"
+         @onkeydown="KeyDown" @onkeydown:stopPropagation="true" @onpointerdown:stopPropagation="true">
+    <header>@Pattern.Kind pattern</header>
+    @if (Draft is { } draft)
+    {
+        @if (draft.Mode == "Radial")
+        {
+            <label>Instances<input aria-label="Viewport pattern instances" type="number" min="2" step="1" @bind="draft.Count" @bind:after="NotifyChanged" /></label>
+            <label>Step (deg)<input aria-label="Viewport pattern step angle" type="number" step="any" value="@StepText" @onchange="SetStep" /></label>
+            <label class="full-circle"><input type="checkbox" aria-label="Viewport full circle" @bind="draft.FullCircle" @bind:after="NotifyChanged" />Full circle</label>
+        }
+        else
+        {
+            <label>Columns<input aria-label="Viewport pattern columns" type="number" min="1" step="1" @bind="draft.Columns" @bind:after="NotifyChanged" /></label>
+            <label>X pitch (@Units)<input aria-label="Viewport pattern X pitch" type="number" step="any" @bind="draft.PitchX" @bind:after="NotifyChanged" /></label>
+            <label>Rows<input aria-label="Viewport pattern rows" type="number" min="1" step="1" @bind="draft.Rows" @bind:after="NotifyChanged" /></label>
+            <label>Y pitch (@Units)<input aria-label="Viewport pattern Y pitch" type="number" step="any" @bind="draft.PitchY" @bind:after="NotifyChanged" /></label>
+        }
+        @if (Error is not null) { <p role="alert">@Error</p> }
+        <footer>
+            <button type="button" disabled="@(!CanConfirm)" @onclick="Confirm">Confirm</button>
+            <button type="button" @onclick="Cancel"><CadIcon Name="CadIconName.Close" />Cancel</button>
+        </footer>
+    }
+    else
+    {
+        @if (Pattern.Kind == PatternKind.Radial)
+        {
+            <label>Instances<input aria-label="Viewport pattern instances" value="@Pattern.Count" readonly @ondblclick="Edit" /></label>
+            <label>Step (deg)<input aria-label="Viewport pattern step angle" value="@Number(Pattern.FullCircle ? 360d / Pattern.Count : Pattern.StepAngleDegrees)" readonly @ondblclick="Edit" /></label>
+        }
+        else
+        {
+            <label>Columns<input aria-label="Viewport pattern columns" value="@Pattern.Columns" readonly @ondblclick="Edit" /></label>
+            <label>X pitch (@Units)<input aria-label="Viewport pattern X pitch" value="@Number(Pattern.XPitch)" readonly @ondblclick="Edit" /></label>
+            <label>Rows<input aria-label="Viewport pattern rows" value="@Pattern.Rows" readonly @ondblclick="Edit" /></label>
+            <label>Y pitch (@Units)<input aria-label="Viewport pattern Y pitch" value="@Number(Pattern.YPitch)" readonly @ondblclick="Edit" /></label>
+        }
+        <footer><button type="button" disabled="@(!CanEdit)" @onclick="Edit"><CadIcon Name="CadIconName.LinearPattern" />Edit pattern</button></footer>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public PatternDefinition Pattern { get; set; } = new();
+    [Parameter] public PatternDraft? Draft { get; set; }
+    [Parameter] public Point2 SourceCenter { get; set; }
+    [Parameter] public string Units { get; set; } = "in";
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public bool CanConfirm { get; set; }
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public EventCallback Changed { get; set; }
+    [Parameter] public EventCallback Confirm { get; set; }
+    [Parameter] public EventCallback Cancel { get; set; }
+    [Parameter] public EventCallback Edit { get; set; }
+    private static string Number(double value) => value.ToString("G10", CultureInfo.InvariantCulture);
+    private string StepText => Draft is { FullCircle: true } draft
+        && int.TryParse(draft.Count, out var count) && count > 0 ? Number(360d / count) : Draft?.StepAngle ?? "";
+    private Task NotifyChanged() => Changed.InvokeAsync();
+    private async Task SetStep(ChangeEventArgs args)
+    {
+        if (Draft is null) return;
+        Draft.StepAngle = args.Value?.ToString() ?? "";
+        Draft.FullCircle = false;
+        await NotifyChanged();
+    }
+    private async Task KeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape") await Cancel.InvokeAsync();
+    }
+}

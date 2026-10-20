@@ -19,6 +19,7 @@
                        CornerPreview="CornerPreview"
                        PatternPreview="PatternPreview"
                        PatternEditing="PatternEditing"
+                       PatternControls="ViewportPatternControls"
                        CornerHandle="@(CornerPreview is not null && _cornerPreviewHandle is not null ? new CanvasPointDto(_cornerPreviewHandle.Value.X, _cornerPreviewHandle.Value.Y) : null)"
                        CornerSize="GetCornerModifyDistance()"
                        CornerSizeChanged="OnCornerSizeDragged"
@@ -269,6 +270,17 @@
 </div>
 
 @code {
+    private RenderFragment ViewportPatternControls => @<text>
+        @if (ViewportPattern is { } pattern)
+        {
+            <PatternViewportControls @key="pattern.Id" Pattern="pattern" Draft="_patternDraft"
+                                     SourceCenter="PatternSourceCenter(pattern)" Units="@DocumentUnitsText"
+                                     CanConfirm="@(PatternPreview is not null)" CanEdit="CanEditViewportPattern(pattern)"
+                                     Error="@_patternError" Changed="RefreshPatternPreview" Confirm="CommitPatternPreview"
+                                     Cancel="ExitInspectorTool" Edit="() => EditViewportPattern(pattern)" />
+        }
+    </text>;
+
     private RenderFragment CornerActions => @<text>
         <button type="button" class="dxfer-exit-tool dxfer-confirm-corner" disabled="@(CornerPreview is null)" @onclick="CommitCornerPreview">
             <CadIcon Name="@(_activeTool == WorkbenchTool.Fillet ? CadIconName.Fillet : CadIconName.Chamfer)" />

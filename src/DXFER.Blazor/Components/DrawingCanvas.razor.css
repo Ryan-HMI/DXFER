@@ -66,6 +66,8 @@
     pointer-events: none;
 }
 
+.drawing-pattern-overlay { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+
 ::deep .drawing-measurement-feedback {
     position: absolute;
     width: 218px;

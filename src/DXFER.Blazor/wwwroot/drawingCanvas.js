@@ -1,5 +1,6 @@
 import { sampleControlSpline } from "./canvas/splineGeometry.js";
 import { measurePerimeterDistance } from "./perimeterDistance.js";
+import { patternViewportGuides } from "./canvas/patternViewport.js";
 import { getSnapCue } from "./canvas/snapCue.js?v=20261019";
 import {
   addUniqueNumber,
@@ -267,6 +268,9 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
   resizeCanvas(state);
 
   return {
+    refreshPatternControls() {
+      if (state.patternControlsVisible || state.canvas.parentElement?.querySelector?.('.pattern-viewport-controls')) draw(state);
+    },
     setDocument(document, fitToDocument = false) {
       if (state.solverEngine === "PlaneGCS") {
         cancelGeometryDrag(state);
@@ -838,6 +842,7 @@ function draw(state) {
     drawPreviewDimensionFallbackLabels(state, previewDimensions);
   }
   drawDimensionToolPreview(state);
+  drawPatternViewportControls(state, size);
   drawGrainDirection(state, size);
   drawSnapCue(state, size);
 
@@ -874,6 +879,48 @@ export function getCurrentSnapCue(state) {
   const cue = getSnapCue({ target, point, tool, pointCount: drag ? 0 : state.toolDraft?.points?.length || 0,
     intents, automaticConstraints: state.automaticSnapConstraints !== false, draftPoints: drag ? [] : state.toolDraft?.points });
   return cue ? { ...cue, point } : null;
+}
+
+function drawPatternViewportControls(state, size) {
+  const widget = state.canvas.parentElement?.querySelector?.('.pattern-viewport-controls');
+  state.patternControlsVisible = Boolean(widget);
+  if (!widget) return;
+  const guides = patternViewportGuides(widget.dataset);
+  if (!guides.length) { widget.style.visibility = 'hidden'; return; }
+  const rect = state.canvas.getBoundingClientRect();
+  const obstacles = getCanvasControlBounds(state);
+  for (const input of state.persistentDimensionInputs?.values() || []) {
+    const r = input.getBoundingClientRect();
+    if (r.width && r.height) obstacles.push({ x: r.left - rect.left, y: r.top - rect.top, width: r.width, height: r.height });
+  }
+  const anchor = worldToScreen(state, guides[0].end);
+  const box = positionSnapCue(anchor, size, widget.offsetWidth, widget.offsetHeight, obstacles);
+  if (!box) { widget.style.visibility = 'hidden'; return; }
+  widget.style.left = `${box.x}px`;
+  widget.style.top = `${box.y}px`;
+  widget.style.visibility = 'visible';
+  if (!widget.dataset.enterBound) {
+    widget.dataset.enterBound = 'true';
+    widget.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && event.target.tagName === 'INPUT' && event.target.type !== 'checkbox') {
+        event.preventDefault();
+        event.target.blur();
+      }
+    });
+  }
+  const ctx = state.context;
+  ctx.save();
+  ctx.strokeStyle = canvasInk(state, '#66d9ff', '#005a75');
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  for (const guide of guides) {
+    const start = worldToScreen(state, guide.start), end = worldToScreen(state, guide.end);
+    ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.strokeRect(end.x - 3, end.y - 3, 6, 6);
+  }
+  ctx.beginPath(); ctx.moveTo(anchor.x, anchor.y);
+  ctx.lineTo(Math.max(box.x, Math.min(anchor.x, box.x + box.width)), Math.max(box.y, Math.min(anchor.y, box.y + box.height)));
+  ctx.stroke(); ctx.restore();
 }
 
 export function positionSnapCue(anchor, size, width, height, obstacles = []) {

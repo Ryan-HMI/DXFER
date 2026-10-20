@@ -9,7 +9,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261020-perimeter-edge-picks";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261020-pattern-viewport";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -98,6 +98,7 @@ public partial class DrawingCanvas : IAsyncDisposable
     [Parameter] public DrawingDocument? CornerPreview { get; set; }
     [Parameter] public DrawingDocument? PatternPreview { get; set; }
     [Parameter] public bool PatternEditing { get; set; }
+    [Parameter] public RenderFragment? PatternControls { get; set; }
 
     [JSInvokable]
     public CanvasDocumentDto? GetOffsetDragPreview(string key, CanvasPointDto start, CanvasPointDto end, bool constrain)
@@ -273,6 +274,7 @@ public partial class DrawingCanvas : IAsyncDisposable
     {
         if (!firstRender)
         {
+            if (_canvasInstance is not null) await _canvasInstance.InvokeVoidAsync("refreshPatternControls");
             return;
         }
 
