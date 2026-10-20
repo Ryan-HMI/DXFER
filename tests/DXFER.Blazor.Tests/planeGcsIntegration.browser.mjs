@@ -202,6 +202,70 @@ try {
       browserModules, configuredEngine: await canvas.getAttribute('data-solver-engine'), results, errors, consoleErrors, limitations,
       evidenceScope: 'Actual Web configuration, endpoint-reported engine, native results and UI behavior. Engine binary execution is proved separately by CoreNodeRuntime tests.'}, null, 2));
   };
+  for (const [suffix, cornerX, cornerY, targetX, targetY] of [
+    ['', 650, 560, 690, 610],
+    ['-top-left', 480, 450, 445, 420],
+    ['-top-right', 650, 450, 690, 420],
+    ['-bottom-left', 480, 560, 445, 610]
+  ]) await run(`created-rectangle-corner-drag${suffix}`, async () => {
+    const name = `created-rectangle${suffix}`;
+    await menu('New drawing');
+    await expect(canvas).toHaveAttribute('data-entity-count', '0');
+    await tool('Two-point rectangle');
+    await page.mouse.click(480, 450);
+    await page.mouse.move(650, 560, {steps: 8});
+    await page.mouse.click(650, 560);
+    await expect(canvas).toHaveAttribute('data-entity-count', '4');
+    await canvas.press('Escape');
+    if (await canvas.getAttribute('data-show-all-constraints') !== 'true') await tool('Show constraints');
+    const before = await download(`${name}-before`);
+    assert.equal(before.doc.constraints.filter(c => c.kind === 'Parallel').length, 2);
+    assert.equal(before.doc.constraints.filter(c => c.kind === 'Perpendicular').length, 1);
+    const xs = before.doc.entities.flatMap(e => [e.start.x, e.end.x]);
+    const right = cornerX === 650, lower = cornerY === 560;
+    const source = before.doc.entities.find(e => Math.abs(e.start.x - e.end.x) < 1e-7
+      && e.start.x === (right ? Math.max(...xs) : Math.min(...xs)));
+    assert.ok(source, 'Created rectangle has a vertical edge');
+    const useStart = lower ? source.start.y < source.end.y : source.start.y > source.end.y;
+    const corner = useStart ? source.start : source.end;
+    const target = await canvas.evaluate((c, p) => ({
+      x: (p.x - c.getBoundingClientRect().left - +c.dataset.offsetX) / +c.dataset.scale,
+      y: (+c.dataset.offsetY - (p.y - c.getBoundingClientRect().top)) / +c.dataset.scale
+    }), {x: targetX, y: targetY});
+    const start = await screen(corner), end = await screen(target);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    try {
+      await page.mouse.move(end.x, end.y, {steps: 20});
+      await expect(canvas).toHaveAttribute('data-plane-gcs-preview-engine', 'PlaneGCS');
+      await expect.poll(async () => {
+        const heldX = await canvas.evaluate((c, right) => {
+          const [x] = c.dataset[right ? 'firstScreenEnd' : 'firstScreenStart'].split(',').map(Number);
+          return (x - +c.dataset.offsetX) / +c.dataset.scale;
+        }, right);
+        return Math.abs(heldX - target.x);
+      }, {message: 'Actual created rectangle preview follows the pointer while held'}).toBeLessThan(1e-4);
+      await capture(`${name}-held`);
+    } finally { await page.mouse.up(); }
+    await page.waitForTimeout(500);
+    const feedback = await capture(`${name}-released`);
+    await canvas.press('Escape');
+    const after = await download(`${name}-after`);
+    const moved = after.doc.entities.find(e => e.id === source.id);
+    samePoint(useStart ? moved.start : moved.end, target,
+      `Created corner follows pointer: ${feedback.status}`, 1e-4);
+    for (const edge of after.doc.entities) {
+      const joined = after.doc.entities.filter(peer => peer.id !== edge.id)
+        .some(peer => Math.hypot(edge.end.x - peer.start.x, edge.end.y - peer.start.y) < 1e-6
+          || Math.hypot(edge.end.x - peer.end.x, edge.end.y - peer.end.y) < 1e-6);
+      assert.ok(joined, 'Created rectangle remains connected');
+      assert.ok(Math.abs(edge.start.x - edge.end.x) < 1e-6 || Math.abs(edge.start.y - edge.end.y) < 1e-6,
+        'Created rectangle stays axis-aligned');
+    }
+    assert.deepEqual(after.doc.constraints, before.doc.constraints);
+    await historyReopen(before.doc, after, name);
+    return {status: feedback.status, constraints: after.doc.constraints};
+  });
   await run('auto-snap-origin-persisted', async () => {
     const before = await rectangleFixture('auto-snap-origin-persisted'); await autoSnap(true);
     const refs = ['$origin:center', `${before.entities[0].id}:start`];

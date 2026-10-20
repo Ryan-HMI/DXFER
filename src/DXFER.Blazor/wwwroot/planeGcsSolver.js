@@ -1002,8 +1002,16 @@ function mapRequest(request) {
     function softParam(node, prop, value, source, scale = 1) {
         relation("equal", { param1: { o_id: node.id, prop }, param2: value, scale }, source, null, true);
     }
-    function seedPoint(node, target) {
-        if (!node.fixed) Object.assign(node, target);
+    function seedPoint(node, target, preserveHardRelations = false) {
+        if (node.fixed) return;
+        const original = { x: node.x, y: node.y };
+        Object.assign(node, target);
+        // Direct point/body guesses must retain hard relations for redundancy
+        // analysis. Curve-specific seeds assemble several parameters together.
+        if (preserveHardRelations && checks.some(({ check }) => {
+            const error = check(id => nodes.get(id));
+            return !Number.isFinite(error) || error > tolerance;
+        })) Object.assign(node, original);
     }
     function curveDrag(ref, end, delta) {
         const { shape, grip } = ref, curve = shape.curve;
@@ -1174,7 +1182,7 @@ function mapRequest(request) {
             const before = initialPoints.get(ref.point.id);
             const target = constrainedPointTarget ?? { x: before.x + delta.x, y: before.y + delta.y };
             softPoint(ref.point, target, "Drag target");
-            seedPoint(ref.point, target);
+            seedPoint(ref.point, target, true);
         }
         else {
             const points = ref.line ? endpoints(ref.line) : ref.shape.points;
@@ -1182,7 +1190,7 @@ function mapRequest(request) {
                 const before = initialPoints.get(p.id);
                 const target = { x: before.x + delta.x, y: before.y + delta.y };
                 softPoint(p, target, "Drag translation target");
-                seedPoint(p, target);
+                seedPoint(p, target, true);
             }
         }
         if (drag.temporarySnapIntent) mapConstraint(drag.temporarySnapIntent, true);
@@ -1201,6 +1209,8 @@ function mapRequest(request) {
         }
     }
     for (const { line, horizontal } of axisLinePreferences.values()) {
+        // Resizing must not compete with redundant old-length drag goals.
+        if (request.drag) continue;
         const [a, b] = endpoints(line);
         const length = distance(initialPoints.get(a.id), initialPoints.get(b.id));
         if (length <= 1e-10) continue;
@@ -1212,7 +1222,7 @@ function mapRequest(request) {
             else if (!a.fixed) a[prop] = b[prop] - length * 1e-3;
         }
         relation("p2p_distance", { p1_id: a.id, p2_id: b.id, distance: length,
-            scale: request.drag ? 1e-6 : 1 }, `Original length preference ${line.id}`, null, true);
+            scale: 1 }, `Original length preference ${line.id}`, null, true);
     }
     // The wrapper requires every point before curves, and every curve before constraints.
     const primitives = [...geometries.filter(p => p.type === "point"), ...geometries.filter(p => p.type !== "point"), ...relations];
