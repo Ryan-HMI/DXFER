@@ -51,7 +51,7 @@ public static class SketchDimensionModeService
     }
 
     public static bool TrySetDriving(DrawingDocument document, string id, bool driving,
-        out DrawingDocument result, out string reason)
+        out DrawingDocument result, out string reason, ISketchSolver? solver = null)
     {
         result = document;
         reason = "Dimension is unavailable or belongs to protected geometry.";
@@ -63,6 +63,20 @@ public static class SketchDimensionModeService
         if (!SketchDimensionSolverService.TryGetDimensionMeasurement(document, dimension, out var value)
             || !double.IsFinite(value)) { reason = "Dimension cannot be measured. Mode unchanged."; return false; }
         var changed = new SketchDimension(dimension.Id, dimension.Kind, dimension.ReferenceKeys, value, dimension.Anchor, driving);
+        if (solver is not null)
+        {
+            // Keep the original snapshot as the baseline so promotion is a new
+            // driving intent and receives the native rank check immediately.
+            var solved = solver.Solve(new SketchSolveRequest(document, [], [changed]));
+            if (solved.Status is not (SketchSolveStatus.Solved or SketchSolveStatus.UnderConstrained))
+            {
+                reason = $"{string.Join(" ", solved.Diagnostics)} Dimension mode unchanged; geometry unchanged.";
+                return false;
+            }
+            result = solved.Document;
+            reason = driving ? "Dimension set to Driving." : "Dimension set to Driven.";
+            return true;
+        }
         var candidate = new DrawingDocument(document.Entities,
             document.Dimensions.Select(d => d.Id == id ? changed : d), document.Constraints, document.Metadata);
         // A mode toggle captures the current measurement; it must never solve by moving geometry.

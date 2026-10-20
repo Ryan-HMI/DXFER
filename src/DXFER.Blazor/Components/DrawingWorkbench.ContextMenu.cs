@@ -66,8 +66,10 @@ public partial class DrawingWorkbench
     {
         if (ContextEditable && ContextDimension is { } dimension)
         {
-            if (SketchDimensionModeService.TrySetDriving(_document, dimension.Id, driving, out var changed, out var reason))
+            if (SketchDimensionModeService.TrySetDriving(_document, dimension.Id, driving, out var changed, out var reason,
+                IsPlaneGcsEnabled ? SketchSolver : null))
                 ApplyDocumentChange(changed, reason);
+            else if (IsPlaneGcsEnabled) ReportSolveFailure(reason);
             else _status = reason;
         }
         CloseContextMenu();

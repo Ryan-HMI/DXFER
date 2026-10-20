@@ -755,7 +755,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             document.Entities,
             document.Dimensions,
             document.Constraints,
-            metadata);
+            metadata,
+            document.SolveEvidence);
     }
 
     private static string GetFileNameFromUrl(string url)
@@ -2500,7 +2501,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             }
             // Failed constraint/dimension intent remains editable, never the failed geometry.
             var failedIntent = new DrawingDocument(_document.Entities, result.Document.Dimensions,
-                result.Document.Constraints, _document.Metadata);
+                result.Document.Constraints, _document.Metadata, result.Document.SolveEvidence);
             var reason = $"{(result.Diagnostics.Count > 0 ? string.Join(" ", result.Diagnostics) : SketchSolveDiagnostics.DescribeFailure(result.AffectedDiagnostics))} Geometry unchanged.";
             if (ApplyDocumentChange(failedIntent, reason))
                 ReportSolveFailure(reason);
@@ -2525,6 +2526,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private bool CommitDocumentChange(DrawingDocument nextDocument, string status, bool patternCommand,
         bool validateDirectGeometry = false, bool topologyChange = false)
     {
+        // Presentation-only edits retain native evidence. Its semantic signature
+        // prevents it from being treated as current after geometry/intent changes.
+        if (IsPlaneGcsEnabled) nextDocument = PlaneGcsDiagnostics.CarryEvidence(_document, nextDocument);
         if (IsPlaneGcsEnabled && !DrawingPatternService.TryValidate(nextDocument, out var validationReason))
         {
             ReportSolveFailure($"PlaneGCS pattern validation failed: {validationReason} Geometry unchanged.");
