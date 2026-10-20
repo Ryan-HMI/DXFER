@@ -184,7 +184,7 @@ try {
     {name: 'keyed-quadrant-derived-first', keyed: true, quadrant: true, reverse: true},
     {name: 'single-circle-body-diameter', control: true},
     {name: 'single-circle-quadrant-diameter', control: true, quadrant: true},
-    {name: 'independent-body-refused', independent: true}
+    {name: 'independent-body-gap-cancel', independent: true}
   ];
   for (const {name, keyed = false, quadrant = false, reverse = false, control = false, independent = false, clickAway = false} of cases) {
     if (only && !only.includes(name)) continue;
@@ -208,14 +208,15 @@ try {
         await pickCircle(source, false, `${name}-first`);
         assert.equal((await draftKeys()).length, 1);
         await pickCircle(other, false, `${name}-second`);
-        await expect(page.locator('.dxfer-command-bar')).toContainText('No single editable Offset relationship between these circles.');
+        assert.equal((await draftKeys()).length, 2, 'Independent curves now stage a perimeter gap');
+        await expect(canvas).toHaveAttribute('data-dimension-draft-complete', 'true');
         await expect(page.locator('input[data-dimension-id]')).toHaveCount(0);
         await expect(page.getByRole('button', {name: 'Undo', exact: true})).toBeDisabled();
         await expect(page.getByRole('button', {name: 'Redo', exact: true})).toBeDisabled();
         await capture(`${name}-refusal`);
         await canvas.press('Escape');
         const refused = await download(`${name}-refused`);
-        assert.deepEqual(content(refused.doc), content(seed.doc), 'Unsupported pair changes neither geometry, dimensions nor constraints');
+        assert.deepEqual(content(refused.doc), content(seed.doc), 'Cancelling the perimeter draft changes neither geometry, dimensions nor constraints');
         await expect(page.getByRole('button', {name: 'Undo', exact: true})).toBeDisabled();
         await expect(page.getByRole('button', {name: 'Redo', exact: true})).toBeDisabled();
       } else if (control) {

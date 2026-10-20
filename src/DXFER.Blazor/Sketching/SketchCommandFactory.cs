@@ -22,13 +22,26 @@ public static class SketchCommandFactory
         ArgumentNullException.ThrowIfNull(selectionKeys);
 
         var selections = NormalizeSelections(document, selectionKeys, activeSelectionKey);
+        if (selections.Length == 2 && !selections.All(s => s.CircleLike.HasValue))
+            selections = selections.Select(s => s.Point.HasValue ? s with { CircleLike = null } : s).ToArray();
         if (TryBuildOffsetDimension(document, selections, id, anchorOverride, out dimension))
         {
             status = "Placed offset distance dimension. Edit this distance to resize the linked offset.";
             return true;
         }
-        if (selections.Length == 2 && selections.All(s => s.CircleLike is { IsFullCircle: true }))
-            return FailDimension(out dimension, out status, "No single editable Offset relationship between these circles.");
+        if (selections.Length == 2 && selections.Any(s => s.CircleLike.HasValue))
+        {
+            var keys = selections.Select(s => s.CircleLike.HasValue ? GetCircleLikeEntityReferenceKey(s.Key) : s.Key).ToArray();
+            if (document.Constraints.Any(c => c.Kind == SketchConstraintKind.Offset && keys.All(c.ReferenceKeys.Contains)))
+                return FailDimension(out dimension, out status, "No single editable Offset relationship between these circles.");
+            if (!SketchPerimeterDistance.TryMeasure(document.Entities, keys, out var gap, out var start, out var end))
+                return FailDimension(out dimension, out status,
+                    "No usable perimeter gap. For an arc end, select its endpoint; intersecting curves have no positive clearance.");
+            dimension = new SketchDimension(id, SketchDimensionKind.PerimeterDistance, keys, gap,
+                anchorOverride ?? Midpoint(start, end), isDriving: true);
+            status = "Added perimeter distance dimension.";
+            return true;
+        }
         if (selections.Length == 1 && selections[0].Line is { } line)
         {
             var value = Distance(line.Start, line.End);

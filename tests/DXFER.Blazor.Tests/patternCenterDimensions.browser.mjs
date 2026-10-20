@@ -154,7 +154,7 @@ try {
     for (const reverse of [false, true]) cases.push({pair, workflow, reverse,
       name: `${pair}-${workflow}-${reverse ? 'reverse' : 'forward'}`});
   for (const pair of ['members', 'source-member']) cases.push({pair, workflow: 'tool-first', body: true,
-    name: `${pair}-body-refused`});
+    name: `${pair}-body-gap-cancel`});
 
   for (const {name, pair, workflow, reverse = false, body = false} of cases) {
     if (only && !only.includes(name)) continue;
@@ -184,7 +184,8 @@ try {
       }
       await capture(`${name}-after-picks`);
       if (body) {
-        await expect(page.locator('.dxfer-command-bar')).toContainText('No single editable Offset relationship between these circles.');
+        assert.equal((await canvas.getAttribute('data-dimension-draft-keys')).split(',').length, 2);
+        await expect(canvas).toHaveAttribute('data-dimension-draft-complete', 'true');
         await expect(page.locator('input[data-dimension-id]')).toHaveCount(0);
         await expect(page.getByRole('button', {name: 'Undo', exact: true})).toBeDisabled();
         await expect(page.getByRole('button', {name: 'Redo', exact: true})).toBeDisabled();

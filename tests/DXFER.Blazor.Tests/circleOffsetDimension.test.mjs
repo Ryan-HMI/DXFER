@@ -87,7 +87,6 @@ test("suppressed duplicate does not hide the unique active circle relation", () 
 });
 
 for (const [name, change] of [
-  ["unlinked", s => { s.document.constraints = []; }],
   ["suppressed", s => { s.document.constraints[0].state = "Suppressed"; }],
   ["duplicate", s => { s.document.constraints.push({ ...s.document.constraints[0], id: "duplicate" }); }],
   ["reverse duplicate", s => { s.document.constraints.push({ kind: "Offset", referenceKeys: ["dependent", "source"] }); }],
@@ -109,7 +108,9 @@ for (const [name, change] of [
 test("same circle and center picks never become offset dimensions", () => {
   const s = state();
   assert.equal(descriptor(s, ["source", "source"]), null);
-  assert.equal(descriptor(s, ["source:center", "dependent"]), null);
+  const centerToEdge = descriptor(s, ["source:center", "dependent"]);
+  assert.equal(centerToEdge.kind, "perimeterdistance");
+  assert.equal(centerToEdge.value, 8);
   const centers = descriptor(s, ["source:center", "dependent:center"]);
   assert.equal(centers.kind, "lineardistance"); assert.equal(centers.value, 0);
   const rawCenters = descriptor(s, ["source|point|center|3|4", "dependent|point|center|3|4"]);
@@ -136,10 +137,11 @@ for (const index of [0, 1]) {
   }
 }
 
-test("unlinked quadrant picks cannot fall through to a point-to-point dimension", () => {
+test("unlinked quadrant picks create a perimeter gap, not an offset or point-to-point dimension", () => {
   const s = state(); s.document.constraints = [];
-  assert.equal(descriptor(s, [sourcePick, dependentPick]), null);
-  assert.equal(canExtendDimensionSelection(s, [sourcePick], dependentPick), false);
+  assert.equal(descriptor(s, [sourcePick, dependentPick]).kind, "perimeterdistance");
+  assert.equal(descriptor(s, [sourcePick, dependentPick]).value, 3);
+  assert.equal(canExtendDimensionSelection(s, [sourcePick], dependentPick), true);
 });
 
 function harness(t, s) {
@@ -185,23 +187,28 @@ test("actual single-circle click then empty placement still requests diameter", 
   assert.equal(h.requests()[0].at(-1), true);
 });
 
-for (const quadrants of [false, true]) test(`unsupported second circle ${quadrants ? "quadrant" : "body"} submits both picks for explicit core rejection`, t => {
+for (const quadrants of [false, true]) test(`independent second circle ${quadrants ? "quadrant" : "body"} extends the perimeter draft`, t => {
   const s = state(); s.document.constraints = [];
   const h = harness(t, s), angle = quadrants ? 0 : Math.PI / 4;
   h.click(3 + 5 * Math.cos(angle), 4 + 5 * Math.sin(angle));
   h.click(3 + 8 * Math.cos(angle), 4 + 8 * Math.sin(angle));
-  assert.equal(h.requests().length, 1);
-  assert.deepEqual(h.requests()[0][1], quadrants
-    ? [sourcePick, quadrant("dependent", 0, 11, 4)] : ["source", "dependent"]);
-  assert.equal(h.requests()[0].at(-1), false);
+  assert.equal(h.requests().length, 0, "two picks stage a gap before placement");
   h.click(15, 16);
-  assert.equal(h.requests().length, 1, "failed pair submission resets the draft");
+  assert.equal(h.requests().length, 1);
+  assert.deepEqual(h.requests()[0][1], ["source", "dependent"]);
 });
 
 for (const center of [false, true]) test(`${center ? "center" : "same circle body"} second pick is excluded from unsupported-pair submission`, t => {
   const h = harness(t, state()), angle = Math.PI / 4;
   h.click(3 + 5 * Math.cos(angle), 4 + 5 * Math.sin(angle));
   h.click(center ? 3 : 3 - 5 * Math.cos(angle), center ? 4 : 4 + 5 * Math.sin(angle));
+  if (center) {
+    assert.equal(h.requests().length, 0);
+    h.click(15, 16);
+    assert.equal(h.requests().length, 1);
+    assert.equal(h.requests()[0][1].length, 2);
+    return;
+  }
   assert.equal(h.requests().length, 1);
   assert.deepEqual(h.requests()[0][1], ["source"]);
   assert.equal(h.requests()[0].at(-1), true);

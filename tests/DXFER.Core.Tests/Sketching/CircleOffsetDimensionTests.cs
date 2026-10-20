@@ -12,10 +12,10 @@ public sealed class CircleOffsetDimensionTests
     public static IEnumerable<object[]> PickCases()
     {
         foreach (var sourcePick in new[] { "body", "perimeter", "quadrant" })
-        foreach (var dependentPick in new[] { "body", "perimeter", "quadrant" })
-        foreach (var reverse in new[] { false, true })
-        foreach (var existing in new[] { false, true })
-            yield return [sourcePick, dependentPick, reverse, existing];
+            foreach (var dependentPick in new[] { "body", "perimeter", "quadrant" })
+                foreach (var reverse in new[] { false, true })
+                    foreach (var existing in new[] { false, true })
+                        yield return [sourcePick, dependentPick, reverse, existing];
     }
 
     [Theory]
@@ -89,8 +89,9 @@ public sealed class CircleOffsetDimensionTests
         var linked = Create();
         var document = new DrawingDocument(linked.Entities, linked.Dimensions, []);
         SketchCommandFactory.TryBuildDimension(document, [Pick("source", pick), Pick("dependent", pick)],
-            "not-gap", out _, out var status).Should().BeFalse();
-        status.Should().Contain("No single editable Offset relationship");
+            "not-gap", out var gap, out var status).Should().BeTrue(status);
+        gap.Kind.Should().Be(SketchDimensionKind.PerimeterDistance);
+        gap.Value.Should().Be(1);
         document.Constraints.Should().BeEmpty();
     }
 
@@ -228,7 +229,7 @@ public sealed class CircleOffsetDimensionTests
         };
         if (existing) dimensions.Add(new("existing-gap", SketchDimensionKind.Offset, ["source", "dependent"], 1, new(6, -2), true));
         return new([new CircleEntity(EntityId.Create("source"), new(0, 0), sourceRadius),
-                new CircleEntity(EntityId.Create("dependent"), new(0, 0), 4)], dimensions,
+            new CircleEntity(EntityId.Create("dependent"), new(0, 0), 4)], dimensions,
             [new SketchConstraint("offset", SketchConstraintKind.Offset, ["source", "dependent"], SketchConstraintState.Satisfied)],
             new DrawingDocumentMetadata { SourceFileName = "circle-offset-fixture.dxf" });
     }

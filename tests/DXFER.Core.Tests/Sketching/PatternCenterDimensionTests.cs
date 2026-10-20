@@ -14,9 +14,9 @@ public sealed class PatternCenterDimensionTests
     public static IEnumerable<object[]> CenterPairs()
     {
         foreach (var memberPair in new[] { false, true })
-        foreach (var reverse in new[] { false, true })
-        foreach (var canvas in new[] { false, true })
-            yield return [memberPair, reverse, canvas];
+            foreach (var reverse in new[] { false, true })
+                foreach (var canvas in new[] { false, true })
+                    yield return [memberPair, reverse, canvas];
     }
 
     [Theory]
@@ -102,8 +102,9 @@ public sealed class PatternCenterDimensionTests
         var document = Create();
         var keys = Pair(document, memberPair: true);
         if (reverse) Array.Reverse(keys);
-        SketchCommandFactory.TryBuildDimension(document, keys, "body", out _, out var status).Should().BeFalse();
-        status.Should().Contain("No single editable Offset relationship");
+        SketchCommandFactory.TryBuildDimension(document, keys, "body", out var gap, out var status).Should().BeTrue(status);
+        gap.Kind.Should().Be(SketchDimensionKind.PerimeterDistance);
+        gap.ReferenceKeys.Should().BeEquivalentTo(keys);
     }
 
     [Theory]
@@ -112,7 +113,7 @@ public sealed class PatternCenterDimensionTests
     public void LinkedConcentricCircleBodyPairStillCreatesOffsetDimension(bool reverse)
     {
         var document = new DrawingDocument([new CircleEntity(EntityId.Create("source"), new(0, 0), 3),
-                new CircleEntity(EntityId.Create("dependent"), new(0, 0), 4)], [],
+            new CircleEntity(EntityId.Create("dependent"), new(0, 0), 4)], [],
             [new SketchConstraint("offset", SketchConstraintKind.Offset, ["source", "dependent"], SketchConstraintState.Satisfied)]);
         var keys = new[] { "source", "dependent" };
         if (reverse) Array.Reverse(keys);
@@ -127,8 +128,12 @@ public sealed class PatternCenterDimensionTests
         var document = new DrawingDocument([new CircleEntity(EntityId.Create("seed"), new(4, 0), 1)]);
         DrawingPatternService.TryCreate(document, new PatternDefinition
         {
-            Id = "radial", Kind = PatternKind.Radial, SourceEntityIds = ["seed"], Count = 4,
-            Center = new(0, 0), FullCircle = true
+            Id = "radial",
+            Kind = PatternKind.Radial,
+            SourceEntityIds = ["seed"],
+            Count = 4,
+            Center = new(0, 0),
+            FullCircle = true
         }, out var result, out var reason).Should().BeTrue(reason);
         return result;
     }

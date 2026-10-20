@@ -10,5 +10,6 @@ public enum SketchDimensionKind
     Diameter,
     Angle,
     Count,
-    Offset
+    Offset,
+    PerimeterDistance
 }

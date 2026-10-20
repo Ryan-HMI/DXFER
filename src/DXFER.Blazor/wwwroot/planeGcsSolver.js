@@ -1,6 +1,7 @@
 import { Algorithm, GcsWrapper, init_planegcs_module, SolveStatus } from "./vendor/planegcs/dist/index.js";
 import { mapPlaneGcsOffsets } from "./planeGcsOffsets.js";
 import { mapPlaneGcsPatterns } from "./planeGcsPatterns.js";
+import { measurePerimeterDistance } from "./perimeterDistance.js";
 
 const radians = Math.PI / 180;
 const tolerance = 1e-6;
@@ -943,13 +944,50 @@ function mapRequest(request) {
             }
             return;
         }
-        requireSupported(["lineardistance", "horizontaldistance", "verticaldistance", "pointtolinedistance",
+        requireSupported(["lineardistance", "horizontaldistance", "verticaldistance", "pointtolinedistance", "perimeterdistance",
             "radius", "diameter", "angle"].includes(kind), `${source} is not mapped by PlaneGCS.`);
         const refs = array(d.referenceKeys, source).map(resolve);
         const value = finite(d.value, source);
         requireSupported(value >= 0, `${source} requires a nonnegative value.`);
         if (d.isDriving !== true) return;
-        if (["radius", "diameter"].includes(kind)) {
+        if (kind === "perimeterdistance") {
+            requireSupported(refs.length === 2 && refs.some(r => r.curve), `${source} requires a perimeter and a point, line or perimeter.`);
+            const geometry = (ref, get = id => nodes.get(id)) => {
+                if (ref.curve) {
+                    const c = get(ref.curve.id);
+                    return { kind: c.type, center: get(c.c_id), radius: c.radius,
+                        startAngleDegrees: c.start_angle / radians, endAngleDegrees: c.end_angle / radians };
+                }
+                if (ref.line) {
+                    const [start, end] = endpoints(ref.line, get);
+                    return { kind: "line", start, end };
+                }
+                return { kind: "point", point: get(getPoint(ref).id) };
+            };
+            requireSupported(measurePerimeterDistance(...refs.map(ref => geometry(ref))),
+                `${source}: no usable perimeter gap; select an arc endpoint explicitly if the nearest radial point is outside its sweep.`);
+            const check = get => {
+                const measured = measurePerimeterDistance(...refs.map(ref => geometry(ref, get)));
+                return measured ? Math.abs(measured.value - value) : Infinity;
+            };
+            const asCircle = ref => {
+                const c = getCurve(ref);
+                if (c.type === "circle") return c;
+                const alias = add({ type: "circle", c_id: c.c_id, radius: c.radius });
+                relation("equal", { param1: { o_id: alias.id, prop: "radius" }, param2: { o_id: c.id, prop: "radius" } },
+                    source, get => Math.abs(get(alias.id).radius - get(c.id).radius));
+                return alias;
+            };
+            const curves = refs.filter(r => r.curve);
+            const c = asCircle(curves[0]);
+            if (curves.length === 2) {
+                relation("c2cdistance", { c1_id: c.id, c2_id: asCircle(curves[1]).id, dist: value }, source, check);
+            } else {
+                const peer = refs.find(r => !r.curve);
+                if (peer.line) relation("c2ldistance", { c_id: c.id, l_id: peer.line.id, dist: value }, source, check);
+                else relation("p2cdistance", { c_id: c.id, p_id: getPoint(peer).id, distance: value }, source, check);
+            }
+        } else if (["radius", "diameter"].includes(kind)) {
             requireSupported(refs.length === 1, `${source} requires one circle/arc.`);
             const curve = getCurve(refs[0]), radius = value / (kind === "diameter" ? 2 : 1);
             requireSupported(radius > 0, `${source} requires a positive radius.`);

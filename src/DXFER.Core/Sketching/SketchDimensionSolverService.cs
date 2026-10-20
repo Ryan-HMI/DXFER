@@ -648,6 +648,8 @@ public static class SketchDimensionSolverService
         value = default;
         switch (dimension.Kind)
         {
+            case SketchDimensionKind.PerimeterDistance:
+                return SketchPerimeterDistance.TryMeasure(entities, dimension.ReferenceKeys, out value, out _, out _);
             case SketchDimensionKind.Offset:
                 return SketchOffsetRelation.TryMeasure(entities, dimension.ReferenceKeys, out value, out _, out _);
             case SketchDimensionKind.LinearDistance:

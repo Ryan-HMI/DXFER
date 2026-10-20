@@ -1,4 +1,5 @@
 import { sampleControlSpline } from "./canvas/splineGeometry.js";
+import { measurePerimeterDistance } from "./perimeterDistance.js";
 import { getSnapCue } from "./canvas/snapCue.js?v=20261019";
 import {
   addUniqueNumber,
@@ -2460,9 +2461,11 @@ function getDimensionModelFromReferences(state, referenceKeys, radialDiameter = 
   }
 
   if (referenceKeys.length >= 2) {
-    if (getCirclePerimeterDimensionPairIds(state, referenceKeys)) {
-      return getCircularOffsetDimensionModel(state, referenceKeys);
-    }
+    const offset = getCircularOffsetDimensionModel(state, referenceKeys);
+    if (offset) return offset;
+    const perimeter = getPerimeterDimensionModel(state, referenceKeys);
+    if (getCirclePerimeterDimensionPairIds(state, referenceKeys)) return perimeter;
+    if (perimeter) return perimeter;
 
     const firstPoint = resolveSketchReferencePoint(state, referenceKeys[0]);
     const secondPoint = resolveSketchReferencePoint(state, referenceKeys[1]);
@@ -2504,6 +2507,35 @@ function getDimensionModelFromReferences(state, referenceKeys, radialDiameter = 
   }
 
   return null;
+}
+
+function getPerimeterDimensionModel(state, referenceKeys) {
+  if (referenceKeys.length !== 2) return null;
+  const curvePair = Boolean(getCirclePerimeterDimensionPairIds(state, referenceKeys));
+  const keys = referenceKeys.map(key => {
+    const ref = parseSketchReference(key);
+    const entity = ref && findDocumentEntity(state, ref.entityId);
+    if (!entity || !["circle", "arc"].includes(getEntityKind(entity))) return key;
+    const target = parsePointTargetKey(state, key);
+    return key === ref.entityId || curvePair && target && isCurvePerimeterPointTarget(target)
+      && !["start", "end"].includes(String(target.label).toLowerCase()) ? ref.entityId : key;
+  });
+  if (keys[0] === keys[1]) return null;
+  if (getDocumentConstraints(state.document).some(c => String(readProperty(c, "kind", "Kind")).toLowerCase() === "offset"
+    && keys.every(key => getSketchReferenceKeys(c).includes(key)))) return null;
+  const geometry = keys.map(key => {
+    const ref = parseSketchReference(key);
+    const entity = ref && findDocumentEntity(state, ref.entityId);
+    if (entity && key === ref.entityId && ["circle", "arc"].includes(getEntityKind(entity))) {
+      return { ...resolveSketchCircleLikeReference(state, key), kind: getEntityKind(entity) };
+    }
+    const line = resolveSketchLineReference(state, key);
+    if (line) return { kind: "line", ...line };
+    const point = resolveSketchReferencePoint(state, key);
+    return point ? { kind: "point", point } : null;
+  });
+  const span = measurePerimeterDistance(...geometry);
+  return span ? { kind: "perimeterdistance", referenceKeys: keys, value: span.value, span } : null;
 }
 
 function getCirclePerimeterDimensionPairIds(state, referenceKeys) {
@@ -2610,6 +2642,10 @@ function getDimensionAnchorPoint(state, kind, referenceKeys) {
 }
 
 function getDimensionGeometry(state, kind, referenceKeys, anchorPoint) {
+  if (kind === "perimeterdistance") {
+    const model = getPerimeterDimensionModel(state, referenceKeys);
+    return model ? { type: "linear", start: model.span.start, end: model.span.end, anchorPoint } : null;
+  }
   if (kind === "offset") {
     return getCircularOffsetDimensionGeometry(state, referenceKeys, anchorPoint);
   }
@@ -6081,8 +6117,9 @@ export function getDimensionPlacementRequest(state, screenPoint, event = {}) {
   }
 
   const circularOffset = getCircularOffsetDimensionModel(state, selectionKeys);
+  const perimeter = getPerimeterDimensionModel(state, selectionKeys);
   return {
-    selectionKeys: circularOffset ? circularOffset.referenceKeys : selectionKeys,
+    selectionKeys: circularOffset ? circularOffset.referenceKeys : perimeter ? perimeter.referenceKeys : selectionKeys,
     anchor: screenToWorld(state, screenPoint),
     radialDiameter: !circularOffset && Boolean(state.dimensionDraft.radialDiameter || event.shiftKey)
   };
@@ -9420,6 +9457,7 @@ function previewDrivingDimensionsRemainSatisfiedForEntity(document, entityIds) {
 
 function getPreviewDimensionMeasuredValue(state, dimension, referenceKeys = getSketchReferenceKeys(dimension)) {
   const dimensionKind = String(readProperty(dimension, "kind", "Kind") || "").toLowerCase();
+  if (dimensionKind === "perimeterdistance") return getPerimeterDimensionModel(state, referenceKeys)?.value ?? null;
   if (!["lineardistance", "horizontaldistance", "verticaldistance", "pointtolinedistance", "radius", "diameter", "angle", "count"].includes(dimensionKind)) {
     return null;
   }

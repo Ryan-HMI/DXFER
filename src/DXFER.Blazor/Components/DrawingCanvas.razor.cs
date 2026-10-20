@@ -9,7 +9,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261019-three-point-midpoint";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261020-perimeter-dimensions";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
