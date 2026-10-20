@@ -28,3 +28,16 @@ No existing drawings are rewritten. A previously created point-to-line
 dimension cannot safely be inferred to mean perimeter clearance; delete and
 recreate that dimension with the corrected picking path. Dev-only rollout;
 Production/Test and Sync remain unchanged.
+
+## Installed verification
+
+Dev `bb7ee56` was verified from the rendered tooltip on the public URL.
+All four browser cases above passed again against the installed endpoint;
+screenshots inspected, no browser/circuit errors. Evidence is in
+`/tmp/dxfer-edge-perimeter-installed` and its sibling `.log` file.
+Full core suite: 3,043 passed. Full JavaScript suite: 1,777 passed.
+Google authentication remains configured and anonymous requests still redirect
+to sign-in. No auth settings changed. Rollback publish directory:
+`/home/ryan/dxfer-runtime/dev-publish-before-bb7ee56`.
+Flux received the exact independent replay fixture; no independent acceptance
+is claimed here.
