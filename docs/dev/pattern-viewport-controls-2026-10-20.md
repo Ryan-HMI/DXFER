@@ -37,3 +37,18 @@
   and palette clearance. Evidence: /tmp/dxfer-pattern-viewport.
 - This adds parameter widgets, not drag-to-change pitch handles. It does not
   resolve the separately tracked large-pattern PlaneGCS performance limit.
+
+## Installed Dev verification
+
+- Installed 5ae1ca5 on 2026-10-20 at
+  https://dxferdev.sync.harrisonmetals.com. Browser tooltip independently read
+  `DXFER build 5ae1ca5; sketch solver: PlaneGCS` before replay.
+- The complete patternViewport.browser.mjs replay passes against the public
+  Dev endpoint. Installed screenshots and native fixtures:
+  /tmp/dxfer-pattern-viewport-installed; log:
+  /tmp/dxfer-pattern-widget-installed.log.
+- Normal Google sign-in remains configured; anonymous root returns 302.
+  Sync callbacks remain disabled. Production/Test were not changed.
+- Rollback publish: /home/ryan/dxfer-runtime/dev-publish-before-5ae1ca5.
+- Flux independent acceptance is pending; owner browser verification is not
+  represented as independent QA.
