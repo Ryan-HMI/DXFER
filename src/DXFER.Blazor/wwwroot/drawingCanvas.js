@@ -4131,6 +4131,8 @@ function getTangentContactPoint(document, constraint) {
 
 function getConstraintAnchorPoint(state, constraint) {
   const referenceKeys = getSketchReferenceKeys(constraint);
+  if (getSketchConstraintKind(constraint) === "midpoint" && referenceKeys.length === 3)
+    return resolveSketchReferencePoint(state, referenceKeys[0]);
   const points = referenceKeys
     .map(key => resolveSketchReferencePoint(state, key) || resolveSketchEntityAnchorPoint(state, key))
     .filter(point => point !== null);
@@ -10200,6 +10202,10 @@ function isPreviewConstraintSatisfied(originalDocument, document, constraint) {
       return Boolean(pair && samePoint(pair.first.center, pair.second.center));
     }
     case "midpoint": {
+      if (getSketchReferenceKeys(constraint).length === 3) {
+        const triple = getPreviewThreePointMidpoint(document, constraint);
+        return Boolean(triple && samePoint(triple.points[0], midpoint(triple.points[1], triple.points[2])));
+      }
       const pair = getPreviewPointAndLineReferences(document, constraint);
       return Boolean(pair && samePoint(pair.point, midpoint(pair.line.start, pair.line.end)));
     }
@@ -10773,6 +10779,8 @@ function propagatePreviewConcentricConstraint(originalDocument, previewDocument,
 }
 
 function propagatePreviewMidpointConstraint(originalDocument, previewDocument, fixedReferences, constraint) {
+  if (getSketchReferenceKeys(constraint).length === 3)
+    return propagatePreviewThreePointMidpoint(originalDocument, previewDocument, fixedReferences, constraint);
   const references = getPreviewPointAndLineReferences(previewDocument, constraint);
   if (!references) {
     return false;
@@ -10807,6 +10815,117 @@ function propagatePreviewMidpointConstraint(originalDocument, previewDocument, f
     });
   }
 
+  return false;
+}
+
+function getPreviewThreePointMidpoint(document, constraint) {
+  const keys = getSketchReferenceKeys(constraint);
+  if (keys.length !== 3) return null;
+  const references = keys.map(parseSketchReference);
+  if (references.some(reference => !reference)) return null;
+  if (references.some(reference => {
+    if (reference.entityId === "$origin")
+      return reference.target !== "center" || Number.isInteger(reference.segmentIndex);
+    const entity = findCanvasDocumentEntity(document, reference.entityId);
+    const kind = getEntityKind(entity);
+    if (Number.isInteger(reference.segmentIndex))
+      return kind !== "polyline" || reference.segmentIndex < 0
+        || reference.segmentIndex >= getEntityPoints(entity).length - 1
+        || !["start", "end", "mid"].includes(reference.target);
+    const targets = {
+      line: ["start", "end", "mid"], arc: ["start", "end", "center"],
+      circle: ["center"], ellipse: ["center"], polygon: ["center"],
+      spline: ["start", "end"], point: ["entity", "center"]
+    };
+    return !targets[kind]?.includes(reference.target);
+  })) return null;
+  const points = references.map(reference => getPreviewReferencePoint(document, reference));
+  if (points.some(point => !point || !Number.isFinite(point.x) || !Number.isFinite(point.y))) return null;
+  const identities = references.map(reference => {
+    const entity = findCanvasDocumentEntity(document, reference.entityId);
+    if (getEntityKind(entity) === "point") return `${reference.entityId}:center`;
+    const vertices = getEntityPoints(entity);
+    if (getEntityKind(entity) === "polyline" && Number.isInteger(reference.segmentIndex)
+      && ["start", "end"].includes(reference.target)) {
+      let vertex = reference.segmentIndex + (reference.target === "end" ? 1 : 0);
+      if (vertex === vertices.length - 1 && vertices[0]?.x === vertices.at(-1)?.x
+        && vertices[0]?.y === vertices.at(-1)?.y) vertex = 0;
+      return `${reference.entityId}:vertex:${vertex}`;
+    }
+    return sketchReferenceToKey(reference);
+  });
+  return new Set(identities).size === 3 ? { references, points } : null;
+}
+
+function propagatePreviewThreePointMidpoint(originalDocument, document, fixedReferences, constraint) {
+  const triple = getPreviewThreePointMidpoint(document, constraint);
+  if (!triple) return false;
+  const { references, points } = triple;
+  const average = midpoint(points[1], points[2]);
+  if (distanceBetweenWorldPoints(points[0], average) <= WORLD_GEOMETRY_TOLERANCE) return false;
+  const changed = references.map(reference => hasPreviewPointChanged(originalDocument, document, reference));
+  if (changed[0] && (changed[1] || changed[2]) || !changed.some(Boolean)) return false;
+  const targets = points.map(point => ({ ...point }));
+  const fixed = reference => isPreviewMidpointPointFixed(document, fixedReferences, reference);
+  const movable = reference => canMovePreviewPoint(fixedReferences, reference) && !fixed(reference);
+  const reflect = point => ({ x: points[0].x + (points[0].x - point.x), y: points[0].y + (points[0].y - point.y) });
+  if (!changed[0]) {
+    if (movable(references[0])) targets[0] = average;
+    else {
+      if (!fixed(references[0]) || changed[1] === changed[2]) return false;
+      const peer = changed[1] ? 2 : 1;
+      if (!movable(references[peer])) return false;
+      targets[peer] = reflect(points[changed[1] ? 1 : 2]);
+    }
+  } else {
+    const firstFree = movable(references[1]);
+    const secondFree = movable(references[2]);
+    if (firstFree && secondFree) {
+      const delta = subtractPoints(points[0], average);
+      targets[1] = { x: points[1].x + delta.x, y: points[1].y + delta.y };
+      targets[2] = { x: points[2].x + delta.x, y: points[2].y + delta.y };
+    } else if (firstFree) targets[1] = reflect(points[2]);
+    else if (secondFree) targets[2] = reflect(points[1]);
+    else return false;
+  }
+  if (targets.some(point => !Number.isFinite(point.x) || !Number.isFinite(point.y))) return false;
+  const candidate = cloneCanvasDocument(document);
+  for (let index = 0; index < 3; index++) {
+    if (distanceBetweenWorldPoints(points[index], targets[index]) <= WORLD_GEOMETRY_TOLERANCE) continue;
+    if (!movable(references[index])
+      || !trySetPreviewPoint(candidate, references[index], targets[index])) return false;
+  }
+  const resolved = getPreviewThreePointMidpoint(candidate, constraint);
+  if (!resolved || resolved.points.some((point, index) =>
+    distanceBetweenWorldPoints(point, targets[index]) > WORLD_GEOMETRY_TOLERANCE)) return false;
+  if (getDocumentConstraints(candidate).some(item => getSketchConstraintKind(item) === "fix"
+    && getSketchItemState(item) !== "suppressed"
+    && !isPreviewConstraintSatisfied(originalDocument, candidate, item))) return false;
+  document.entities = candidate.entities;
+  return true;
+}
+
+function isPreviewMidpointPointFixed(document, fixedReferences, reference) {
+  if (isPreviewReferenceFixed(fixedReferences, reference)) return true;
+  const entity = findCanvasDocumentEntity(document, reference.entityId);
+  if (getEntityKind(entity) === "point")
+    return isPreviewReferenceFixed(fixedReferences, { ...reference, target: "center" });
+  if (getEntityKind(entity) !== "polyline" || !Number.isInteger(reference.segmentIndex)
+    || !["start", "end"].includes(reference.target)) return false;
+  const vertices = getEntityPoints(entity);
+  const vertex = reference.segmentIndex + (reference.target === "end" ? 1 : 0);
+  const indices = new Set([vertex]);
+  if (vertices[0]?.x === vertices.at(-1)?.x && vertices[0]?.y === vertices.at(-1)?.y
+    && (vertex === 0 || vertex === vertices.length - 1)) {
+    indices.add(0);
+    indices.add(vertices.length - 1);
+  }
+  for (const index of indices) {
+    if (index > 0 && isPreviewReferenceFixed(fixedReferences,
+      { ...reference, segmentIndex: index - 1, target: "end" })) return true;
+    if (index < vertices.length - 1 && isPreviewReferenceFixed(fixedReferences,
+      { ...reference, segmentIndex: index, target: "start" })) return true;
+  }
   return false;
 }
 

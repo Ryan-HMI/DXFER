@@ -216,6 +216,9 @@ internal static class SketchConstraintPropagationService
         SketchFixedReferences fixedReferences,
         SketchConstraint constraint)
     {
+        if (constraint.ReferenceKeys.Count == 3)
+            return SketchThreePointMidpoint.Apply(entities, fixedReferences, constraint, originalEntities);
+
         if (!TryGetPointAndLineReferences(
                 entities,
                 constraint,

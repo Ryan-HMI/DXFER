@@ -203,11 +203,13 @@ public static class SketchCommandFactory
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(selectionKeys);
 
-        var axisConstraint = kind is SketchConstraintKind.Horizontal or SketchConstraintKind.Vertical;
+        var selectionArray = selectionKeys.ToArray();
+        var axisConstraint = kind is SketchConstraintKind.Horizontal or SketchConstraintKind.Vertical
+            || kind == SketchConstraintKind.Midpoint && selectionArray.Length == 3;
         var picks = kind == SketchConstraintKind.Concentric
-            ? selectionKeys.Select(key => NormalizeConcentricPick(document, key))
-            : kind == SketchConstraintKind.Coincident ? selectionKeys.Select(key => NormalizeCircleIncidencePick(document, key))
-            : axisConstraint ? selectionKeys.Select(key => NormalizeAxisPick(document, key)) : selectionKeys;
+            ? selectionArray.Select(key => NormalizeConcentricPick(document, key))
+            : kind == SketchConstraintKind.Coincident ? selectionArray.Select(key => NormalizeCircleIncidencePick(document, key))
+            : axisConstraint ? selectionArray.Select(key => NormalizeAxisPick(document, key)) : selectionArray;
         var selections = NormalizeSelections(document, picks,
             activeSelectionKey is null ? null : axisConstraint ? NormalizeAxisPick(document, activeSelectionKey)
             : kind == SketchConstraintKind.Coincident ? NormalizeCircleIncidencePick(document, activeSelectionKey) : activeSelectionKey);
@@ -216,6 +218,9 @@ public static class SketchCommandFactory
         var circleLikeSelections = selections.Where(selection => selection.CircleLike is not null).ToArray();
         var circleSelections = selections.Where(selection => !selection.Point.HasValue
             && TryFindEntity(document, selection.Key, out var entity) && entity is CircleEntity).ToArray();
+
+        if (kind == SketchConstraintKind.Midpoint && selections.Length == 3 && pointSelections.Length == 3)
+            return TryBuildThreePointMidpoint(pointSelections, id, out constraint, out status);
 
         if (kind == SketchConstraintKind.Coincident && selections.Length == 2)
         {
@@ -263,7 +268,7 @@ public static class SketchCommandFactory
                 Keys(lineSelections),
             SketchConstraintKind.Equal when circleLikeSelections.Length == 2 =>
                 circleLikeSelections.Select(selection => GetCircleLikeEntityReferenceKey(selection.Key)).ToArray(),
-            SketchConstraintKind.Midpoint when lineSelections.Length == 1 && pointSelections.Length == 1 =>
+            SketchConstraintKind.Midpoint when selections.Length == 2 && lineSelections.Length == 1 && pointSelections.Length == 1 =>
                 new[] { lineSelections[0].Key, pointSelections[0].Key },
             SketchConstraintKind.Fix when selections.Length > 0 =>
                 Keys(selections),
@@ -279,6 +284,35 @@ public static class SketchCommandFactory
 
         constraint = new SketchConstraint(id, kind, references);
         status = $"Added {kind} constraint.";
+        return true;
+    }
+
+    private static bool TryBuildThreePointMidpoint(
+        SketchSelection[] points,
+        string id,
+        out SketchConstraint constraint,
+        out string status)
+    {
+        constraint = default!;
+        status = "These points do not identify a unique middle point.";
+        var candidates = Enumerable.Range(0, 3).Select(index =>
+        {
+            var first = points[(index + 1) % 3].Point!.Value;
+            var second = points[(index + 2) % 3].Point!.Value;
+            var middle = new Point2(first.X / 2 + second.X / 2, first.Y / 2 + second.Y / 2);
+            return (Index: index, Distance: Distance(points[index].Point!.Value, middle));
+        }).OrderBy(candidate => candidate.Distance).ToArray();
+        var scale = Enumerable.Range(0, 3)
+            .Max(index => Distance(points[index].Point!.Value, points[(index + 1) % 3].Point!.Value));
+        if (!double.IsFinite(scale) || scale <= 1e-9
+            || candidates.Any(candidate => !double.IsFinite(candidate.Distance))
+            || candidates[1].Distance - candidates[0].Distance <= Math.Max(1e-9, scale * 1e-8))
+            return false;
+
+        var chosen = candidates[0].Index;
+        constraint = new SketchConstraint(id, SketchConstraintKind.Midpoint,
+            new[] { points[chosen].Key, points[(chosen + 1) % 3].Key, points[(chosen + 2) % 3].Key });
+        status = "Added three-point Midpoint constraint.";
         return true;
     }
 

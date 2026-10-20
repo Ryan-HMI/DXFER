@@ -503,6 +503,12 @@ public static class SketchConstraintService
         SketchFixedReferences fixedReferences,
         SketchConstraint constraint)
     {
+        if (constraint.ReferenceKeys.Count == 3)
+        {
+            SketchThreePointMidpoint.Apply(entities, fixedReferences, constraint);
+            return;
+        }
+
         if (!TryGetPointAndLineReferences(
                 entities,
                 constraint,
@@ -815,6 +821,9 @@ public static class SketchConstraintService
 
     private static bool IsMidpoint(IReadOnlyList<DrawingEntity> entities, SketchConstraint constraint)
     {
+        if (constraint.ReferenceKeys.Count == 3)
+            return SketchThreePointMidpoint.IsSatisfied(entities, constraint);
+
         if (!TryGetPointAndLineReferences(
                 entities,
                 constraint,

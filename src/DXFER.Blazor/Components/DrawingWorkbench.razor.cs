@@ -582,6 +582,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.Mirror => "Mirror: select whole geometry, click two points for the mirror axis. Esc: cancel.",
         WorkbenchTool.LinearPattern or WorkbenchTool.CircularPattern => _status,
         WorkbenchTool.Dimension => _status,
+        WorkbenchTool.Midpoint => _status,
         not null => $"{ActiveToolLabel}: follow canvas prompts. Esc: cancel.",
         null => _status
     });
@@ -2085,6 +2086,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         if (TryApplySketchConstraint(kind, keepModal: true))
         {
+            return;
+        }
+
+        if (kind == SketchConstraintKind.Midpoint && _selectedEntityIds.Count == 3)
+        {
+            ActivateTool(tool, _status);
             return;
         }
 
@@ -3737,7 +3744,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         SketchConstraintKind.Vertical => "Select one line or two editable points.",
         SketchConstraintKind.Perpendicular => "Select two lines or polyline segments.",
         SketchConstraintKind.Equal => "Select two lines or two circle/arc radii.",
-        SketchConstraintKind.Midpoint => "Select one line and one editable point.",
+        SketchConstraintKind.Midpoint => "Select a line and a point, or three points with a clear middle point.",
         SketchConstraintKind.Fix => "Select geometry or editable points to fix.",
         _ => "Select eligible references."
     };
