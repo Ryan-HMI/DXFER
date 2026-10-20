@@ -1,9 +1,37 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createPlaneGcsSolver } from '../../src/DXFER.Blazor/wwwroot/planeGcsSolver.js';
-import { canExtendDimensionSelection, getDimensionDescriptorFromReferences } from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.js';
+import { canExtendDimensionSelection, getDimensionDescriptorFromReferences, getDimensionPlacementRequest } from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.js';
 
 const circle = { id: 'curve', kind: 'circle', center: { x: 0, y: 0 }, radius: 2 };
+test('explicit center and arc endpoint keep point-to-edge measurements', () => {
+    for (const arc of [false, true]) {
+        const curve = arc ? { ...circle, kind: 'arc', startAngleDegrees: 90, endAngleDegrees: 270 } : circle;
+        const state = { document: { entities: [curve, { id: 'edge', kind: 'line', points: [{ x: 6, y: -5 }, { x: 6, y: 5 }] }] },
+            view: { scale: 10, offsetX: 0, offsetY: 0 } };
+        const keys = [arc ? 'curve|point|start|0|2' : 'curve:center', 'edge'];
+        const preview = getDimensionDescriptorFromReferences(state, keys, { x: 4, y: 3 }, false, 'gap');
+        assert.equal(preview.kind, 'pointtolinedistance');
+        assert.equal(preview.value, 6);
+    }
+});
+for (const polyline of [false, true]) for (const reverse of [false, true]) {
+    test(`circle quadrant against edge previews perimeter gap, polyline=${polyline}, reversed=${reverse}`, () => {
+        const edge = { id: 'edge', kind: polyline ? 'polyline' : 'line',
+            points: [{ x: 6, y: -5 }, { x: 6, y: 5 }, ...(polyline ? [{ x: 9, y: 5 }] : [])] };
+        const state = { document: { entities: [circle, edge], constraints: [], dimensions: [] },
+            activeTool: 'dimension', view: { scale: 10, offsetX: 0, offsetY: 0 } };
+        const edgeKey = polyline ? 'edge|segment|0' : 'edge';
+        const keys = ['curve|point|quadrant-1|0|2', edgeKey];
+        if (reverse) keys.reverse();
+        assert.equal(canExtendDimensionSelection(state, [keys[0]], keys[1]), true);
+        const preview = getDimensionDescriptorFromReferences(state, keys, { x: 4, y: 3 }, false, 'gap');
+        assert.equal(preview.kind, 'perimeterdistance');
+        assert.equal(preview.value, 4);
+        state.dimensionDraft = { selectionKeys: keys };
+        assert.deepEqual(new Set(getDimensionPlacementRequest(state, { x: 40, y: 30 }).selectionKeys), new Set(['curve', edgeKey]));
+    });
+}
 const cases = [
     ['point', { id: 'peer', kind: 'point', points: [{ x: 6, y: 0 }] }, 4],
     ['line', { id: 'peer', kind: 'line', points: [{ x: 6, y: -5 }, { x: 6, y: 5 }] }, 4],

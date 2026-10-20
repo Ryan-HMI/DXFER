@@ -64,13 +64,15 @@ try {
         const measured = measurePerimeterDistance(...shapes);
         assert.ok(measured && Math.abs(measured.value - value) < 1e-6, JSON.stringify({ measured, value }));
     };
-    for (const arc of [false, true]) {
-        const name = arc ? 'arc-point' : 'circle-line';
+    for (const [arc, quadrant, reverse] of [[false, false, false], [true, false, false], [false, true, false], [false, true, true]]) {
+        const name = arc ? 'arc-point' : quadrant ? `circle-quadrant-line-${reverse ? 'edge-first' : 'circle-first'}` : 'circle-line';
         await load(fixture(arc));
         await tool('Dimension');
-        const angle = arc ? Math.PI - 0.3 : 0.3;
-        await click(10 + 2 * Math.cos(angle), 10 + 2 * Math.sin(angle));
-        await click(arc ? 4 : 16, arc ? 10 : 11);
+        await expect(canvas).toHaveAttribute('data-active-tool', 'dimension');
+        const angle = arc ? Math.PI - 0.3 : quadrant ? Math.PI / 2 : 0.3;
+        const picks = [[10 + 2 * Math.cos(angle), 10 + 2 * Math.sin(angle)], [arc ? 4 : 16, arc ? 10 : 11]];
+        if (reverse) picks.reverse();
+        for (const pick of picks) await click(...pick);
         await expect(canvas).toHaveAttribute('data-dimension-draft-complete', 'true');
         assert.equal((await canvas.getAttribute('data-dimension-draft-keys')).split(',').length, 2);
         await click(arc ? 6 : 14, 8);

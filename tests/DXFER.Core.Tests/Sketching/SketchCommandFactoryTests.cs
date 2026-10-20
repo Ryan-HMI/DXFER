@@ -197,7 +197,7 @@ public sealed class SketchCommandFactoryTests
     }
 
     [Fact]
-    public void BuildsPointToLineDimensionFromCanvasSnapPointAndLine()
+    public void BuildsPerimeterDimensionFromCircleQuadrantAndLine()
     {
         var document = new DrawingDocument(new DrawingEntity[]
         {
@@ -213,10 +213,10 @@ public sealed class SketchCommandFactoryTests
             out _);
 
         result.Should().BeTrue();
-        dimension.Kind.Should().Be(SketchDimensionKind.PointToLineDistance);
-        dimension.ReferenceKeys.Should().Equal("edge", "hole|point|quadrant-90|4|5");
-        dimension.Value.Should().Be(5);
-        dimension.Anchor.Should().Be(new Point2(4, 2.5));
+        dimension.Kind.Should().Be(SketchDimensionKind.PerimeterDistance);
+        dimension.ReferenceKeys.Should().Equal("edge", "hole");
+        dimension.Value.Should().Be(1);
+        dimension.Anchor.Should().Be(new Point2(4, 0.5));
     }
 
     [Fact]

@@ -10,6 +10,26 @@ namespace DXFER.Core.Tests.Sketching;
 public sealed class PerimeterDimensionTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void CircleQuadrantAndEdgeCreatePerimeterGap(bool polyline, bool reverse)
+    {
+        DrawingEntity edge = polyline
+            ? new PolylineEntity(new("edge"), [new(6, -5), new(6, 5), new(9, 5)])
+            : new LineEntity(new("edge"), new(6, -5), new(6, 5));
+        var document = new DrawingDocument([new CircleEntity(new("curve"), new(0, 0), 2), edge]);
+        var edgeKey = polyline ? "edge|segment|0" : "edge";
+        var keys = new[] { "curve|point|quadrant-1|0|2", edgeKey };
+        if (reverse) Array.Reverse(keys);
+        SketchCommandFactory.TryBuildDimension(document, keys, "gap", out var gap, out var status).Should().BeTrue(status);
+        gap.Kind.Should().Be(SketchDimensionKind.PerimeterDistance);
+        gap.Value.Should().Be(4, "the quadrant is a perimeter pick, not a point six inches from the edge");
+        gap.ReferenceKeys.Should().BeEquivalentTo(["curve", edgeKey]);
+    }
+
+    [Theory]
     [InlineData("point", false)]
     [InlineData("point", true)]
     [InlineData("line", false)]
@@ -59,5 +79,20 @@ public sealed class PerimeterDimensionTests
         SketchCommandFactory.TryBuildDimension(document, ["first:center", "second"], "gap", out var gap, out var status).Should().BeTrue(status);
         gap.Value.Should().Be(7);
         gap.ReferenceKeys.Should().Contain("first:center");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExplicitCenterAndArcEndpointRemainPointToEdgeMeasurements(bool arc)
+    {
+        DrawingEntity curve = arc ? new ArcEntity(new("curve"), new(0, 0), 2, 90, 270)
+            : new CircleEntity(new("curve"), new(0, 0), 2);
+        var document = new DrawingDocument([curve, new LineEntity(new("edge"), new(6, -5), new(6, 5))]);
+        var point = arc ? "curve|point|start|0|2" : "curve:center";
+        SketchCommandFactory.TryBuildDimension(document, [point, "edge"], "gap", out var gap, out var status).Should().BeTrue(status);
+        gap.Kind.Should().Be(SketchDimensionKind.PointToLineDistance);
+        gap.Value.Should().Be(6);
+        gap.ReferenceKeys.Should().Contain(point);
     }
 }

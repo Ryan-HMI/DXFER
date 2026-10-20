@@ -2512,12 +2512,15 @@ function getDimensionModelFromReferences(state, referenceKeys, radialDiameter = 
 function getPerimeterDimensionModel(state, referenceKeys) {
   if (referenceKeys.length !== 2) return null;
   const curvePair = Boolean(getCirclePerimeterDimensionPairIds(state, referenceKeys));
+  const hasEdge = referenceKeys.some(key => parseSketchReference(key)?.target === "entity"
+    && resolveSketchLineReference(state, key));
   const keys = referenceKeys.map(key => {
     const ref = parseSketchReference(key);
     const entity = ref && findDocumentEntity(state, ref.entityId);
     if (!entity || !["circle", "arc"].includes(getEntityKind(entity))) return key;
     const target = parsePointTargetKey(state, key);
-    return key === ref.entityId || curvePair && target && isCurvePerimeterPointTarget(target)
+    return key === ref.entityId || (curvePair || hasEdge && getEntityKind(entity) === "circle")
+      && target && isCurvePerimeterPointTarget(target)
       && !["start", "end"].includes(String(target.label).toLowerCase()) ? ref.entityId : key;
   });
   if (keys[0] === keys[1]) return null;

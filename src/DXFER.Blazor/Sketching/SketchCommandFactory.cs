@@ -23,7 +23,12 @@ public static class SketchCommandFactory
 
         var selections = NormalizeSelections(document, selectionKeys, activeSelectionKey);
         if (selections.Length == 2 && !selections.All(s => s.CircleLike.HasValue))
-            selections = selections.Select(s => s.Point.HasValue ? s with { CircleLike = null } : s).ToArray();
+        {
+            var hasEdge = selections.Any(s => s.Line is not null && !s.Point.HasValue);
+            selections = selections.Select(s => s.Point.HasValue
+                && !(hasEdge && s.CircleLike is { IsFullCircle: true })
+                    ? s with { CircleLike = null } : s).ToArray();
+        }
         if (TryBuildOffsetDimension(document, selections, id, anchorOverride, out dimension))
         {
             status = "Placed offset distance dimension. Edit this distance to resize the linked offset.";
