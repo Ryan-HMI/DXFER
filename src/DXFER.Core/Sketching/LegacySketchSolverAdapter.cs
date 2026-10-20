@@ -67,6 +67,9 @@ public sealed class LegacySketchSolverAdapter : ISketchSolver
         solved = Revalidate(solved);
         var affectedDiagnostics = SketchSolveDiagnostics.FromDocument(solved);
         var status = ClassifyStatus(solved, affectedDiagnostics);
+        var preservesFixed = SketchGeometryDragService.FixedReferencesRemainUnchanged(request.Document, solved);
+        if (!preservesFixed)
+            status = SketchSolveStatus.Failed;
 
         if (status != SketchSolveStatus.Solved)
         {
@@ -83,7 +86,8 @@ public sealed class LegacySketchSolverAdapter : ISketchSolver
         return new SketchSolveResult(
             status,
             solved,
-            affectedDiagnostics.Select(diagnostic => diagnostic.Message),
+            preservesFixed ? affectedDiagnostics.Select(diagnostic => diagnostic.Message)
+                : new[] { "The solve would move fixed geometry. Geometry unchanged." },
             affectedDiagnostics);
     }
 

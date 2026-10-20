@@ -123,7 +123,7 @@ public static class SketchGeometryDragService
         return true;
     }
 
-    private static bool FixedReferencesRemainUnchanged(DrawingDocument original, DrawingDocument candidate)
+    internal static bool FixedReferencesRemainUnchanged(DrawingDocument original, DrawingDocument candidate)
     {
         foreach (var constraint in original.Constraints.Where(c => c.Kind == SketchConstraintKind.Fix
                      && c.State != SketchConstraintState.Suppressed))

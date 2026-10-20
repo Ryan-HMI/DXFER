@@ -198,6 +198,45 @@ public static class SketchConstraintService
                 firstReference,
                 AlignPointToAxis(firstPoint, secondPoint, isHorizontal));
         }
+        else
+        {
+            // A derived midpoint cannot be written directly. Move its free source
+            // line instead; the solver then propagates joints and validates intent.
+            if (firstReference.IsOrigin)
+                TryAlignMidpointSource(entities, fixedReferences, secondReference,
+                    AlignPointToAxis(secondPoint, firstPoint, isHorizontal));
+            else if (secondReference.IsOrigin)
+                TryAlignMidpointSource(entities, fixedReferences, firstReference,
+                    AlignPointToAxis(firstPoint, secondPoint, isHorizontal));
+        }
+    }
+
+    private static bool TryAlignMidpointSource(
+        DrawingEntity[] entities,
+        SketchFixedReferences fixedReferences,
+        SketchReference midpointReference,
+        Point2 target)
+    {
+        if (midpointReference.Target != SketchReferenceTarget.Midpoint
+            || fixedReferences.IsFixed(midpointReference)
+            || !SketchGeometryEditor.TryGetPoint(entities, midpointReference, out var midpoint))
+            return false;
+        if (SketchGeometryEditor.AreClose(midpoint, target))
+            return true;
+
+        var lineReference = new SketchReference(midpointReference.EntityId,
+            SketchReferenceTarget.Entity, midpointReference.SegmentIndex);
+        if (!fixedReferences.CanMoveWholeLine(lineReference)
+            || !SketchGeometryEditor.TryGetLine(entities, lineReference, out _, out var line))
+            return false;
+
+        var dx = target.X - midpoint.X;
+        var dy = target.Y - midpoint.Y;
+        return SketchGeometryEditor.TrySetLine(entities, lineReference, line with
+        {
+            Start = new Point2(line.Start.X + dx, line.Start.Y + dy),
+            End = new Point2(line.End.X + dx, line.End.Y + dy)
+        });
     }
 
     private static void ApplyLineAxisAlignment(
