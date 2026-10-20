@@ -73,3 +73,10 @@
   context toggles, reselect-hidden behavior, and the prior pattern edit/history/
   roundtrip checks. Local screenshots: /tmp/dxfer-pattern-context.
 - No solver or document-format change, and no existing-data repair is required.
+- Installed follow-up: Dev 45ce09f, 2026-10-20. Tooltip-verified public-endpoint
+  browser replay passes all prior widget checks plus rectangular/radial instance
+  Show/Hide. Full core suite: 3,045 passed. Installed screenshots/fixtures:
+  /tmp/dxfer-pattern-context-installed; log:
+  /tmp/dxfer-pattern-context-installed.log. Google sign-in retained; anonymous
+  root returns 302. Production/Test unchanged. Rollback:
+  /home/ryan/dxfer-runtime/dev-publish-before-45ce09f.
