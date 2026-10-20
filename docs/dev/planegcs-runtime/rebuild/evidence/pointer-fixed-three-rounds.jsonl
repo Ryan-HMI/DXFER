@@ -1,0 +1,27 @@
+{"round":1,"count":128}
+{"fixture":"radial","count":128,"mode":"fixed-fast","initializationMs":10.44212,"firstStatus":"solved","firstMs":36.98857,"fallbackMs":null,"totalMs":37.073280000000004,"status":"solved","nativePhases":[20.413313999999993],"insertions":[{"total":892,"fixedPoints":2,"temporary":[],"pointerCoordinates":[]}],"seedCenter":{"x":31,"y":21},"pointerResidual":0,"maxPatternResidual":3.6880913698300114e-9,"maxRadiusChange":0,"requestUnchanged":true,"maxRssKiB":87140,"diagnostics":["PlaneGCS mapped-system degrees of freedom: 1."]}
+{"exit":0}
+{"round":1,"count":256}
+{"fixture":"radial","count":256,"mode":"fixed-fast","initializationMs":10.008563000000002,"firstStatus":"solved","firstMs":103.000088,"fallbackMs":null,"totalMs":103.118361,"status":"solved","nativePhases":[79.606214],"insertions":[{"total":1788,"fixedPoints":2,"temporary":[],"pointerCoordinates":[]}],"seedCenter":{"x":31,"y":21},"pointerResidual":0,"maxPatternResidual":3.6880913698300114e-9,"maxRadiusChange":0,"requestUnchanged":true,"maxRssKiB":120316,"diagnostics":["PlaneGCS mapped-system degrees of freedom: 1."]}
+{"exit":0}
+{"round":1,"count":512}
+{"fixture":"radial","count":512,"mode":"fixed-fast","initializationMs":9.662910999999998,"firstStatus":"solved","firstMs":528.477404,"fallbackMs":null,"totalMs":528.578053,"status":"solved","nativePhases":[491.09110300000003],"insertions":[{"total":3580,"fixedPoints":2,"temporary":[],"pointerCoordinates":[]}],"seedCenter":{"x":31,"y":21},"pointerResidual":0,"maxPatternResidual":3.6880913698300114e-9,"maxRadiusChange":0,"requestUnchanged":true,"maxRssKiB":167620,"diagnostics":["PlaneGCS mapped-system degrees of freedom: 1."]}
+{"exit":0}
+{"round":2,"count":128}
+{"fixture":"radial","count":128,"mode":"fixed-fast","initializationMs":10.26127,"firstStatus":"solved","firstMs":37.517226,"fallbackMs":null,"totalMs":37.618568,"status":"solved","nativePhases":[20.549881],"insertions":[{"total":892,"fixedPoints":2,"temporary":[],"pointerCoordinates":[]}],"seedCenter":{"x":31,"y":21},"pointerResidual":0,"maxPatternResidual":3.6880913698300114e-9,"maxRadiusChange":0,"requestUnchanged":true,"maxRssKiB":87924,"diagnostics":["PlaneGCS mapped-system degrees of freedom: 1."]}
+{"exit":0}
+{"round":2,"count":256}
+{"fixture":"radial","count":256,"mode":"fixed-fast","initializationMs":9.746307999999999,"firstStatus":"solved","firstMs":105.674411,"fallbackMs":null,"totalMs":105.818763,"status":"solved","nativePhases":[81.764484],"insertions":[{"total":1788,"fixedPoints":2,"temporary":[],"pointerCoordinates":[]}],"seedCenter":{"x":31,"y":21},"pointerResidual":0,"maxPatternResidual":3.6880913698300114e-9,"maxRadiusChange":0,"requestUnchanged":true,"maxRssKiB":116184,"diagnostics":["PlaneGCS mapped-system degrees of freedom: 1."]}
+{"exit":0}
+{"round":2,"count":512}
+{"fixture":"radial","count":512,"mode":"fixed-fast","initializationMs":9.672350000000002,"firstStatus":"solved","firstMs":528.046351,"fallbackMs":null,"totalMs":528.157751,"status":"solved","nativePhases":[490.2467720000001],"insertions":[{"total":3580,"fixedPoints":2,"temporary":[],"pointerCoordinates":[]}],"seedCenter":{"x":31,"y":21},"pointerResidual":0,"maxPatternResidual":3.6880913698300114e-9,"maxRadiusChange":0,"requestUnchanged":true,"maxRssKiB":143492,"diagnostics":["PlaneGCS mapped-system degrees of freedom: 1."]}
+{"exit":0}
+{"round":3,"count":128}
+{"fixture":"radial","count":128,"mode":"fixed-fast","initializationMs":10.408728000000004,"firstStatus":"solved","firstMs":37.038243,"fallbackMs":null,"totalMs":37.126009,"status":"solved","nativePhases":[20.495076999999995],"insertions":[{"total":892,"fixedPoints":2,"temporary":[],"pointerCoordinates":[]}],"seedCenter":{"x":31,"y":21},"pointerResidual":0,"maxPatternResidual":3.6880913698300114e-9,"maxRadiusChange":0,"requestUnchanged":true,"maxRssKiB":88016,"diagnostics":["PlaneGCS mapped-system degrees of freedom: 1."]}
+{"exit":0}
+{"round":3,"count":256}
+{"fixture":"radial","count":256,"mode":"fixed-fast","initializationMs":9.939393000000003,"firstStatus":"solved","firstMs":102.90065999999999,"fallbackMs":null,"totalMs":102.99547899999999,"status":"solved","nativePhases":[79.636942],"insertions":[{"total":1788,"fixedPoints":2,"temporary":[],"pointerCoordinates":[]}],"seedCenter":{"x":31,"y":21},"pointerResidual":0,"maxPatternResidual":3.6880913698300114e-9,"maxRadiusChange":0,"requestUnchanged":true,"maxRssKiB":119976,"diagnostics":["PlaneGCS mapped-system degrees of freedom: 1."]}
+{"exit":0}
+{"round":3,"count":512}
+{"fixture":"radial","count":512,"mode":"fixed-fast","initializationMs":9.982895,"firstStatus":"solved","firstMs":543.7448240000001,"fallbackMs":null,"totalMs":543.8428289999999,"status":"solved","nativePhases":[505.73266500000005],"insertions":[{"total":3580,"fixedPoints":2,"temporary":[],"pointerCoordinates":[]}],"seedCenter":{"x":31,"y":21},"pointerResidual":0,"maxPatternResidual":3.6880913698300114e-9,"maxRadiusChange":0,"requestUnchanged":true,"maxRssKiB":152744,"diagnostics":["PlaneGCS mapped-system degrees of freedom: 1."]}
+{"exit":0}

@@ -1,0 +1,5 @@
+{"elapsedMs":45.58715099999999,"message":["Solving with LevenbergMarquardt\n"]}
+{"elapsedMs":128.006123,"message":["EigenSparseQR, Threads: 1, Pivot Threshold: 1e-13, Params: 768, Constr: 765, Rank: 765\n"]}
+{"elapsedMs":1705.729209,"message":["LM: eps: 1e-10, eps1: 1e-80, tau: 0.001, convergence: 1e-10, xsize: 1, maxIter: 200\n"]}
+{"elapsedMs":1710.320541,"message":["{\"kind\":\"Radial\",\"count\":256,\"status\":\"solved\",\"initializationMs\":10.32,\"solveMs\":1690.67,\"rssMiB\":117.5}"]}
+{"elapsedMs":1710.495661,"message":["{\"diagnostic\":\"radial-native-phase-timing\",\"count\":256,\"variant\":\"unaltered-priority-drag\",\"totalMs\":1710.391385,\"phasesMs\":{\"clear_data\":0.36236300000018673,\"push_primitives_and_params\":11.362482999999997,\"solve\":1664.845632,\"apply_solution\":1.2577709999998206},\"primitiveCounts\":{\"point\":257,\"circle\":256,\"line\":510,\"equal_length\":255,\"l2l_angle_ll\":255,\"equal\":256,\"coordinate_x\":1,\"coordinate_y\":1},\"params\":1028,\"temporaryGoals\":3,\"wasmBytes\":21495808,\"cpuMicroseconds\":{\"user\":2007284,\"system\":55975},\"maxRssKiB\":149904}"]}

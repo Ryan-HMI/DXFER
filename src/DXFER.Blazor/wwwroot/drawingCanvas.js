@@ -158,7 +158,7 @@ const POWER_TRIM_EXTEND_HIT_TEST_TOLERANCE = 18;
 const SPLINE_TANGENT_HANDLE_SCALE = 0.25;
 const SPLINE_FIT_SEGMENTS_PER_SPAN = 32;
 
-export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, constraintIcons = {}) {
+export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, constraintIcons = {}, config = {}) {
   const context = canvas.getContext("2d");
   if (!context) {
     throw new Error("DXFER drawing canvas requires a 2D rendering context.");
@@ -179,6 +179,11 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
     visibleDimensionKeys: [],
     dimensionDrag: null,
     geometryDrag: null,
+    solverEngine: config?.solverEngine === "PlaneGCS" ? "PlaneGCS" : "Legacy",
+    documentEpoch: 0,
+    planeGcsDragSession: 0,
+    planeGcsPreviewPending: null,
+    planeGcsPreviewLatest: null,
     powerTrimDrag: null,
     suppressDimensionInputCommit: false,
     document: null,
@@ -262,6 +267,11 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
 
   return {
     setDocument(document, fitToDocument = false) {
+      if (state.solverEngine === "PlaneGCS") {
+        cancelGeometryDrag(state);
+        state.clickCandidate = null;
+      }
+      state.documentEpoch++;
       state.document = document || null;
       reconcileDimensionAnchorOverrides(state, fitToDocument);
       state.acquiredSnapPoints = [];
@@ -280,6 +290,18 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
         clearConstraintHoverRetention(state);
         fitToExtents(state);
       }
+      updateDebugAttributes(state);
+      draw(state);
+    },
+
+    setSolverEngine(engine) {
+      const next = engine === "PlaneGCS" ? "PlaneGCS" : "Legacy";
+      if (next === state.solverEngine) return;
+      cancelGeometryDrag(state);
+      state.clickCandidate = null;
+      state.planeGcsPreviewLatest = null;
+      state.documentEpoch++;
+      state.solverEngine = next;
       updateDebugAttributes(state);
       draw(state);
     },
@@ -376,6 +398,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
     },
 
     setActiveTool(toolName) {
+      if (state.solverEngine === "PlaneGCS") cancelGeometryDrag(state);
       clearTransientDimensionInputs(state);
       const previousTool = normalizeToolName(state.activeTool);
       const nextTool = normalizeToolName(toolName);
@@ -408,6 +431,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
     },
 
     dispose() {
+      if (state.solverEngine === "PlaneGCS") cancelGeometryDrag(state);
       state.disposed = true;
       state.measurementFeedback?.remove();
       clearConstraintHoverRetention(state);
@@ -5335,6 +5359,12 @@ function startGeometryDrag(state, candidate, screenPoint, event = {}) {
     constrainToCurrentVector: Boolean(event.shiftKey),
     moved: true
   };
+  if (state.solverEngine === "PlaneGCS") {
+    state.geometryDrag.planeGcsSession = ++state.planeGcsDragSession;
+    state.geometryDrag.documentEpoch = state.documentEpoch;
+    state.canvas.dataset.planeGcsPreviewReason = "";
+    state.canvas.dataset.planeGcsPreviewEngine = "";
+  }
 
   updateGeometryDrag(state, screenPoint, event);
   return true;
@@ -5345,7 +5375,7 @@ export function requiresSharedGeometryDragPreview(document) {
     getSketchItemKind(c) === "offset" && getSketchConstraintState(c) !== "suppressed");
 }
 
-export function updateGeometryDrag(state, screenPoint, event = {}) {
+export function updateGeometryDrag(state, screenPoint, event = {}, requestPreview = true) {
   const drag = state.geometryDrag;
   if (!drag) {
     return false;
@@ -5356,6 +5386,11 @@ export function updateGeometryDrag(state, screenPoint, event = {}) {
   drag.currentWorldPoint = dragPoint.point;
   drag.constrainToCurrentVector = Boolean(event.shiftKey);
   drag.moved = distanceBetweenScreenPoints(drag.startScreenPoint, screenPoint) > CLICK_MOVE_TOLERANCE;
+  if (state.solverEngine === "PlaneGCS") {
+    drag.temporarySnapIntent = getPlaneGcsDragSnapIntent(state, drag, dragPoint.target, drag.currentWorldPoint);
+    if (requestPreview) requestPlaneGcsDragPreview(state, drag, dragPoint.target);
+    return true;
+  }
   if (requiresSharedGeometryDragPreview(drag.originalDocument)) {
     requestOffsetDragPreview(state, drag);
     return true;
@@ -5382,6 +5417,96 @@ export function updateGeometryDrag(state, screenPoint, event = {}) {
   }
   setHoveredTarget(state, dragPoint.target || resolveSelectionTarget(state, drag.targetKey));
   return true;
+}
+
+function isCurrentPlaneGcsPreview(state, request) {
+  return !state.disposed && state.solverEngine === "PlaneGCS"
+    && state.documentEpoch === request.epoch
+    && state.planeGcsDragSession === request.session
+    && state.geometryDrag === request.drag
+    && state.planeGcsPreviewLatest === request
+    && request.drag.planeGcsSequence === request.sequence;
+}
+
+function requestPlaneGcsDragPreview(state, drag, snapTarget) {
+  const key = JSON.stringify([drag.currentWorldPoint, drag.constrainToCurrentVector, drag.temporarySnapIntent]);
+  if (drag.planeGcsPreviewKey === key) return;
+  drag.planeGcsPreviewKey = key;
+  drag.planeGcsSequence = (drag.planeGcsSequence || 0) + 1;
+  drag.acceptedSnapTarget = null;
+  drag.acceptedSnapPoint = null;
+  state.planeGcsPreviewLatest = {
+    drag, key, epoch: drag.documentEpoch, session: drag.planeGcsSession, sequence: drag.planeGcsSequence,
+    targetKey: drag.targetKey, start: { ...drag.startWorldPoint }, end: { ...drag.currentWorldPoint },
+    constrain: Boolean(drag.constrainToCurrentVector), snapTarget, temporarySnapIntent: drag.temporarySnapIntent
+  };
+  dispatchPlaneGcsDragPreview(state);
+}
+
+function dispatchPlaneGcsDragPreview(state) {
+  const request = state.planeGcsPreviewLatest;
+  if (state.planeGcsPreviewPending || !request || !isCurrentPlaneGcsPreview(state, request)) return;
+  state.planeGcsPreviewPending = request;
+  const apply = result => {
+    if (!isCurrentPlaneGcsPreview(state, request)) return;
+    const validEngine = result?.engine === "PlaneGCS";
+    const document = validEngine && Array.isArray(result.document?.entities) ? result.document : null;
+    state.document = document || request.drag.originalDocument;
+    state.canvas.dataset.planeGcsPreviewEngine = typeof result?.engine === "string" ? result.engine : "";
+    state.canvas.dataset.planeGcsPreviewReason = validEngine
+      ? String(result.reason || "") : "PlaneGCS preview unavailable or engine mismatch.";
+    const target = resolveSelectionTarget(state, request.targetKey);
+    const movedPoint = target?.kind === "point" ? target.point
+      : getEntityKind(target?.entity) === "point" ? getPointEntityLocation(target.entity) : null;
+    let currentSnapTarget = request.snapTarget ? resolveSelectionTarget(state, request.snapTarget.key) : null;
+    if (getEntityKind(currentSnapTarget?.entity) === "point") {
+      currentSnapTarget = withSnapPoint(currentSnapTarget, getPointEntityLocation(currentSnapTarget.entity));
+    }
+    if (document && movedPoint && sameOptionalWorldPoint(movedPoint, getTargetWorldSnapPoint(currentSnapTarget))) {
+      request.drag.acceptedSnapTarget = currentSnapTarget;
+      request.drag.acceptedSnapPoint = movedPoint;
+    }
+    setHoveredTarget(state, currentSnapTarget || target);
+    updateDebugAttributes(state);
+    draw(state);
+  };
+  // Copy request coordinates before crossing the async boundary; never read a later pointer here.
+  Promise.resolve().then(() => {
+    if (!isCurrentPlaneGcsPreview(state, request)) return null;
+    return invokeDotNet(state, "GetPlaneGcsDragPreview", request.targetKey, request.start, request.end, request.constrain,
+      request.temporarySnapIntent);
+  }).then(apply).catch(() => apply(null)).finally(() => {
+    if (state.planeGcsPreviewPending !== request) return;
+    state.planeGcsPreviewPending = null;
+    if (state.planeGcsPreviewLatest !== request) dispatchPlaneGcsDragPreview(state);
+  });
+}
+
+export function getPlaneGcsDragSnapIntent(state, drag, target, point) {
+  if (!isUsableGeometryDragSnapTarget(drag, target)) return null;
+  const document = state.document;
+  state.document = drag.originalDocument;
+  try {
+    const selected = resolveSelectionTarget(state, drag.targetKey);
+    const selectedPoint = persistentSnapPointKey(drag.targetKey)
+      || (getEntityKind(selected?.entity) === "point" ? selected.entityId : null);
+    if (!selectedPoint) return null;
+    const intents = getCreationSnapIntents(state, target, point);
+    if (intents.length !== 1) return null;
+    const intent = intents[0];
+    if (!["Coincident", "Midpoint"].includes(intent.kind) || intent.referenceKeys?.length !== 1) return null;
+    const selectedReference = parseSketchReference(selectedPoint);
+    const targetReference = parseSketchReference(intent.referenceKeys[0]);
+    if (!selectedReference || !targetReference || selectedReference.entityId === targetReference.entityId) return null;
+    return {
+      id: "drag-snap",
+      kind: intent.kind,
+      referenceKeys: [sketchReferenceToKey(selectedReference), sketchReferenceToKey(targetReference)],
+      state: "Satisfied"
+    };
+  } finally {
+    state.document = document;
+  }
 }
 
 export function requestOffsetDragPreview(state, drag) {
@@ -5473,12 +5598,14 @@ export function finishGeometryDrag(state, screenPoint, event = {}) {
     return false;
   }
 
-  updateGeometryDrag(state, screenPoint, event);
+  const planeGcs = state.solverEngine === "PlaneGCS";
+  updateGeometryDrag(state, screenPoint, event, !planeGcs);
   const endWorldPoint = drag.currentWorldPoint || screenToWorld(state, screenPoint);
   const optimisticDocument = state.document;
   const originalDocument = drag.originalDocument;
 
   state.geometryDrag = null;
+  if (planeGcs) state.planeGcsPreviewLatest = null;
   if (drag.moved) {
     const invocation = invokeDotNet(
       state,
@@ -5488,9 +5615,12 @@ export function finishGeometryDrag(state, screenPoint, event = {}) {
       drag.startWorldPoint.y,
       endWorldPoint.x,
       endWorldPoint.y,
-      Boolean(drag.constrainToCurrentVector));
+      Boolean(drag.constrainToCurrentVector),
+      planeGcs ? drag.temporarySnapIntent : null);
     if (invocation && typeof invocation.then === "function") {
       const restoreRejectedPreview = () => {
+        if (planeGcs && (state.disposed || state.solverEngine !== "PlaneGCS"
+          || state.documentEpoch !== drag.documentEpoch || state.planeGcsDragSession !== drag.planeGcsSession)) return;
         if (state.document === optimisticDocument) {
           state.document = originalDocument;
           pruneInteractionState(state, true);
@@ -5510,6 +5640,10 @@ export function finishGeometryDrag(state, screenPoint, event = {}) {
 }
 
 function cancelGeometryDrag(state) {
+  if (state.solverEngine === "PlaneGCS") {
+    state.planeGcsPreviewLatest = null;
+    state.planeGcsDragSession++;
+  }
   if (!state.geometryDrag) {
     return false;
   }
@@ -13654,6 +13788,7 @@ function clearInteractionState(state) {
 
 function updateDebugAttributes(state) {
   const entities = getDocumentEntities(state.document);
+  state.canvas.dataset.solverEngine = state.solverEngine || "Legacy";
   state.canvas.dataset.entityCount = String(entities.length);
   state.canvas.dataset.selectedCount = String(state.selectedKeys.size);
   state.canvas.dataset.selectedKeys = Array.from(state.selectedKeys).join(",");

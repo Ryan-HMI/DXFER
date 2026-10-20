@@ -86,6 +86,6 @@ public static class SketchDimensionModeService
             changed = true;
             return new SketchDimension(d.Id, d.Kind, d.ReferenceKeys, value, d.Anchor, false);
         }).ToArray();
-        return changed ? new(document.Entities, dimensions, document.Constraints, document.Metadata) : document;
+        return changed ? new(document.Entities, dimensions, document.Constraints, document.Metadata, document.SolveEvidence) : document;
     }
 }

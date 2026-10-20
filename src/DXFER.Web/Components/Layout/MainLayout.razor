@@ -2,6 +2,7 @@
 @implements IDisposable
 @using DXFER.Blazor.Components
 @using DXFER.Core.Sync
+@using DXFER.Core.Sketching
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components.Web
@@ -9,6 +10,7 @@
 @inject NavigationManager Navigation
 @inject WorkbenchMenuCommandService MenuCommands
 @inject IConfiguration Configuration
+@inject ISketchSolver SketchSolver
 
 <div class="page">
     <header class="app-header">
@@ -147,7 +149,15 @@
         : string.IsNullOrWhiteSpace(DocumentState.Units) ? "Unspecified" : DocumentState.Units;
     private string DocumentChangeState => !DocumentState.HasDocument ? string.Empty
         : DocumentState.HasUnsavedChanges ? "Modified" : "Unchanged";
-    private static readonly string BuildTitle = GetBuildTitle();
+    private static readonly string BuildIdentity = GetBuildTitle();
+    private string BuildTitle => $"{BuildIdentity}; sketch solver: {SolverIdentity}";
+    private string SolverIdentity => SketchSolver switch
+    {
+        PlaneGcsSketchSolverAdapter => "PlaneGCS",
+        LegacySketchSolverAdapter => "Legacy",
+        null => "Unavailable",
+        _ => SketchSolver.GetType().Name
+    };
 
     private static string GetBuildTitle()
     {

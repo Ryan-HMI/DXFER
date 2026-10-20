@@ -1,0 +1,40 @@
+--- a/planeGcsSolver.js
++++ b/planeGcsSolver.js
+@@ -100,7 +100,7 @@
+ // constraints?,dimensions?,fixedReferenceKeys?,initialGuesses?:[{referenceKey,point}],
+ // drag?:{key,start,end,constrain?,temporarySnapIntent?}}. Updates replace by ID.
+ // One mapper is used by the browser and the Node host. Only initialization is async.
+-export async function createPlaneGcsSolver({ wasmBinary, wasmPath } = {}) {
++export async function createPlaneGcsSolver({ wasmBinary, wasmPath, diagnosticPointerOnly = false, diagnosticFixedPointer = false } = {}) {
+     const options = {};
+     if (wasmBinary !== undefined) options.wasmBinary = wasmBinary;
+     if (wasmPath !== undefined) options.locateFile = () => String(wasmPath);
+@@ -120,6 +120,28 @@
+                 wrapper.destroy_gcs_module();
+                 wrapper = new NativeCurveWrapper(new module.GcsSystem(), module);
+                 const mapped = mapRequest(request);
++                if (diagnosticPointerOnly || diagnosticFixedPointer) {
++                    const pointerSources = new Set(["Center drag target", "Drag target"]);
++                    const targets = mapped.primitives.filter(p => p.temporary && pointerSources.has(mapped.sources.get(p.id)));
++                    requireSupported(targets.length === 2 && targets.every(p => ["coordinate_x", "coordinate_y"].includes(p.type)),
++                        "Diagnostic fast path only supports an explicit two-coordinate pointer target.");
++                    const ids = new Set(targets.map(p => p.id));
++                    if (diagnosticFixedPointer) {
++                        const x = targets.find(p => p.type === "coordinate_x");
++                        const y = targets.find(p => p.type === "coordinate_y");
++                        requireSupported(x && y && x.p_id === y.p_id,
++                            "Diagnostic fixed pointer requires both coordinates of one point.");
++                        const point = mapped.primitives.find(p => p.id === x.p_id);
++                        requireSupported(point?.type === "point"
++                            && (!point.fixed || Math.hypot(point.x - x.x, point.y - y.y) <= tolerance),
++                            "Diagnostic fixed pointer conflicts with an existing fixed point.");
++                        mapped.primitives = mapped.primitives.filter(p => !p.temporary)
++                            .map(p => p.id === point.id ? { ...p, x: x.x, y: y.y, fixed: true } : p);
++                    } else {
++                        mapped.primitives = mapped.primitives.filter(p => !p.temporary || ids.has(p.id))
++                            .map(p => ids.has(p.id) ? { ...p, temporary: false } : p);
++                    }
++                }
+                 wrapper.fixedParameterIds = mapped.fixedParameterIds;
+                 wrapper.push_primitives_and_params(mapped.primitives);
+                 wrapper.set_max_iterations(200);

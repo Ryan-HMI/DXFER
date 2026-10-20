@@ -49,7 +49,8 @@ public static class DxferDocumentSerializer
                 ReferenceKeys = c.ReferenceKeys.ToArray(),
                 State = c.State
             }).ToArray(),
-            Metadata = document.Metadata
+            Metadata = document.Metadata,
+            SolveEvidence = document.SolveEvidence
         };
         var text = JsonSerializer.Serialize(data, Options);
         Require(text.Length <= MaxTextLength, "Native document exceeds the size limit.");
@@ -83,7 +84,7 @@ public static class DxferDocumentSerializer
                 data.Entities!.Select(e => e.ToEntity()),
                 data.Dimensions!.Select(d => new SketchDimension(d.Id, d.Kind, d.ReferenceKeys, d.Value, d.Anchor, d.IsDriving)),
                 data.Constraints!.Select(c => new SketchConstraint(c.Id, c.Kind, c.ReferenceKeys, c.State)),
-                data.Metadata! with { TrustedSource = false });
+                data.Metadata! with { TrustedSource = false }, data.SolveEvidence);
             Validate(document);
             return document;
         }
@@ -115,6 +116,8 @@ public static class DxferDocumentSerializer
         UniqueIds(document.Entities.Select(e => e.Id.Value), "entity");
         UniqueIds(document.Dimensions.Select(d => d.Id), "dimension");
         UniqueIds(document.Constraints.Select(c => c.Id), "constraint");
+        Require(document.SolveEvidence is null || PlaneGcsDiagnostics.IsWellFormed(document.SolveEvidence),
+            "Invalid PlaneGCS solve evidence.");
         foreach (var entity in document.Entities) EntityData.FromEntity(entity).ToEntity();
         foreach (var dimension in document.Dimensions)
         {
@@ -169,6 +172,7 @@ public static class DxferDocumentSerializer
         public required DimensionData[] Dimensions { get; init; }
         public required ConstraintData[] Constraints { get; init; }
         public required DrawingDocumentMetadata Metadata { get; init; }
+        public PlaneGcsSolveEvidence? SolveEvidence { get; init; }
     }
 
     private sealed class PointData

@@ -21,8 +21,44 @@ public static class SketchOffsetRelation
 
     public static bool IsSatisfied(IReadOnlyList<DrawingEntity> entities, IReadOnlyList<string> references) =>
         TryWitness(entities, references, out var witness)
-        && TryBuild(entities, references, witness, witness.Gap, out var expected)
+        && TryBuild(ValidationTopology(entities, references), references, witness, witness.Gap, out var expected)
         && SameGeometry(expected, entities.First(e => e.Id.Value == references[^1]));
+
+    private static IReadOnlyList<DrawingEntity> ValidationTopology(
+        IReadOnlyList<DrawingEntity> entities, IReadOnlyList<string> references)
+    {
+        // NTS merges only bit-identical endpoints. Native equations satisfy
+        // coincidence numerically; canonicalize the validation copy only.
+        const double weldTolerance = 1e-8;
+        var sourceIds = references.SkipLast(1).ToHashSet(StringComparer.Ordinal);
+        var endpoints = entities.Where(e => sourceIds.Contains(e.Id.Value)).SelectMany(e => e switch
+        {
+            LineEntity line => new[] { line.Start, line.End },
+            PolylineEntity poly => new[] { poly.Vertices[0], poly.Vertices[^1] },
+            _ => Array.Empty<Point2>()
+        }).ToArray();
+        Point2 Canonical(Point2 point)
+        {
+            var neighbors = endpoints.Where(p => Distance(p, point) <= weldTolerance).ToArray();
+            // Do not bridge chains of individually close but collectively distant points.
+            if (neighbors.Any(p => neighbors.Any(q => Distance(p, q) > weldTolerance))) return point;
+            return neighbors.OrderBy(p => p.X).ThenBy(p => p.Y).FirstOrDefault(point);
+        }
+        return entities.Select<DrawingEntity, DrawingEntity>(entity =>
+        {
+            if (!sourceIds.Contains(entity.Id.Value)) return entity;
+            if (entity is LineEntity line)
+                return line with { Start = Canonical(line.Start), End = Canonical(line.End) };
+            if (entity is PolylineEntity poly)
+            {
+                var points = poly.Vertices.ToArray();
+                points[0] = Canonical(points[0]);
+                points[^1] = Canonical(points[^1]);
+                return new PolylineEntity(poly.Id, points, poly.IsConstruction);
+            }
+            return entity;
+        }).ToArray();
+    }
 
     internal static bool Propagate(IReadOnlyList<DrawingEntity> original, DrawingEntity[] entities,
         SketchFixedReferences fixedReferences, SketchConstraint constraint, bool allowDependentTranslation = false)

@@ -1,0 +1,18 @@
+{"fixture":"fixed-center","count":8}
+{"stage":"fast-attempt-rejected","fixture":"fixed-center","count":8,"mode":"fixed-strategy","firstStatus":"unsupported","firstMs":3.8499709999999965,"diagnostics":["Diagnostic fixed pointer conflicts with an existing fixed point."]}
+{"fixture":"fixed-center","count":8,"mode":"fixed-strategy","initializationMs":10.411124000000001,"firstStatus":"unsupported","firstMs":3.8499709999999965,"fallbackMs":17.100770999999995,"totalMs":28.235600000000005,"status":"solved","nativePhases":[6.847183000000001],"insertions":[{"total":55,"fixedPoints":2,"temporary":[{"type":"coordinate_x","scale":1},{"type":"coordinate_y","scale":1},{"type":"equal","scale":0.0001}],"pointerCoordinates":[{"type":"coordinate_x","temporary":true,"x":31},{"type":"coordinate_y","temporary":true,"y":21}]}],"seedCenter":{"x":30,"y":20},"pointerResidual":1.4142135623730951,"maxPatternResidual":0,"maxRadiusChange":0,"requestUnchanged":true,"maxRssKiB":61768,"diagnostics":["PlaneGCS mapped-system degrees of freedom: 1."]}
+{"exit":0}
+{"fixture":"fixed-center","count":512}
+{"stage":"fast-attempt-rejected","fixture":"fixed-center","count":512,"mode":"fixed-strategy","firstStatus":"unsupported","firstMs":12.999395,"diagnostics":["Diagnostic fixed pointer conflicts with an existing fixed point."]}
+{"fixture":"fixed-center","count":512,"mode":"fixed-strategy","initializationMs":9.919528,"firstStatus":"unsupported","firstMs":12.999395,"fallbackMs":542.658995,"totalMs":560.4692839999999,"status":"solved","nativePhases":[503.55830599999996],"insertions":[{"total":3583,"fixedPoints":2,"temporary":[{"type":"coordinate_x","scale":1},{"type":"coordinate_y","scale":1},{"type":"equal","scale":0.0001}],"pointerCoordinates":[{"type":"coordinate_x","temporary":true,"x":31},{"type":"coordinate_y","temporary":true,"y":21}]}],"seedCenter":{"x":30,"y":20},"pointerResidual":1.4142135623730951,"maxPatternResidual":0,"maxRadiusChange":0,"requestUnchanged":true,"maxRssKiB":146624,"diagnostics":["PlaneGCS mapped-system degrees of freedom: 1."]}
+{"exit":0}
+{"fixture":"fixed-member","count":8}
+Sketcher::RedundantSolving-LevenbergMarquardt-
+
+Sketcher Redundant solving: 0 redundants
+
+{"stage":"fast-attempt-rejected","fixture":"fixed-member","count":8,"mode":"fixed-strategy","firstStatus":"failed","firstMs":21.689445,"diagnostics":["PlaneGCS did not satisfy the system (status 0).","Conflicting intent: Pattern bench member copy-1.","PlaneGCS mapped-system degrees of freedom: 1."]}
+{"fixture":"fixed-member","count":8,"mode":"fixed-strategy","initializationMs":10.390214,"firstStatus":"failed","firstMs":21.689445,"fallbackMs":8.799765999999998,"totalMs":30.553422000000005,"status":"solved","nativePhases":[14.971423999999999,0.6952909999999974],"insertions":[{"total":52,"fixedPoints":3,"temporary":[],"pointerCoordinates":[]},{"total":55,"fixedPoints":2,"temporary":[{"type":"coordinate_x","scale":1},{"type":"coordinate_y","scale":1},{"type":"equal","scale":0.0001}],"pointerCoordinates":[{"type":"coordinate_x","temporary":true,"x":31},{"type":"coordinate_y","temporary":true,"y":21}]}],"seedCenter":{"x":30.000000000000004,"y":19.999999999999993},"pointerResidual":1.4142135623730976,"maxPatternResidual":1.7763568394002505e-14,"maxRadiusChange":0,"requestUnchanged":true,"maxRssKiB":60244,"diagnostics":["PlaneGCS mapped-system degrees of freedom: 1."]}
+{"exit":0}
+{"fixture":"fixed-member","count":512}
+{"exit":124}

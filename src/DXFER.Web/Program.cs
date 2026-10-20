@@ -7,6 +7,7 @@ using DXFER.Blazor.Components;
 using DXFER.Core.Documents;
 using DXFER.Core.Operations;
 using DXFER.Core.Sync;
+using DXFER.Core.Sketching;
 using DXFER.Web.Components;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -43,6 +44,29 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<WorkbenchMenuCommandService>();
 builder.Services.AddScoped<ToolHotkeyService>();
 builder.Services.AddScoped<HttpClient>();
+var sketchSolverEngine = builder.Configuration["Dxfer:SketchSolverEngine"] ?? "Legacy";
+if (string.Equals(sketchSolverEngine, "PlaneGCS", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddScoped<IPlaneGcsRuntime>(services =>
+    {
+        var environment = services.GetRequiredService<IWebHostEnvironment>();
+        var module = environment.WebRootFileProvider.GetFileInfo("_content/DXFER.Blazor/planeGcsSolver.js").PhysicalPath
+            ?? Path.Combine(AppContext.BaseDirectory, "wwwroot", "_content", "DXFER.Blazor", "planeGcsSolver.js");
+        return new PlaneGcsNodeRuntime(
+            builder.Configuration["Dxfer:PlaneGcsNodeExecutable"] ?? "/usr/bin/node",
+            Path.Combine(AppContext.BaseDirectory, "Solver", "planeGcsHost.mjs"),
+            module);
+    });
+    builder.Services.AddScoped<ISketchSolver, PlaneGcsSketchSolverAdapter>();
+}
+else if (string.Equals(sketchSolverEngine, "Legacy", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddScoped<ISketchSolver, LegacySketchSolverAdapter>();
+}
+else
+{
+    throw new InvalidOperationException("Unknown Dxfer:SketchSolverEngine. Choose PlaneGCS or Legacy explicitly.");
+}
 builder.Services.AddHttpClient<SyncCallbackClient>()
     .AddTypedClient(http => new SyncCallbackClient(http, enableSyncIntegration));
 builder.Services.Configure<ForwardedHeadersOptions>(options =>

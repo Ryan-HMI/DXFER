@@ -83,9 +83,14 @@ public static class SketchSolveDiagnostics
         return "Constraints could not be satisfied by the supported solver. Resolve the highlighted unsatisfied constraints or dimensions.";
     }
 
-    public static IReadOnlyList<SketchSolveDiagnostic> FromDocument(DrawingDocument document)
+    public static IReadOnlyList<SketchSolveDiagnostic> FromDocument(DrawingDocument document) =>
+        FromDocument(document, usePlaneGcs: document?.SolveEvidence is not null);
+
+    public static IReadOnlyList<SketchSolveDiagnostic> FromDocument(DrawingDocument document, bool usePlaneGcs)
     {
         ArgumentNullException.ThrowIfNull(document);
+        if (usePlaneGcs || document.SolveEvidence is not null)
+            return PlaneGcsDiagnostics.FromDocument(document);
 
         var diagnostics = new List<SketchSolveDiagnostic>();
         foreach (var constraint in document.Constraints)

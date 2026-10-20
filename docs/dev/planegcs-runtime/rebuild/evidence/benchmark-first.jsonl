@@ -1,0 +1,10 @@
+{"kind":"Rectangular","count":16,"status":"solved","initializationMs":12.36,"solveMs":19.35,"rssMiB":57.1}
+{"kind":"Rectangular","count":64,"status":"solved","initializationMs":10.95,"solveMs":30.43,"rssMiB":76}
+{"kind":"Rectangular","count":128,"status":"solved","initializationMs":10.87,"solveMs":64.31,"rssMiB":102.8}
+{"kind":"Rectangular","count":256,"status":"solved","initializationMs":10.72,"solveMs":298.45,"rssMiB":115.1}
+{"kind":"Rectangular","count":512,"status":"solved","initializationMs":9.01,"solveMs":1791.91,"rssMiB":164.7}
+{"kind":"Radial","count":16,"status":"solved","initializationMs":10.07,"solveMs":20.43,"rssMiB":59.4}
+{"kind":"Radial","count":64,"status":"solved","initializationMs":13.29,"solveMs":55.5,"rssMiB":96.7}
+{"kind":"Radial","count":128,"status":"solved","initializationMs":9.93,"solveMs":229.22,"rssMiB":103.5}
+{"kind":"Radial","count":256,"status":"solved","initializationMs":9.6,"solveMs":1578.5,"rssMiB":106.9}
+{"kind":"Radial","count":512,"status":"bounded-failure","reason":"ETIMEDOUT"}

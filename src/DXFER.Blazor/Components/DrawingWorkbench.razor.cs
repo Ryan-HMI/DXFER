@@ -85,7 +85,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private readonly HashSet<string> _selectedEntityIds = new(StringComparer.Ordinal);
     private readonly Stack<DrawingDocument> _undoStack = new();
     private readonly Stack<DrawingDocument> _redoStack = new();
-    private readonly ISketchSolver _sketchSolver = new LegacySketchSolverAdapter();
+    private bool IsPlaneGcsEnabled => SketchSolver is PlaneGcsSketchSolverAdapter;
     private IJSObjectReference? _hotkeyModule;
     private IJSObjectReference? _hotkeyListener;
     private IJSObjectReference? _downloadModule;
@@ -100,6 +100,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     [Inject]
     private IJSRuntime JsRuntime { get; set; } = default!;
+
+    [Inject]
+    private ISketchSolver SketchSolver { get; set; } = default!;
 
     [Inject]
     private NavigationManager Navigation { get; set; } = default!;
@@ -1018,6 +1021,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         bool originSnapUsed,
         IReadOnlyList<CanvasCreationSnapDto>? creationSnaps)
     {
+        if (!CanEditPlaneGcsDependencies(_document)) return;
         var toolPoints = points.Select(ToPoint).ToArray();
         var newEntities = CreateEntitiesForTool(toolName, toolPoints, dimensionValues).ToArray();
         if (newEntities.Length == 0)
@@ -1066,7 +1070,25 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             _document.Dimensions.Concat(newDimensions),
             _document.Constraints,
             _document.Metadata);
-        if (tangentReferenceKey is not null || creationSnaps is { Count: > 0 })
+        if (IsPlaneGcsEnabled)
+        {
+            // Snaps may place new geometry, but must not use the solver to move existing peers.
+            var fixedReferences = _document.Constraints.Concat(newConstraints)
+                .Where(constraint => constraint.Kind == SketchConstraintKind.Fix && constraint.State != SketchConstraintState.Suppressed)
+                .SelectMany(constraint => constraint.ReferenceKeys);
+            var request = new SketchSolveRequest(nextDocument, newConstraints, Array.Empty<SketchDimension>(),
+                fixedReferenceKeys: tangentReferenceKey is not null || creationSnaps is { Count: > 0 }
+                    ? _document.Entities.Select(entity => entity.Id.Value).Concat(fixedReferences)
+                    : fixedReferences);
+            var result = SketchSolver.Solve(request);
+            if (!SolveSucceeded(result))
+            {
+                ReportSolveFailure(result);
+                return;
+            }
+            nextDocument = result.Document;
+        }
+        else if (tangentReferenceKey is not null || creationSnaps is { Count: > 0 })
         {
             // Explicit creation snaps describe geometry already constructed, not permission
             // to reposition an existing peer or revise its driving dimensions while solving.
@@ -1088,10 +1110,16 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
         else if (newConstraints.Count > 0)
         {
-            nextDocument = SolveSketchChange(
+            var result = SolveSketchChange(
                 nextDocument,
                 newConstraints,
-                Array.Empty<SketchDimension>()).Document;
+                Array.Empty<SketchDimension>());
+            if (!SolveSucceeded(result))
+            {
+                ReportSolveFailure(result);
+                return;
+            }
+            nextDocument = result.Document;
         }
 
         ApplyDocumentChange(nextDocument, $"{FormatCreatedToolName(toolName)} added.");
@@ -1218,11 +1246,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 out var nextDocument))
         {
             _status = "Pick point must be on the clicked spline.";
+            if (IsPlaneGcsEnabled) _solveFailureStatus = _status;
             _ = InvokeAsync(StateHasChanged);
             return;
         }
 
-        ApplyDocumentChange(nextDocument, "Added spline fit point. Click another location on a spline, or Esc to cancel.");
+        if (!ApplyDirectGeometryChange(nextDocument, "Added spline fit point. Click another location on a spline, or Esc to cancel.", topologyChange: true)) return;
         _activeTool = WorkbenchTool.SplineControlPoint;
         _selectedEntityIds.Clear();
         _selectedEntityIds.Add(entityId);
@@ -1256,11 +1285,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 out var status))
         {
             _status = status;
+            if (IsPlaneGcsEnabled) _solveFailureStatus = _status;
             _ = InvokeAsync(StateHasChanged);
             return;
         }
 
-        ApplyDocumentChange(nextDocument, "Power trim/extend applied. Click another section, or Esc to cancel.");
+        if (!ApplyDirectGeometryChange(nextDocument, "Power trim/extend applied. Click another section, or Esc to cancel.", topologyChange: true)) return;
         _activeTool = WorkbenchTool.PowerTrim;
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);
@@ -1295,11 +1325,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             _status = unsupportedTargets > 0
                 ? "Power trim drag currently supports crossed line, polyline, polygon, circle, arc, ellipse, spline, and point sections only."
                 : "Power trim drag could not apply these edits. Geometry unchanged. Cross a supported geometry section.";
+            if (IsPlaneGcsEnabled) _solveFailureStatus = _status;
             _ = InvokeAsync(StateHasChanged);
             return;
         }
 
-        ApplyDocumentChange(nextDocument, $"Power trim drag applied to {appliedCount} geometry picks. Drag another path, or Esc to cancel.");
+        if (!ApplyDirectGeometryChange(nextDocument, $"Power trim drag applied to {appliedCount} geometry picks. Drag another path, or Esc to cancel.", topologyChange: true)) return;
         _activeTool = WorkbenchTool.PowerTrim;
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);
@@ -1382,7 +1413,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void MoveBoundsToOrigin()
     {
-        ApplyDocumentChange(
+        ApplyDirectGeometryChange(
             DrawingPrepService.MoveBoundsMinimumToOrigin(_document),
             "Moved drawing bounds minimum to global origin.");
     }
@@ -1397,19 +1428,27 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         var normalization = DrawingNormalizationService.AutoNormalize(_document);
-        if (!DrawingPatternService.TryReconcile(_document, normalization.NormalizedDocument, out var normalized, out var patternReason))
+        var normalized = normalization.NormalizedDocument;
+        if (!IsPlaneGcsEnabled && !DrawingPatternService.TryReconcile(_document, normalized, out normalized, out var patternReason))
         {
             _status = patternReason;
             return;
         }
-        if (!DrawingLayerService.PreservesProtectedGeometry(_document, normalized))
+        if (IsPlaneGcsEnabled)
+        {
+            if (!ApplyDirectGeometryChange(normalized, "Auto cleanup applied.")) return;
+        }
+        else if (!DrawingLayerService.PreservesProtectedGeometry(_document, normalized))
         {
             _status = "Show and unlock affected layers before normalizing. Geometry unchanged.";
             return;
         }
-        _undoStack.Push(_document);
-        _redoStack.Clear();
-        _document = normalized;
+        else
+        {
+            _undoStack.Push(_document);
+            _redoStack.Clear();
+            _document = normalized;
+        }
         _documentFitToken++;
         _lastAutoNormalization = normalization;
         _manualOverride = false;
@@ -1440,6 +1479,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void DeleteSelectedGeometry()
     {
+        if (!CanEditPlaneGcsDependencies(_document)) return;
         var result = SelectionDeleteResolver.DeleteSelection(_document, _selectedEntityIds);
         if (result.DeletedCount == 0)
         {
@@ -1447,6 +1487,18 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
+        if (IsPlaneGcsEnabled)
+        {
+            var solved = SketchSolver.Solve(SketchSolveRequest.FromDocument(result.Document));
+            if (!SolveSucceeded(solved))
+            {
+                ReportSolveFailure(solved);
+                return;
+            }
+            if (ApplyDocumentChange(solved.Document, FormatDeleteStatus(result))) ResetSelection();
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
         var recovered = SelectionDeleteResolver.RecoverAxisConstraints(_document, result);
         ApplyDocumentChange(
             recovered.Document,
@@ -1550,6 +1602,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                         out nextDocument))
                 {
                     _status = "Add spline point needs exactly one selected fit-point spline and a pick on that spline.";
+                    if (IsPlaneGcsEnabled) _solveFailureStatus = _status;
                     return false;
                 }
 
@@ -1569,6 +1622,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                     return false;
                 }
 
+                if (!TrySolvePlaneGcsGeneratedGeometry(nextDocument, out nextDocument)) return false;
                 status = $"Created {offsetCount} offset contours.";
                 break;
             default:
@@ -1582,8 +1636,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return false;
         }
 
-        ApplyDocumentChange(nextDocument, status);
-        return true;
+        return normalizedTool == "offset"
+            ? ApplyDocumentChange(nextDocument, status)
+            : ApplyDirectGeometryChange(nextDocument, status, topologyChange: normalizedTool == "addsplinepoint");
     }
 
     private bool TryApplyCornerModifyTool(WorkbenchCommandId commandId, bool keepModal) =>
@@ -1591,6 +1646,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private bool BuildCornerEdit(WorkbenchCommandId commandId, bool keepModal, bool previewOnly)
     {
+        if (!CanEditPlaneGcsDependencies(_document)) return false;
         if (!TryGetCornerModifyTool(commandId, out var tool))
         {
             return false;
@@ -1644,7 +1700,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         var previousChain = _cornerModifyEqualChain;
-        nextDocument = AddGeneratedCornerModifyDimension(commandId, _document, nextDocument, distance);
+        var cornerSolve = AddGeneratedCornerModifyDimension(commandId, _document, nextDocument, distance);
+        if (!SolveSucceeded(cornerSolve))
+        {
+            _cornerModifyEqualChain = previousChain;
+            ClearCornerPreview();
+            ReportSolveFailure(cornerSolve);
+            return false;
+        }
+        nextDocument = cornerSolve.Document;
         if (!DrawingLayerService.PreservesProtectedGeometry(_document, nextDocument)
             || nextDocument.Constraints.Any(c => c.State == SketchConstraintState.Unsatisfied && !_document.Constraints.Any(old => old.Id == c.Id && old.State == c.State))
             || nextDocument.Dimensions.Any(d => d.IsDriving && SketchDimensionSolverService.GetDimensionState(nextDocument, d) == SketchConstraintState.Unsatisfied))
@@ -1674,7 +1738,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
         ClearCornerPreview();
         var appliedStatus = $"{FormatCommandName(commandId)} applied at {FormatNumber(distance)}.";
-        ApplyDocumentChange(nextDocument, appliedStatus);
+        if (!ApplyDocumentChange(nextDocument, appliedStatus))
+        {
+            _cornerModifyEqualChain = previousChain;
+            return false;
+        }
         if (keepModal)
         {
             _activeTool = tool;
@@ -1690,7 +1758,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         return true;
     }
 
-    private DrawingDocument AddGeneratedCornerModifyDimension(
+    private SketchSolveResult AddGeneratedCornerModifyDimension(
         WorkbenchCommandId commandId,
         DrawingDocument previous,
         DrawingDocument next,
@@ -1710,17 +1778,18 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         if (generated is null)
         {
             ResetCornerModifyEqualChain();
-            return next;
+            return IsPlaneGcsEnabled ? SolveSketchChange(next, [], []) : new SketchSolveResult(SketchSolveStatus.Solved, next);
         }
 
         if (!shouldDriveDimension)
         {
             ResetCornerModifyEqualChain();
-            return new DrawingDocument(
+            var candidate = new DrawingDocument(
                 next.Entities,
                 next.Dimensions.Concat(new[] { generated.Dimension }),
                 next.Constraints,
                 next.Metadata);
+            return IsPlaneGcsEnabled ? SolveSketchChange(candidate, [], []) : new SketchSolveResult(SketchSolveStatus.Solved, candidate);
         }
 
         var constraints = Array.Empty<SketchConstraint>();
@@ -1746,7 +1815,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         return SolveSketchChange(
             next,
             constraints,
-            new[] { generated.Dimension }).Document;
+            new[] { generated.Dimension });
     }
 
     private GeneratedCornerModifyDimension? CreateGeneratedFilletRadiusDimension(
@@ -1950,16 +2019,17 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         if (!LineSplitService.TrySplitLineAtPoint(_document, lineEntityId, point, newLineId, out var nextDocument))
         {
             _status = "Split could not preserve valid geometry and existing intent at this point. Geometry unchanged. Check the split location, dimensions and constraints.";
+            if (IsPlaneGcsEnabled) _solveFailureStatus = _status;
             _ = InvokeAsync(StateHasChanged);
             return false;
         }
 
         var stayModal = _activeTool == WorkbenchTool.SplitAtPoint;
-        ApplyDocumentChange(
+        if (!ApplyDirectGeometryChange(
             nextDocument,
             stayModal
                 ? "Split line at point. Click another line to split, or Esc to cancel."
-                : "Split line at point.");
+                : "Split line at point.", topologyChange: true)) return false;
         _activeTool = stayModal ? WorkbenchTool.SplitAtPoint : null;
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);
@@ -1988,12 +2058,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 out var nextDocument))
         {
             _status = "Split could not preserve valid geometry and existing intent. Geometry unchanged. Check that the points differ on the same circle and review attached dimensions and constraints.";
+            if (IsPlaneGcsEnabled) _solveFailureStatus = _status;
             _ = InvokeAsync(StateHasChanged);
             return false;
         }
 
         _pendingCircleSplit = null;
-        ApplyDocumentChange(nextDocument, "Split circle into arcs. Click another curve to split, or Esc to cancel.");
+        if (!ApplyDirectGeometryChange(nextDocument, "Split circle into arcs. Click another curve to split, or Esc to cancel.", topologyChange: true)) return false;
         _activeTool = WorkbenchTool.SplitAtPoint;
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);
@@ -2006,11 +2077,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         if (!CurveSplitService.TrySplitArcAtPoint(_document, arcEntityId, point, newArcId, out var nextDocument))
         {
             _status = "Split could not preserve valid geometry and existing intent at this point. Geometry unchanged. Check the split location, dimensions and constraints.";
+            if (IsPlaneGcsEnabled) _solveFailureStatus = _status;
             _ = InvokeAsync(StateHasChanged);
             return false;
         }
 
-        ApplyDocumentChange(nextDocument, "Split arc at point. Click another curve to split, or Esc to cancel.");
+        if (!ApplyDirectGeometryChange(nextDocument, "Split arc at point. Click another curve to split, or Esc to cancel.", topologyChange: true)) return false;
         _activeTool = WorkbenchTool.SplitAtPoint;
         ResetSelection();
         _ = InvokeAsync(StateHasChanged);
@@ -2126,6 +2198,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             new[] { constraint },
             Array.Empty<SketchDimension>());
         ApplySketchSolveResult(result, status);
+        if (IsPlaneGcsEnabled && _solveFailureStatus is not null)
+        {
+            return true;
+        }
         if (keepModal && TryGetConstraintTool(kind, out var tool))
         {
             _activeTool = tool;
@@ -2171,9 +2247,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             nextValue,
             existing.Anchor,
             isDriving: true);
+        var solveDocument = _document;
+        if (IsPlaneGcsEnabled && existing.Kind == SketchDimensionKind.Count
+            && !TryStagePlaneGcsPolygonCount(nextDimension, out solveDocument)) return;
         ApplySketchSolveResult(
             SolveSketchChange(
-                _document,
+                solveDocument,
                 Array.Empty<SketchConstraint>(),
                 new[] { nextDimension }),
             $"Updated {FormatDimensionKind(existing.Kind)} dimension to {FormatNumber(nextValue)}.");
@@ -2212,19 +2291,30 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         string selectionKey,
         CanvasPointDto dragStart,
         CanvasPointDto dragEnd,
-        bool constrainToCurrentVector)
+        bool constrainToCurrentVector,
+        PlaneGcsConstraint? temporarySnapIntent = null)
     {
-        if (!SketchGeometryDragService.TryApplyDrag(
+        if (!CanEditPlaneGcsDependencies(_document)) return false;
+        DrawingDocument nextDocument;
+        string status;
+        var applied = SketchSolver is PlaneGcsSketchSolverAdapter adapter
+            ? adapter.TryApplyDrag(_document, selectionKey, ToPoint(dragStart), ToPoint(dragEnd),
+                constrainToCurrentVector, out nextDocument, out status,
+                automaticSnapConstraints: MenuCommandService?.AutomaticSnapConstraints ?? true,
+                temporarySnapIntent: temporarySnapIntent)
+            : SketchGeometryDragService.TryApplyDrag(
                 _document,
                 selectionKey,
                 ToPoint(dragStart),
                 ToPoint(dragEnd),
                 constrainToCurrentVector,
-                out var nextDocument,
-                out var status,
-                MenuCommandService?.AutomaticSnapConstraints ?? true))
+                out nextDocument,
+                out status,
+                MenuCommandService?.AutomaticSnapConstraints ?? true);
+        if (!applied)
         {
             _status = status;
+            if (IsPlaneGcsEnabled) _solveFailureStatus = status;
             _ = InvokeAsync(StateHasChanged);
             return false;
         }
@@ -2297,7 +2387,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        ApplyDocumentChange(
+        ApplyDirectGeometryChange(
             DrawingPrepService.MovePointToOrigin(_document, point),
             "Moved selected reference point to global origin.");
     }
@@ -2338,12 +2428,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        ApplyDocumentChange(after, $"Aligned selected vector to global {axis}.");
+        ApplyDirectGeometryChange(after, $"Aligned selected vector to global {axis}.");
     }
 
     private void RotateDocumentAboutBoundsCenter(double degrees, string status)
     {
-        ApplyDocumentChange(
+        ApplyDirectGeometryChange(
             DrawingPrepService.RotateAboutBoundsCenter(_document, degrees),
             status);
     }
@@ -2352,37 +2442,122 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         DrawingDocument document,
         IEnumerable<SketchConstraint> constraints,
         IEnumerable<SketchDimension> dimensions) =>
-        _sketchSolver.Solve(new SketchSolveRequest(document, constraints, dimensions));
+        SketchSolver.Solve(new SketchSolveRequest(document, constraints, dimensions));
+
+    private bool SolveSucceeded(SketchSolveResult result) => result.Status == SketchSolveStatus.Solved
+        || IsPlaneGcsEnabled && result.Status == SketchSolveStatus.UnderConstrained;
+
+    private void ReportSolveFailure(SketchSolveResult result) => ReportSolveFailure(
+        $"{(result.Diagnostics.Count > 0 ? string.Join(" ", result.Diagnostics) : SketchSolveDiagnostics.DescribeFailure(result.AffectedDiagnostics))} Geometry unchanged.");
+
+    private void ReportSolveFailure(string reason)
+    {
+        _status = reason;
+        _solveFailureStatus = reason;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private bool CanEditPlaneGcsDependencies(DrawingDocument document)
+    {
+        if (!IsPlaneGcsEnabled || DrawingPatternService.TryValidate(document, out _)) return true;
+        ReportSolveFailure("Pattern geometry or ownership is invalid. Geometry unchanged.");
+        return false;
+    }
+
+    private bool ApplyDirectGeometryChange(DrawingDocument candidate, string status, bool topologyChange = false)
+    {
+        if (!IsPlaneGcsEnabled) return ApplyDocumentChange(candidate, status);
+        var accepted = CommitDocumentChange(candidate, status, patternCommand: false,
+            validateDirectGeometry: true, topologyChange: topologyChange);
+        if (accepted) RestoreHistoryFeedback(status);
+        return accepted;
+    }
+
+    private bool TrySolvePlaneGcsGeneratedGeometry(DrawingDocument candidate, out DrawingDocument solved)
+    {
+        solved = candidate;
+        if (!IsPlaneGcsEnabled) return true;
+        // Generation provides an initial shape; only PlaneGCS may satisfy its dependencies.
+        var result = SketchSolver.Solve(new SketchSolveRequest(candidate,
+            Array.Empty<SketchConstraint>(), Array.Empty<SketchDimension>()));
+        if (!SolveSucceeded(result))
+        {
+            ReportSolveFailure(result);
+            return false;
+        }
+        solved = result.Document;
+        return true;
+    }
 
     private void ApplySketchSolveResult(SketchSolveResult result, string successStatus)
     {
-        var status = result.Status == SketchSolveStatus.Solved
+        if (IsPlaneGcsEnabled && !SolveSucceeded(result))
+        {
+            if (ReferenceEquals(_document, result.Document))
+            {
+                ReportSolveFailure(result);
+                return;
+            }
+            // Failed constraint/dimension intent remains editable, never the failed geometry.
+            var failedIntent = new DrawingDocument(_document.Entities, result.Document.Dimensions,
+                result.Document.Constraints, _document.Metadata);
+            var reason = $"{(result.Diagnostics.Count > 0 ? string.Join(" ", result.Diagnostics) : SketchSolveDiagnostics.DescribeFailure(result.AffectedDiagnostics))} Geometry unchanged.";
+            if (ApplyDocumentChange(failedIntent, reason))
+                ReportSolveFailure(reason);
+            return;
+        }
+        var status = SolveSucceeded(result)
             ? successStatus
             : $"{SketchSolveDiagnostics.DescribeFailure(result.AffectedDiagnostics)} Geometry unchanged.";
-        ApplyDocumentChange(result.Document, status);
-        _solveFailureStatus = result.Status == SketchSolveStatus.Solved ? null : status;
+        if (ApplyDocumentChange(result.Document, status))
+            _solveFailureStatus = SolveSucceeded(result) ? null : status;
     }
 
     private bool ApplyDocumentChange(DrawingDocument nextDocument, string status) => ApplyDocumentChangeCore(nextDocument, status, false);
 
     private bool ApplyDocumentChangeCore(DrawingDocument nextDocument, string status, bool patternCommand)
     {
-        if (!patternCommand && !DrawingPatternService.TryReconcile(_document, nextDocument, out nextDocument, out var patternReason))
+        if (!CanEditPlaneGcsDependencies(_document) || !CanEditPlaneGcsDependencies(nextDocument)) return false;
+        if (patternCommand && !TrySolvePlaneGcsGeneratedGeometry(nextDocument, out nextDocument)) return false;
+        return CommitDocumentChange(nextDocument, status, patternCommand);
+    }
+
+    private bool CommitDocumentChange(DrawingDocument nextDocument, string status, bool patternCommand,
+        bool validateDirectGeometry = false, bool topologyChange = false)
+    {
+        if (IsPlaneGcsEnabled && !DrawingPatternService.TryValidate(nextDocument, out var validationReason))
+        {
+            ReportSolveFailure($"PlaneGCS pattern validation failed: {validationReason} Geometry unchanged.");
+            return false;
+        }
+        if (!IsPlaneGcsEnabled && !patternCommand && !DrawingPatternService.TryReconcile(_document, nextDocument, out nextDocument, out var patternReason))
         {
             _status = patternReason;
             return false;
         }
         nextDocument = SketchDimensionModeService.RefreshMeasurements(nextDocument);
-        _solveFailureStatus = null;
         if (!DrawingLayerService.PreservesProtectedGeometry(_document, nextDocument))
         {
             _status = "A hidden or locked layer would change. Geometry unchanged; show and unlock it first.";
+            if (IsPlaneGcsEnabled) _solveFailureStatus = _status;
             return false;
         }
         try { nextDocument = DrawingLayerService.AssignNewEntities(_document, nextDocument); }
-        catch (ArgumentException ex) { _status = ex.Message; return false; }
+        catch (ArgumentException ex)
+        {
+            _status = ex.Message;
+            if (IsPlaneGcsEnabled) _solveFailureStatus = _status;
+            return false;
+        }
+        if (validateDirectGeometry
+            && !SketchDirectEditValidationService.TryValidate(_document, nextDocument, out var directReason, topologyChange))
+        {
+            ReportSolveFailure(directReason);
+            return false;
+        }
         if (ReferenceEquals(_document, nextDocument))
         {
+            _solveFailureStatus = null;
             _status = status;
             return true;
         }
@@ -2390,6 +2565,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         if (_document.Metadata.Mode == DrawingDocumentMode.ReferenceOnly)
         {
             _status = "Reference-only document cannot be edited.";
+            if (IsPlaneGcsEnabled) _solveFailureStatus = _status;
             _ = InvokeAsync(StateHasChanged);
             return false;
         }
@@ -2403,6 +2579,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
         _document = nextDocument;
         MarkManualOverride();
+        _solveFailureStatus = null;
         _status = status;
         return true;
     }

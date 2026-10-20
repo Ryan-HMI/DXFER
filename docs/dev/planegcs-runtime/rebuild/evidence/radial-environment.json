@@ -1,0 +1,20 @@
+{
+  "recordedAt": "2026-10-20T15:53:34.686Z",
+  "node": "v22.22.1",
+  "platform": "linux",
+  "arch": "x64",
+  "cpuModel": "AMD Ryzen 7 5825U with Radeon Graphics",
+  "logicalCpus": 16,
+  "loadAverage": [
+    3.12,
+    2.62,
+    3.01
+  ],
+  "totalMemoryBytes": 30371721216,
+  "diagnosticChildDeadlineSeconds": 30,
+  "nodeFlags": [
+    "--max-old-space-size=128",
+    "--wasm-max-mem-pages=4096"
+  ],
+  "note": "Shared development host; sequential fresh children, not a concurrency capacity test. Server timeout unchanged."
+}

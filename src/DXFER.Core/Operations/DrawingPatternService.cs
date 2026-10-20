@@ -171,7 +171,7 @@ public static class DrawingPatternService
             foreach (var entity in generated)
             {
                 if (!members.Add(entity.Id.Value) || !actual.TryGetValue(entity.Id.Value, out var stored)
-                    || !SameEntity(entity, stored))
+                    || !MatchesValidatedGeometry(entity, stored))
                     return Refuse("Pattern member geometry is missing, duplicated, or inconsistent with its source.", out reason);
             }
             if (members.Count > MaxGeneratedEntities) return Refuse("Too many generated pattern members.", out reason);
@@ -344,6 +344,80 @@ public static class DrawingPatternService
         or CircleEntity or ArcEntity or EllipseEntity or SplineEntity or PointEntity;
     private static bool SameEntity(DrawingEntity first, DrawingEntity second) => first.GetType() == second.GetType()
         && JsonSerializer.Serialize(first, first.GetType()) == JsonSerializer.Serialize(second, second.GetType());
+    // Engine equations introduce floating-point roundoff. Validation tolerates
+    // geometry residuals only; reconciliation/change detection stays exact above.
+    private static bool MatchesValidatedGeometry(DrawingEntity expected, DrawingEntity actual)
+    {
+        if (expected.GetType() != actual.GetType() || expected.Id != actual.Id
+            || expected.IsConstruction != actual.IsConstruction) return false;
+        return (expected, actual) switch
+        {
+            (PointEntity a, PointEntity b) => NearPoint(a.Location, b.Location),
+            (LineEntity a, LineEntity b) => (a.Start == a.End) == (b.Start == b.End)
+                && NearPoint(a.Start, b.Start) && NearPoint(a.End, b.End),
+            (PolylineEntity a, PolylineEntity b) => SamePolylineTopology(a.Vertices, b.Vertices)
+                && NearPoints(a.Vertices, b.Vertices),
+            (CircleEntity a, CircleEntity b) => NearPoint(a.Center, b.Center) && NearPositive(a.Radius, b.Radius),
+            (ArcEntity a, ArcEntity b) => NearPoint(a.Center, b.Center) && NearPositive(a.Radius, b.Radius)
+                && NearAngularSpan(a.StartAngleDegrees, a.EndAngleDegrees, b.StartAngleDegrees, b.EndAngleDegrees),
+            (EllipseEntity a, EllipseEntity b) => NearPoint(a.Center, b.Center)
+                && NearPoint(a.MajorAxisEndPoint, b.MajorAxisEndPoint)
+                && NearPositive(a.MinorRadiusRatio, b.MinorRadiusRatio)
+                && NearAngularSpan(a.StartParameterDegrees, a.EndParameterDegrees,
+                    b.StartParameterDegrees, b.EndParameterDegrees, zeroIsFullCircle: true),
+            (PolygonEntity a, PolygonEntity b) => a.SideCount == b.SideCount && a.Circumscribed == b.Circumscribed
+                && NearPoint(a.Center, b.Center) && NearPositive(a.Radius, b.Radius)
+                && NearAngle(a.RotationAngleDegrees, b.RotationAngleDegrees),
+            (SplineEntity a, SplineEntity b) => a.Degree == b.Degree && a.Knots.SequenceEqual(b.Knots)
+                && a.Weights.SequenceEqual(b.Weights) && NearPoints(a.ControlPoints, b.ControlPoints)
+                && NearPoints(a.FitPoints, b.FitPoints) && NearOptionalPoint(a.StartTangentHandle, b.StartTangentHandle)
+                && NearOptionalPoint(a.EndTangentHandle, b.EndTangentHandle),
+            _ => false
+        };
+    }
+
+    private static bool NearNumber(double first, double second) =>
+        double.IsFinite(first) && double.IsFinite(second) && Math.Abs(first - second) <= Tolerance;
+
+    private static bool NearPositive(double first, double second) => first > 0 && second > 0 && NearNumber(first, second);
+
+    private static bool NearAngle(double first, double second) =>
+        double.IsFinite(first) && double.IsFinite(second) && NearNumber(Math.IEEERemainder(first - second, 360), 0);
+
+    private static bool NearAngularSpan(double firstStart, double firstEnd, double secondStart, double secondEnd,
+        bool zeroIsFullCircle = false)
+    {
+        if (!NearAngle(firstStart, secondStart) || !NearAngle(firstEnd, secondEnd)) return false;
+        static double Sweep(double start, double end, bool fullCircle)
+        {
+            var sweep = end - start;
+            if (sweep < 0)
+            {
+                sweep %= 360;
+                if (sweep < 0) sweep += 360;
+            }
+            return fullCircle && sweep == 0 ? 360 : sweep;
+        }
+        var first = Sweep(firstStart, firstEnd, zeroIsFullCircle);
+        var second = Sweep(secondStart, secondEnd, zeroIsFullCircle);
+        return (first == 0) == (second == 0) && NearNumber(first, second);
+    }
+
+    private static bool NearPoint(Point2 first, Point2 second) =>
+        double.IsFinite(first.X) && double.IsFinite(first.Y) && double.IsFinite(second.X) && double.IsFinite(second.Y)
+        && (first.X - second.X) * (first.X - second.X) + (first.Y - second.Y) * (first.Y - second.Y) <= Tolerance * Tolerance;
+
+    private static bool NearOptionalPoint(Point2? first, Point2? second) =>
+        first is { } point ? second is { } other && NearPoint(point, other) : second is null;
+
+    private static bool NearPoints(IReadOnlyList<Point2> first, IReadOnlyList<Point2> second) =>
+        first.Count == second.Count && first.Zip(second).All(pair => NearPoint(pair.First, pair.Second));
+
+    private static bool SamePolylineTopology(IReadOnlyList<Point2> first, IReadOnlyList<Point2> second) =>
+        first.Count == second.Count && (first[0] == first[^1]) == (second[0] == second[^1])
+        && Enumerable.Range(1, first.Count - 1).All(index =>
+            (first[index - 1] == first[index]) == (second[index - 1] == second[index]));
+
     private static bool Same<T>(T first, T second) => JsonSerializer.Serialize(first) == JsonSerializer.Serialize(second);
     private static bool Refuse(string message, out string reason) { reason = message; return false; }
 }

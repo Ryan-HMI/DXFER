@@ -138,7 +138,9 @@ public sealed class WorkbenchRenderBoundaryTests
         var workbench = FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs");
         var source = File.ReadAllText(workbench);
 
-        source.Should().Contain("private readonly ISketchSolver _sketchSolver = new LegacySketchSolverAdapter();");
+        source.Should().Contain("private ISketchSolver SketchSolver { get; set; }");
+        source.Should().NotContain("new LegacySketchSolverAdapter()");
+        source.Should().Contain("SketchSolver.Solve(new SketchSolveRequest(document, constraints, dimensions))");
         source.Should().Contain("private SketchSolveResult SolveSketchChange(");
         source.Should().NotContain("SketchConstraintService.ApplyConstraint(");
         source.Should().NotContain("SketchConstraintService.ApplyConstraints(");

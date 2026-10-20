@@ -49,78 +49,12 @@ public static class SketchGeometryDragService
                 status = reason;
                 return false;
             }
-            nextDocument = FollowDimensionAnchors(document, reconciled);
+            // Legacy candidates may pretranslate labels during projection. These
+            // are not explicit label edits; follow the final geometry from baseline.
+            nextDocument = SketchDimensionAnchorService.FollowDimensionAnchors(document, reconciled,
+                preserveExplicitAnchorEdits: false);
         }
         return accepted;
-    }
-
-    private static DrawingDocument FollowDimensionAnchors(DrawingDocument original, DrawingDocument candidate)
-    {
-        var originals = original.Dimensions.ToDictionary(dimension => dimension.Id, StringComparer.Ordinal);
-        var dimensions = candidate.Dimensions.Select(dimension =>
-        {
-            if (!originals.TryGetValue(dimension.Id, out var before) || !before.Anchor.HasValue)
-                return dimension;
-            var shifts = new List<Point2>();
-            foreach (var key in before.ReferenceKeys)
-            {
-                if (!TryGetDimensionReferenceLocation(original, key, out var from)
-                    || !TryGetDimensionReferenceLocation(candidate, key, out var to))
-                    return dimension;
-                shifts.Add(new Point2(to.X - from.X, to.Y - from.Y));
-            }
-            if (shifts.Count == 0) return dimension;
-            var anchor = Add(before.Anchor.Value, new Point2(shifts.Average(p => p.X), shifts.Average(p => p.Y)));
-            if (before.Kind == SketchDimensionKind.LinearDistance && before.ReferenceKeys.Count == 2
-                && SketchDimensionSolverService.TryResolveDimensionPoint(original.Entities, before.ReferenceKeys[0], out var a)
-                && SketchDimensionSolverService.TryResolveDimensionPoint(original.Entities, before.ReferenceKeys[1], out var b)
-                && SketchDimensionSolverService.TryResolveDimensionPoint(candidate.Entities, before.ReferenceKeys[0], out var c)
-                && SketchDimensionSolverService.TryResolveDimensionPoint(candidate.Entities, before.ReferenceKeys[1], out var d))
-            {
-                var oldLength = SketchGeometryEditor.Distance(a, b);
-                var newLength = SketchGeometryEditor.Distance(c, d);
-                if (oldLength > SketchGeometryEditor.Tolerance && newLength > SketchGeometryEditor.Tolerance)
-                {
-                    var ux = (b.X - a.X) / oldLength;
-                    var uy = (b.Y - a.Y) / oldLength;
-                    var vx = (d.X - c.X) / newLength;
-                    var vy = (d.Y - c.Y) / newLength;
-                    var x = before.Anchor.Value.X - (a.X + b.X) / 2;
-                    var y = before.Anchor.Value.Y - (a.Y + b.Y) / 2;
-                    var cosine = ux * vx + uy * vy;
-                    var sine = ux * vy - uy * vx;
-                    anchor = new Point2((c.X + d.X) / 2 + x * cosine - y * sine,
-                        (c.Y + d.Y) / 2 + x * sine + y * cosine);
-                }
-            }
-            return new SketchDimension(dimension.Id, dimension.Kind, dimension.ReferenceKeys,
-                dimension.Value, anchor, dimension.IsDriving);
-        }).ToArray();
-        return new DrawingDocument(candidate.Entities, dimensions, candidate.Constraints, candidate.Metadata);
-    }
-
-    private static bool TryGetDimensionReferenceLocation(DrawingDocument document, string key, out Point2 point)
-    {
-        point = default;
-        if (SketchDimensionSolverService.TryResolveDimensionPoint(document.Entities, key, out point)) return true;
-        if (!SketchReference.TryParse(key, out var reference)) return false;
-        var entities = document.Entities;
-        if (SketchGeometryEditor.TryGetLine(entities, reference, out _, out var line))
-        {
-            point = new Point2((line.Start.X + line.End.X) / 2, (line.Start.Y + line.End.Y) / 2);
-            return true;
-        }
-        if (!reference.IsEntity || !SketchGeometryEditor.TryGetEntity(entities, reference, out _, out var entity)) return false;
-        point = entity switch
-        {
-            CircleEntity circle => circle.Center,
-            ArcEntity arc => arc.Center,
-            EllipseEntity ellipse => ellipse.Center,
-            PolygonEntity polygon => polygon.Center,
-            _ => new Point2((entity.GetBounds().MinX + entity.GetBounds().MaxX) / 2,
-                (entity.GetBounds().MinY + entity.GetBounds().MaxY) / 2)
-        };
-        return true;
     }
 
     internal static bool FixedReferencesRemainUnchanged(DrawingDocument original, DrawingDocument candidate)
@@ -275,7 +209,7 @@ public static class SketchGeometryDragService
         }
 
         if (automaticSnapConstraints)
-            draggedDocument = AddPersistentConstraintForSnappedPointDrag(document, draggedDocument, selectionKey, ref status);
+            draggedDocument = SketchDragSnapService.AddPersistentConstraint(document, draggedDocument, selectionKey, ref status);
         nextDocument = draggedDocument;
         return true;
     }
@@ -3040,151 +2974,10 @@ public static class SketchGeometryDragService
                 SketchReferenceTarget.Start);
     }
 
-    private static DrawingDocument AddPersistentConstraintForSnappedPointDrag(
-        DrawingDocument original,
-        DrawingDocument document,
-        string selectionKey,
-        ref string status)
-    {
-        if (!TryGetDraggedPointReference(document.Entities, selectionKey, out var draggedReference)
-            || !SketchGeometryEditor.TryGetPoint(document.Entities, draggedReference, out var draggedPoint))
-        {
-            return document;
-        }
-
-        var kind = SketchConstraintKind.Coincident;
-        if (TryFindCoincidentPointReference(original.Entities, document.Entities, draggedReference, draggedPoint, out var anchorReference))
-        {
-            if (HasCoincidentConstraint(document.Constraints, anchorReference, draggedReference)) return document;
-        }
-        else
-        {
-            kind = SketchConstraintKind.Midpoint;
-            if (!TryFindMidpointReference(original.Entities, document.Entities, draggedReference, draggedPoint, out anchorReference)
-                || document.Constraints.Any(c => c.Kind == kind && c.ReferenceKeys.Contains(anchorReference.ToString())
-                    && c.ReferenceKeys.Contains(draggedReference.ToString()))) return document;
-        }
-
-        var constraint = new SketchConstraint(
-            $"drag-{kind.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}",
-            kind,
-            new[] { anchorReference.ToString(), draggedReference.ToString() },
-            SketchConstraintState.Satisfied);
-        if (SketchConstraintService.ValidateConstraint(document, constraint).State != SketchConstraintState.Satisfied)
-            return document;
-        // Persist the satisfied snap without re-solving or moving already accepted geometry.
-        status = $"{status} Added {kind.ToString().ToLowerInvariant()} constraint.";
-        return new DrawingDocument(document.Entities, document.Dimensions, document.Constraints.Append(constraint), document.Metadata);
-    }
-
-    private static bool TryGetDraggedPointReference(IReadOnlyList<DrawingEntity> entities, string selectionKey, out SketchReference reference)
-    {
-        if (SketchReference.TryParse(selectionKey, out var parsed)
-            && (parsed.Target != SketchReferenceTarget.Entity
-                || entities.Any(entity => entity.Id.Value == parsed.EntityId && entity is PointEntity)))
-        {
-            reference = parsed;
-            return true;
-        }
-
-        reference = default;
-        return false;
-    }
-
-    private static bool TryFindMidpointReference(IReadOnlyList<DrawingEntity> originalEntities, IReadOnlyList<DrawingEntity> entities, SketchReference draggedReference,
-        Point2 draggedPoint, out SketchReference reference)
-    {
-        foreach (var entity in entities.Where(entity => entity.Id.Value != draggedReference.EntityId))
-        {
-            var count = entity is PolylineEntity polyline ? polyline.Vertices.Count - 1 : entity is LineEntity ? 1 : 0;
-            for (var index = 0; index < count; index++)
-            {
-                reference = new SketchReference(entity.Id.Value, SketchReferenceTarget.Entity, entity is PolylineEntity ? index : null);
-                if (SketchGeometryEditor.TryGetLine(entities, reference, out _, out var line)
-                    && SketchGeometryEditor.TryGetLine(originalEntities, reference, out _, out var originalLine)
-                    && SketchGeometryEditor.AreClose(SketchGeometryEditor.Midpoint(line), SketchGeometryEditor.Midpoint(originalLine))
-                    && SketchGeometryEditor.AreClose(draggedPoint, SketchGeometryEditor.Midpoint(line))) return true;
-            }
-        }
-        reference = default;
-        return false;
-    }
-
-    private static bool TryFindCoincidentPointReference(
-        IReadOnlyList<DrawingEntity> originalEntities,
-        IReadOnlyList<DrawingEntity> entities,
-        SketchReference draggedReference,
-        Point2 draggedPoint,
-        out SketchReference anchorReference)
-    {
-        if (SketchGeometryEditor.AreClose(draggedPoint, new Point2(0, 0)))
-        {
-            anchorReference = new SketchReference(SketchReference.OriginEntityId, SketchReferenceTarget.Center);
-            return true;
-        }
-        foreach (var candidate in EnumeratePointReferences(entities))
-        {
-            if (StringComparer.Ordinal.Equals(candidate.EntityId, draggedReference.EntityId)
-                || StringComparer.Ordinal.Equals(candidate.ToString(), draggedReference.ToString())
-                || !SketchGeometryEditor.TryGetPoint(entities, candidate, out var candidatePoint)
-                || !SketchGeometryEditor.TryGetPoint(originalEntities, candidate, out var originalPoint)
-                || !SketchGeometryEditor.AreClose(candidatePoint, originalPoint)
-                || !SketchGeometryEditor.AreClose(candidatePoint, draggedPoint))
-            {
-                continue;
-            }
-
-            anchorReference = candidate;
-            return true;
-        }
-
-        anchorReference = default;
-        return false;
-    }
-
     private static IEnumerable<SketchReference> EnumeratePointReferences(IReadOnlyList<DrawingEntity> entities)
     {
         return SketchReferenceResolver.EnumeratePersistentPoints(entities).Select(point => point.Reference);
     }
-
-    private static bool HasCoincidentConstraint(
-        IReadOnlyList<SketchConstraint> constraints,
-        SketchReference firstReference,
-        SketchReference secondReference)
-    {
-        var firstKey = firstReference.ToString();
-        var secondKey = secondReference.ToString();
-        return constraints.Any(constraint =>
-            constraint.ReferenceKeys.Count >= 2
-            && ((constraint.Kind == SketchConstraintKind.Coincident
-                    && ((StringComparer.Ordinal.Equals(constraint.ReferenceKeys[0], firstKey)
-                            && StringComparer.Ordinal.Equals(constraint.ReferenceKeys[1], secondKey))
-                        || (StringComparer.Ordinal.Equals(constraint.ReferenceKeys[0], secondKey)
-                            && StringComparer.Ordinal.Equals(constraint.ReferenceKeys[1], firstKey))))
-                || (constraint.Kind == SketchConstraintKind.Concentric
-                    && ReferencesSameEntityPair(constraint.ReferenceKeys[0], constraint.ReferenceKeys[1], firstReference, secondReference))));
-    }
-
-    private static bool ReferencesSameEntityPair(
-        string firstKey,
-        string secondKey,
-        SketchReference firstReference,
-        SketchReference secondReference)
-    {
-        return SketchReference.TryParse(firstKey, out var firstConstraintReference)
-            && SketchReference.TryParse(secondKey, out var secondConstraintReference)
-            && IsCenterLikeReference(firstConstraintReference)
-            && IsCenterLikeReference(secondConstraintReference)
-            && IsCenterLikeReference(firstReference)
-            && IsCenterLikeReference(secondReference)
-            && ((StringComparer.Ordinal.Equals(firstConstraintReference.EntityId, firstReference.EntityId)
-                    && StringComparer.Ordinal.Equals(secondConstraintReference.EntityId, secondReference.EntityId))
-                || (StringComparer.Ordinal.Equals(firstConstraintReference.EntityId, secondReference.EntityId)
-                    && StringComparer.Ordinal.Equals(secondConstraintReference.EntityId, firstReference.EntityId)));
-    }
-
-    private static bool IsCenterLikeReference(SketchReference reference) =>
-        reference.Target is SketchReferenceTarget.Entity or SketchReferenceTarget.Center;
 
     private static bool TryParseSegmentSelectionKey(string selectionKey, out string entityId, out int segmentIndex)
     {

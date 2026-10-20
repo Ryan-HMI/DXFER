@@ -17,12 +17,23 @@ interfaces when they affect downstream applications such as HMI-Sync.
   Any copied substantial portion must retain the FeatureScript std MIT
   copyright and license notice.
 
-## Planned Optional Solver Adapter
+## PlaneGCS Runtime
 
-- PlaneGCS / FreeCAD solver code is the planned first 2D geometric constraint
-  solver candidate. PlaneGCS is LGPL-family software. Any PlaneGCS integration
-  must stay behind a replaceable DXFER solver adapter and must include the
-  required LGPL notices and replacement/source access path before it is shipped.
+- `@salusoft89/planegcs` version 1.3.0, by Miroslav Sery / Salusoft89 and the
+  included FreeCAD authors, is bundled under
+  `src/DXFER.Blazor/wwwroot/vendor/planegcs`. The original license and source
+  notices are retained there. Package metadata identifies LGPL-2.0-or-later;
+  wrapper source headers specify LGPL-2.1-or-later.
+- The corresponding pinned upstream source and build scripts are included in
+  `source-9d26bae.tar.gz` alongside the runtime. See `DXFER-PROVENANCE.md` for
+  commit, package integrity, source URL and hashes. This records the upstream
+  association; a bit-for-bit rebuild has not been established.
+- JavaScript and WASM remain separate replaceable assets, outside DXFER-owned
+  solver interfaces and document types. The application does not prohibit
+  replacement with compatible modified builds or debugging those modifications.
+  Public asset paths begin `/_content/DXFER.Blazor/vendor/planegcs/`.
+- Runtime selection is explicit. Bundling these assets alone does not mean a
+  particular deployment is using PlaneGCS.
 
 ## Excluded Dependency Class
 

@@ -209,7 +209,7 @@ test("selected square and neighboring round grips remain distinct and release ma
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(state.document.entities[0], preview);
   assert.deepEqual(calls.find(call => call[0] === "OnGeometryDragRequested"),
-    ["OnGeometryDragRequested", key, 0.25, 0, 0.25, 0.4, false]);
+    ["OnGeometryDragRequested", key, 0.25, 0, 0.25, 0.4, false, null]);
   assert.deepEqual(state.selectedKeys, new Set([key]));
   assert.deepEqual(originalDocument.entities[0].controlPoints[1], { x: 1, y: 0 });
 });

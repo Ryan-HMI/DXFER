@@ -35,17 +35,61 @@ public partial class DrawingCanvas : IAsyncDisposable
     [Inject]
     private IJSRuntime JsRuntime { get; set; } = default!;
 
+    [Inject]
+    private ISketchSolver SketchSolver { get; set; } = default!;
+
+    private bool IsPlaneGcsEnabled => SketchSolver is PlaneGcsSketchSolverAdapter;
+
     [Parameter]
     public DrawingDocument? Document { get; set; }
+
+    [Parameter]
+    public DrawingDocument? FullDocument { get; set; }
+
+    [JSInvokable]
+    public object GetPlaneGcsDragPreview(string key, CanvasPointDto start, CanvasPointDto end, bool constrain,
+        PlaneGcsConstraint? temporarySnapIntent = null)
+    {
+        var fullDocument = FullDocument ?? Document;
+        CanvasDocumentDto? preview = null;
+        string reason;
+        if (SketchSolver is not PlaneGcsSketchSolverAdapter adapter)
+            reason = "PlaneGCS is not enabled for this canvas.";
+        else if (fullDocument is null)
+            reason = "No document is available for the PlaneGCS drag preview.";
+        else if (fullDocument.Metadata.Mode == DrawingDocumentMode.ReferenceOnly)
+            reason = "Reference-only document cannot be edited.";
+        else if (adapter.TryApplyDrag(fullDocument, key, new(start.X, start.Y), new(end.X, end.Y),
+                     constrain, out var next, out reason, automaticSnapConstraints: false,
+                     temporarySnapIntent: temporarySnapIntent))
+        {
+            if (DrawingLayerService.PreservesProtectedGeometry(fullDocument, next))
+                preview = CanvasDocumentDto.FromDocument(next);
+            else
+                reason = "A hidden or locked layer would change. Geometry unchanged.";
+        }
+        return new { document = preview, reason, engine = "PlaneGCS" };
+    }
 
     [JSInvokable]
     public object GetOffsetPreview(string[] ids, CanvasPointDto through, double? requestedDistance)
     {
+        var document = IsPlaneGcsEnabled ? FullDocument ?? Document : Document;
         var index = 0;
-        if (Document is null) return new { document = (CanvasDocumentDto?)null };
-        var accepted = SelectionOffsetService.TryOffset(Document, ids, new(through.X, through.Y),
+        if (document is null) return new { document = (CanvasDocumentDto?)null };
+        var accepted = SelectionOffsetService.TryOffset(document, ids, new(through.X, through.Y),
             kind => EntityId.Create($"offset-preview-{++index}"),
-            out var next, out var count, out var reason, out var anchor, out var distance, requestedDistance);
+            out var next, out var count, out var reason, out var anchor, out var distance, requestedDistance,
+            retainIntent: IsPlaneGcsEnabled);
+        if (accepted && IsPlaneGcsEnabled)
+        {
+            var solved = SketchSolver.Solve(new SketchSolveRequest(next, [], []));
+            accepted = solved.Status == SketchSolveStatus.Solved
+                && DrawingLayerService.PreservesProtectedGeometry(document, solved.Document);
+            if (accepted) next = solved.Document;
+            else reason = solved.Diagnostics.Count > 0 ? string.Join(" ", solved.Diagnostics)
+                : "PlaneGCS offset preview could not preserve protected geometry. Geometry unchanged.";
+        }
         var preview = accepted ? new DrawingDocument(next.Entities.TakeLast(count), [], [], next.Metadata) : null;
         return new { document = preview is null ? null : CanvasDocumentDto.FromDocument(preview),
             anchor = new CanvasPointDto(anchor.X, anchor.Y), distance, reason };
@@ -58,7 +102,7 @@ public partial class DrawingCanvas : IAsyncDisposable
     [JSInvokable]
     public CanvasDocumentDto? GetOffsetDragPreview(string key, CanvasPointDto start, CanvasPointDto end, bool constrain)
     {
-        if (Document is null || (!Document.Constraints.Any(c => c.Kind == SketchConstraintKind.Offset) && Document.Metadata.Patterns.Count == 0)) return null;
+        if (IsPlaneGcsEnabled || Document is null || (!Document.Constraints.Any(c => c.Kind == SketchConstraintKind.Offset) && Document.Metadata.Patterns.Count == 0)) return null;
         return SketchGeometryDragService.TryApplyDrag(Document, key, new(start.X,start.Y), new(end.X,end.Y),
             constrain, out var next, out _, automaticSnapConstraints: false)
             && DrawingLayerService.PreservesProtectedGeometry(Document, next) ? CanvasDocumentDto.FromDocument(next) : null;
@@ -168,7 +212,7 @@ public partial class DrawingCanvas : IAsyncDisposable
     public Action<IReadOnlySet<string>>? DeleteSelectionRequested { get; set; }
 
     [Parameter]
-    public Func<string, CanvasPointDto, CanvasPointDto, bool, bool>? GeometryDragRequested { get; set; }
+    public Func<string, CanvasPointDto, CanvasPointDto, bool, PlaneGcsConstraint?, bool>? GeometryDragRequested { get; set; }
 
     [Parameter]
     public Action<string, double>? SketchDimensionValueChanged { get; set; }
@@ -234,7 +278,8 @@ public partial class DrawingCanvas : IAsyncDisposable
 
         _dotNetReference = DotNetObjectReference.Create(this);
         _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", CanvasModulePath);
-        _canvasInstance = await _module.InvokeAsync<IJSObjectReference>("createDrawingCanvas", _canvas, _dotNetReference, _dimensionOverlay, ConstraintIconGeometry.All);
+        _canvasInstance = await _module.InvokeAsync<IJSObjectReference>("createDrawingCanvas", _canvas, _dotNetReference,
+            _dimensionOverlay, ConstraintIconGeometry.All, new { solverEngine = IsPlaneGcsEnabled ? "PlaneGCS" : "Legacy" });
 
         _renderedSelectionResetToken = SelectionResetToken;
         await SetCanvasDocumentAsync();
@@ -536,13 +581,15 @@ public partial class DrawingCanvas : IAsyncDisposable
         double startY,
         double endX,
         double endY,
-        bool constrainToCurrentVector)
+        bool constrainToCurrentVector,
+        PlaneGcsConstraint? temporarySnapIntent = null)
     {
         var accepted = GeometryDragRequested?.Invoke(
             selectionKey,
             new CanvasPointDto(startX, startY),
             new CanvasPointDto(endX, endY),
-            constrainToCurrentVector) ?? false;
+            constrainToCurrentVector,
+            temporarySnapIntent) ?? false;
         return Task.FromResult(accepted);
     }
 

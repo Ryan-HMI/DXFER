@@ -57,6 +57,8 @@ public static class SketchDimensionSolverService
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(dimension);
 
+        if (document.SolveEvidence is not null)
+            return PlaneGcsDiagnostics.GetDimensionState(document, dimension);
         return IsDimensionSatisfied(document, dimension)
             ? SketchConstraintState.Satisfied
             : SketchConstraintState.Unsatisfied;

@@ -22,7 +22,8 @@ public sealed class DrawingDocument
         IEnumerable<DrawingEntity> entities,
         IEnumerable<SketchDimension> dimensions,
         IEnumerable<SketchConstraint> constraints,
-        DrawingDocumentMetadata metadata)
+        DrawingDocumentMetadata metadata,
+        PlaneGcsSolveEvidence? solveEvidence = null)
     {
         ArgumentNullException.ThrowIfNull(entities);
         ArgumentNullException.ThrowIfNull(dimensions);
@@ -37,6 +38,7 @@ public sealed class DrawingDocument
         Dimensions = Array.AsReadOnly(dimensions.ToArray());
         Constraints = Array.AsReadOnly(constraints.ToArray());
         Metadata = metadata;
+        SolveEvidence = solveEvidence;
     }
 
     public IReadOnlyList<DrawingEntity> Entities { get; }
@@ -46,6 +48,8 @@ public sealed class DrawingDocument
     public IReadOnlyList<SketchConstraint> Constraints { get; }
 
     public DrawingDocumentMetadata Metadata { get; }
+
+    public PlaneGcsSolveEvidence? SolveEvidence { get; }
 
     public Bounds2 GetBounds()
     {

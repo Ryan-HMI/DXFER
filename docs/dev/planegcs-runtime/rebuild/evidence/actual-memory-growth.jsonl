@@ -1,0 +1,2 @@
+{"kind":"Rectangular","count":256,"status":"solved","initializationMs":10.13,"solveMs":265.71,"rssMiB":116}
+{"evidence":"real-wasm-growth-and-hard-maximum","kind":"Rectangular","count":256,"declaration":{"name":"B","kind":"memory","type":{"minimum":256,"maximum":4096,"shared":false,"index":"i32"}},"initialBytes":16777216,"afterSolveBytes":24248320,"cappedBytes":268435456,"growAboveMaximum":"rejected"}

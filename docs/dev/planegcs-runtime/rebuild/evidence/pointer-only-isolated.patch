@@ -1,0 +1,87 @@
+--- a/planeGcsSolver.js
++++ b/planeGcsSolver.js
+@@ -14,10 +14,6 @@
+ class Unsupported extends Error {}
+ 
+ class NativeCurveWrapper extends GcsWrapper {
+-    push_p_params(id, values, fixed = false) {
+-        return super.push_p_params(id, values, fixed || this.fixedParameterIds?.has(id) === true);
+-    }
+-
+     sketch_primitive_to_gcs(primitive) {
+         if (primitive.type !== "bspline") return super.sketch_primitive_to_gcs(primitive);
+         const cached = this.bspline_gcs_cache.get(primitive.id);
+@@ -100,7 +96,7 @@
+ // constraints?,dimensions?,fixedReferenceKeys?,initialGuesses?:[{referenceKey,point}],
+ // drag?:{key,start,end,constrain?,temporarySnapIntent?}}. Updates replace by ID.
+ // One mapper is used by the browser and the Node host. Only initialization is async.
+-export async function createPlaneGcsSolver({ wasmBinary, wasmPath } = {}) {
++export async function createPlaneGcsSolver({ wasmBinary, wasmPath, diagnosticPointerOnly = false } = {}) {
+     const options = {};
+     if (wasmBinary !== undefined) options.wasmBinary = wasmBinary;
+     if (wasmPath !== undefined) options.locateFile = () => String(wasmPath);
+@@ -117,7 +113,15 @@
+             try {
+                 wrapper.clear_data();
+                 const mapped = mapRequest(request);
+-                wrapper.fixedParameterIds = mapped.fixedParameterIds;
++                if (diagnosticPointerOnly) {
++                    const pointerSources = new Set(["Center drag target", "Drag target"]);
++                    const targets = mapped.primitives.filter(p => p.temporary && pointerSources.has(mapped.sources.get(p.id)));
++                    requireSupported(targets.length === 2 && targets.every(p => ["coordinate_x", "coordinate_y"].includes(p.type)),
++                        "Diagnostic fast path only supports an explicit two-coordinate pointer target.");
++                    const ids = new Set(targets.map(p => p.id));
++                    mapped.primitives = mapped.primitives.filter(p => !p.temporary || ids.has(p.id))
++                        .map(p => ids.has(p.id) ? { ...p, temporary: false } : p);
++                }
+                 wrapper.push_primitives_and_params(mapped.primitives);
+                 wrapper.set_max_iterations(200);
+                 const status = wrapper.solve(Algorithm.LevenbergMarquardt);
+@@ -324,14 +328,6 @@
+         fixedPoints.add(node.id);
+         checks.push({ source, check: get => distance(get(node.id), before) });
+     }
+-    const fixedParameterIds = new Set();
+-    function fixParameters(node, props, source) {
+-        fixedParameterIds.add(node.id);
+-        for (const prop of props) {
+-            const value = node[prop];
+-            checks.push({ source, check: get => get(node.id)[prop] === value ? 0 : Infinity });
+-        }
+-    }
+     function fixShape(shape, source) {
+         if (fixedShapes.has(shape.entity.id)) return;
+         fixedShapes.add(shape.entity.id);
+@@ -339,14 +335,19 @@
+         // focal parameters, not both those parameters and the derived endpoints.
+         for (const p of shape.ellipse ? [shape.center, shape.focus] : shape.points) fixPoint(p, source);
+         if (shape.ellipse) {
+-            fixParameters(shape.ellipse, shape.ellipse.type === "arc_of_ellipse"
+-                ? ["radmin", "start_angle", "end_angle"] : ["radmin"], source);
++            equalParam(shape.ellipse, "radmin", shape.ellipse.radmin, source);
++            if (shape.ellipse.type === "arc_of_ellipse") {
++                equalParam(shape.ellipse, "start_angle", shape.ellipse.start_angle, source);
++                equalParam(shape.ellipse, "end_angle", shape.ellipse.end_angle, source);
++            }
+         }
+         if (shape.curve) {
+-            fixParameters(shape.curve, shape.kind === "arc"
+-                ? ["radius", "start_angle", "end_angle"] : ["radius"], source);
++            equalParam(shape.curve, "radius", shape.curve.radius, source);
++            if (shape.kind === "arc") {
++                equalParam(shape.curve, "start_angle", shape.curve.start_angle, source);
++                equalParam(shape.curve, "end_angle", shape.curve.end_angle, source);
++            }
+         }
+-        if (shape.polygonGuide) fixParameters(shape.polygonGuide, ["radius"], source);
+     }
+     function model(entityId) {
+         if (models.has(entityId)) return models.get(entityId);
+@@ -1207,7 +1208,6 @@
+     const primitives = [...geometries.filter(p => p.type === "point"), ...geometries.filter(p => p.type !== "point"), ...relations];
+     return {
+         primitives,
+-        fixedParameterIds,
+         sources,
+         relationDimensions,
+         discreteDimensionIds,

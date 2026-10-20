@@ -1,0 +1,19 @@
+{"elapsedMs":56.731633,"message":["Solving with LevenbergMarquardt\n"]}
+{"elapsedMs":1096.739126,"message":["EigenSparseQR, Threads: 1, Pivot Threshold: 1e-13, Params: 1536, Constr: 1536, Rank: 1536\n"]}
+{"elapsedMs":1100.973634,"message":["LM: eps: 1e-10, eps1: 1e-80, tau: 0.001, convergence: 1e-10, xsize: 1024, maxIter: 200\n"]}
+{"elapsedMs":2318.06345,"message":["LM, Iteration: 0, err(eps): 984.177, g_inf(eps1): 587.065, h_norm: 1.94554\n"]}
+{"elapsedMs":3018.846554,"message":["LM, Iteration: 1, err(eps): 1.9147, g_inf(eps1): 0.408958, h_norm: 0.261316\n"]}
+{"elapsedMs":3713.41366,"message":["LM, Iteration: 2, err(eps): 1.85222, g_inf(eps1): 0.0026478, h_norm: 2.13237\n"]}
+{"elapsedMs":4418.237572999999,"message":["LM, Iteration: 3, err(eps): 1.68157, g_inf(eps1): 0.00251938, h_norm: 14.5272\n"]}
+{"elapsedMs":5126.406169999999,"message":["LM, Iteration: 4, err(eps): 1.27522, g_inf(eps1): 0.00228627, h_norm: 62.4039\n"]}
+{"elapsedMs":5827.409919,"message":["LM, Iteration: 5, err(eps): 0.612746, g_inf(eps1): 0.00535789, h_norm: 103.147\n"]}
+{"elapsedMs":6529.1799439999995,"message":["LM, Iteration: 6, err(eps): 0.116157, g_inf(eps1): 0.0205753, h_norm: 39.737\n"]}
+{"elapsedMs":7225.450709,"message":["LM, Iteration: 7, err(eps): 0.00601054, g_inf(eps1): 0.0406615, h_norm: 3.82055\n"]}
+{"elapsedMs":7917.8158969999995,"message":["LM, Iteration: 8, err(eps): 0.000122541, g_inf(eps1): 0.0201201, h_norm: 0.164702\n"]}
+{"elapsedMs":8614.206361999999,"message":["LM, Iteration: 9, err(eps): 8.63999e-07, g_inf(eps1): 0.001571, h_norm: 0.00151205\n"]}
+{"elapsedMs":9306.899362,"message":["LM, Iteration: 10, err(eps): 9.19e-10, g_inf(eps1): 1.54365e-05, h_norm: 1.71594e-06\n"]}
+{"elapsedMs":10000.914565,"message":["LM, Iteration: 11, err(eps): 1.16222e-13, g_inf(eps1): 1.75639e-08, h_norm: 2.20668e-10\n"]}
+{"elapsedMs":10692.602574999999,"message":["LM, Iteration: 12, err(eps): 1.66108e-18, g_inf(eps1): 2.83769e-12, h_norm: 3.17004e-15\n"]}
+{"elapsedMs":10692.744733,"message":["LM: eps: 1e-10, eps1: 1e-80, tau: 0.001, convergence: 1e-10, xsize: 1, maxIter: 200\n"]}
+{"elapsedMs":10700.988185999999,"message":["{\"kind\":\"Radial\",\"count\":512,\"status\":\"solved\",\"initializationMs\":9.94,\"solveMs\":10681.51,\"rssMiB\":170.5}"]}
+{"elapsedMs":10701.139341,"message":["{\"diagnostic\":\"radial-native-phase-timing\",\"count\":512,\"variant\":\"diagnostic-hard-goals-not-production-semantics\",\"totalMs\":10701.034753,\"phasesMs\":{\"clear_data\":0.4009060000007594,\"push_primitives_and_params\":17.513869,\"solve\":10641.143206,\"apply_solution\":2.464453999999023},\"primitiveCounts\":{\"point\":513,\"circle\":512,\"line\":1022,\"equal_length\":511,\"l2l_angle_ll\":511,\"equal\":512,\"coordinate_x\":1,\"coordinate_y\":1},\"params\":2052,\"temporaryGoals\":3,\"wasmBytes\":74186752,\"cpuMicroseconds\":{\"user\":10970175,\"system\":95032},\"maxRssKiB\":174628}"]}

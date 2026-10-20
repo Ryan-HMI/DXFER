@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "buildId": "dxfer-planegcs-1.3.0-growth256-20261020",
+  "status": "locally-rebuilt-and-tested-not-deployed",
+  "upstream": {
+    "package": "@salusoft89/planegcs",
+    "version": "1.3.0",
+    "gitHead": "9d26baef0b240fe0eef4186d4e5e5e66ec3620b7",
+    "sourceArchive": "../source-9d26bae.tar.gz",
+    "sourceSha256": "6641e73b41f638621d5f95ae35dfadb45b42c1e43afbeab613753de851566be3",
+    "originalNpmArchive": "upstream-npm-1.3.0.tgz",
+    "originalNpmSha256": "8bd29ab7e1ba2c3e370431289d369087078e803bb59ecbf3732374ea98a12b20",
+    "originalBinaryBuildInputsRemainUnknown": true
+  },
+  "modifications": {
+    "scope": "Regenerated JS loader and WASM from pinned source; no solver algorithm changes.",
+    "patch": "docs/dev/planegcs-runtime/rebuild/growth-256m.patch",
+    "patchSha256": "41c1b1af924f88a83e0ffee19f475ca3d64d9b64fa75dcd3106550ebd1d119d6",
+    "linkSettings": {
+      "ALLOW_MEMORY_GROWTH": 1,
+      "MAXIMUM_MEMORY": 268435456,
+      "ABORTING_MALLOC": 1
+    },
+    "patchedSourceArchive": "source-growth256.tar.gz",
+    "patchedSourceSha256": "7058304d6bdcc40d02ba1b9e7f589454d4d6ab66f8d2cc3a2bf2bc03ba786a74",
+    "generatedBindingsSha256": "1437d9fa1e6d0d9fb4680defc032c15323dd5def03834544e3f483f327d5a52e"
+  },
+  "newBuildInputs": {
+    "platform": "linux/amd64",
+    "image": "emscripten/emsdk@sha256:e077d54e2b8970575ebc4f185ac1de0b95c05f2b266134d4ba27449af7aebf65",
+    "emscripten": "6.0.10",
+    "emscriptenCommit": "d6c521a7f05449857c76bd99e396895583cf2083",
+    "compilerNode": "24.19.0 (bundled with the pinned emsdk image)",
+    "bindingGeneratorNode": "20.19.0",
+    "bindingGeneratorNpm": "10.8.2",
+    "cmake": "3.28.3",
+    "npmLockSha256": "6fff8b5bd9a8dea9523962ed7c9875765143a863ff020488d80990f27c881fa9",
+    "aptPackagesInstalledForRebuild": [],
+    "baseImagePackageInventory": "docs/dev/planegcs-runtime/rebuild/evidence/base-image-packages.txt",
+    "baseImagePackageInventorySha256": "6d24bf592f5736eae8220ec26e60b060762f4517e27c9539d95464a22a52b0cf",
+    "archives": [
+      {
+        "name": "Boost 1.85.0 headers",
+        "url": "https://archives.boost.io/release/1.85.0/source/boost_1_85_0.tar.bz2",
+        "sha256": "7009fe1faa1697476bdc7027703a2badb84e849b7b0baad5086b087b971f8617",
+        "notice": "../notices/boost/LICENSE_1_0.txt"
+      },
+      {
+        "name": "Eigen 3.4.0 headers",
+        "commit": "3147391d946bb4b6c68edd901f2add6ac1f31f8c",
+        "url": "https://gitlab.com/libeigen/eigen/-/archive/3147391d946bb4b6c68edd901f2add6ac1f31f8c/eigen-3147391d946bb4b6c68edd901f2add6ac1f31f8c.tar.gz",
+        "sha256": "0c8c490764f9c2a793133491adca0cd073b73e0bde965c68cbe58d91b5ed4261",
+        "notices": "../notices/eigen/"
+      },
+      {
+        "name": "Node 20.19.0 build-only tools",
+        "url": "https://nodejs.org/dist/v20.19.0/node-v20.19.0-linux-x64.tar.xz",
+        "sha256": "b4e336584d62abefad31baecff7af167268be9bb7dd11f1297112e6eed3ca0d5"
+      }
+    ]
+  },
+  "reproducibility": {
+    "independentSourceExtractions": 2,
+    "secondBuildNetwork": "disabled; npm ci --offline with integrity-checked cache",
+    "identicalGeneratedBindings": true,
+    "identicalLoader": true,
+    "identicalWasm": true,
+    "sourceDateEpoch": 0,
+    "sourceDateEpochMeaning": "Fixed reproducibility input, not the upstream commit date.",
+    "buildLimits": { "cpus": 2, "memoryBytes": 4294967296, "pids": 256, "nativeBuildTimeoutSeconds": 900 }
+  },
+  "activeOutputs": [
+    {
+      "path": "../dist/planegcs_dist/planegcs.js",
+      "sha256": "44fc1e250713d8f688730af1543db9704230532039c40a8e95fc554c63771874"
+    },
+    {
+      "path": "../dist/planegcs_dist/planegcs.wasm",
+      "sha256": "ae0400152973c4f5bfd2f709e93fbe7a23830e612f7c7fc8e2518432534f94b7",
+      "memoryCount": 1,
+      "minimumPages": 256,
+      "maximumPages": 4096,
+      "pageBytes": 65536,
+      "shared": false
+    }
+  ],
+  "validation": {
+    "runtimeNode": "22.22.1",
+    "realJsRegression": { "passed": 302, "failed": 0, "skipped": 0 },
+    "benchmark": "Rectangular 16/64/128/256/512 and Radial 16/64/128/256 solved; Radial 512 hit the five-second child timeout.",
+    "releaseGates": [
+      "Final integrated tests and clean publish with new assets.",
+      "Browser acceptance with the rebuilt runtime.",
+      "Radial 512 performance remains bounded failure, not a passing capacity claim.",
+      "Verify recipient access to rebuilt source, dependency source URLs and notices."
+    ]
+  }
+}
