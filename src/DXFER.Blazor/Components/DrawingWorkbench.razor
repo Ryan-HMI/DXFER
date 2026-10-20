@@ -82,6 +82,12 @@
             {
                 @foreach (var pattern in ContextPatterns)
                 {
+                    <button type="button" disabled="@(!CanTogglePatternControls(pattern))"
+                            title="@(CanTogglePatternControls(pattern) ? PatternLabel(pattern) : "Finish the active pattern edit first")"
+                            @onclick="() => TogglePatternControls(pattern)">
+                        <CadIcon Name="@(ViewportPattern?.Id == pattern.Id ? CadIconName.EyeOff : CadIconName.Eye)" />
+                        @(ViewportPattern?.Id == pattern.Id ? "Hide pattern controls" : "Show pattern controls")
+                    </button>
                     <button type="button" disabled="@(!ContextEditable)" @onclick="() => OpenPatternEditor(pattern)"><CadIcon Name="CadIconName.LinearPattern" />Edit @PatternLabel(pattern) pattern</button>
                 }
                 <button type="button" disabled="@(!ContextEditable)" @onclick="() => ContextCommand(WorkbenchCommandId.LinearPattern)"><CadIcon Name="CadIconName.LinearPattern" />Pattern</button>

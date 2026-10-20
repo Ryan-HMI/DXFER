@@ -14,13 +14,37 @@ public partial class DrawingWorkbench
     private DrawingDocument? _patternPreview;
     private string? _patternError;
     private bool _confirmDissolvePattern;
+    private readonly HashSet<string> _hiddenPatternControls = new(StringComparer.Ordinal);
+    private string? _shownPatternControlsId;
     private bool PatternEditing => _patternDraft is not null;
     private DrawingDocument? PatternPreview => ReferenceEquals(_patternSourceDocument, _document) ? _patternPreview : null;
 
-    private PatternDefinition? ViewportPattern => PatternEditing
+    private PatternDefinition? ViewportPattern => ViewportPatternCandidate is { } pattern
+        && !_hiddenPatternControls.Contains(pattern.Id) ? pattern : null;
+
+    private PatternDefinition? ViewportPatternCandidate => PatternEditing
         ? PatternPreview?.Metadata.Patterns.FirstOrDefault(p => p.Id == _editingPattern?.Id) ?? _editingPattern
-        : _document.Metadata.Patterns.FirstOrDefault(p => p.SourceEntityIds.Concat(p.Members.Select(m => m.EntityId))
+        : _document.Metadata.Patterns.FirstOrDefault(p => p.Id == _shownPatternControlsId)
+          ?? _document.Metadata.Patterns.FirstOrDefault(p => p.SourceEntityIds.Concat(p.Members.Select(m => m.EntityId))
             .Any(id => _selectedEntityIds.Any(key => key == id || key.StartsWith(id + "|", StringComparison.Ordinal))));
+
+    private bool CanTogglePatternControls(PatternDefinition pattern) => !PatternEditing || _editingPattern?.Id == pattern.Id;
+
+    private void TogglePatternControls(PatternDefinition pattern)
+    {
+        if (!CanTogglePatternControls(pattern)) return;
+        if (ViewportPattern?.Id == pattern.Id)
+        {
+            _hiddenPatternControls.Add(pattern.Id);
+            if (_shownPatternControlsId == pattern.Id) _shownPatternControlsId = null;
+        }
+        else
+        {
+            _hiddenPatternControls.Remove(pattern.Id);
+            _shownPatternControlsId = pattern.Id;
+        }
+        CloseContextMenu();
+    }
 
     private DXFER.Core.Geometry.Point2 PatternSourceCenter(PatternDefinition pattern)
     {
@@ -65,6 +89,8 @@ public partial class DrawingWorkbench
     private void OpenPatternEditor(PatternDefinition pattern)
     {
         CloseContextMenu();
+        _hiddenPatternControls.Remove(pattern.Id);
+        _shownPatternControlsId = pattern.Id;
         ActivateTool(pattern.Kind == PatternKind.Radial ? WorkbenchTool.CircularPattern : WorkbenchTool.LinearPattern, "Pattern preview.");
         _editingPattern = pattern;
         _patternSourceDocument = _document;

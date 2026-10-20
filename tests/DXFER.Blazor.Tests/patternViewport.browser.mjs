@@ -31,8 +31,20 @@ try {
     await expect(canvas).toHaveAttribute('data-entity-count','0');
     await page.locator('input[type=file]').setInputFiles({name:'viewport-pattern.dxf',mimeType:'application/dxf',buffer:Buffer.from(text)});
     await expect(canvas).toHaveAttribute('data-entity-count',String(count)); await tool('Fit extents'); await canvas.press('Escape'); await page.waitForTimeout(300); };
-  const click = async (x,y) => { const p = await canvas.evaluate((c,p)=>({x:c.getBoundingClientRect().left+p.x*+c.dataset.scale+ +c.dataset.offsetX,
-    y:c.getBoundingClientRect().top-p.y*+c.dataset.scale+ +c.dataset.offsetY}),{x,y}); await page.mouse.click(p.x,p.y); await page.waitForTimeout(200); };
+  const click = async (x,y,button='left') => { const p = await canvas.evaluate((c,p)=>({x:c.getBoundingClientRect().left+p.x*+c.dataset.scale+ +c.dataset.offsetX,
+    y:c.getBoundingClientRect().top-p.y*+c.dataset.scale+ +c.dataset.offsetY}),{x,y}); await page.mouse.click(p.x,p.y,{button}); await page.waitForTimeout(200); };
+  const rightClickMember = async doc => {
+    const point = await canvas.evaluate((c,entities) => {
+      const r=c.getBoundingClientRect();
+      for (const e of entities.slice(1)) {
+        const x=r.left+(e.center.x+e.radius*.6)*+c.dataset.scale+ +c.dataset.offsetX;
+        const y=r.top-(e.center.y+e.radius*.8)*+c.dataset.scale+ +c.dataset.offsetY;
+        if (document.elementFromPoint(x,y)===c) return {x,y};
+      }
+      throw new Error('No unobscured pattern member');
+    }, doc.entities);
+    await page.mouse.click(point.x,point.y,{button:'right'}); await page.waitForTimeout(200);
+  };
   const set = async (name,value) => { const input=field(name); await input.fill(value); await input.press('Enter'); await expect(input).toHaveValue(value); };
   const layout = async name => {
     await expect(widget).toBeVisible();
@@ -76,7 +88,15 @@ try {
   const saved=await download('rectangular-saved'), pattern=saved.doc.metadata.patterns[0];
   assert.equal(pattern.columns,4); assert.equal(pattern.rows,3); assert.equal(pattern.xPitch,1.25); assert.equal(pattern.yPitch,2.5);
   await tool('Undo'); await expect(canvas).toHaveAttribute('data-entity-count','1'); await tool('Redo'); await expect(canvas).toHaveAttribute('data-entity-count','12');
-  await load(saved.text,12); await click(10.6,10.8); await expect(widget).toBeVisible();
+  await load(saved.text,12);
+  const context=page.getByRole('dialog',{name:'Drawing context commands'});
+  await click(14.35,15.8,'right'); await context.getByRole('button',{name:'Show pattern controls',exact:true}).click();
+  await expect(widget).toBeVisible(); await page.screenshot({path:`${output}/context-shown.png`});
+  await click(14.35,15.8,'right'); await page.screenshot({path:`${output}/context-hide-menu.png`});
+  await context.getByRole('button',{name:'Hide pattern controls',exact:true}).click(); await expect(widget).toHaveCount(0);
+  await click(10.6,10.8); await expect(widget).toHaveCount(0);
+  await click(14.35,15.8,'right'); await context.getByRole('button',{name:'Show pattern controls',exact:true}).click();
+  await expect(widget).toBeVisible();
   await widget.getByRole('button',{name:'Edit pattern',exact:true}).click(); await set('columns','5');
   await widget.getByRole('button',{name:'Cancel',exact:true}).click(); assert.equal((await download('cancelled')).doc.entities.length,12);
   await canvas.press('Escape'); await click(10.6,10.8); await widget.getByRole('button',{name:'Edit pattern',exact:true}).click();
@@ -93,8 +113,13 @@ try {
   await expect(canvas).toHaveAttribute('data-entity-count','8'); const radial=await download('radial-saved');
   assert.equal(radial.doc.metadata.patterns[0].count,8); assert.equal(radial.doc.metadata.patterns[0].stepAngleDegrees,30);
   assert.equal(radial.doc.metadata.patterns[0].fullCircle,false);
-  await load(radial.text,8); await click(10.6,10.8); await widget.getByRole('button',{name:'Edit pattern',exact:true}).click();
+  await load(radial.text,8); await rightClickMember(radial.doc);
+  await context.getByRole('button',{name:'Show pattern controls',exact:true}).click(); await expect(widget).toBeVisible();
+  await rightClickMember(radial.doc); await context.getByRole('button',{name:'Hide pattern controls',exact:true}).click();
+  await expect(widget).toHaveCount(0); await rightClickMember(radial.doc);
+  await context.getByRole('button',{name:'Show pattern controls',exact:true}).click();
+  await widget.getByRole('button',{name:'Edit pattern',exact:true}).click();
   await widget.getByRole('checkbox',{name:'Viewport full circle'}).check(); await expect(field('step angle')).toHaveValue('45');
   await widget.getByRole('button',{name:'Confirm',exact:true}).click(); assert.equal((await download('radial-reopened-edit')).doc.metadata.patterns[0].fullCircle,true);
-  assert.deepEqual(errors,[]); console.log('PASS rectangular/staggered/radial viewport counts/pitches, native typing, sidebar sync, invalid refusal, desktop layout/pan/zoom, history, cancel and native reopen/edit');
+  assert.deepEqual(errors,[]); console.log('PASS rectangular/staggered/radial viewport counts/pitches, instance context show/hide, native typing, sidebar sync, invalid refusal, desktop layout/pan/zoom, history, cancel and native reopen/edit');
 } finally {await browser.close();}

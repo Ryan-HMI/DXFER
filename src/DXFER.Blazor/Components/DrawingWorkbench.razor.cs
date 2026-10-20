@@ -2599,6 +2599,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private void ClearHistory()
     {
         ClearPatternEditor();
+        _hiddenPatternControls.Clear();
+        _shownPatternControlsId = null;
         _solveFailureStatus = null;
         _undoStack.Clear();
         _redoStack.Clear();

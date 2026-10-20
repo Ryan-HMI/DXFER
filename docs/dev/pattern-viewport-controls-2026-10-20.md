@@ -2,6 +2,13 @@
 
 ## Layout contract
 
+- Context-menu follow-up: add Show/Hide pattern controls alongside Edit pattern
+  using existing menu rows/icons, wrapping and viewport clamping. The toggle
+  affects canvas widgets only, never pattern parameters, draft or Undo history.
+  A shown pattern stays available without selecting it; hiding is per pattern
+  for the open drawing. New/Open resets visibility preferences. One widget is
+  displayed at a time; an active edit retains priority over other patterns.
+
 - DXFer desktop only, following the installed compact Foundry control styles.
 - A 224px, two-column parameter widget is anchored to the selected pattern's
   source geometry. Canvas guides show its pitch axes or radial center/step.
@@ -52,3 +59,17 @@
 - Rollback publish: /home/ryan/dxfer-runtime/dev-publish-before-5ae1ca5.
 - Flux independent acceptance is pending; owner browser verification is not
   represented as independent QA.
+
+## Context-menu follow-up
+
+- Right-click a source or generated instance to Show/Hide pattern controls.
+  Explicit Show pins the widget without adding selection. Hide survives
+  reselecting that pattern. New/Open resets these view-only preferences.
+- Editing a pattern explicitly reveals its widget. Hiding during an edit keeps
+  the draft and sidebar available; it does not cancel or commit the operation.
+- Two WorkbenchPatternControlsTests cover visibility, untouched document/history,
+  draft preservation, active-edit priority and lifecycle reset.
+- Expanded Playwright replay passes rectangular and radial generated-member
+  context toggles, reselect-hidden behavior, and the prior pattern edit/history/
+  roundtrip checks. Local screenshots: /tmp/dxfer-pattern-context.
+- No solver or document-format change, and no existing-data repair is required.
