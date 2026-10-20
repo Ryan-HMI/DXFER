@@ -45,4 +45,12 @@ Dev only; Production/Test and Sync are unchanged. No saved files are rewritten.
 Older files already containing redundant driving dimensions still require the
 user to remove the extra dimension or convert it to Driven. Lost historical
 failure evidence is not invented or silently reconstructed on file open.
-Installed endpoint verification is recorded after deployment.
+
+Installed Dev `2f2ecf5` was independently identified from the rendered build
+tooltip by the browser regression. The full browser sequence above passed on
+`https://dxferdev.sync.harrisonmetals.com`, including visible immediate failure,
+reopen, mode conversion and subsequent measurement following. Screenshots were
+inspected. Evidence: `/tmp/dxfer-driving-installed` and
+`/tmp/dxfer-driving-installed.log`. Service is active; anonymous root remains
+302 and `/auth/status` still reports Google authentication configured. No auth
+settings changed. Rollback: `/home/ryan/dxfer-runtime/dev-publish-before-2f2ecf5`.
