@@ -23,6 +23,8 @@ if (process.argv[2] !== '--sample') {
 } else {
     const { createPlaneGcsSolver } = await import('../../src/DXFER.Blazor/wwwroot/planeGcsSolver.js');
     const kind = process.argv[3], count = Number(process.argv[4]);
+    const protection = process.argv[5] ?? '';
+    assert.ok(['', 'fixed-first', 'fixed-last'].includes(protection));
     const pattern = { id: 'bench', kind, sourceEntityIds: ['seed'], rows: count / 8, columns: 8,
         xPitch: 10, yPitch: 10, angleDegrees: 0, count, center: { x: 0, y: 0 },
         stepAngleDegrees: 360 / count, fullCircle: true, members: [] };
@@ -38,7 +40,9 @@ if (process.argv[2] !== '--sample') {
     }
     const start = performance.now();
     const solver = await createPlaneGcsSolver(), ready = performance.now();
-    const request = { document: { entities, constraints: [], dimensions: [],
+    const constraints = protection ? [{ id: 'fixed-member', kind: 'Fix',
+        referenceKeys: [entities[protection === 'fixed-first' ? 1 : count - 1].id] }] : [];
+    const request = { document: { entities, constraints, dimensions: [],
         hasPatterns: true, metadata: { patterns: [pattern] } },
         drag: { key: 'seed:center', start: { x: 30, y: 20 }, end: { x: 31, y: 21 } } };
     const before = structuredClone(request);
@@ -48,17 +52,18 @@ if (process.argv[2] !== '--sample') {
     assert.deepEqual(request, before, 'Benchmark must not modify the drawing');
     if (result.status === 'solved') {
         assert.equal(result.entities.length, count);
+        const x = protection ? 30 : 31, y = protection ? 20 : 21;
         for (let index = 0; index < count; index++) {
             const actual = result.entities[index], angle = index * 2 * Math.PI / count;
             const expected = kind === 'Radial'
-                ? { x: 31 * Math.cos(angle) - 21 * Math.sin(angle), y: 31 * Math.sin(angle) + 21 * Math.cos(angle) }
-                : { x: 31 + index % 8 * 10, y: 21 + Math.floor(index / 8) * 10 };
+                ? { x: x * Math.cos(angle) - y * Math.sin(angle), y: x * Math.sin(angle) + y * Math.cos(angle) }
+                : { x: x + index % 8 * 10, y: y + Math.floor(index / 8) * 10 };
             assert.equal(actual.id, entities[index].id);
             assert.ok(Math.hypot(actual.center.x - expected.x, actual.center.y - expected.y) < 1e-6);
             assert.ok(Math.abs(actual.radius - 1) < 1e-6);
         }
     }
-    console.log(JSON.stringify({ kind, count, status: result.status,
+    console.log(JSON.stringify({ kind, count, protection: protection || undefined, status: result.status,
         initializationMs: +(ready - start).toFixed(2), solveMs: +(solved - ready).toFixed(2),
         rssMiB: +(process.memoryUsage().rss / 1024 ** 2).toFixed(1),
         diagnostics: result.status === 'solved' ? undefined : result.diagnostics }));

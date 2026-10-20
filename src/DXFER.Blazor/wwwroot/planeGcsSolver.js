@@ -1084,6 +1084,14 @@ function mapRequest(request) {
             seedPoint(shape.end, at(finish));
         }
     }
+    const snapshotGeometry = () => geometries.map(node => ({ node, values: copy(node) }));
+    const restoreGeometry = snapshot => {
+        for (const { node, values } of snapshot) {
+            for (const key of Object.keys(node)) if (!(key in values)) delete node[key];
+            Object.assign(node, copy(values));
+        }
+    };
+    const preDragGeometry = request.drag && seedOperations.length ? snapshotGeometry() : null;
     if (request.drag) {
         const drag = request.drag, ref = resolve(drag.key ?? drag.selectionKey, true);
         requireSupported(!patternMembers.has(ref.shape?.entity.id),
@@ -1254,20 +1262,32 @@ function mapRequest(request) {
         discreteDimensionIds,
         tryPatternSeed() {
             if (!seedOperations.length) return;
-            const before = geometries.filter(node => ["point", "arc"].includes(node.type))
-                .map(node => ({ node, values: node.type === "point"
-                    ? { x: node.x, y: node.y }
-                    : { radius: node.radius, start_angle: node.start_angle, end_angle: node.end_angle } }));
+            const before = snapshotGeometry();
+            const fixedUnchanged = () => before.every(({ node, values }) =>
+                !(node.fixed || fixedParameterIds.has(node.id)) || JSON.stringify(node) === JSON.stringify(values));
             let accepted = false;
             try {
                 // Keep dependent initial guesses feasible without changing the
                 // native equations, unknowns or soft pointer objective.
                 accepted = seedOperations.every(operation => operation())
-                    && before.every(({ node, values }) => !(node.fixed || fixedParameterIds.has(node.id))
-                        || Object.entries(values).every(([prop, value]) => node[prop] === value))
+                    && fixedUnchanged()
                     && this.validate(id => nodes.get(id)).length === 0;
             } finally {
-                if (!accepted) for (const { node, values } of before) Object.assign(node, values);
+                if (!accepted) {
+                    restoreGeometry(before);
+                    // If the pointer guess is infeasible, retain a known-valid
+                    // starting state. Soft goals still describe the requested drag.
+                    if (preDragGeometry?.length === geometries.length
+                        && preDragGeometry.every(({ node }, index) => node === geometries[index])) {
+                        let restored = false;
+                        try {
+                            restoreGeometry(preDragGeometry);
+                            restored = fixedUnchanged() && this.validate(id => nodes.get(id)).length === 0;
+                        } finally {
+                            if (!restored) restoreGeometry(before);
+                        }
+                    }
+                }
             }
         },
         validate(get) {

@@ -145,6 +145,21 @@ function checkNativeCircleGuesses(insertions, expected) {
     }
 }
 
+function checkCircleDragGoals(insertions, target, radius = 1) {
+    const goals = insertions.flat().filter(node => node.temporary);
+    assert.equal(goals.length, 3);
+    for (const prop of ['x', 'y']) {
+        const goal = goals.find(node => node.type === `coordinate_${prop}`);
+        assert.ok(goal);
+        near(goal[prop], target[prop]);
+        assert.equal(goal.scale, 1);
+    }
+    const stability = goals.find(node => node.type === 'equal');
+    assert.equal(stability.param1.prop, 'radius');
+    assert.equal(stability.param2, radius);
+    assert.equal(stability.scale, 1e-4);
+}
+
 for (const kind of ['Radial', 'Rectangular', 'Staggered']) {
     for (const shape of ['line', 'circle', 'arc', 'ellipse']) {
         test(`guarded ${kind} ${shape} seeds preserve native pattern relations and soft drag intent`, () => {
@@ -190,7 +205,8 @@ for (const kind of ['Radial', 'Rectangular', 'Staggered']) {
             assert.ok(Math.hypot(entity(result, 'seed').center.x - updates.drag.end.x,
                 entity(result, 'seed').center.y - updates.drag.end.y) > 1);
             checkMembers(document, result);
-            checkNativeCircleGuesses(insertions, document.entities.map(e => e.id === 'seed' ? updates.drag.end : e.center));
+            checkNativeCircleGuesses(insertions, document.entities.map(e => e.center));
+            checkCircleDragGoals(insertions, updates.drag.end);
         });
     }
 
@@ -203,7 +219,28 @@ for (const kind of ['Radial', 'Rectangular', 'Staggered']) {
         near(Math.hypot(center.x, center.y), originalDistance);
         assert.ok(Math.hypot(center.x - gesture.end.x, center.y - gesture.end.y) > 0.1);
         checkMembers(document, result);
+        checkNativeCircleGuesses(insertions, document.entities.map(e => e.center));
+        checkCircleDragGoals(insertions, gesture.end);
+        const scale = originalDistance / Math.hypot(gesture.end.x, gesture.end.y);
+        nearPoint(center, p(gesture.end.x * scale, gesture.end.y * scale));
+    });
+}
+
+for (const direction of [1, -1]) {
+    test(`invalid pre-drag driving distance retains post-drag guesses and native projection direction=${direction}`, () => {
+        const document = fixture('Radial'), requiredDistance = Math.hypot(3, 2) + 0.5;
+        document.dimensions.push({ id: 'new-source-distance', kind: 'LinearDistance',
+            referenceKeys: ['$origin:center', 'seed:center'], value: requiredDistance, isDriving: true });
+        const gesture = drag(document.entities[0], p(3 + direction, 2 + direction));
+        const { result, insertions } = run(document, { drag: gesture });
         checkNativeCircleGuesses(insertions, document.entities.map(e => e.id === 'seed' ? gesture.end : e.center));
+        checkCircleDragGoals(insertions, gesture.end);
+        const center = entity(result, 'seed').center;
+        near(Math.hypot(center.x, center.y), requiredDistance);
+        const scale = requiredDistance / Math.hypot(gesture.end.x, gesture.end.y);
+        nearPoint(center, p(gesture.end.x * scale, gesture.end.y * scale));
+        near(entity(result, 'seed').radius, 1);
+        checkMembers(document, result);
     });
 }
 
@@ -278,7 +315,7 @@ for (const locked of [false, true]) {
         document.constraints.push(intent('retained-offset', 'Offset', [memberId, 'outer']));
         document.dimensions.push({ id: 'gap', kind: 'Offset', referenceKeys: [memberId, 'outer'], value: 1, isDriving: true });
         const gesture = drag(document.entities[0]), { result, insertions } = run(document, { drag: gesture });
-        checkNativeCircleGuesses(insertions, document.entities.map(e => e.id === 'seed' ? gesture.end : e.center));
+        checkNativeCircleGuesses(insertions, document.entities.map(e => e.center));
         const derived = entity(result, 'outer'), actualMember = entity(result, memberId);
         nearPoint(derived.center, actualMember.center);
         near(derived.radius - actualMember.radius, 1);

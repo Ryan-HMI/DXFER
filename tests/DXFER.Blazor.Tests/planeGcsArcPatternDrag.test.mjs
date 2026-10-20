@@ -179,9 +179,7 @@ for (const guard of ['Fix', 'isLocked']) {
         const drag = gesture(document), { result, insertions } = run(document, drag);
         checkOriginalGeometry(document, result);
         checkPattern(document, result);
-        const expected = structuredClone(document.entities);
-        expected[0].center = drag.end;
-        checkArcInputs(insertions[0], expected);
+        checkArcInputs(insertions[0], document.entities);
     });
 }
 
@@ -206,9 +204,58 @@ for (const grip of ['radius', 'end']) {
             checkOriginalGeometry(document, result);
             checkPattern(document, result);
             const expected = structuredClone(document.entities);
-            expected[0].radius = grip === 'radius' ? 1.25 : 1.2;
-            if (grip === 'end') expected[0].endAngleDegrees = 120;
+            if (grip === 'radius') expected[0].radius = 1.25;
             checkArcInputs(insertions[0], expected);
         });
     }
+}
+
+for (const grip of ['radius', 'end']) {
+    test(`arc ${grip} fallback preserves soft priority and ${grip === 'radius' ? 'added-geometry rollback' : 'valid pre-drag geometry'}`, () => {
+        const document = fixture('Radial', 4);
+        lockLast(document, 'isLocked');
+        const drag = gesture(document, grip), { result, insertions } = run(document, drag);
+        checkOriginalGeometry(document, result);
+        checkPattern(document, result);
+        const primitives = insertions[0], nodes = new Map(primitives.map(node => [node.id, node]));
+        const points = primitives.filter(node => node.type === 'point');
+        assert.equal(points.length, 3 * document.entities.length + 1 + (grip === 'radius' ? 1 : 0));
+        const sourceArc = primitives.find(node => node.type === 'arc');
+        const goals = insertions.flat().filter(node => node.temporary);
+        const stability = goals.filter(node => node.type === 'equal');
+        assert.equal(stability.length, grip === 'radius' ? 2 : 1);
+        for (const goal of stability) {
+            assert.equal(goal.scale, 1e-4);
+            assert.equal(goal.param1.o_id, sourceArc.id);
+            assert.ok(['start_angle', 'end_angle'].includes(goal.param1.prop));
+            near(goal.param2, (goal.param1.prop === 'start_angle' ? 10 : 110) * radians);
+        }
+        const centerGoals = goals.filter(node => node.p_id === sourceArc.c_id);
+        assert.equal(centerGoals.length, 2);
+        for (const prop of ['x', 'y']) {
+            const goal = centerGoals.find(node => node.type === `coordinate_${prop}`);
+            assert.equal(goal.scale, 1e-4);
+            near(goal[prop], document.entities[0].center[prop]);
+        }
+        const incidence = primitives.find(node => node.type === 'point_on_arc');
+        if (grip === 'radius') {
+            assert.ok(incidence);
+            assert.equal(incidence.a_id, sourceArc.id);
+            assert.equal(incidence.temporary, false);
+            assert.ok(![sourceArc.c_id, sourceArc.start_id, sourceArc.end_id].includes(incidence.p_id));
+            nearPoint(nodes.get(incidence.p_id), drag.end);
+        } else assert.equal(incidence, undefined);
+        const targetId = grip === 'radius' ? incidence.p_id : sourceArc.end_id;
+        const pointerGoals = goals.filter(node => node.p_id === targetId);
+        assert.equal(pointerGoals.length, 2);
+        for (const prop of ['x', 'y']) {
+            const goal = pointerGoals.find(node => node.type === `coordinate_${prop}`);
+            assert.equal(goal.scale, 1);
+            near(goal[prop], drag.end[prop]);
+        }
+        assert.equal(goals.length, grip === 'radius' ? 6 : 5);
+        const expected = structuredClone(document.entities);
+        if (grip === 'radius') expected[0].radius = 1.25;
+        checkArcInputs(primitives, expected);
+    });
 }

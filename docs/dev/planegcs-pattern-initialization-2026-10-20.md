@@ -88,3 +88,37 @@ inside a radial pattern can change its radius/sweep despite a feasible pure
 translation. This reproduces before this optimization; dimension-constrained
 arc tests do not close that separate defect. It is being investigated with
 an unconstrained regression rather than accepted as normal dragging behavior.
+
+## Infeasible Pointer Guesses
+
+Follow-on investigation found that failed propagation restored the old
+post-drag guesses, which could themselves violate a Fixed member. The mapper
+now also retains the pre-drag geometry. If propagation fails, it may use that
+pre-drag state only when the mapped geometry identities/count match, fixed
+parameters remain identical and the complete hard/geometry validator passes.
+Otherwise the original post-drag state is restored as before.
+Soft pointer goals still target the requested location. This is not early
+acceptance of unchanged geometry: PlaneGCS still runs both stages.
+
+The isolated five-second-deadline experiment is retained at
+`/tmp/dxfer-planegcs-predrag-review-20261020`. Both 512-circle Fixed-member
+cases now finish: fixed-first and fixed-last take about 1.87 seconds in the
+integrated benchmark, preserving all centers and radii. Five 128-member
+baseline/candidate controls retain the same equations and soft goals, with
+maximum output difference below 3.1e-14.
+
+Reproduce protected samples with the benchmark's optional `fixed-first` or
+`fixed-last` argument after `--sample Radial 512`, under an external five-second
+timeout. The benchmark validates every output member and input immutability.
+Both inward/outward source-distance-constrained 512-member experiments still
+time out during the soft solve; this remains an explicit capacity limit, not
+mathematical inconsistency or a completed large-sketch acceptance.
+
+Integrated verification: 1,763 JavaScript and 3,023 Core tests pass.
+Seed regressions retain their final-geometry assertions and now check the
+validated starting state, unchanged soft objectives, invalid-baseline
+rejection and added-geometry rollback. Local browser free-circle, free-arc
+and fixed-member radial patterns pass. The Fixed member preserves preview
+and release geometry without adding an Undo entry.
+Logs: `/tmp/dxfer-predrag-js-final.log`, `/tmp/dxfer-predrag-core.log`.
+Browser evidence: `/tmp/dxfer-predrag-browser`.

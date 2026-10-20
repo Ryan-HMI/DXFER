@@ -600,9 +600,10 @@ try {
     await editGap(edited.doc, 1.5, 'reopened-edited');
     return {sourceIds: before.entities.map(e => e.id), derivedId: derived.id, relation: relations[0], dimensionId: dimension.id};
   });
-  for (const [kind, shape] of [['Rectangular', 'circle'], ['Radial', 'circle'], ['Radial', 'arc']])
-    await run(`pattern-${kind.toLowerCase()}${shape === 'arc' ? '-arc' : ''}-source-follow`, async () => {
-    const name = `pattern-${kind.toLowerCase()}${shape === 'arc' ? '-arc' : ''}-source-follow`;
+  for (const [kind, shape, fixed] of [['Rectangular', 'circle'], ['Radial', 'circle'],
+    ['Radial', 'arc'], ['Radial', 'circle', true]])
+    await run(`pattern-${kind.toLowerCase()}${shape === 'arc' ? '-arc' : ''}${fixed ? '-fixed' : ''}-source-follow`, async () => {
+    const name = `pattern-${kind.toLowerCase()}${shape === 'arc' ? '-arc' : ''}${fixed ? '-fixed' : ''}-source-follow`;
     const center = shape === 'arc' ? {x: 3, y: 2} : {x: 10, y: 10};
     const text = shape === 'arc' ? circleFixture(1, center).replace('CIRCLE', 'ARC')
       .replace('0\nENDSEC\n0\nEOF', '50\n10\n51\n110\n0\nENDSEC\n0\nEOF') : circleFixture(1);
@@ -630,7 +631,15 @@ try {
     await editor.getByRole('button', {name: 'Confirm', exact: true}).click();
     await expect(editor).toBeHidden(); await expect(canvas).toHaveAttribute('data-entity-count', '4');
     await canvas.press('Escape'); await tool('Fit extents');
-    const created = await download(`${name}-created`), patterns = created.doc.metadata.patterns;
+    let created = await download(`${name}-created`);
+    if (fixed) {
+      const doc = structuredClone(created.doc);
+      doc.constraints.push({id: 'fixed-pattern-member', kind: 'Fix',
+        referenceKeys: [doc.metadata.patterns[0].members.at(-1).entityId], state: 'Satisfied'});
+      await load(withNative(created.text, doc), 4);
+      created = await download(`${name}-fixed-baseline`);
+    }
+    const patterns = created.doc.metadata.patterns;
     assert.equal(patterns.length, 1); assert.equal(patterns[0].kind, kind);
     const pattern = patterns[0];
     assert.deepEqual(pattern.sourceEntityIds, [seed.id]); assert.equal(pattern.members.length, 3);
@@ -669,6 +678,24 @@ try {
       return source;
     };
     assertFamily(created.doc);
+    if (fixed) {
+      await hover(seed.center, key => key?.startsWith(`${seed.id}|point|center|`));
+      const target = await screen({x: seed.center.x + .8, y: seed.center.y + .5});
+      await page.mouse.down();
+      try {
+        await page.mouse.move(target.x, target.y, {steps: 12});
+        await expect(canvas).toHaveAttribute('data-plane-gcs-preview-engine', 'PlaneGCS');
+        const [x, y] = (await canvas.getAttribute('data-first-center')).split(',').map(Number);
+        samePoint({x, y}, seed.center, 'Fixed member preserves held pattern source');
+        await capture(`${name}-held`);
+      } finally { await page.mouse.up(); }
+      await page.waitForTimeout(300);
+      await canvas.press('Escape');
+      const saved = await download(`${name}-refused`);
+      assert.deepEqual(content(saved.doc), content(created.doc));
+      await expect(page.getByRole('button', {name: 'Undo', exact: true})).toBeDisabled();
+      return {kind, fixedMember: pattern.members.at(-1).entityId, unchanged: true};
+    }
     const moveSource = async (previous, delta, suffix) => {
       const source = assertFamily(previous), target = {x: source.center.x + delta.x, y: source.center.y + delta.y};
       const a = await hover(source.center, key => key?.startsWith(`${seed.id}|point|center|`)), b = await screen(target);
