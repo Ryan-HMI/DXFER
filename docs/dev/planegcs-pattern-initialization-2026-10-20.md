@@ -122,3 +122,20 @@ and fixed-member radial patterns pass. The Fixed member preserves preview
 and release geometry without adding an Undo entry.
 Logs: `/tmp/dxfer-predrag-js-final.log`, `/tmp/dxfer-predrag-core.log`.
 Browser evidence: `/tmp/dxfer-predrag-browser`.
+
+Installed follow-on `736dcda` on Dev at approximately 18:11 UTC.
+The public tooltip and solver asset hashes match. All three installed
+browser cases pass: free circle pattern, free arc pattern, and protected
+pattern with no preview/release change or Undo entry.
+Evidence: `/tmp/dxfer-predrag-installed-736dcda`.
+Published-host 512-circle checks, including process startup, pass in 2,354 ms
+free, 2,210 ms fixed-first and 2,110 ms fixed-last. Every returned center,
+radius and identity is checked.
+
+Dev PID 2126138 retains PlaneGCS, full editing, disabled Sync callbacks and
+isolated keys. Auth status is 200, and anonymous access redirects to Google's
+correct HTTPS Dev callback. Production/Test PIDs 3584417/3584475 are unchanged.
+Rollback: `/home/ryan/dxfer-runtime/dev-publish-before-736dcda`.
+No existing drawings were rewritten. The source-distance soft-solve timeout
+remains open; further improvement requires native performance investigation,
+not declaring those valid sketches inconsistent or extending the deadline.
