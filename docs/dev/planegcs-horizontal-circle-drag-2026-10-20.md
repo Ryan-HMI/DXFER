@@ -65,8 +65,25 @@ WebSocket upgrade rejection; they are not proof of an interactive Google login.
 
 ## Deployment and existing drawings
 
-Deployment verification is recorded below after rollout. Only DXFer Dev is in
-scope. Production/Test and Sync application data must remain unchanged.
+Deployed code `3d641db` to DXFer Dev on 2026-10-20 around 17:21 UTC.
+The public tooltip independently reports `3d641db; sketch solver: PlaneGCS`.
+All 32 installed browser workflows pass, including the 12 new circle cases,
+actual-created rectangles, offsets, patterns, native curves, and drag snaps.
+No page exceptions were recorded. The expected API-key WebSocket upgrade
+rejection still falls back to LongPolling.
+
+Final suites: 3,023 Core tests and 1,668 JavaScript tests pass.
+Logs: `/tmp/dxfer-circle-hard-first-core-final.log`,
+`/tmp/dxfer-circle-hard-first-all-js-final2.log`, and
+`/tmp/dxfer-planegcs-installed-3d641db.log`.
+Installed browser artifacts: `/tmp/dxfer-planegcs-installed-3d641db`.
+
+Published assembly and solver-asset hashes match the built source. Dev process
+2096323 retains PlaneGCS, full editing, disabled Sync callbacks and its isolated
+Dev key directory. Public auth status returns 200; anonymous root redirects to
+Google with the correct HTTPS Dev callback. Production/Test process IDs remain
+3584417/3584475 respectively, unchanged. Sync application data is untouched.
+Rollback publish is `/home/ryan/dxfer-runtime/dev-publish-before-3d641db`.
 
 These reproduced failures refused atomically. No drawing/data repair is needed
 for those cases, and no existing drawings have been modified. Ryan's original
