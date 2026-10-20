@@ -65,3 +65,26 @@ request finishes inside five seconds.
 No saved drawings or application records are rewritten. The reproduced
 timeout refused unchanged, so no data repair is required for this case.
 Deployment and final browser evidence are recorded below when verified.
+
+## Dev Deployment
+
+Installed `5f116e4` on 2026-10-20 at approximately 17:52 UTC. The public tooltip
+reports that revision and PlaneGCS. Installed rectangle/radial pattern-source
+drag workflows pass, along with the actual-created rectangle corner and
+redundant-peer Horizontal circle regression. Evidence:
+`/tmp/dxfer-pattern-seed-installed-5f116e4`.
+
+The published Node/WASM host passes the 512-circle radial fixture in 2,227 ms,
+including process startup and framed output, with every output member checked.
+Public solver/pattern/offset asset hashes match source. Dev PID 2110950 keeps
+PlaneGCS, full editing, disabled Sync callbacks and isolated Dev keys.
+Anonymous root redirects to Google with the correct HTTPS Dev callback;
+auth status returns 200. This is not an interactive Google-login test.
+Production/Test PIDs 3584417/3584475 are unchanged.
+Rollback: `/home/ryan/dxfer-runtime/dev-publish-before-5f116e4`.
+
+Additional baseline issue found during testing: a free arc's center drag
+inside a radial pattern can change its radius/sweep despite a feasible pure
+translation. This reproduces before this optimization; dimension-constrained
+arc tests do not close that separate defect. It is being investigated with
+an unconstrained regression rather than accepted as normal dragging behavior.
