@@ -7,6 +7,8 @@ const url = process.env.DXFER_QA_URL ?? 'http://127.0.0.1:5037';
 assert.ok(['localhost', '127.0.0.1', '::1', '[::1]', 'dxferdev.sync.harrisonmetals.com'].includes(new URL(url).hostname));
 const output = process.env.DXFER_SCREENSHOTS ?? '/tmp/dxfer-midpoint-origin-axis';
 const only = process.env.DXFER_CASES?.split(',');
+const workflows = process.env.DXFER_WORKFLOW ? [process.env.DXFER_WORKFLOW] : ['tool-first', 'preselect'];
+assert.ok(workflows.every(workflow => ['tool-first', 'preselect'].includes(workflow)));
 await mkdir(output, {recursive: true});
 const points = [[-4, -2, -4, 8], [-4, 8, 18, 8], [18, 8, 18, -2], [18, -2, -4, -2]];
 const fixture = ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '1', '0', 'ENDSEC',
@@ -80,8 +82,8 @@ try {
       for (const sized of [false, true]) cases.push({kind, reverse, fixed: false, sized});
     cases.push({kind, reverse: false, fixed: true});
   }
-  for (const {kind, reverse, fixed, sized} of cases) {
-    const name = `${kind.toLowerCase()}-${reverse ? 'origin-first' : 'mid-first'}-${fixed ? 'fixed' : sized ? 'dimensioned' : 'free'}`;
+  for (const workflow of workflows) for (const {kind, reverse, fixed, sized} of cases) {
+    const name = `${workflow}-${kind.toLowerCase()}-${reverse ? 'origin-first' : 'mid-first'}-${fixed ? 'fixed' : sized ? 'dimensioned' : 'free'}`;
     if (only && !only.includes(name)) continue;
     let evidence;
     try {
@@ -103,7 +105,7 @@ try {
       await load(withNative(seed.text, doc));
       const before = (await download(`${name}-before`)).doc;
       assert.deepEqual(content(before), content(doc), 'Native rectangle intent loads exactly');
-      await tool(kind);
+      if (workflow === 'tool-first') await tool(kind);
       const picks = [{point: mid(source), expected: new RegExp(`^${source.id}\\|point\\|mid\\|`), label: 'mid'},
         {point: {x: 0, y: 0}, expected: /^\$origin:center$/, label: 'origin'}];
       if (reverse) picks.reverse();
@@ -111,14 +113,20 @@ try {
       for (const [i, target] of picks.entries()) {
         keys.push(await pick(target.point, target.expected, `${name}-${target.label}`));
         if (i === 0) await expect(canvas).toHaveAttribute('data-selected-keys', keys[0]);
+        if (workflow === 'preselect') {
+          await expect(canvas).toHaveAttribute('data-selected-count', String(i + 1));
+          assert.deepEqual((await canvas.getAttribute('data-selected-keys')).split(',').sort(), [...keys].sort(),
+            'Preselection retains exact midpoint/origin references');
+        }
       }
+      if (workflow === 'preselect') await tool(kind);
       await page.waitForTimeout(250);
       const status = await page.locator('.dxfer-command-bar').innerText();
       await page.screenshot({path: `${output}/${name}-applied.png`});
       await canvas.press('Escape');
       const saved = await download(`${name}-applied`);
       const added = saved.doc.constraints.filter(c => !before.constraints.some(old => old.id === c.id));
-      evidence = {name, build, keys, status, added, beforeMidpoint: mid(source),
+      evidence = {name, build, workflow, keys, status, added, beforeMidpoint: mid(source),
         afterMidpoint: mid(saved.doc.entities.find(e => e.id === source.id))};
       console.log(`OBSERVED ${name}: ${JSON.stringify(evidence)}`);
       assert.equal(saved.doc.entities.length, 4, 'Origin is virtual, not a new entity');

@@ -48,6 +48,16 @@ tooltip still names the old commit and is not installed-build evidence.
 Local verification output: `/tmp/dxfer-midpoint-origin-final/`.
 Installed verification output: `/tmp/dxfer-midpoint-origin-dev/`.
 
+Ryan subsequently clarified selection-first, then tool click (delivery
+`d56d0c1f5507e7f8d40b6f95`). Ten additional actual-browser cases pass on rendered
+Dev `c397469`: preselect the midpoint and origin in either order, then click H/V.
+The test verifies both selected reference identities before the tool click.
+Dimensioned/undimensioned rectangles, Fixed refusal, Undo/Redo and native reopen
+pass with no browser errors. Evidence:
+`/tmp/dxfer-midpoint-origin-preselect-dev/` and
+`/tmp/dxfer-midpoint-origin-preselect-dev.log`.
+This follow-up changes tests/documentation only; installed runtime is unchanged.
+
 One separate existing limitation is characterized, not fixed: horizontal
 single-edge dragging of the already-aligned rectangle with a driving width can
 refuse rather than translate the entire rectangle. This is not claimed as a
