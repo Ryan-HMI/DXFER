@@ -5,7 +5,8 @@ const parameter = (node, prop) => ({ o_id: node.id, prop });
 // Pattern settings remain explicit document parameters. Members and seeds share
 // simultaneous affine equations so another relation can move either side safely.
 export function mapPlaneGcsPatterns(context) {
-    const { patterns, byId, model, relation, point, add, requireSupported, seedOperations = [] } = context;
+    const { patterns, byId, model, relation, point, add, requireSupported, seedOperations = [],
+        fixedParameterIds = new Set() } = context;
     requireSupported(Array.isArray(patterns) && patterns.length <= 64, "Invalid PlaneGCS pattern list.");
     const owned = new Set(), patternIds = new Set();
     const coefficientLines = new Map();
@@ -88,14 +89,34 @@ export function mapPlaneGcsPatterns(context) {
                 relation("equal", { param1: parameter(source.curve, "radius"), param2: parameter(target.curve, "radius") },
                     label, get => Math.abs(get(source.curve.id).radius - get(target.curve.id).radius));
                 if (source.kind === "arc") {
+                    const angleDifferences = {};
                     for (const prop of ["start_angle", "end_angle"]) {
                         // Native representations may differ by full turns.
                         const initial = target.curve[prop] - source.curve[prop];
                         const difference = angle + Math.round((initial - angle) / (2 * Math.PI)) * 2 * Math.PI;
+                        angleDifferences[prop] = difference;
                         relation("difference", { param1: parameter(source.curve, prop),
                             param2: parameter(target.curve, prop), difference }, label,
                         get => Math.abs(get(target.curve.id)[prop] - get(source.curve.id)[prop] - difference));
                     }
+                    seedOperations.push(() => {
+                        const values = {
+                            radius: source.curve.radius,
+                            start_angle: source.curve.start_angle + angleDifferences.start_angle,
+                            end_angle: source.curve.end_angle + angleDifferences.end_angle
+                        };
+                        if (fixedParameterIds.has(target.curve.id)) {
+                            if (Object.entries(values).some(([prop, value]) => target.curve[prop] !== value)) return false;
+                        } else Object.assign(target.curve, values);
+                        for (const [endpoint, prop] of [[target.start, "start_angle"], [target.end, "end_angle"]]) {
+                            const x = target.center.x + values.radius * Math.cos(values[prop]);
+                            const y = target.center.y + values.radius * Math.sin(values[prop]);
+                            if (endpoint.fixed || fixedParameterIds.has(endpoint.id)) {
+                                if (Math.hypot(endpoint.x - x, endpoint.y - y) > 1e-6) return false;
+                            } else Object.assign(endpoint, { x, y });
+                        }
+                        return true;
+                    });
                 }
             }
             if (source.ellipse) {

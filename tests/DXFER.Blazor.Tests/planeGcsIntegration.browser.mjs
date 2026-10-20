@@ -600,11 +600,15 @@ try {
     await editGap(edited.doc, 1.5, 'reopened-edited');
     return {sourceIds: before.entities.map(e => e.id), derivedId: derived.id, relation: relations[0], dimensionId: dimension.id};
   });
-  for (const kind of ['Rectangular', 'Radial']) await run(`pattern-${kind.toLowerCase()}-source-follow`, async () => {
-    const name = `pattern-${kind.toLowerCase()}-source-follow`;
-    await load(circleFixture(1), 1); await autoSnap(false);
+  for (const [kind, shape] of [['Rectangular', 'circle'], ['Radial', 'circle'], ['Radial', 'arc']])
+    await run(`pattern-${kind.toLowerCase()}${shape === 'arc' ? '-arc' : ''}-source-follow`, async () => {
+    const name = `pattern-${kind.toLowerCase()}${shape === 'arc' ? '-arc' : ''}-source-follow`;
+    const center = shape === 'arc' ? {x: 3, y: 2} : {x: 10, y: 10};
+    const text = shape === 'arc' ? circleFixture(1, center).replace('CIRCLE', 'ARC')
+      .replace('0\nENDSEC\n0\nEOF', '50\n10\n51\n110\n0\nENDSEC\n0\nEOF') : circleFixture(1);
+    await load(text, 1); await autoSnap(false);
     const seed = (await download(`${name}-seed`)).doc.entities[0];
-    const body = {x: 10 + Math.cos(.6), y: 10 + Math.sin(.6)};
+    const body = {x: center.x + Math.cos(.6), y: center.y + Math.sin(.6)};
     await pick(body, key => key === seed.id);
     const at = await screen(body); await page.mouse.click(at.x, at.y, {button: 'right'});
     await page.getByRole('dialog', {name: 'Drawing context commands'}).getByRole('button', {name: 'Pattern', exact: true}).click();
@@ -615,7 +619,9 @@ try {
       await editor.getByLabel(label, {exact: true}).fill(String(value)); await page.waitForTimeout(150);
     };
     if (kind === 'Radial') {
-      await fill('Pattern instances', 4); await fill('Pattern center X', 10); await fill('Pattern center Y', 6);
+      await fill('Pattern instances', 4);
+      await fill('Pattern center X', shape === 'arc' ? 1 : 10);
+      await fill('Pattern center Y', shape === 'arc' ? -2 : 6);
       await editor.getByLabel('Full circle', {exact: true}).check();
     } else {
       await fill('Pattern columns', 2); await fill('Pattern rows', 2);
@@ -633,11 +639,20 @@ try {
       assert.deepEqual(doc.entities.map(e => e.id), created.doc.entities.map(e => e.id));
       assert.deepEqual(doc.constraints, created.doc.constraints); assert.deepEqual(doc.dimensions, created.doc.dimensions);
       const source = doc.entities.find(e => e.id === seed.id);
-      assert.equal(source.radius, seed.radius);
+      near(source.radius, seed.radius, 'Center drag preserves source radius');
+      const arcAngles = (actual, original) => {
+        if (shape !== 'arc') return;
+        for (const field of ['startAngleDegrees', 'endAngleDegrees']) {
+          const difference = (actual[field] - original[field]) * Math.PI / 180;
+          near(Math.atan2(Math.sin(difference), Math.cos(difference)), 0, 'Center drag preserves arc angles');
+        }
+      };
+      arcAngles(source, seed);
       for (const member of pattern.members) {
         assert.equal(member.sourceEntityId, source.id);
         const copy = doc.entities.find(e => e.id === member.entityId);
-        assert.equal(copy.kind, 'circle'); assert.equal(copy.radius, source.radius);
+        assert.equal(copy.kind, shape); near(copy.radius, source.radius, 'Pattern radius equality');
+        arcAngles(copy, created.doc.entities.find(e => e.id === copy.id));
         let expected;
         if (kind === 'Radial') {
           const angle = member.column * 2 * Math.PI / pattern.count;

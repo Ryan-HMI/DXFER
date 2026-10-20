@@ -997,7 +997,8 @@ function mapRequest(request) {
         }
     }
     const seedOperations = [];
-    const patternMembers = mapPlaneGcsPatterns({ patterns, byId, model, relation, point, add, requireSupported, seedOperations });
+    const patternMembers = mapPlaneGcsPatterns({ patterns, byId, model, relation, point, add, requireSupported,
+        seedOperations, fixedParameterIds });
     mapPlaneGcsOffsets({ constraints, dimensions, model, nodes, relation, samePoint, requireSupported,
         add, point, fixSource: registerFixedReference });
     constraints.forEach(c => mapConstraint(c));
@@ -1253,18 +1254,20 @@ function mapRequest(request) {
         discreteDimensionIds,
         tryPatternSeed() {
             if (!seedOperations.length) return;
-            const before = geometries.filter(node => node.type === "point")
-                .map(node => ({ node, x: node.x, y: node.y }));
+            const before = geometries.filter(node => ["point", "arc"].includes(node.type))
+                .map(node => ({ node, values: node.type === "point"
+                    ? { x: node.x, y: node.y }
+                    : { radius: node.radius, start_angle: node.start_angle, end_angle: node.end_angle } }));
             let accepted = false;
             try {
                 // Keep dependent initial guesses feasible without changing the
                 // native equations, unknowns or soft pointer objective.
                 accepted = seedOperations.every(operation => operation())
-                    && before.every(({ node, x, y }) => !(node.fixed || fixedParameterIds.has(node.id))
-                        || (node.x === x && node.y === y))
+                    && before.every(({ node, values }) => !(node.fixed || fixedParameterIds.has(node.id))
+                        || Object.entries(values).every(([prop, value]) => node[prop] === value))
                     && this.validate(id => nodes.get(id)).length === 0;
             } finally {
-                if (!accepted) for (const { node, x, y } of before) Object.assign(node, { x, y });
+                if (!accepted) for (const { node, values } of before) Object.assign(node, values);
             }
         },
         validate(get) {
