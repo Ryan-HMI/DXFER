@@ -1,14 +1,35 @@
-.pattern-viewport-controls { position: absolute; visibility: hidden; width: 224px; box-sizing: border-box; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; padding: 8px; background: var(--dx-panel, #10141b); border: 1px solid var(--dx-border-strong, #687b90); border-radius: 4px; color: var(--dx-text, #f4f7fb); font: 12px/1.3 "Segoe UI", system-ui, sans-serif; pointer-events: auto; box-shadow: 0 2px 8px #0004; }
-header, footer, p, .full-circle { grid-column: 1 / -1; }
-header { font-weight: 600; padding-bottom: 4px; border-bottom: 1px solid var(--dx-border); }
-label { display: grid; gap: 3px; min-width: 0; color: var(--dx-secondary); }
-input { width: 100%; min-width: 0; min-height: 28px; box-sizing: border-box; padding: 3px 5px; font: inherit; color: var(--dx-text); background: var(--dx-chrome); border: 1px solid var(--dx-border); border-radius: 3px; }
-.full-circle { display: flex; align-items: center; gap: 6px; }
-.full-circle input { width: 15px; min-height: 15px; accent-color: var(--dx-accent); }
-footer { display: flex; gap: 6px; justify-content: flex-end; }
+.pattern-viewport-controls {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    color: var(--dx-text, #f4f7fb);
+    font: 12px/1.3 "Segoe UI", system-ui, sans-serif;
+    letter-spacing: 0;
+}
+
+[data-pattern-anchor] { position: absolute; visibility: hidden; pointer-events: auto; box-sizing: border-box; }
+.pattern-source { width: 82px; }
+.pattern-axis, .pattern-center-coordinates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 182px; }
+.pattern-angle { display: grid; gap: 5px; width: 262px; max-width: 100%; }
+.pattern-angle > label { width: 92px; }
+.pattern-angle-mode { display: flex; }
+.pattern-angle-mode button { border-radius: 0; justify-content: center; padding-inline: 6px; }
+.pattern-angle-mode button:first-child { border-radius: 3px 0 0 3px; }
+.pattern-angle-mode button:last-child { border-radius: 0 3px 3px 0; margin-left: -1px; }
+.pattern-angle-mode button[aria-pressed="true"] { border-color: var(--dx-accent); background: var(--dx-accent-soft, var(--dx-panel)); color: var(--dx-text); position: relative; }
+.pattern-angle-mode button:disabled { opacity: 1; }
+.pattern-angle-mode button[aria-pressed="false"] { color: var(--dx-secondary); }
+.pattern-center-handle { width: 24px; height: 24px; min-height: 24px; padding: 3px; justify-content: center; border-radius: 50%; cursor: move; touch-action: none; }
+.pattern-actions { display: grid; gap: 6px; max-width: min(260px, 100%); }
+.pattern-action-buttons { display: flex; gap: 5px; }
+label { display: grid; gap: 2px; min-width: 0; color: var(--dx-text); }
+input { width: 100%; min-width: 0; height: 28px; box-sizing: border-box; padding: 3px 5px; font: inherit; color: var(--dx-text); background: var(--dx-chrome); border: 1px solid var(--dx-border); border-radius: 3px; }
+input[readonly] { cursor: default; }
 button { display: flex; align-items: center; gap: 4px; min-height: 28px; padding: 3px 7px; border: 1px solid var(--dx-border); border-radius: 3px; background: var(--dx-chrome); color: var(--dx-text); font: inherit; cursor: pointer; }
 button:disabled { opacity: .45; cursor: default; }
 button:hover:not(:disabled) { border-color: var(--dx-accent); }
 .pattern-viewport-controls button ::deep .dxfer-icon { width: 14px; height: 14px; flex: 0 0 14px; }
 :focus-visible { outline: 2px solid var(--dx-accent); outline-offset: 1px; }
-p { margin: 0; color: var(--dx-danger, #ff8792); overflow-wrap: anywhere; max-height: 64px; overflow-y: auto; }
+p { margin: 0; padding: 3px 5px; color: var(--dx-danger, #ff8792); background: var(--dx-chrome); overflow-wrap: anywhere; max-height: 64px; overflow-y: auto; }

@@ -10,44 +10,85 @@
          data-angle="@Number(Pattern.AngleDegrees)" data-center-x="@Number(Pattern.Center.X)" data-center-y="@Number(Pattern.Center.Y)"
          data-step="@Number(Pattern.FullCircle ? 360d / Pattern.Count : Pattern.StepAngleDegrees)"
          @onkeydown="KeyDown" @onkeydown:stopPropagation="true" @onpointerdown:stopPropagation="true">
-    <header>@Pattern.Kind pattern</header>
-    @if (Draft is { } draft)
+    @if (IsRadial)
     {
-        @if (draft.Mode == "Radial")
+        <button type="button" class="pattern-center-handle" data-pattern-anchor="center-handle" data-pattern-center-handle
+                title="Move pattern center" aria-label="Move pattern center" disabled="@(!CanEdit)" @onclick="BeginCenterEdit">
+            <CadIcon Name="CadIconName.Point" />
+        </button>
+        @if (Draft is { } centerDraft)
         {
-            <label>Instances<input aria-label="Viewport pattern instances" type="number" min="2" step="1" @bind="draft.Count" @bind:after="NotifyChanged" /></label>
-            <label>Step (deg)<input aria-label="Viewport pattern step angle" type="number" step="any" value="@StepText" @onchange="SetStep" /></label>
-            <label class="full-circle"><input type="checkbox" aria-label="Viewport full circle" @bind="draft.FullCircle" @bind:after="NotifyChanged" />Full circle</label>
+            <div class="pattern-center-coordinates" data-pattern-anchor="center">
+                <label>Center X (@Units)<input aria-label="Viewport pattern center X" type="number" step="any" @bind="centerDraft.CenterX" @bind:after="NotifyChanged" /></label>
+                <label>Center Y (@Units)<input aria-label="Viewport pattern center Y" type="number" step="any" @bind="centerDraft.CenterY" @bind:after="NotifyChanged" /></label>
+            </div>
         }
-        else
-        {
-            <label>Columns<input aria-label="Viewport pattern columns" type="number" min="1" step="1" @bind="draft.Columns" @bind:after="NotifyChanged" /></label>
-            <label>X pitch (@Units)<input aria-label="Viewport pattern X pitch" type="number" step="any" @bind="draft.PitchX" @bind:after="NotifyChanged" /></label>
-            <label>Rows<input aria-label="Viewport pattern rows" type="number" min="1" step="1" @bind="draft.Rows" @bind:after="NotifyChanged" /></label>
-            <label>Y pitch (@Units)<input aria-label="Viewport pattern Y pitch" type="number" step="any" @bind="draft.PitchY" @bind:after="NotifyChanged" /></label>
-        }
-        @if (Error is not null) { <p role="alert">@Error</p> }
-        <footer>
-            <button type="button" disabled="@(!CanConfirm)" @onclick="Confirm">Confirm</button>
-            <button type="button" @onclick="Cancel"><CadIcon Name="CadIconName.Close" />Cancel</button>
-        </footer>
+        <div class="pattern-source" data-pattern-anchor="source">
+            @if (Draft is { } countDraft)
+            {
+                <label>Instances<input aria-label="Viewport pattern instances" type="number" min="2" step="1" @bind="countDraft.Count" @bind:after="NotifyChanged" /></label>
+            }
+            else
+            {
+                <label>Instances<input aria-label="Viewport pattern instances" value="@Pattern.Count" readonly @ondblclick="Edit" /></label>
+            }
+        </div>
+        <div class="pattern-angle" data-pattern-anchor="angle">
+            <div class="pattern-angle-mode" role="group" aria-label="Radial pattern spacing">
+                <button type="button" aria-pressed="@(FullCircle ? "true" : "false")" disabled="@(Draft is null)" @onclick="() => SetFullCircle(true)">Full circle</button>
+                <button type="button" aria-pressed="@(FullCircle ? "false" : "true")" disabled="@(Draft is null)" @onclick="() => SetFullCircle(false)">Angle between instances</button>
+            </div>
+            @if (Draft is { } angleDraft)
+            {
+                <label>Step (deg)<input aria-label="Viewport pattern step angle" type="number" step="any" value="@StepText" readonly="@angleDraft.FullCircle" @onchange="SetStep" /></label>
+            }
+            else
+            {
+                <label>Step (deg)<input aria-label="Viewport pattern step angle" value="@Number(Pattern.FullCircle ? 360d / Pattern.Count : Pattern.StepAngleDegrees)" readonly @ondblclick="Edit" /></label>
+            }
+        </div>
     }
     else
     {
-        @if (Pattern.Kind == PatternKind.Radial)
+        <div class="pattern-axis" data-pattern-anchor="x">
+            @if (Draft is { } xDraft)
+            {
+                <label>Columns<input aria-label="Viewport pattern columns" type="number" min="1" step="1" @bind="xDraft.Columns" @bind:after="NotifyChanged" /></label>
+                <label>X pitch (@Units)<input aria-label="Viewport pattern X pitch" type="number" step="any" @bind="xDraft.PitchX" @bind:after="NotifyChanged" /></label>
+            }
+            else
+            {
+                <label>Columns<input aria-label="Viewport pattern columns" value="@Pattern.Columns" readonly @ondblclick="Edit" /></label>
+                <label>X pitch (@Units)<input aria-label="Viewport pattern X pitch" value="@Number(Pattern.XPitch)" readonly @ondblclick="Edit" /></label>
+            }
+        </div>
+        <div class="pattern-axis" data-pattern-anchor="y">
+            @if (Draft is { } yDraft)
+            {
+                <label>Rows<input aria-label="Viewport pattern rows" type="number" min="1" step="1" @bind="yDraft.Rows" @bind:after="NotifyChanged" /></label>
+                <label>Y pitch (@Units)<input aria-label="Viewport pattern Y pitch" type="number" step="any" @bind="yDraft.PitchY" @bind:after="NotifyChanged" /></label>
+            }
+            else
+            {
+                <label>Rows<input aria-label="Viewport pattern rows" value="@Pattern.Rows" readonly @ondblclick="Edit" /></label>
+                <label>Y pitch (@Units)<input aria-label="Viewport pattern Y pitch" value="@Number(Pattern.YPitch)" readonly @ondblclick="Edit" /></label>
+            }
+        </div>
+    }
+    <div class="pattern-actions" data-pattern-anchor="actions">
+        @if (Error is not null) { <p role="alert">@Error</p> }
+        @if (Draft is not null)
         {
-            <label>Instances<input aria-label="Viewport pattern instances" value="@Pattern.Count" readonly @ondblclick="Edit" /></label>
-            <label>Step (deg)<input aria-label="Viewport pattern step angle" value="@Number(Pattern.FullCircle ? 360d / Pattern.Count : Pattern.StepAngleDegrees)" readonly @ondblclick="Edit" /></label>
+            <div class="pattern-action-buttons">
+                <button type="button" disabled="@(!CanConfirm)" @onclick="Confirm">Confirm</button>
+                <button type="button" title="Cancel pattern changes" aria-label="Cancel pattern changes" @onclick="Cancel"><CadIcon Name="CadIconName.Close" /></button>
+            </div>
         }
         else
         {
-            <label>Columns<input aria-label="Viewport pattern columns" value="@Pattern.Columns" readonly @ondblclick="Edit" /></label>
-            <label>X pitch (@Units)<input aria-label="Viewport pattern X pitch" value="@Number(Pattern.XPitch)" readonly @ondblclick="Edit" /></label>
-            <label>Rows<input aria-label="Viewport pattern rows" value="@Pattern.Rows" readonly @ondblclick="Edit" /></label>
-            <label>Y pitch (@Units)<input aria-label="Viewport pattern Y pitch" value="@Number(Pattern.YPitch)" readonly @ondblclick="Edit" /></label>
+            <button type="button" disabled="@(!CanEdit)" @onclick="Edit"><CadIcon Name="@(IsRadial ? CadIconName.CircularPattern : CadIconName.LinearPattern)" />Edit pattern</button>
         }
-        <footer><button type="button" disabled="@(!CanEdit)" @onclick="Edit"><CadIcon Name="CadIconName.LinearPattern" />Edit pattern</button></footer>
-    }
+    </div>
 </section>
 
 @code {
@@ -62,15 +103,24 @@
     [Parameter] public EventCallback Confirm { get; set; }
     [Parameter] public EventCallback Cancel { get; set; }
     [Parameter] public EventCallback Edit { get; set; }
+    private bool IsRadial => Draft is { } draft ? draft.Mode == "Radial" : Pattern.Kind == PatternKind.Radial;
+    private bool FullCircle => Draft?.FullCircle ?? Pattern.FullCircle;
     private static string Number(double value) => value.ToString("G10", CultureInfo.InvariantCulture);
     private string StepText => Draft is { FullCircle: true } draft
         && int.TryParse(draft.Count, out var count) && count > 0 ? Number(360d / count) : Draft?.StepAngle ?? "";
     private Task NotifyChanged() => Changed.InvokeAsync();
+    private Task BeginCenterEdit() => Draft is null && CanEdit ? Edit.InvokeAsync() : Task.CompletedTask;
+    private async Task SetFullCircle(bool fullCircle)
+    {
+        if (Draft is null || Draft.FullCircle == fullCircle) return;
+        if (!fullCircle) Draft.StepAngle = StepText;
+        Draft.FullCircle = fullCircle;
+        await NotifyChanged();
+    }
     private async Task SetStep(ChangeEventArgs args)
     {
-        if (Draft is null) return;
+        if (Draft is null || Draft.FullCircle) return;
         Draft.StepAngle = args.Value?.ToString() ?? "";
-        Draft.FullCircle = false;
         await NotifyChanged();
     }
     private async Task KeyDown(KeyboardEventArgs args)

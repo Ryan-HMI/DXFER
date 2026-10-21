@@ -1,5 +1,30 @@
 # Pattern viewport controls
 
+## Correction: geometry-anchored controls (2026-10-21)
+
+The floating 224px parameter card below is superseded, not accepted as the
+requested viewport interaction. Use independently anchored compact controls on
+the pattern's pitch/radial guides, without an enclosing card. Circular patterns
+have an exact-center drag handle, count input, and a Full circle / Angle between
+instances segmented control. Center dragging stages the existing pattern edit;
+Confirm/Cancel, validation, layer protection and one-step Undo remain authoritative.
+Show/Hide from any instance context menu hides both handles and annotations.
+Controls must follow pan/zoom, avoid palettes and each other, retain decimal key
+entry, and remain readable at 1440x1000 and 1100x705 desktop sizes. The center
+handle stays at the actual center, never relocated to simulate an on-screen point.
+No solver, document-format or existing-record migration is included.
+
+Verification: 3,061 core tests and 1,783 JavaScript tests passed, including
+coalesced/ordered center events, protected geometry, stale callbacks, cancellation
+and one-step commit history. A follow-up held-drag Hide guard passed 18 focused
+component tests. Isolated PlaneGCS browser replay passed 15 control-layout checks
+at 1440x1000 and 1100x705, 18 held-movement samples (eight circle pixel probes
+per sample), exact native source preservation, mode/count/decimal editing,
+Confirm/Cancel, Undo/Redo, native reopen/edit and instance Show/Hide. Owner
+screenshots inspected; no browser errors. Evidence:
+`/tmp/dxfer-pattern-viewport/pattern-viewport-results.json`.
+This is owner verification, not Flux independent or Ryan visual acceptance.
+
 ## Layout contract
 
 - Context-menu follow-up: add Show/Hide pattern controls alongside Edit pattern

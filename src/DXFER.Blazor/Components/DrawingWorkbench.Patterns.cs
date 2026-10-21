@@ -16,8 +16,12 @@ public partial class DrawingWorkbench
     private bool _confirmDissolvePattern;
     private readonly HashSet<string> _hiddenPatternControls = new(StringComparer.Ordinal);
     private string? _shownPatternControlsId;
+    private bool _patternCenterDragging;
+    private string? _patternCenterOriginalX;
+    private string? _patternCenterOriginalY;
     private bool PatternEditing => _patternDraft is not null;
     private DrawingDocument? PatternPreview => ReferenceEquals(_patternSourceDocument, _document) ? _patternPreview : null;
+    private bool CanConfirmPatternPreview => !_patternCenterDragging && PatternPreview is not null && _patternError is null;
 
     private PatternDefinition? ViewportPattern => ViewportPatternCandidate is { } pattern
         && !_hiddenPatternControls.Contains(pattern.Id) ? pattern : null;
@@ -28,7 +32,8 @@ public partial class DrawingWorkbench
           ?? _document.Metadata.Patterns.FirstOrDefault(p => p.SourceEntityIds.Concat(p.Members.Select(m => m.EntityId))
             .Any(id => _selectedEntityIds.Any(key => key == id || key.StartsWith(id + "|", StringComparison.Ordinal))));
 
-    private bool CanTogglePatternControls(PatternDefinition pattern) => !PatternEditing || _editingPattern?.Id == pattern.Id;
+    private bool CanTogglePatternControls(PatternDefinition pattern) => !_patternCenterDragging
+        && (!PatternEditing || _editingPattern?.Id == pattern.Id);
 
     private void TogglePatternControls(PatternDefinition pattern)
     {
@@ -58,6 +63,65 @@ public partial class DrawingWorkbench
     private void EditViewportPattern(PatternDefinition pattern)
     {
         if (CanEditViewportPattern(pattern)) OpenPatternEditor(pattern);
+    }
+
+    private void MovePatternCenter(string patternId, double x, double y, string phase)
+    {
+        if (phase is not ("begin" or "update" or "end" or "cancel")) return;
+        if (phase == "begin")
+        {
+            if (_patternCenterDragging || !double.IsFinite(x) || !double.IsFinite(y)) return;
+            var pattern = ViewportPattern;
+            if (pattern is null || pattern.Id != patternId || pattern.Kind != PatternKind.Radial
+                || !CanEditViewportPattern(pattern)) return;
+            if (PatternEditing)
+            {
+                if (!ReferenceEquals(_patternSourceDocument, _document) || _patternDraft!.Mode != "Radial") return;
+            }
+            else
+            {
+                pattern = _document.Metadata.Patterns.FirstOrDefault(p => p.Id == patternId);
+                if (pattern is null) return;
+                OpenPatternEditor(pattern);
+            }
+            _patternCenterOriginalX = _patternDraft!.CenterX;
+            _patternCenterOriginalY = _patternDraft.CenterY;
+            _patternCenterDragging = true;
+        }
+        else
+        {
+            if (!_patternCenterDragging || _editingPattern?.Id != patternId || _patternDraft is null) return;
+            var valid = double.IsFinite(x) && double.IsFinite(y) && _patternDraft.Mode == "Radial"
+                && ReferenceEquals(_patternSourceDocument, _document) && CanEditViewportPattern(_editingPattern);
+            if (phase == "update" && !valid) return;
+            if (phase == "cancel" || !valid)
+            {
+                _patternDraft.CenterX = _patternCenterOriginalX!;
+                _patternDraft.CenterY = _patternCenterOriginalY!;
+                ClearPatternCenterDrag();
+            }
+            else
+            {
+                _patternDraft.CenterX = Text(x);
+                _patternDraft.CenterY = Text(y);
+                if (phase == "end") ClearPatternCenterDrag();
+            }
+            RefreshPatternPreview();
+            if (phase == "end" && !valid && _patternError is null)
+            {
+                _patternPreview = null;
+                _patternError = "Pattern center drag is no longer valid. Previous center restored.";
+                _status = _patternError;
+            }
+        }
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void ClearPatternCenterDrag()
+    {
+        _patternCenterDragging = false;
+        _patternCenterOriginalX = null;
+        _patternCenterOriginalY = null;
     }
 
     private static string PatternLabel(PatternDefinition pattern) => pattern.Kind == PatternKind.Radial
@@ -153,7 +217,7 @@ public partial class DrawingWorkbench
 
     private void CommitPatternPreview()
     {
-        if (PatternPreview is not { } preview || _patternError is not null) return;
+        if (!CanConfirmPatternPreview || PatternPreview is not { } preview) return;
         var previous = _document;
         ApplyDocumentChangeCore(preview, "Pattern saved.", patternCommand: true);
         if (!ReferenceEquals(previous, _document))
@@ -180,6 +244,7 @@ public partial class DrawingWorkbench
 
     private void ClearPatternEditor()
     {
+        ClearPatternCenterDrag();
         _patternDraft = null; _editingPattern = null; _patternSourceDocument = null;
         _patternPreview = null; _patternError = null; _confirmDissolvePattern = false;
     }

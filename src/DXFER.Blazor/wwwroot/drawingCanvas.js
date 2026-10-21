@@ -1,6 +1,6 @@
 import { sampleControlSpline } from "./canvas/splineGeometry.js";
 import { measurePerimeterDistance } from "./perimeterDistance.js";
-import { patternViewportGuides } from "./canvas/patternViewport.js";
+import { patternViewportGuides, patternViewportAnchors, bindPatternCenterHandle } from "./canvas/patternViewport.js?v=20261021-pattern-handles";
 import { getSnapCue } from "./canvas/snapCue.js?v=20261019";
 import {
   addUniqueNumber,
@@ -437,6 +437,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
 
     dispose() {
       if (state.solverEngine === "PlaneGCS") cancelGeometryDrag(state);
+      state.patternHandleBinding?.dispose();
       state.disposed = true;
       state.measurementFeedback?.remove();
       clearConstraintHoverRetention(state);
@@ -884,8 +885,31 @@ export function getCurrentSnapCue(state) {
 function drawPatternViewportControls(state, size) {
   const widget = state.canvas.parentElement?.querySelector?.('.pattern-viewport-controls');
   state.patternControlsVisible = Boolean(widget);
+  if (state.patternHandleBinding?.widget !== widget) {
+    state.patternHandleBinding?.dispose();
+    state.patternHandleBinding = null;
+    state.patternCenterPreview = null;
+    if (widget) {
+      const dispose = bindPatternCenterHandle(widget, {
+        toWorld: event => {
+          const rect = state.canvas.getBoundingClientRect();
+          return screenToWorld(state, {x: event.clientX - rect.left, y: event.clientY - rect.top});
+        },
+        send: value => state.disposed ? Promise.resolve() : state.dotnetRef.invokeMethodAsync(
+          'OnPatternCenterChanged', value.id, value.x, value.y, value.phase),
+        preview: point => { state.patternCenterPreview = point; if (!state.disposed) draw(state); },
+        onError: error => console.error('Pattern center preview failed', error)
+      });
+      state.patternHandleBinding = {widget, dispose};
+    }
+  }
   if (!widget) return;
-  const guides = patternViewportGuides(widget.dataset);
+  const data = {...widget.dataset};
+  if (state.patternCenterPreview) {
+    data.centerX = state.patternCenterPreview.x;
+    data.centerY = state.patternCenterPreview.y;
+  }
+  const guides = patternViewportGuides(data), anchors = patternViewportAnchors(data);
   if (!guides.length) { widget.style.visibility = 'hidden'; return; }
   const rect = state.canvas.getBoundingClientRect();
   const obstacles = getCanvasControlBounds(state);
@@ -893,11 +917,6 @@ function drawPatternViewportControls(state, size) {
     const r = input.getBoundingClientRect();
     if (r.width && r.height) obstacles.push({ x: r.left - rect.left, y: r.top - rect.top, width: r.width, height: r.height });
   }
-  const anchor = worldToScreen(state, guides[0].end);
-  const box = positionSnapCue(anchor, size, widget.offsetWidth, widget.offsetHeight, obstacles);
-  if (!box) { widget.style.visibility = 'hidden'; return; }
-  widget.style.left = `${box.x}px`;
-  widget.style.top = `${box.y}px`;
   widget.style.visibility = 'visible';
   if (!widget.dataset.enterBound) {
     widget.dataset.enterBound = 'true';
@@ -918,9 +937,38 @@ function drawPatternViewportControls(state, size) {
     ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
     ctx.strokeRect(end.x - 3, end.y - 3, 6, 6);
   }
-  ctx.beginPath(); ctx.moveTo(anchor.x, anchor.y);
-  ctx.lineTo(Math.max(box.x, Math.min(anchor.x, box.x + box.width)), Math.max(box.y, Math.min(anchor.y, box.y + box.height)));
-  ctx.stroke(); ctx.restore();
+  if (data.patternKind === 'Radial') {
+    const center = worldToScreen(state, guides[0].start), seed = worldToScreen(state, guides[0].end);
+    const radius = Math.hypot(seed.x - center.x, seed.y - center.y) * .65;
+    const start = Math.atan2(seed.y - center.y, seed.x - center.x), step = Number(data.step) * Math.PI / 180;
+    if (radius > 1) {
+      ctx.beginPath(); ctx.arc(center.x, center.y, radius, start, start - step, step > 0); ctx.stroke();
+    }
+  }
+  const handle = widget.querySelector('[data-pattern-center-handle]');
+  if (handle && anchors.center) {
+    const center = worldToScreen(state, anchors.center);
+    const width = handle.offsetWidth, height = handle.offsetHeight;
+    const box = {x: center.x - width / 2, y: center.y - height / 2, width, height};
+    handle.style.left = `${box.x}px`; handle.style.top = `${box.y}px`;
+    handle.style.visibility = box.x < 0 || box.y < 0 || box.x + width > size.width || box.y + height > size.height ? 'hidden' : 'visible';
+    obstacles.push(box);
+  }
+  for (const group of widget.querySelectorAll('[data-pattern-anchor]')) {
+    if (group === handle) continue;
+    const world = anchors[group.dataset.patternAnchor];
+    if (!world) { group.style.visibility = 'hidden'; continue; }
+    const anchor = worldToScreen(state, world);
+    const box = positionSnapCue(anchor, size, group.offsetWidth, group.offsetHeight, obstacles);
+    if (!box) { group.style.visibility = 'hidden'; continue; }
+    group.style.left = `${box.x}px`; group.style.top = `${box.y}px`;
+    group.style.visibility = 'visible';
+    obstacles.push(box);
+    ctx.beginPath(); ctx.moveTo(anchor.x, anchor.y);
+    ctx.lineTo(Math.max(box.x, Math.min(anchor.x, box.x + box.width)), Math.max(box.y, Math.min(anchor.y, box.y + box.height)));
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 export function positionSnapCue(anchor, size, width, height, obstacles = []) {

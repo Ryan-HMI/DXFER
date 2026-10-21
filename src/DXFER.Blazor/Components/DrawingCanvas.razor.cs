@@ -9,7 +9,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261020-pattern-viewport";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261021-pattern-handles";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -99,6 +99,14 @@ public partial class DrawingCanvas : IAsyncDisposable
     [Parameter] public DrawingDocument? PatternPreview { get; set; }
     [Parameter] public bool PatternEditing { get; set; }
     [Parameter] public RenderFragment? PatternControls { get; set; }
+    [Parameter] public Action<string, double, double, string>? PatternCenterChanged { get; set; }
+
+    [JSInvokable]
+    public async Task OnPatternCenterChanged(string patternId, double x, double y, string phase)
+    {
+        PatternCenterChanged?.Invoke(patternId, x, y, phase);
+        await InvokeAsync(StateHasChanged);
+    }
 
     [JSInvokable]
     public CanvasDocumentDto? GetOffsetDragPreview(string key, CanvasPointDto start, CanvasPointDto end, bool constrain)
