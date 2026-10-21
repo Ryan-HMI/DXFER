@@ -34,6 +34,8 @@ public sealed class WorkbenchPatternControlsTests
         var draft = new PatternDraft { Columns = "5", PitchX = "1.25" };
         Set(workbench, "_patternDraft", draft);
         Set(workbench, "_editingPattern", pattern);
+        Set(workbench, "_contextDocument", document);
+        Property(workbench, "ContextEditable").Should().Be(false);
         Invoke(workbench, "TogglePatternControls", pattern);
         Property(workbench, "ViewportPattern").Should().BeNull();
         Field(workbench, "_patternDraft").Should().BeSameAs(draft);

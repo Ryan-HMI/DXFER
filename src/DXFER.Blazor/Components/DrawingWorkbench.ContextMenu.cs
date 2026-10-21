@@ -18,7 +18,7 @@ public partial class DrawingWorkbench
     private string _contextLayer = "";
     private SketchDimension? ContextDimension => _contextKey?.StartsWith("dimension:", StringComparison.Ordinal) == true
         ? _document.Dimensions.FirstOrDefault(d => d.Id == _contextKey[10..]) : null;
-    private bool ContextEditable => !LayersReadOnly && ReferenceEquals(_contextDocument, _document)
+    private bool ContextEditable => !PatternEditing && !LayersReadOnly && ReferenceEquals(_contextDocument, _document)
         && _contextEntities.All(id => DrawingLayerService.CanEdit(_document, id));
     private bool ContextCorner => DrawingModifyService.CanModifySelectedCorner(_document, _contextCornerSelection);
     private string ContextStyle => FormattableString.Invariant(

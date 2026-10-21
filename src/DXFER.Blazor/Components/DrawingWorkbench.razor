@@ -64,7 +64,15 @@
         <section class="dxfer-context-menu" style="@ContextStyle" role="dialog" aria-label="Drawing context commands"
                  tabindex="-1" @ref="_contextMenu" @onkeydown="ContextKeyDown" @onkeydown:stopPropagation="true"
                  @oncontextmenu:preventDefault="true">
-            @if (ContextDimension is { } dimension)
+            @if (PatternEditing && _editingPattern is { } activePattern)
+            {
+                <button type="button" disabled="@(!CanTogglePatternControls(activePattern))"
+                        @onclick="() => TogglePatternControls(activePattern)">
+                    <CadIcon Name="@(ViewportPattern?.Id == activePattern.Id ? CadIconName.EyeOff : CadIconName.Eye)" />
+                    @(ViewportPattern?.Id == activePattern.Id ? "Hide pattern controls" : "Show pattern controls")
+                </button>
+            }
+            else if (ContextDimension is { } dimension)
             {
                 <fieldset disabled="@(!ContextEditable)">
                     <legend>Dimension</legend>

@@ -5173,10 +5173,17 @@ export function contextSelectionForTarget(selectedKeys, target) {
   return selected.some(key => getReferenceEntityId(key) === target.entityId) ? selected : [target.key];
 }
 
-function openDrawingContextMenu(state, event, dimensionId = null) {
+export function openDrawingContextMenu(state, event, dimensionId = null) {
   event.preventDefault();
   event.stopPropagation();
-  if (state.disposed || state.patternEditing || state.activeTool !== "select" || state.geometryDrag || state.dimensionDrag) return;
+  if (state.disposed || state.geometryDrag || state.dimensionDrag) return;
+  if (state.patternEditing) {
+    // The draft menu is view-only; do not replace selection with preview members.
+    state.clickCandidate = null;
+    invokeDotNet(state, "OnContextMenuRequested", null, [], event.clientX, event.clientY);
+    return;
+  }
+  if (state.activeTool !== "select") return;
   const target = dimensionId ? null : findNearestTarget(state, getPointerScreenPoint(state, event));
   dimensionId ||= target?.dimensionId;
   if (dimensionId && state.persistentDimensionInputs?.has(dimensionId)) {

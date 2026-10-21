@@ -1,8 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { patternViewportGuides, patternViewportAnchors, createPatternCenterQueue } from '../../src/DXFER.Blazor/wwwroot/canvas/patternViewport.js';
-import { positionSnapCue, pickPatternDirection } from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.js';
+import { positionSnapCue, pickPatternDirection, openDrawingContextMenu } from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.js';
 const baseline = {sourceX: 10, sourceY: 10, pitchX: 3, pitchY: 4, angle: 0, centerX: 0, centerY: 0, step: 90};
+test('active pattern context requests a view-only menu without changing draft selection', () => {
+  const calls = [], selectedKeys = new Set(['seed']);
+  const state = {patternEditing: true, activeTool: 'pattern', selectedKeys, activeSelectionKey: 'seed',
+    clickCandidate: {}, canvas: {dataset: {}}, dotnetRef: {invokeMethodAsync: (...args) => { calls.push(args); }}};
+  const event = {clientX: 300, clientY: 250, preventDefault() {}, stopPropagation() {}};
+  openDrawingContextMenu(state, event, 'dimension');
+  assert.deepEqual(calls, [['OnContextMenuRequested', null, [], 300, 250]]);
+  assert.equal(state.selectedKeys, selectedKeys); assert.equal(state.activeSelectionKey, 'seed');
+  assert.equal(state.patternEditing, true); assert.equal(state.clickCandidate, null);
+  for (const flag of ['disposed', 'geometryDrag', 'dimensionDrag']) {
+    calls.length = 0; state[flag] = true; openDrawingContextMenu(state, event);
+    assert.deepEqual(calls, []); delete state[flag];
+  }
+});
 test('pattern pitch guides follow source and rotated axes', () => {
   const guides = patternViewportGuides({...baseline, patternKind: 'Rectangular', angle: 90});
   assert.ok(Math.abs(guides[0].end.x - 10) < 1e-8);
