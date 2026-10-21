@@ -57,6 +57,12 @@
     background: var(--dx-canvas-background, radial-gradient(ellipse at center, #172832 0%, #0b1016 70%));
     cursor: crosshair;
     touch-action: none;
+    outline: none;
+}
+
+.drawing-canvas:focus-visible:not([data-programmatic-focus="true"]) {
+    outline: 2px solid var(--dx-accent, #66d9ff);
+    outline-offset: -2px;
 }
 
 .drawing-dimension-overlay {

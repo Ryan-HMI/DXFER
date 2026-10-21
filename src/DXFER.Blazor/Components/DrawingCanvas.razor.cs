@@ -9,7 +9,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261021-pattern-draft-context";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261021-canvas-focus-return";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -319,7 +319,9 @@ public partial class DrawingCanvas : IAsyncDisposable
         await _canvasInstance.InvokeVoidAsync("setMeasurement", Measurement, MeasurementUnits);
     }
 
-    public ValueTask FocusAsync() => _canvas.FocusAsync(preventScroll: true);
+    public ValueTask FocusAsync() => _canvasInstance is null
+        ? _canvas.FocusAsync(preventScroll: true)
+        : _canvasInstance.InvokeVoidAsync("focus");
 
     public async Task FitToExtentsAsync()
     {

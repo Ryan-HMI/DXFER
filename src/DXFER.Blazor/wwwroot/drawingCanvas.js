@@ -243,6 +243,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
   const onDoubleClick = event => handleDoubleClick(state, event);
   const onContextMenu = event => openDrawingContextMenu(state, event);
   const onKeyDown = event => handleKeyDown(state, event);
+  const onBlur = () => { delete state.canvas.dataset.programmaticFocus; };
 
   state.canvas.style.touchAction = "none";
   state.canvas.addEventListener("pointermove", onPointerMove);
@@ -253,6 +254,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
   state.canvas.addEventListener("wheel", onWheel, { passive: false });
   state.canvas.addEventListener("dblclick", onDoubleClick);
   state.canvas.addEventListener("contextmenu", onContextMenu);
+  state.canvas.addEventListener("blur", onBlur);
   state.canvas.addEventListener("dxfer-background-changed", onBackgroundChanged);
   window.addEventListener("resize", resize);
   window.addEventListener("keydown", onKeyDown);
@@ -268,6 +270,9 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
   resizeCanvas(state);
 
   return {
+    focus() {
+      focusCanvas(state.canvas);
+    },
     refreshPatternControls() {
       if (state.patternControlsVisible || state.canvas.parentElement?.querySelector?.('.pattern-viewport-controls')) draw(state);
     },
@@ -449,6 +454,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
       state.canvas.removeEventListener("wheel", onWheel);
       state.canvas.removeEventListener("dblclick", onDoubleClick);
       state.canvas.removeEventListener("contextmenu", onContextMenu);
+      state.canvas.removeEventListener("blur", onBlur);
       state.canvas.removeEventListener("dxfer-background-changed", onBackgroundChanged);
       window.removeEventListener("resize", resize);
       window.removeEventListener("keydown", onKeyDown);
@@ -14691,6 +14697,7 @@ function releasePointer(canvas, pointerId) {
 }
 
 function focusCanvas(canvas) {
+  canvas.dataset.programmaticFocus = "true";
   focusElement(canvas);
 }
 

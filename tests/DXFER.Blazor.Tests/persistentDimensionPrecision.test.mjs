@@ -37,8 +37,30 @@ function harness(t) {
   instance.setDocument({ entities: [], constraints: [], dimensions: [{ id: "gap", kind: "Offset", value: 1.000000323445391,
     referenceKeys: ["source", "dependent"], anchor: { x: 2, y: 2 }, isDriving: true,
     offsetStart: { x: 3, y: 0 }, offsetEnd: { x: 4.000000323445391, y: 0 } }] });
-  return { input: inputs[0], canvas, changes: () => calls.filter(call => call[0] === "OnSketchDimensionValueChanged") };
+  return { input: inputs[0], canvas, instance, changes: () => calls.filter(call => call[0] === "OnSketchDimensionValueChanged") };
 }
+
+test("dimension Enter marks only the programmatic focus return, not later keyboard entry", t => {
+  const h = harness(t);
+  h.input.focus();
+  h.input.emit("keydown", { key: "Enter" });
+  assert.equal(document.activeElement, h.canvas);
+  assert.equal(h.canvas.dataset.programmaticFocus, "true");
+  h.input.focus();
+  assert.equal(h.canvas.dataset.programmaticFocus, undefined);
+  h.canvas.focus();
+  assert.equal(h.canvas.dataset.programmaticFocus, undefined);
+  assert.deepEqual(h.changes(), []);
+});
+
+test("component canvas focus uses the same marker and clears it on blur", t => {
+  const h = harness(t);
+  h.instance.focus();
+  assert.equal(document.activeElement, h.canvas);
+  assert.equal(h.canvas.dataset.programmaticFocus, "true");
+  h.input.focus();
+  assert.equal(h.canvas.dataset.programmaticFocus, undefined);
+});
 
 for (const action of ["blur", "Enter", "Escape"]) {
   test(`unedited rounded persistent input does not change geometry on ${action}`, t => {
