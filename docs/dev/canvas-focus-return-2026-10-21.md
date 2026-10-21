@@ -18,4 +18,8 @@ All 1,796 JavaScript and 3,149 core tests pass, including 303 component cases. N
 
 Isolated real-browser replay at 1440x1000 passes the exact Width 15, Tab, Height 10, Enter sequence. The native drawing contains the expected dimensions and rectangle bounds; scale and pan do not change. Persistent-dimension Enter and component-driven context-menu Close also return focus without an outline. Three native Tab entries restore the visible 2px inset indicator after blur. Screenshots inspected; no browser errors. Evidence: `/tmp/dxfer-canvas-focus-candidate-qa-final/results.json`.
 
-Public deployment verification remains pending. No stored drawing repair is required.
+## Installed Verification
+
+Deployed `4201a5c3feef020719b910afed00bd05e9e27385` to DXFer Dev at 2026-10-21T19:20:26Z. The public browser replay passes the same focus/camera/geometry checks with tooltip-verified 4201a5c and PlaneGCS. Screenshots inspected. Evidence: `/tmp/dxfer-canvas-focus-installed/results.json`. Served JavaScript and scoped CSS match the publication, with new cache tokens. Normal Google sign-in remains configured; Production/Test PIDs 3584417/3584475 are unchanged. Rollback: `/home/ryan/dxfer-runtime/dev-publish-before-4201a5c`.
+
+The underlying focus styling is corrected; no stored drawing repair is required. This is owner/worker browser verification, not independent Flux acceptance. Isolated 5038 stopped and all test sessions finished.
