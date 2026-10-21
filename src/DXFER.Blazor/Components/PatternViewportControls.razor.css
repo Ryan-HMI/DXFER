@@ -10,17 +10,13 @@
 }
 
 [data-pattern-anchor] { position: absolute; visibility: hidden; pointer-events: auto; box-sizing: border-box; }
-.pattern-source { width: 82px; }
-.pattern-axis, .pattern-center-coordinates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 182px; }
-.pattern-angle { display: grid; gap: 5px; width: 262px; max-width: 100%; }
-.pattern-angle > label { width: 92px; }
-.pattern-angle-mode { display: flex; }
-.pattern-angle-mode button { border-radius: 0; justify-content: center; padding-inline: 6px; }
-.pattern-angle-mode button:first-child { border-radius: 3px 0 0 3px; }
-.pattern-angle-mode button:last-child { border-radius: 0 3px 3px 0; margin-left: -1px; }
-.pattern-angle-mode button[aria-pressed="true"] { border-color: var(--dx-accent); background: var(--dx-accent-soft, var(--dx-panel)); color: var(--dx-text); position: relative; }
-.pattern-angle-mode button:disabled { opacity: 1; }
-.pattern-angle-mode button[aria-pressed="false"] { color: var(--dx-secondary); }
+.pattern-axis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 182px; }
+.pattern-radial-card { display: grid; gap: 6px; width: 216px; max-width: 100%; padding: 8px; border: 1px solid var(--dx-border); border-radius: 4px; background: var(--dx-panel); }
+.pattern-radial-count-row { display: flex; align-items: end; gap: 6px; }
+.pattern-radial-count-row > label { flex: 1; }
+.pattern-radial-count-row .pattern-icon-button { flex: 0 0 28px; width: 28px; height: 28px; padding: 3px; justify-content: center; }
+.pattern-full-circle { display: flex; align-items: center; gap: 6px; }
+.pattern-full-circle input { width: 16px; height: 16px; accent-color: var(--dx-accent); }
 .pattern-center-handle { width: 24px; height: 24px; min-height: 24px; padding: 3px; justify-content: center; border-radius: 50%; cursor: move; touch-action: none; }
 .pattern-actions { display: grid; gap: 6px; max-width: min(260px, 100%); }
 .pattern-action-buttons { display: flex; gap: 5px; }

@@ -48,6 +48,12 @@ try {
   const editor = page.getByRole('region', {name: 'Pattern settings', exact: true});
   const context=page.getByRole('dialog',{name:'Drawing context commands'});
   const field = name => widget.getByRole('spinbutton', {name: `Viewport pattern ${name}`, exact: true});
+  const centerField = axis => editor.getByRole('spinbutton', {name:`Pattern center ${axis}`,exact:true});
+  const setCenter = async (axis,value) => {
+    const input=centerField(axis); await input.fill(value); await input.press('Tab');
+    await expect(input).toHaveValue(value);
+    await expect(widget).toHaveAttribute(`data-center-${axis.toLowerCase()}`,value);
+  };
   const cancel = () => widget.getByRole('button', {name: 'Cancel pattern changes', exact: true}).click();
   const tool = async name => { await page.getByRole('button', {name, exact: true}).click(); await page.waitForTimeout(150); };
   const menu = async name => { await tool('Open application menu'); await page.getByRole('button', {name:'File',exact:true}).hover(); await tool(name); };
@@ -98,15 +104,47 @@ try {
       for (const previous of groups) assert.ok(!overlaps(box, previous.box), `${name}: ${anchor} clears ${previous.anchor}`);
       groups.push({anchor, box});
     }
-    assert.ok(groups.length >= 3, 'independent groups, not one card');
+    const radial = await widget.getAttribute('data-pattern-kind') === 'Radial';
+    if (radial) {
+      assert.deepEqual(groups.map(g=>g.anchor).sort(), ['center-handle','source'], 'one compact source card plus independent center handle');
+      await expect(widget.getByLabel('Viewport pattern center X',{exact:true})).toHaveCount(0);
+      await expect(widget.getByLabel('Viewport pattern center Y',{exact:true})).toHaveCount(0);
+      const card=widget.locator('[data-pattern-anchor="source"]'), box=await card.boundingBox();
+      assert.ok(box.width<=240 && box.height<=160, `${name}: compact radial card bounds ${box.width}x${box.height}`);
+      const count=card.getByLabel('Viewport pattern instances',{exact:true});
+      await expect(count).toBeVisible();
+      const fullCircle=card.getByRole('checkbox',{name:/^Full circle$/i});
+      await expect(fullCircle).toBeVisible();
+      if (await fullCircle.isChecked()) await expect(field('step angle')).toHaveCount(0);
+      else await expect(card.getByLabel('Viewport pattern step angle',{exact:true})).toBeVisible();
+      if (await card.getByRole('button',{name:'Confirm',exact:true}).count()) {
+        const countBox=await count.boundingBox();
+        for (const name of ['Confirm','Cancel pattern changes']) {
+          const button=card.getByRole('button',{name,exact:true}), buttonBox=await button.boundingBox();
+          close(buttonBox.y+buttonBox.height/2,countBox.y+countBox.height/2,'count and action buttons share row',2);
+          assert.ok(buttonBox.width<=40 && buttonBox.height<=40,'radial action is compact icon control');
+          assert.equal((await button.innerText()).trim(),'','radial action uses icon, retaining accessible name');
+        }
+      }
+      for (const control of await card.locator('input,button,label').all()) {
+        if (!await control.isVisible()) continue;
+        const b=await control.boundingBox();
+        assert.ok(b.x>=box.x-1 && b.y>=box.y-1 && b.x+b.width<=box.x+box.width+1 && b.y+b.height<=box.y+box.height+1,
+          'radial card controls fit without overflow');
+      }
+    } else assert.ok(groups.length >= 3, 'linear controls remain independent groups');
     layouts.push({name, viewport: page.viewportSize(), canvas: c, groups});
     await page.screenshot({path:`${output}/${name}.png`});
   };
   const visibleControls = async radial => {
     await expect(widget).toBeVisible();
-    for (const anchor of radial ? ['source', 'angle', 'actions', 'center-handle'] : ['x', 'y', 'actions'])
+    for (const anchor of radial ? ['source', 'center-handle'] : ['x', 'y', 'actions'])
       await expect(widget.locator(`[data-pattern-anchor="${anchor}"]`)).toBeVisible();
     await expect(widget.locator('[data-pattern-center-handle]')).toHaveCount(radial ? 1 : 0);
+    if (radial) {
+      await expect(widget.getByLabel('Viewport pattern center X',{exact:true})).toHaveCount(0);
+      await expect(widget.getByLabel('Viewport pattern center Y',{exact:true})).toHaveCount(0);
+    }
   };
   const hiddenControls = async () => {
     await expect(widget).toHaveCount(0);
@@ -136,8 +174,8 @@ try {
       for (const fraction of [.25, .6, 1]) {
         const target = {x: pattern.center.x + delta.x * fraction, y: pattern.center.y + delta.y * fraction};
         await page.mouse.move(start.x + delta.x * scale * fraction, start.y - delta.y * scale * fraction, {steps: 8});
-        await expect.poll(async () => Math.hypot(+(await field('center X').inputValue()) - target.x,
-          +(await field('center Y').inputValue()) - target.y), {message: 'held motion updates server preview before release'}).toBeLessThan(1e-5);
+        await expect.poll(async () => Math.hypot(+(await centerField('X').inputValue()) - target.x,
+          +(await centerField('Y').inputValue()) - target.y), {message: 'held motion updates sidebar coordinates before release'}).toBeLessThan(1e-5);
         await expect(canvas).toHaveAttribute('data-corner-preview', 'true');
         await expect(widget.getByRole('button', {name: 'Confirm', exact: true})).toBeDisabled();
         close(+(await widget.getAttribute('data-source-x')), source.center.x, 'held source X unchanged');
@@ -178,8 +216,8 @@ try {
     await expect(widget).not.toHaveAttribute('data-center-dragging', 'true');
     await expect(widget.getByRole('button', {name: 'Confirm', exact: true})).toBeEnabled();
     const target = {x: pattern.center.x + delta.x, y: pattern.center.y + delta.y};
-    close(+(await field('center X').inputValue()), target.x, 'released staged X');
-    close(+(await field('center Y').inputValue()), target.y, 'released staged Y');
+    close(+(await centerField('X').inputValue()), target.x, 'released staged X');
+    close(+(await centerField('Y').inputValue()), target.y, 'released staged Y');
     assert.deepEqual(geometry((await download(`${name}-uncommitted`)).doc), geometry(doc),
       'releasing center handle stages preview only; native geometry and center remain committed values');
     return target;
@@ -243,17 +281,15 @@ try {
   await page.setViewportSize({width:1440,height:1000}); await load(fixture,1);
   const radialSeed = (await download('radial-source')).doc.entities[0];
   await click(10.6,10.8); await tool('Radial pattern');
-  await set('instances','8'); await expect(field('step angle')).toHaveValue('45');
-  const fullCircle = widget.getByRole('button', {name: 'Full circle', exact: true});
-  const stepMode = widget.getByRole('button', {name: 'Angle between instances', exact: true});
-  await expect(fullCircle).toHaveAttribute('aria-pressed', 'true');
-  await expect(field('step angle')).toHaveAttribute('readonly', '');
-  await stepMode.click();
-  await expect(stepMode).toHaveAttribute('aria-pressed', 'true');
-  await expect(fullCircle).toHaveAttribute('aria-pressed', 'false');
+  const fullCircle = widget.getByRole('checkbox', {name:/^Full circle$/i});
+  await expect(fullCircle).toBeChecked();
+  await set('instances','8'); await expect(field('step angle')).toHaveCount(0);
+  await layout('radial-full-circle-default');
+  await fullCircle.uncheck(); await expect(fullCircle).not.toBeChecked();
+  await expect(field('step angle')).toHaveValue('45');
   await set('step angle','30.25');
   await expect(editor.getByRole('spinbutton',{name:'Pattern step angle'})).toHaveValue('30.25');
-  await set('center X', '1.25'); await set('center Y', '-2.5');
+  await setCenter('X', '1.25'); await setCenter('Y', '-2.5');
   await tool('Fit pattern preview'); await layout('radial');
   await page.setViewportSize({width:1100,height:705}); await page.waitForTimeout(300); await layout('radial-1100');
   await widget.getByRole('button',{name:'Confirm',exact:true}).click();
@@ -270,9 +306,8 @@ try {
   await context.getByRole('button',{name:'Show pattern controls',exact:true}).click();
   await visibleControls(true);
   await widget.getByRole('button',{name:'Edit pattern',exact:true}).click();
-  await fullCircle.click(); await expect(field('step angle')).toHaveValue('45');
-  await expect(fullCircle).toHaveAttribute('aria-pressed', 'true');
-  await expect(stepMode).toHaveAttribute('aria-pressed', 'false');
+  await fullCircle.check(); await expect(field('step angle')).toHaveCount(0);
+  await expect(fullCircle).toBeChecked();
   await widget.getByRole('button',{name:'Confirm',exact:true}).click();
   full = await download('radial-reopened-edit'); assert.equal(full.doc.metadata.patterns[0].fullCircle,true);
   for (const viewport of [{width:1440,height:1000}, {width:1100,height:705}]) {
@@ -307,7 +342,7 @@ try {
   }
   const setDraftParameter = async (radial, value) => {
     const parameter = radial ? 'center X' : 'U pitch';
-    await set(parameter, String(value));
+    if (radial) await setCenter('X',String(value)); else await set(parameter, String(value));
     await expect(editor.getByLabel(`Pattern ${parameter}`, {exact:true})).toHaveValue(String(value));
     await expect(widget).toHaveAttribute(radial ? 'data-center-x' : 'data-pitch-x', String(value));
   };
@@ -393,7 +428,7 @@ try {
       assert.deepEqual(geometry((await download(`${name}-hidden-uncommitted`)).doc), geometry(baseline.doc));
       assert.equal(await draftRightClick('blank', circles), 'Show pattern controls');
       await context.getByRole('button',{name:'Show pattern controls',exact:true}).click();
-      await visibleControls(radial); await expect(field(parameter)).toHaveValue(String(value));
+      await visibleControls(radial); await expect(radial ? centerField('X') : field(parameter)).toHaveValue(String(value));
       assert.deepEqual(await draftState(), draft, 'show preserves staged edit');
       await layout(`${name}-restored`);
       await widget.getByRole('button',{name:'Confirm',exact:true}).click();

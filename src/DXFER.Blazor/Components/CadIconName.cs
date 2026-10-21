@@ -86,5 +86,6 @@ public enum CadIconName
     Unlock,
     Plus,
     SelectLayer,
-    Close
+    Close,
+    Check
 }
