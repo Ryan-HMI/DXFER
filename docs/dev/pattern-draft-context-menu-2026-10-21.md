@@ -32,4 +32,19 @@ wait for the menu to close and mirrored input/preview updates before comparing
 state, rather than treating an intermediate render as final. No browser errors.
 Evidence: `/tmp/dxfer-pattern-draft-context-targeted` (four completed cases) and
 `/tmp/dxfer-pattern-draft-context-qa-r3` (existing layout/center checks).
-Owner screenshot review confirms the compact two-row menu. Deployment pending.
+Owner screenshot review confirms the compact two-row menu.
+
+## Installed verification
+
+Deployed `804d280900b1cf5cd4815c1314e3a92fb77afb8b` to DXFer Dev at
+2026-10-21T18:57:56Z. Public browser tooltip verifies that SHA and PlaneGCS.
+All four draft-context cases pass again on the public endpoint without browser
+errors: `/tmp/dxfer-pattern-draft-context-installed/pattern-viewport-results.json`.
+This is owner/worker verification, not Flux independent acceptance.
+
+Four assemblies embed the approved SHA; served canvas JS and scoped CSS match
+the publication. Google sign-in and full editing retained; Sync callbacks
+disabled. Production/Test PIDs remain 3584417/3584475 and all Sync instances are
+untouched. Rollback: `/home/ryan/dxfer-runtime/dev-publish-before-804d280`.
+The isolated QA host is stopped and no replay sessions remain. The underlying
+context routing is corrected; no existing drawings or records require repair.
