@@ -25,6 +25,15 @@ screenshots inspected; no browser errors. Evidence:
 `/tmp/dxfer-pattern-viewport/pattern-viewport-results.json`.
 This is owner verification, not Flux independent or Ryan visual acceptance.
 
+Installed on DXFer Dev as `9a1976c` at 2026-10-21T18:19:36Z. The full
+public-endpoint replay also passed all 15 layout checks and 18 held-drag samples,
+with no browser errors. Screenshots/native fixtures are in
+`/tmp/dxfer-pattern-handles-installed`. Four assemblies embed the approved SHA;
+six served CSS/JS hashes match the publication. Google authentication and
+PlaneGCS remain enabled, Sync integration remains disabled, and Production/Test
+PIDs are unchanged. Rollback: `/home/ryan/dxfer-runtime/dev-publish-before-9a1976c`.
+The isolated QA host has been stopped. Independent Flux acceptance remains open.
+
 ## Layout contract
 
 - Context-menu follow-up: add Show/Hide pattern controls alongside Edit pattern
