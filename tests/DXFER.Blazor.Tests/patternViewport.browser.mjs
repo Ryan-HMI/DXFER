@@ -115,6 +115,8 @@ try {
     await expect(canvas).toHaveAttribute('data-pattern-editing', 'false');
     const pattern = doc.metadata.patterns[0], source = doc.entities.find(e => e.id === pattern.sourceEntityIds[0]);
     const handle = widget.locator('[data-pattern-center-handle]');
+    await expect(handle).toHaveAttribute('title', 'Move pattern center');
+    await expect(handle).toHaveAccessibleName('Move pattern center');
     const initialBox = await handle.boundingBox();
     const screenCenter = await canvas.evaluate((c, point) => ({x: c.getBoundingClientRect().left + point.x * +c.dataset.scale + +c.dataset.offsetX,
       y: c.getBoundingClientRect().top - point.y * +c.dataset.scale + +c.dataset.offsetY}), pattern.center);
