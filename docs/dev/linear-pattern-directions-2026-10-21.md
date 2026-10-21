@@ -50,4 +50,24 @@ single-step Undo. Radial center/count/mode behavior is unchanged.
   checksums and the expected geometry/relationships. No browser errors.
   Evidence: `/tmp/dxfer-linear-directions-qa-r4-selection`.
   Owner inspected both desktop screenshots. These are owner/worker checks,
-  not independent Flux or Ryan acceptance. Deployment is still pending.
+  not independent Flux or Ryan acceptance.
+
+## Installed Dev
+
+- Deployed `8987f1e21072b11a3071c55b292c7a41c635b033` at
+  2026-10-21T18:47:17Z to https://dxferdev.sync.harrisonmetals.com only.
+- Public-endpoint replay independently reads that tooltip revision and passes
+  both desktop sizes, all 10 layout checks and 40 native exports, including
+  reopen/edit and protected-geometry controls. No browser errors. Evidence:
+  `/tmp/dxfer-linear-directions-installed/linear-pattern-directions-results.json`.
+- The existing rectangular/radial control replay also passes all 15 layouts and
+  18 held-center-movement samples on the public endpoint, including Cancel,
+  Confirm, history, native reopen/edit and instance context Show/Hide. Evidence:
+  `/tmp/dxfer-linear-directions-viewport-installed/pattern-viewport-results.json`.
+- Four installed assemblies embed the approved SHA; six public CSS/JS hashes
+  match the publication. PlaneGCS and full editing remain enabled, Sync callbacks
+  disabled, Google sign-in configured and anonymous root challenged with 302.
+- Production/Test PIDs remain 3584417/3584475. All Sync environments untouched.
+- Rollback: `/home/ryan/dxfer-runtime/dev-publish-before-8987f1e`.
+- Flux/Ryan independent acceptance remains pending. No existing-record repair.
+- The isolated QA host on port 5038 has been stopped.
