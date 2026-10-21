@@ -11,8 +11,11 @@ export function patternViewportGuides(data) {
       end: { x: center.x + x * Math.cos(angle) - y * Math.sin(angle), y: center.y + x * Math.sin(angle) + y * Math.cos(angle) } }];
   }
   const angle = n.angle * Math.PI / 180;
-  return [{ start: source, end: { x: source.x + n.pitchX * Math.cos(angle), y: source.y + n.pitchX * Math.sin(angle) } },
-    { start: source, end: { x: source.x - n.pitchY * Math.sin(angle), y: source.y + n.pitchY * Math.cos(angle) } }];
+  const explicit = ['uX', 'uY', 'vX', 'vY'].every(key => data[key] !== undefined && Number.isFinite(Number(data[key])));
+  const u = explicit ? {x: Number(data.uX), y: Number(data.uY)} : {x: Math.cos(angle), y: Math.sin(angle)};
+  const v = explicit ? {x: Number(data.vX), y: Number(data.vY)} : {x: -Math.sin(angle), y: Math.cos(angle)};
+  return [{ start: source, end: { x: source.x + n.pitchX * u.x, y: source.y + n.pitchX * u.y } },
+    { start: source, end: { x: source.x + n.pitchY * v.x, y: source.y + n.pitchY * v.y } }];
 }
 
 export function patternViewportAnchors(data) {
@@ -20,7 +23,8 @@ export function patternViewportAnchors(data) {
   if (!guides.length) return null;
   const midpoint = g => ({x: (g.start.x + g.end.x) / 2, y: (g.start.y + g.end.y) / 2});
   const source = {x: Number(data.sourceX), y: Number(data.sourceY)};
-  if (data.patternKind !== 'Radial') return {source, actions: source, x: midpoint(guides[0]), y: midpoint(guides[1])};
+  if (data.patternKind !== 'Radial') return {source, actions: source, x: midpoint(guides[0]), y: midpoint(guides[1]),
+    stagger: {x: guides[0].end.x + guides[1].end.x - source.x, y: guides[0].end.y + guides[1].end.y - source.y}};
   const center = guides[0].start, angle = Number(data.step) * Math.PI / 360;
   const dx = source.x - center.x, dy = source.y - center.y;
   return {source, center, 'center-handle': center, actions: source,

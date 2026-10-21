@@ -1339,6 +1339,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void OnToolCanceled()
     {
+        if (CancelPatternDirectionPick())
+        {
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
         ClearPatternEditor();
         ClearCornerPreview();
         _solveFailureStatus = null;
@@ -2922,6 +2927,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void OnSelectionChanged(IReadOnlySet<string> selectedEntityIds)
     {
+        if (TryConsumePatternDirectionSelection(selectedEntityIds))
+        {
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+        _patternDirectionSelectionConsumed = false;
         _selectedEntityIds.Clear();
         foreach (var selectedEntityId in selectedEntityIds)
         {
@@ -2947,6 +2958,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void OnActiveSelectionChanged(string? activeSelectionKey)
     {
+        if (_patternDirectionSelectionConsumed)
+        {
+            _patternDirectionSelectionConsumed = false;
+            return;
+        }
         _activeSelectionKey = activeSelectionKey is not null && _selectedEntityIds.Contains(activeSelectionKey)
             ? activeSelectionKey
             : null;

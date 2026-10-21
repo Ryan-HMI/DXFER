@@ -5,11 +5,12 @@ const parameter = (node, prop) => ({ o_id: node.id, prop });
 // Pattern settings remain explicit document parameters. Members and seeds share
 // simultaneous affine equations so another relation can move either side safely.
 export function mapPlaneGcsPatterns(context) {
-    const { patterns, byId, model, relation, point, add, requireSupported, seedOperations = [],
+    const { patterns, byId, model, relation, point, add, requireSupported, resolve, endpoints, seedOperations = [],
         fixedParameterIds = new Set() } = context;
     requireSupported(Array.isArray(patterns) && patterns.length <= 64, "Invalid PlaneGCS pattern list.");
     const owned = new Set(), patternIds = new Set();
     const coefficientLines = new Map();
+    const allMembers = new Set(patterns.flatMap(p => p?.members?.map(m => m.entityId) ?? []));
     for (const pattern of patterns) {
         requireSupported(typeof pattern.id === "string" && pattern.id.length > 0
             && !patternIds.has(pattern.id), "Pattern IDs must be unique.");
@@ -28,6 +29,11 @@ export function mapPlaneGcsPatterns(context) {
         const numeric = radial ? [pattern.center?.x, pattern.center?.y, pattern.stepAngleDegrees]
             : [pattern.xPitch, pattern.yPitch, pattern.angleDegrees];
         requireSupported(numeric.every(Number.isFinite), "Pattern distances and angles must be finite.");
+        const stagger = pattern.staggerFraction ?? 0.5;
+        requireSupported(radial || Number.isFinite(stagger) && stagger >= 0 && stagger <= 1,
+            "Stagger fraction must be between zero and one.");
+        const axes = !radial && (pattern.uDirectionReference || pattern.vDirectionReference)
+            ? mapDirections(pattern) : null;
         const origin = radial ? point(pattern.center) : null;
         if (origin) origin.fixed = true;
         const slots = new Set();
@@ -67,7 +73,7 @@ export function mapPlaneGcsPatterns(context) {
                 dx = pattern.center.x * (1 - c) + pattern.center.y * s;
                 dy = pattern.center.y * (1 - c) - pattern.center.x * s;
             } else {
-                const x = (column + (kind === "staggered" && row % 2 ? 0.5 : 0)) * pattern.xPitch;
+                const x = (column + (kind === "staggered" && row % 2 ? stagger : 0)) * pattern.xPitch;
                 const y = row * pattern.yPitch, direction = pattern.angleDegrees * radians;
                 dx = x * Math.cos(direction) - y * Math.sin(direction);
                 dy = x * Math.sin(direction) + y * Math.cos(direction);
@@ -84,7 +90,11 @@ export function mapPlaneGcsPatterns(context) {
             // Polygon guide incidence already determines its radius. Mapping both
             // defining points carries guide/apothem size and orientation without
             // a redundant radius equality or vertex reconstruction.
-            sourcePoints.forEach((p, index) => mapPoint(p, targetPoints[index], c, s, dx, dy, label, origin));
+            if (axes) {
+                const u = (column + (kind === "staggered" && row % 2 ? stagger : 0)) * pattern.xPitch;
+                const v = row * pattern.yPitch;
+                sourcePoints.forEach((p, index) => mapDirectedPoint(p, targetPoints[index], axes, u, v, label));
+            } else sourcePoints.forEach((p, index) => mapPoint(p, targetPoints[index], c, s, dx, dy, label, origin));
             if (source.curve) {
                 relation("equal", { param1: parameter(source.curve, "radius"), param2: parameter(target.curve, "radius") },
                     label, get => Math.abs(get(source.curve.id).radius - get(target.curve.id).radius));
@@ -135,6 +145,101 @@ export function mapPlaneGcsPatterns(context) {
     requireSupported([...byId.values()].every(entity => !entity.isGenerated || owned.has(entity.id)),
         "Generated geometry has no valid pattern owner.");
     return owned;
+
+    function mapDirections(pattern) {
+        const label = `Pattern ${pattern.id} directions`;
+        const zero = point({ x: 0, y: 0 });
+        zero.fixed = true;
+        const fromReference = key => {
+            if (!key) return null;
+            const ref = resolve(key);
+            requireSupported(ref.line && !ref.point && !allMembers.has(ref.shape?.entity.id),
+                `${label}: select a non-generated straight edge.`);
+            return endpoints(ref.line);
+        };
+        const unit = (a, b, strict = true) => {
+            const dx = b.x - a.x, dy = b.y - a.y, length = Math.hypot(dx, dy);
+            if (!Number.isFinite(length) || length <= 1e-7) {
+                requireSupported(!strict, `${label}: direction edge is degenerate.`);
+                return null;
+            }
+            return { x: dx / length, y: dy / length };
+        };
+        const uRef = fromReference(pattern.uDirectionReference), vRef = fromReference(pattern.vDirectionReference);
+        const angle = pattern.angleDegrees * radians;
+        const u = point(uRef ? unit(...uRef) : { x: Math.cos(angle), y: Math.sin(angle) });
+        const v = point(vRef ? unit(...vRef) : { x: -u.y, y: u.x });
+        if (pattern.columns > 1 && pattern.rows > 1)
+            requireSupported(Math.abs(u.x * v.y - u.y * v.x) > 1e-7, `${label}: U and V must not be collinear.`);
+        function bind(axis, refs, perpendicular = false) {
+            if (!refs) { axis.fixed = true; return; }
+            const line = add({ type: "line", p1_id: zero.id, p2_id: axis.id });
+            const reference = add({ type: "line", p1_id: refs[0].id, p2_id: refs[1].id });
+            relation("p2p_distance", { p1_id: zero.id, p2_id: axis.id, distance: 1 }, label,
+                get => Math.abs(Math.hypot(get(axis.id).x, get(axis.id).y) - 1));
+            relation(perpendicular ? "perpendicular_ll" : "parallel", { l1_id: line.id, l2_id: reference.id }, label,
+                get => {
+                    const expected = unit(get(refs[0].id), get(refs[1].id), false), actual = get(axis.id);
+                    if (!expected) return Infinity;
+                    return perpendicular ? Math.hypot(actual.x + expected.y, actual.y - expected.x)
+                        : Math.hypot(actual.x - expected.x, actual.y - expected.y);
+                });
+        }
+        bind(u, uRef);
+        bind(v, vRef ?? (uRef ? [zero, u] : null), !vRef);
+        seedOperations.push(() => {
+            if (uRef) { const value = unit(...uRef, false); if (!value) return false; Object.assign(u, value); }
+            if (vRef) { const value = unit(...vRef, false); if (!value) return false; Object.assign(v, value); }
+            else if (uRef) Object.assign(v, { x: -u.y, y: u.x });
+            return true;
+        });
+        return { u, v, cache: new Map() };
+    }
+
+    function mapDirectedPoint(source, target, axes, uScale, vScale, label) {
+        const key = `${uScale},${vScale}`;
+        let shift = axes.cache.get(key);
+        if (!shift) {
+            const evaluate = () => ({ x: uScale * axes.u.x + vScale * axes.v.x,
+                y: uScale * axes.u.y + vScale * axes.v.y });
+            shift = point(evaluate());
+            for (const prop of ["x", "y"]) {
+                const a = scaledParameter(axes.u, prop, uScale, label);
+                const b = scaledParameter(axes.v, prop, vScale, label);
+                relation("difference", { param1: a, param2: parameter(shift, prop), difference: b }, label,
+                    get => Math.abs(get(shift.id)[prop] - uScale * get(axes.u.id)[prop] - vScale * get(axes.v.id)[prop]));
+            }
+            seedOperations.push(() => { Object.assign(shift, evaluate()); return true; });
+            axes.cache.set(key, shift);
+        }
+        seedOperations.push(() => {
+            const x = source.x + shift.x, y = source.y + shift.y;
+            if (target.fixed) return Math.hypot(target.x - x, target.y - y) <= 1e-6;
+            Object.assign(target, { x, y }); return true;
+        });
+        for (const prop of ["x", "y"])
+            relation("difference", { param1: parameter(source, prop), param2: parameter(target, prop),
+                difference: parameter(shift, prop) }, label,
+                get => Math.abs(get(target.id)[prop] - get(source.id)[prop] - get(shift.id)[prop]));
+    }
+
+    function scaledParameter(input, prop, factor, label) {
+        if (factor === 1) return parameter(input, prop);
+        if (factor === 0) return 0;
+        let line = coefficientLines.get(factor);
+        if (!line) {
+            const a = point({ x: 0, y: 0 }), b = point({ x: 1, y: factor });
+            a.fixed = true; b.fixed = true;
+            line = [a, b]; coefficientLines.set(factor, line);
+        }
+        const scaled = point({ x: input[prop], y: factor * input[prop] });
+        relation("equal", { param1: parameter(scaled, "x"), param2: parameter(input, prop) }, label,
+            get => Math.abs(get(scaled.id).x - get(input.id)[prop]));
+        relation("point_on_line_ppp", { p_id: scaled.id, lp1_id: line[0].id, lp2_id: line[1].id }, label,
+            get => Math.abs(get(scaled.id).y - factor * get(scaled.id).x));
+        seedOperations.push(() => { Object.assign(scaled, { x: input[prop], y: factor * input[prop] }); return true; });
+        return parameter(scaled, "y");
+    }
 
     function mapPoint(source, target, c, s, dx, dy, label, origin) {
         seedOperations.push(() => {

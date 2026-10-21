@@ -21,6 +21,7 @@
                        PatternEditing="PatternEditing"
                        PatternControls="ViewportPatternControls"
                        PatternCenterChanged="MovePatternCenter"
+                       PatternDirectionPicked="PickPatternDirection"
                        CornerHandle="@(CornerPreview is not null && _cornerPreviewHandle is not null ? new CanvasPointDto(_cornerPreviewHandle.Value.X, _cornerPreviewHandle.Value.Y) : null)"
                        CornerSize="GetCornerModifyDistance()"
                        CornerSizeChanged="OnCornerSizeDragged"
@@ -136,6 +137,7 @@
                 @if (_patternDraft is not null)
                 {
                     <PatternEditor Draft="_patternDraft" Units="@DocumentUnitsText" CanConfirm="CanConfirmPatternPreview"
+                                   PickingDirection="@_patternDirectionPicking" FlipDirection="FlipPatternAxis" PickDirection="BeginPatternDirectionPick" ClearDirection="ClearPatternDirection"
                                    Error="@_patternError" Changed="RefreshPatternPreview" Confirm="CommitPatternPreview" Cancel="ExitInspectorTool" Fit="FitAsync" />
                     @if (_document.Metadata.Patterns.Any(p => p.Id == _editingPattern?.Id))
                     {
@@ -282,6 +284,8 @@
         {
             <PatternViewportControls @key="pattern.Id" Pattern="pattern" Draft="_patternDraft"
                                      SourceCenter="PatternSourceCenter(pattern)" Units="@DocumentUnitsText"
+                                     DirectionU="PatternDirection(pattern, true)" DirectionV="PatternDirection(pattern, false)"
+                                     PickingDirection="@_patternDirectionPicking" FlipDirection="FlipPatternAxis" PickDirection="BeginPatternDirectionPick" ClearDirection="ClearPatternDirection"
                                      CanConfirm="CanConfirmPatternPreview" CanEdit="CanEditViewportPattern(pattern)"
                                      Error="@_patternError" Changed="RefreshPatternPreview" Confirm="CommitPatternPreview"
                                      Cancel="ExitInspectorTool" Edit="() => EditViewportPattern(pattern)" />

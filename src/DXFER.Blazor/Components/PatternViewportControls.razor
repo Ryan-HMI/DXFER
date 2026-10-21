@@ -8,6 +8,8 @@
          data-source-x="@Number(SourceCenter.X)" data-source-y="@Number(SourceCenter.Y)"
          data-pattern-kind="@Pattern.Kind" data-pitch-x="@Number(Pattern.XPitch)" data-pitch-y="@Number(Pattern.YPitch)"
          data-angle="@Number(Pattern.AngleDegrees)" data-center-x="@Number(Pattern.Center.X)" data-center-y="@Number(Pattern.Center.Y)"
+         data-u-x="@Number(DirectionU.X)" data-u-y="@Number(DirectionU.Y)" data-v-x="@Number(DirectionV.X)" data-v-y="@Number(DirectionV.Y)"
+         data-pattern-direction-picking="@PickingDirection" data-u-reference="@Pattern.UDirectionReference" data-v-reference="@Pattern.VDirectionReference"
          data-step="@Number(Pattern.FullCircle ? 360d / Pattern.Count : Pattern.StepAngleDegrees)"
          @onkeydown="KeyDown" @onkeydown:stopPropagation="true" @onpointerdown:stopPropagation="true">
     @if (IsRadial)
@@ -53,25 +55,48 @@
         <div class="pattern-axis" data-pattern-anchor="x">
             @if (Draft is { } xDraft)
             {
-                <label>Columns<input aria-label="Viewport pattern columns" type="number" min="1" step="1" @bind="xDraft.Columns" @bind:after="NotifyChanged" /></label>
-                <label>X pitch (@Units)<input aria-label="Viewport pattern X pitch" type="number" step="any" @bind="xDraft.PitchX" @bind:after="NotifyChanged" /></label>
+                <label>U count<input aria-label="Viewport pattern U count" type="number" min="1" step="1" @bind="xDraft.Columns" @bind:after="NotifyChanged" /></label>
+                <label>U pitch (@Units)<input aria-label="Viewport pattern U pitch" type="number" step="any" @bind="xDraft.PitchX" @bind:after="NotifyChanged" /></label>
             }
             else
             {
-                <label>Columns<input aria-label="Viewport pattern columns" value="@Pattern.Columns" readonly @ondblclick="Edit" /></label>
-                <label>X pitch (@Units)<input aria-label="Viewport pattern X pitch" value="@Number(Pattern.XPitch)" readonly @ondblclick="Edit" /></label>
+                <label>U count<input aria-label="Viewport pattern U count" value="@Pattern.Columns" readonly @ondblclick="Edit" /></label>
+                <label>U pitch (@Units)<input aria-label="Viewport pattern U pitch" value="@Number(Pattern.XPitch)" readonly @ondblclick="Edit" /></label>
             }
+            @AxisTools("U")
         </div>
         <div class="pattern-axis" data-pattern-anchor="y">
             @if (Draft is { } yDraft)
             {
-                <label>Rows<input aria-label="Viewport pattern rows" type="number" min="1" step="1" @bind="yDraft.Rows" @bind:after="NotifyChanged" /></label>
-                <label>Y pitch (@Units)<input aria-label="Viewport pattern Y pitch" type="number" step="any" @bind="yDraft.PitchY" @bind:after="NotifyChanged" /></label>
+                <label>V count<input aria-label="Viewport pattern V count" type="number" min="1" step="1" @bind="yDraft.Rows" @bind:after="NotifyChanged" /></label>
+                <label>V pitch (@Units)<input aria-label="Viewport pattern V pitch" type="number" step="any" @bind="yDraft.PitchY" @bind:after="NotifyChanged" /></label>
             }
             else
             {
-                <label>Rows<input aria-label="Viewport pattern rows" value="@Pattern.Rows" readonly @ondblclick="Edit" /></label>
-                <label>Y pitch (@Units)<input aria-label="Viewport pattern Y pitch" value="@Number(Pattern.YPitch)" readonly @ondblclick="Edit" /></label>
+                <label>V count<input aria-label="Viewport pattern V count" value="@Pattern.Rows" readonly @ondblclick="Edit" /></label>
+                <label>V pitch (@Units)<input aria-label="Viewport pattern V pitch" value="@Number(Pattern.YPitch)" readonly @ondblclick="Edit" /></label>
+            }
+            @AxisTools("V")
+        </div>
+    }
+    @if (!IsRadial)
+    {
+        <div class="pattern-stagger-controls" data-pattern-anchor="stagger">
+            @if (Draft is { } staggerDraft)
+            {
+                <label class="pattern-stagger"><input type="checkbox" aria-label="Viewport stagger rows" @bind="staggerDraft.Staggered" @bind:after="NotifyChanged" />Stagger rows</label>
+                @if (staggerDraft.Staggered)
+                {
+                    <label class="pattern-stagger-fraction">Row shift (U fraction)<input type="number" min="0" max="1" step="any" aria-label="Viewport stagger fraction" @bind="staggerDraft.StaggerFraction" @bind:after="NotifyChanged" /></label>
+                }
+            }
+            else
+            {
+                <label class="pattern-stagger"><input type="checkbox" aria-label="Viewport stagger rows" checked="@(Pattern.Kind == PatternKind.Staggered)" disabled />Stagger rows</label>
+                @if (Pattern.Kind == PatternKind.Staggered)
+                {
+                    <label class="pattern-stagger-fraction">Row shift (U fraction)<input aria-label="Viewport stagger fraction" value="@Number(Pattern.StaggerFraction)" readonly /></label>
+                }
             }
         </div>
     }
@@ -95,6 +120,9 @@
     [Parameter, EditorRequired] public PatternDefinition Pattern { get; set; } = new();
     [Parameter] public PatternDraft? Draft { get; set; }
     [Parameter] public Point2 SourceCenter { get; set; }
+    [Parameter] public Point2 DirectionU { get; set; } = new(1, 0);
+    [Parameter] public Point2 DirectionV { get; set; } = new(0, 1);
+    [Parameter] public string? PickingDirection { get; set; }
     [Parameter] public string Units { get; set; } = "in";
     [Parameter] public string? Error { get; set; }
     [Parameter] public bool CanConfirm { get; set; }
@@ -103,6 +131,17 @@
     [Parameter] public EventCallback Confirm { get; set; }
     [Parameter] public EventCallback Cancel { get; set; }
     [Parameter] public EventCallback Edit { get; set; }
+    [Parameter] public EventCallback<string> FlipDirection { get; set; }
+    [Parameter] public EventCallback<string> PickDirection { get; set; }
+    [Parameter] public EventCallback<string> ClearDirection { get; set; }
+    private string? DirectionReference(string axis) => Draft is { } draft
+        ? axis == "U" ? draft.UDirectionReference : draft.VDirectionReference
+        : axis == "U" ? Pattern.UDirectionReference : Pattern.VDirectionReference;
+    private RenderFragment AxisTools(string axis) => @<div class="pattern-axis-tools" role="group" aria-label="@($"{axis} direction")">
+        <button type="button" title="@($"Flip {axis} direction")" aria-label="@($"Flip {axis} direction")" disabled="@(Draft is null || !CanEdit)" @onclick="() => FlipDirection.InvokeAsync(axis)"><CadIcon Name="CadIconName.Mirror" /></button>
+        <button type="button" class="@(DirectionReference(axis) is null ? null : "is-bound")" title="@(DirectionReference(axis) is null ? $"Pick {axis} direction" : $"{axis} direction linked; pick a replacement edge")" aria-label="@($"Pick {axis} direction")" aria-pressed="@(PickingDirection == axis ? "true" : "false")" disabled="@(Draft is null || !CanEdit)" @onclick="() => PickDirection.InvokeAsync(axis)"><CadIcon Name="CadIconName.Parallel" /></button>
+        <button type="button" title="@(axis == "U" ? "Clear U link and use the U angle" : "Clear V link and use perpendicular to U")" aria-label="@($"Clear {axis} direction reference")" disabled="@(Draft is null || !CanEdit || DirectionReference(axis) is null)" @onclick="() => ClearDirection.InvokeAsync(axis)"><CadIcon Name="CadIconName.Close" /></button>
+    </div>;
     private bool IsRadial => Draft is { } draft ? draft.Mode == "Radial" : Pattern.Kind == PatternKind.Radial;
     private bool FullCircle => Draft?.FullCircle ?? Pattern.FullCircle;
     private static string Number(double value) => value.ToString("G10", CultureInfo.InvariantCulture);

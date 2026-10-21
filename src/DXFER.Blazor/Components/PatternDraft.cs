@@ -8,6 +8,14 @@ public sealed class PatternDraft
     public string PitchX { get; set; } = "1";
     public string PitchY { get; set; } = "1";
     public string Angle { get; set; } = "0";
+    public string? UDirectionReference { get; set; }
+    public string? VDirectionReference { get; set; }
+    public string StaggerFraction { get; set; } = "0.5";
+    public bool Staggered
+    {
+        get => Mode == "Staggered";
+        set { if (Mode != "Radial") Mode = value ? "Staggered" : "Rectangular"; }
+    }
     public string Count { get; set; } = "6";
     public string CenterX { get; set; } = "0";
     public string CenterY { get; set; } = "0";

@@ -20,6 +20,62 @@ public static class DrawingPatternService
     public static bool IsGeneratedMember(DrawingDocument document, string entityId) =>
         document.Metadata.Patterns.Any(p => p.Members.Any(m => m.EntityId == entityId));
 
+    /// <summary>Linear pattern axes before signed pitch; radial patterns do not use direction references.</summary>
+    public static bool TryGetDirections(DrawingDocument document, PatternDefinition definition,
+        out Point2 u, out Point2 v, out string reason)
+    {
+        u = new Point2(1, 0);
+        v = new Point2(0, 1);
+        reason = string.Empty;
+        if (definition.Kind == PatternKind.Radial) return true;
+        if (definition.UDirectionReference is { } uKey)
+        {
+            if (!TryGetDirection(document, uKey, "U", out u, out reason)) return false;
+        }
+        else
+        {
+            if (!double.IsFinite(definition.AngleDegrees))
+                return Refuse("Pattern angle must be finite.", out reason);
+            u = Transform2.RotationDegrees(definition.AngleDegrees % 360).Apply(u);
+        }
+        if (definition.VDirectionReference is { } vKey)
+        {
+            if (!TryGetDirection(document, vKey, "V", out v, out reason)) return false;
+        }
+        else v = new Point2(-u.Y, u.X);
+        if (definition.Columns > 1 && definition.Rows > 1 && Math.Abs(u.X * v.Y - u.Y * v.X) <= Tolerance)
+            return Refuse("Pattern U and V directions must not be collinear when both rows and columns repeat.", out reason);
+        return true;
+    }
+
+    private static bool TryGetDirection(DrawingDocument document, string key, string axis,
+        out Point2 direction, out string reason)
+    {
+        direction = default;
+        reason = string.Empty;
+        if (!SketchReference.TryParse(key, out var reference) || !reference.IsEntity)
+            return Refuse($"Pattern {axis} direction must reference a line or straight polyline segment.", out reason);
+        if (document.Metadata.Patterns.Any(p => p?.Members?.Any(m => m?.EntityId == reference.EntityId) == true))
+            return Refuse($"Pattern {axis} direction cannot reference any generated pattern member. Unlink that pattern first.", out reason);
+        var entity = document.Entities.FirstOrDefault(e => e.Id.Value == reference.EntityId);
+        if (!(entity is LineEntity && !reference.SegmentIndex.HasValue
+                || entity is PolylineEntity && reference.SegmentIndex.HasValue)
+            || !SketchGeometryEditor.TryGetLine(document.Entities, reference, out _, out var line))
+            return Refuse($"Pattern {axis} direction reference is missing or is not a line or straight polyline segment.", out reason);
+        var dx = line.End.X - line.Start.X;
+        var dy = line.End.Y - line.Start.Y;
+        var scale = Math.Max(Math.Abs(dx), Math.Abs(dy));
+        if (!double.IsFinite(line.Start.X) || !double.IsFinite(line.Start.Y)
+            || !double.IsFinite(line.End.X) || !double.IsFinite(line.End.Y)
+            || !double.IsFinite(scale) || scale == 0)
+            return Refuse($"Pattern {axis} direction reference is degenerate or non-finite.", out reason);
+        var length = Math.Sqrt((dx / scale) * (dx / scale) + (dy / scale) * (dy / scale));
+        if (scale <= Tolerance / length)
+            return Refuse($"Pattern {axis} direction reference is degenerate.", out reason);
+        direction = new Point2(dx / scale / length, dy / scale / length);
+        return true;
+    }
+
     public static bool TryUpsert(DrawingDocument document, PatternDefinition definition,
         out DrawingDocument result, out string reason) =>
         TrySet(document, definition, document.Metadata.Patterns.Any(p => p.Id == definition.Id), out result, out reason);
@@ -194,15 +250,18 @@ public static class DrawingPatternService
             return Refuse("Enter a unique pattern ID and valid source entity IDs.", out reason);
         if (!double.IsFinite(definition.XPitch) || !double.IsFinite(definition.YPitch)
             || !double.IsFinite(definition.AngleDegrees) || !double.IsFinite(definition.StepAngleDegrees)
-            || !double.IsFinite(definition.Center.X) || !double.IsFinite(definition.Center.Y))
-            return Refuse("Pattern distances, angles, and center must be finite.", out reason);
+            || !double.IsFinite(definition.Center.X) || !double.IsFinite(definition.Center.Y)
+            || !double.IsFinite(definition.StaggerFraction))
+            return Refuse("Pattern distances, angles, center, and stagger fraction must be finite.", out reason);
         var radial = definition.Kind == PatternKind.Radial;
+        if (!radial && definition.StaggerFraction is < 0 or > 1)
+            return Refuse("Pattern stagger fraction must be between 0 and 1.", out reason);
         var rows = radial ? 1 : definition.Rows;
         var columns = radial ? definition.Count : definition.Columns;
         if (rows < 1 || columns < 1 || (long)rows * columns < 2 || (long)rows * columns > MaxInstances
             || ((long)rows * columns - 1) * definition.SourceEntityIds.Count > MaxGeneratedEntities)
             return Refuse("Patterns require at least two instances and counts within the supported expansion limit.", out reason);
-        if (!radial && ((columns > 1 || definition.Kind == PatternKind.Staggered && rows > 1) && Math.Abs(definition.XPitch) <= Tolerance
+        if (!radial && ((columns > 1 || definition.Kind == PatternKind.Staggered && rows > 1 && definition.StaggerFraction != 0) && Math.Abs(definition.XPitch) <= Tolerance
             || rows > 1 && Math.Abs(definition.YPitch) <= Tolerance))
             return Refuse("Repeated rows and columns require nonzero pitch.", out reason);
         if (radial && !definition.FullCircle && columns > 1
@@ -215,15 +274,16 @@ public static class DrawingPatternService
             return Refuse("A pattern source is missing or unsupported. Unlink the pattern before deleting its source.", out reason);
         var members = new List<PatternMember>();
         var entities = new List<DrawingEntity>();
-        var rotation = Transform2.RotationDegrees(definition.AngleDegrees % 360);
+        if (!TryGetDirections(document, definition, out var u, out var v, out reason)) return false;
         try
         {
             for (var row = 0; row < rows; row++)
             for (var column = 0; column < columns; column++)
             {
                 if (row == 0 && column == 0) continue;
-                var shift = rotation.Apply(new Point2((column + (definition.Kind == PatternKind.Staggered && row % 2 == 1 ? 0.5 : 0)) * definition.XPitch,
-                    row * definition.YPitch));
+                var uDistance = (column + (definition.Kind == PatternKind.Staggered && row % 2 == 1 ? definition.StaggerFraction : 0)) * definition.XPitch;
+                var vDistance = row * definition.YPitch;
+                var shift = new Point2(uDistance * u.X + vDistance * v.X, uDistance * u.Y + vDistance * v.Y);
                 var transform = radial
                     ? Transform2.RotationDegreesAbout(column * (definition.FullCircle ? 360.0 / columns : definition.StepAngleDegrees), definition.Center)
                     : Transform2.Translation(shift.X, shift.Y);
@@ -292,6 +352,9 @@ public static class DrawingPatternService
         }
         var patternIds = candidate.Metadata.Patterns.SelectMany(p => p.SourceEntityIds.Concat(p.Members.Select(m => m.EntityId)))
             .ToHashSet(StringComparer.Ordinal);
+        foreach (var pattern in candidate.Metadata.Patterns.Where(p => p.Kind != PatternKind.Radial))
+            foreach (var key in new[] { pattern.UDirectionReference, pattern.VDirectionReference })
+                if (key is not null && SketchReference.TryParse(key, out var reference)) patternIds.Add(reference.EntityId);
         var oldDimensions = previous.Dimensions.ToDictionary(d => d.Id, StringComparer.Ordinal);
         var oldConstraints = previous.Constraints.ToDictionary(c => c.Id, StringComparer.Ordinal);
         foreach (var keys in candidate.Dimensions.Where(d => !oldDimensions.TryGetValue(d.Id, out var old) || !Same(d, old)).Select(d => d.ReferenceKeys)

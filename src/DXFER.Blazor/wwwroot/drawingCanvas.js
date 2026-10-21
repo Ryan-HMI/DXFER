@@ -1,6 +1,6 @@
 import { sampleControlSpline } from "./canvas/splineGeometry.js";
 import { measurePerimeterDistance } from "./perimeterDistance.js";
-import { patternViewportGuides, patternViewportAnchors, bindPatternCenterHandle } from "./canvas/patternViewport.js?v=20261021-pattern-handles";
+import { patternViewportGuides, patternViewportAnchors, bindPatternCenterHandle } from "./canvas/patternViewport.js?v=20261021-pattern-directions";
 import { getSnapCue } from "./canvas/snapCue.js?v=20261019";
 import {
   addUniqueNumber,
@@ -935,7 +935,17 @@ function drawPatternViewportControls(state, size) {
   for (const guide of guides) {
     const start = worldToScreen(state, guide.start), end = worldToScreen(state, guide.end);
     ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
-    ctx.strokeRect(end.x - 3, end.y - 3, 6, 6);
+    if (data.patternKind === 'Radial') ctx.strokeRect(end.x - 3, end.y - 3, 6, 6);
+    else {
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      if (length > 1) {
+        const ux = (end.x - start.x) / length, uy = (end.y - start.y) / length;
+        ctx.save(); ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(end.x - 8 * ux + 4 * uy, end.y - 8 * uy - 4 * ux);
+        ctx.lineTo(end.x, end.y); ctx.lineTo(end.x - 8 * ux - 4 * uy, end.y - 8 * uy + 4 * ux); ctx.stroke();
+        ctx.restore();
+      }
+    }
   }
   if (data.patternKind === 'Radial') {
     const center = worldToScreen(state, guides[0].start), seed = worldToScreen(state, guides[0].end);
@@ -5213,6 +5223,7 @@ function handlePointerDown(state, event) {
 
   if (isPrimaryPointerButton(event)) {
     if (state.patternEditing) {
+      pickPatternDirection(state, screenPoint);
       state.clickCandidate = null;
       releasePointer(state.canvas, event.pointerId);
       event.preventDefault();
@@ -6850,13 +6861,25 @@ function findNearestPowerTrimTarget(state, screenPoint) {
     : null;
 }
 
-function getNearestEntityHits(state, screenPoint, constraintTool = null, includeEdgeHits = false) {
+export function pickPatternDirection(state, screenPoint) {
+  const widget = state.canvas.parentElement?.querySelector?.('.pattern-viewport-controls');
+  const axis = widget?.dataset.patternDirectionPicking;
+  if (!state.patternEditing || !['U', 'V'].includes(axis)) return false;
+  // A direction pick is not a geometry selection/drag. Prefer the actual edge
+  // even at its midpoint or endpoint, and allow protected reference geometry.
+  const {nearestEdgeHit} = getNearestEntityHits(state, screenPoint, null, false, true);
+  if (nearestEdgeHit && nearestEdgeHit.distance <= HIT_TEST_TOLERANCE)
+    invokeDotNet(state, 'OnPatternDirectionPicked', widget.dataset.patternId, axis, nearestEdgeHit.target.key);
+  return true;
+}
+
+function getNearestEntityHits(state, screenPoint, constraintTool = null, includeEdgeHits = false, includeLocked = false) {
   let nearestPointHit = null;
   let nearestEdgeHit = null;
   const edgeHits = includeEdgeHits ? [] : null;
 
   for (const entity of getDocumentEntities(state.document)) {
-    if (entity.isLocked) continue;
+    if (entity.isLocked && !includeLocked) continue;
     const pointHit = getEntityPointHit(state, entity, screenPoint);
     if (pointHit
       && (!constraintTool || isTargetEligibleForConstraintTool(constraintTool, pointHit.target))

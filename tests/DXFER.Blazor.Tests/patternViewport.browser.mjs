@@ -184,16 +184,16 @@ try {
   };
   await load(fixture,1); await click(10.6,10.8); await tool('Rectangular / staggered pattern');
   await expect(widget).toBeVisible();
-  await set('columns','4'); await set('rows','3');
-  const pitch=field('X pitch'); await pitch.focus(); await page.keyboard.press('ControlOrMeta+A');
+  await set('U count','4'); await set('V count','3');
+  const pitch=field('U pitch'); await pitch.focus(); await page.keyboard.press('ControlOrMeta+A');
   for(const key of ['1','.','2','5']) { await page.keyboard.press(key); await page.waitForTimeout(80); }
   await expect(pitch).toHaveValue('1.25'); await pitch.press('Enter');
-  await expect(editor.getByRole('spinbutton',{name:'Pattern X pitch',exact:true})).toHaveValue('1.25');
-  await editor.getByRole('spinbutton',{name:'Pattern Y pitch',exact:true}).fill('2.5');
-  await editor.getByRole('spinbutton',{name:'Pattern Y pitch',exact:true}).press('Tab');
-  await expect(field('Y pitch')).toHaveValue('2.5');
-  await set('columns','0'); await expect(widget.getByRole('button',{name:'Confirm',exact:true})).toBeDisabled();
-  await expect(widget.getByRole('alert')).toBeVisible(); await set('columns','4');
+  await expect(editor.getByRole('spinbutton',{name:'Pattern U pitch',exact:true})).toHaveValue('1.25');
+  await editor.getByRole('spinbutton',{name:'Pattern V pitch',exact:true}).fill('2.5');
+  await editor.getByRole('spinbutton',{name:'Pattern V pitch',exact:true}).press('Tab');
+  await expect(field('V pitch')).toHaveValue('2.5');
+  await set('U count','0'); await expect(widget.getByRole('button',{name:'Confirm',exact:true})).toBeDisabled();
+  await expect(widget.getByRole('alert')).toBeVisible(); await set('U count','4');
   await tool('Fit pattern preview'); await layout('rectangular');
   const viewBefore = await canvas.getAttribute('data-scale');
   const clearPoint = await canvas.evaluate(c => {
@@ -224,11 +224,11 @@ try {
   await click(10.6,10.8); await expect(widget).toHaveCount(0);
   await click(14.35,15.8,'right'); await context.getByRole('button',{name:'Show pattern controls',exact:true}).click();
   await visibleControls(false);
-  await widget.getByRole('button',{name:'Edit pattern',exact:true}).click(); await set('columns','5');
+  await widget.getByRole('button',{name:'Edit pattern',exact:true}).click(); await set('U count','5');
   await cancel(); assert.equal((await download('cancelled')).doc.entities.length,12);
   await canvas.press('Escape'); await click(10.6,10.8); await widget.getByRole('button',{name:'Edit pattern',exact:true}).click();
-  await editor.getByRole('combobox',{name:'Pattern layout'}).selectOption('Staggered');
-  await set('X pitch','3.25'); await set('Y pitch','4.5'); await tool('Fit pattern preview'); await layout('staggered');
+  await widget.getByRole('checkbox',{name:'Viewport stagger rows',exact:true}).check();
+  await set('U pitch','3.25'); await set('V pitch','4.5'); await tool('Fit pattern preview'); await layout('staggered');
   await widget.getByRole('button',{name:'Confirm',exact:true}).click();
   const staggered=await download('staggered-saved'); assert.equal(staggered.doc.metadata.patterns[0].kind,'Staggered');
   assert.equal(staggered.doc.metadata.patterns[0].xPitch,3.25); assert.equal(staggered.doc.metadata.patterns[0].yPitch,4.5);

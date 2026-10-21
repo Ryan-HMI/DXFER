@@ -24,6 +24,13 @@
 .pattern-center-handle { width: 24px; height: 24px; min-height: 24px; padding: 3px; justify-content: center; border-radius: 50%; cursor: move; touch-action: none; }
 .pattern-actions { display: grid; gap: 6px; max-width: min(260px, 100%); }
 .pattern-action-buttons { display: flex; gap: 5px; }
+.pattern-axis-tools { grid-column: 1 / -1; display: flex; gap: 4px; }
+.pattern-axis-tools button { width: 28px; height: 28px; justify-content: center; padding: 3px; }
+.pattern-axis-tools button.is-bound, .pattern-axis-tools button[aria-pressed="true"] { border-color: var(--dx-accent); }
+.pattern-stagger { display: flex; align-items: center; gap: 5px; }
+.pattern-stagger input { width: 16px; height: 16px; accent-color: var(--dx-accent); }
+.pattern-stagger-fraction { width: 144px; }
+.pattern-stagger-controls { display: grid; gap: 5px; width: 144px; }
 label { display: grid; gap: 2px; min-width: 0; color: var(--dx-text); }
 input { width: 100%; min-width: 0; height: 28px; box-sizing: border-box; padding: 3px 5px; font: inherit; color: var(--dx-text); background: var(--dx-chrome); border: 1px solid var(--dx-border); border-radius: 3px; }
 input[readonly] { cursor: default; }

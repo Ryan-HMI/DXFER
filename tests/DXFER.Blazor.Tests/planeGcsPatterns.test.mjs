@@ -53,6 +53,105 @@ function checkMembers(document, result) {
         near(actual.center.x, target.x); near(actual.center.y, target.y); near(actual.radius, seed.radius);
     }
 }
+
+function directionalFixture(options = {}) {
+    const document = fixture('Staggered', { rows: 2, columns: 3, staggerFraction: 0.25,
+        uDirectionReference: 'u', vDirectionReference: 'v', ...options });
+    document.entities.push({ id: 'u', kind: 'line', points: [p(0, 0), p(10, 0)] },
+        { id: 'v', kind: 'polyline', points: [p(20, 0), p(20, 10), p(25, 10)] });
+    const pattern = document.metadata.patterns[0];
+    pattern.vDirectionReference = 'v|segment|0';
+    for (const member of pattern.members) {
+        const copy = document.entities.find(e => e.id === member.entityId);
+        copy.center = p(3 + (member.column + (member.row % 2 ? pattern.staggerFraction : 0)) * pattern.xPitch,
+            2 + member.row * pattern.yPitch);
+    }
+    return document;
+}
+
+function checkDirected(document, result) {
+    const pattern = document.metadata.patterns[0], entities = new Map(result.entities.map(e => [e.id, e]));
+    const unit = id => { const [a, b] = entities.get(id).points, length = Math.hypot(b.x-a.x,b.y-a.y);
+        return p((b.x-a.x)/length,(b.y-a.y)/length); };
+    const u = unit('u'), v = pattern.vDirectionReference ? unit('v') : p(-u.y,u.x), seed = entities.get('seed');
+    for (const m of pattern.members) {
+        const x = (m.column + (pattern.kind === 'Staggered' && m.row % 2 ? pattern.staggerFraction : 0)) * pattern.xPitch;
+        const y = m.row * pattern.yPitch, actual = entities.get(m.entityId);
+        near(actual.center.x, seed.center.x+x*u.x+y*v.x);
+        near(actual.center.y, seed.center.y+x*u.y+y*v.y);
+        near(actual.radius, seed.radius);
+    }
+}
+
+test('free direction edge drag initializes its dependent pattern without moving unrelated geometry', () => {
+    const document = directionalFixture();
+    const result = solve(document, { drag: { key: 'u:end', start: p(10, 0), end: p(8, 6) } });
+    passed(result);
+    const entities = new Map(result.entities.map(e => [e.id, e]));
+    assert.deepEqual(entities.get('u').points[0], p(0, 0));
+    near(entities.get('u').points[1].x, 8); near(entities.get('u').points[1].y, 6);
+    assert.deepEqual(entities.get('seed').center, document.entities[0].center);
+    assert.deepEqual(entities.get('v').points, document.entities.find(e => e.id === 'v').points);
+    checkDirected(document, result);
+});
+
+for (const explicitV of [false, true]) {
+    test(`linked pattern direction endpoint drag preserves ${explicitV ? 'independent V' : 'perpendicular V'} and stagger`, () => {
+        const document = directionalFixture();
+        if (!explicitV) document.metadata.patterns[0].vDirectionReference = null;
+        const result = solve(document, { constraints: [constraint('u-start', 'Fix', ['u:start'])],
+            drag: { key: 'u:end', start: p(10,0), end: p(8,6) } });
+        passed(result); near(result.entities.find(e => e.id === 'u').points[1].y,6);
+        checkDirected(document,result);
+        const reopened = {...document, entities: result.entities};
+        const again = solve(reopened, { drag: {key:'u:end',start:p(8,6),end:p(6,8)} });
+        passed(again); checkDirected(reopened,again);
+    });
+}
+
+test('linked pattern directions preserve flips and source body movement', () => {
+    const document = directionalFixture({xPitch:-8,yPitch:-6});
+    const result = solve(document,{drag:{key:'seed:center',start:p(3,2),end:p(5,4)}});
+    passed(result); checkDirected(document,result);
+});
+
+test('V-only direction reference follows a polyline edge while U stays on its configured axis', () => {
+    const document=directionalFixture(); document.metadata.patterns[0].uDirectionReference=null;
+    const result=solve(document,{constraints:[constraint('v-start','Fix',['v|segment|0:start'])],
+        drag:{key:'v|segment|0:end',start:p(20,10),end:p(26,8)}});
+    passed(result); checkDirected(document,result);
+    near(result.entities.find(e=>e.id==='v').points[1].x,26);
+});
+
+test('a pattern seed edge can also supply its U direction without fixing its orientation', () => {
+    const document=directionalFixture({rows:1,columns:2});
+    const pattern=document.metadata.patterns[0];
+    pattern.sourceEntityIds=['u']; pattern.vDirectionReference=null;
+    pattern.members[0].sourceEntityId='u';
+    const member=document.entities.find(e=>e.id===pattern.members[0].entityId);
+    Object.assign(member,{kind:'line',points:[p(8,0),p(18,0)]}); delete member.center; delete member.radius;
+    const result=solve(document,{constraints:[constraint('u-start','Fix',['u:start'])],
+        drag:{key:'u:end',start:p(10,0),end:p(6,8)}});
+    passed(result);
+    const actual=result.entities.find(e=>e.id===member.id);
+    near(actual.points[0].x,4.8); near(actual.points[0].y,6.4);
+    near(actual.points[1].x,10.8); near(actual.points[1].y,14.4);
+});
+
+test('direction rotation with fixed source and fixed members refuses atomically', () => {
+    const document = directionalFixture();
+    document.entities.filter(e => e.kind === 'circle').forEach(e => e.isLocked = true);
+    const result = solve(document,{constraints:[constraint('u-start','Fix',['u:start']),constraint('turn','Vertical',['u'])]});
+    assert.equal(result.status,'failed'); assert.deepEqual(result.entities,document.entities);
+});
+
+test('invalid direction dependencies refuse without silently freezing copied angles', () => {
+    for (const reference of ['missing','seed','copy-0-1','u:start','v|segment|8']) {
+        const document=directionalFixture(); document.metadata.patterns[0].uDirectionReference=reference;
+        const result=solve(document,{});
+        assert.equal(result.status,'unsupported',reference); assert.deepEqual(result.entities,document.entities);
+    }
+});
 for (const kind of ['Rectangular', 'Staggered', 'Radial']) {
     test(`${kind} retained pattern follows seed movement through engine equations`, () => {
         const document = fixture(kind, { angleDegrees: 32 });

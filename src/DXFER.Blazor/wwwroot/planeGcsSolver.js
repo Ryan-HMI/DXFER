@@ -1035,7 +1035,7 @@ function mapRequest(request) {
         }
     }
     const seedOperations = [];
-    const patternMembers = mapPlaneGcsPatterns({ patterns, byId, model, relation, point, add, requireSupported,
+    const patternMembers = mapPlaneGcsPatterns({ patterns, byId, model, relation, point, add, requireSupported, resolve, endpoints,
         seedOperations, fixedParameterIds });
     mapPlaneGcsOffsets({ constraints, dimensions, model, nodes, relation, samePoint, requireSupported,
         add, point, fixSource: registerFixedReference });
@@ -1062,9 +1062,10 @@ function mapRequest(request) {
         if (node.fixed) return;
         const original = { x: node.x, y: node.y };
         Object.assign(node, target);
-        // Direct point/body guesses must retain hard relations for redundancy
-        // analysis. Curve-specific seeds assemble several parameters together.
-        if (preserveHardRelations && checks.some(({ check }) => {
+        // Pattern dependents are seeded together in tryPatternSeed, which checks
+        // all hard intent and restores the original snapshot if that guess fails.
+        // Checking here would discard a direction edit before its members follow.
+        if (preserveHardRelations && !seedOperations.length && checks.some(({ check }) => {
             const error = check(id => nodes.get(id));
             return !Number.isFinite(error) || error > tolerance;
         })) Object.assign(node, original);

@@ -3,28 +3,35 @@
 
 <section class="pattern-editor" aria-label="Pattern settings" @onkeydown="OnKeyDown" @onkeydown:stopPropagation="true">
     <label class="pattern-wide">Layout
-        <select aria-label="Pattern layout" @bind="Draft.Mode" @bind:after="NotifyChanged">
-            <option>Rectangular</option><option>Staggered</option><option>Radial</option>
+        <select aria-label="Pattern layout" value="@(Draft.Mode == "Radial" ? "Radial" : "Rectangular")" @onchange="SetLayout">
+            <option value="Rectangular">Linear</option><option value="Radial">Radial</option>
         </select>
     </label>
     @if (Draft.Mode == "Radial")
     {
-        <label>Instances<input type="number" min="2" step="1" aria-label="Pattern instances" @bind="Draft.Count" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
+        <label>Instances<input type="number" min="2" step="1" aria-label="Pattern instances" @bind="Draft.Count" @bind:after="NotifyChanged" /></label>
         <label class="pattern-check"><input type="checkbox" aria-label="Full circle" @bind="Draft.FullCircle" @bind:after="NotifyChanged" />Full circle</label>
-        <label>Center X (@Units)<input type="number" step="any" aria-label="Pattern center X" @bind="Draft.CenterX" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
-        <label>Center Y (@Units)<input type="number" step="any" aria-label="Pattern center Y" @bind="Draft.CenterY" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
+        <label>Center X (@Units)<input type="number" step="any" aria-label="Pattern center X" @bind="Draft.CenterX" @bind:after="NotifyChanged" /></label>
+        <label>Center Y (@Units)<input type="number" step="any" aria-label="Pattern center Y" @bind="Draft.CenterY" @bind:after="NotifyChanged" /></label>
         @if (!Draft.FullCircle)
         {
-            <label class="pattern-wide">Angle between instances (deg)<input type="number" step="any" aria-label="Pattern step angle" @bind="Draft.StepAngle" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
+            <label class="pattern-wide">Angle between instances (deg)<input type="number" step="any" aria-label="Pattern step angle" @bind="Draft.StepAngle" @bind:after="NotifyChanged" /></label>
         }
     }
     else
     {
-        <label>Columns<input type="number" min="1" step="1" aria-label="Pattern columns" @bind="Draft.Columns" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
-        <label>Rows<input type="number" min="1" step="1" aria-label="Pattern rows" @bind="Draft.Rows" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
-        <label>X pitch (@Units)<input type="number" step="any" aria-label="Pattern X pitch" @bind="Draft.PitchX" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
-        <label>Y pitch (@Units)<input type="number" step="any" aria-label="Pattern Y pitch" @bind="Draft.PitchY" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
-        <label class="pattern-wide">Rotation (deg)<input type="number" step="any" aria-label="Pattern rotation" @bind="Draft.Angle" @bind:event="oninput" @bind:after="NotifyChanged" /></label>
+        <label>U count<input type="number" min="1" step="1" aria-label="Pattern U count" @bind="Draft.Columns" @bind:after="NotifyChanged" /></label>
+        <label>V count<input type="number" min="1" step="1" aria-label="Pattern V count" @bind="Draft.Rows" @bind:after="NotifyChanged" /></label>
+        <label>U pitch (@Units)<input type="number" step="any" aria-label="Pattern U pitch" @bind="Draft.PitchX" @bind:after="NotifyChanged" /></label>
+        <label>V pitch (@Units)<input type="number" step="any" aria-label="Pattern V pitch" @bind="Draft.PitchY" @bind:after="NotifyChanged" /></label>
+        @AxisTools("U")
+        @AxisTools("V")
+        <label class="pattern-wide">U angle (deg)<input type="number" step="any" aria-label="Pattern rotation" disabled="@(Draft.UDirectionReference is not null)" @bind="Draft.Angle" @bind:after="NotifyChanged" /></label>
+        <label class="pattern-check pattern-wide"><input type="checkbox" aria-label="Stagger rows" @bind="Draft.Staggered" @bind:after="NotifyChanged" />Stagger rows</label>
+        @if (Draft.Staggered)
+        {
+            <label class="pattern-wide">Row shift (U fraction)<input type="number" min="0" max="1" step="any" aria-label="Pattern stagger fraction" @bind="Draft.StaggerFraction" @bind:after="NotifyChanged" /></label>
+        }
     }
     @if (Error is not null) { <p class="pattern-wide" role="alert">@Error</p> }
     <div class="pattern-actions pattern-wide">
@@ -43,6 +50,20 @@
     [Parameter] public EventCallback Confirm { get; set; }
     [Parameter] public EventCallback Cancel { get; set; }
     [Parameter] public EventCallback Fit { get; set; }
+    [Parameter] public string? PickingDirection { get; set; }
+    [Parameter] public EventCallback<string> FlipDirection { get; set; }
+    [Parameter] public EventCallback<string> PickDirection { get; set; }
+    [Parameter] public EventCallback<string> ClearDirection { get; set; }
+    private RenderFragment AxisTools(string axis) => @<div class="pattern-actions pattern-wide" role="group" aria-label="@($"{axis} direction")">
+        <button type="button" title="@($"Flip {axis} direction")" aria-label="@($"Flip {axis} direction")" @onclick="() => FlipDirection.InvokeAsync(axis)"><CadIcon Name="CadIconName.Mirror" /></button>
+        <button type="button" title="@($"Pick {axis} direction")" aria-label="@($"Pick {axis} direction")" aria-pressed="@(PickingDirection == axis ? "true" : "false")" @onclick="() => PickDirection.InvokeAsync(axis)"><CadIcon Name="CadIconName.Parallel" /></button>
+        <button type="button" title="@($"Clear {axis} direction reference")" aria-label="@($"Clear {axis} direction reference")" disabled="@((axis == "U" ? Draft.UDirectionReference : Draft.VDirectionReference) is null)" @onclick="() => ClearDirection.InvokeAsync(axis)"><CadIcon Name="CadIconName.Close" /></button>
+    </div>;
+    private async Task SetLayout(ChangeEventArgs args)
+    {
+        Draft.Mode = args.Value?.ToString() == "Radial" ? "Radial" : "Rectangular";
+        await NotifyChanged();
+    }
     private Task NotifyChanged() => Changed.InvokeAsync();
     private async Task OnKeyDown(KeyboardEventArgs args)
     {

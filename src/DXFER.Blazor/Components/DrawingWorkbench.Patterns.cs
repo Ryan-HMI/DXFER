@@ -19,9 +19,12 @@ public partial class DrawingWorkbench
     private bool _patternCenterDragging;
     private string? _patternCenterOriginalX;
     private string? _patternCenterOriginalY;
+    private string? _patternDirectionPicking;
+    private bool _patternDirectionSelectionConsumed;
     private bool PatternEditing => _patternDraft is not null;
     private DrawingDocument? PatternPreview => ReferenceEquals(_patternSourceDocument, _document) ? _patternPreview : null;
-    private bool CanConfirmPatternPreview => !_patternCenterDragging && PatternPreview is not null && _patternError is null;
+    private bool CanConfirmPatternPreview => !_patternCenterDragging && _patternDirectionPicking is null
+        && PatternPreview is not null && _patternError is null;
 
     private PatternDefinition? ViewportPattern => ViewportPatternCandidate is { } pattern
         && !_hiddenPatternControls.Contains(pattern.Id) ? pattern : null;
@@ -32,7 +35,7 @@ public partial class DrawingWorkbench
           ?? _document.Metadata.Patterns.FirstOrDefault(p => p.SourceEntityIds.Concat(p.Members.Select(m => m.EntityId))
             .Any(id => _selectedEntityIds.Any(key => key == id || key.StartsWith(id + "|", StringComparison.Ordinal))));
 
-    private bool CanTogglePatternControls(PatternDefinition pattern) => !_patternCenterDragging
+    private bool CanTogglePatternControls(PatternDefinition pattern) => !_patternCenterDragging && _patternDirectionPicking is null
         && (!PatternEditing || _editingPattern?.Id == pattern.Id);
 
     private void TogglePatternControls(PatternDefinition pattern)
@@ -63,6 +66,112 @@ public partial class DrawingWorkbench
     private void EditViewportPattern(PatternDefinition pattern)
     {
         if (CanEditViewportPattern(pattern)) OpenPatternEditor(pattern);
+    }
+
+    private Point2 PatternDirection(PatternDefinition pattern, bool uAxis)
+    {
+        return DrawingPatternService.TryGetDirections(PatternPreview ?? _document, pattern, out var u, out var v, out _)
+            ? uAxis ? u : v : uAxis ? new(1, 0) : new(0, 1);
+    }
+
+    private bool CanChangePatternAxis => !_patternCenterDragging && _patternDraft is { Mode: not "Radial" }
+        && _editingPattern is not null && ReferenceEquals(_patternSourceDocument, _document)
+        && CanEditViewportPattern(_editingPattern);
+
+    private void FlipPatternAxis(string axis)
+    {
+        if (axis is not ("U" or "V") || !CanChangePatternAxis) return;
+        var pitch = axis == "U" ? _patternDraft!.PitchX : _patternDraft!.PitchY;
+        if (!PatternNumber(pitch, out var value))
+        {
+            _patternPreview = null;
+            _patternError = $"Enter a finite {axis} pitch before flipping direction.";
+            _status = _patternError;
+            return;
+        }
+        if (axis == "U") _patternDraft!.PitchX = Text(-value);
+        else _patternDraft!.PitchY = Text(-value);
+        RefreshPatternPreview();
+    }
+
+    private void BeginPatternDirectionPick(string axis)
+    {
+        if (axis is not ("U" or "V") || !CanChangePatternAxis) return;
+        if (_patternDirectionPicking == axis) { CancelPatternDirectionPick(); return; }
+        _patternDirectionPicking = axis;
+        _hiddenPatternControls.Remove(_editingPattern!.Id);
+        _patternError = null;
+        _status = $"Select a line or straight polyline edge for pattern {axis} direction.";
+    }
+
+    private bool CancelPatternDirectionPick()
+    {
+        if (_patternDirectionPicking is null) return false;
+        _patternDirectionPicking = null;
+        RefreshPatternPreview();
+        return true;
+    }
+
+    private void ClearPatternDirection(string axis)
+    {
+        if (axis is not ("U" or "V") || !CanChangePatternAxis) return;
+        if (axis == "U") _patternDraft!.UDirectionReference = null;
+        else _patternDraft!.VDirectionReference = null;
+        _patternDirectionPicking = null;
+        RefreshPatternPreview();
+    }
+
+    private bool TryConsumePatternDirectionSelection(IReadOnlySet<string> keys)
+    {
+        if (_patternDirectionPicking is not { } axis)
+        {
+            if (!PatternEditing) return false;
+            // Delayed picker notifications must not replace the staged pattern's source selection.
+            _patternDirectionSelectionConsumed = true;
+            return true;
+        }
+        _patternDirectionSelectionConsumed = true;
+        if (!CanChangePatternAxis)
+        {
+            _patternError = "Drawing changed or pattern geometry is protected. Cancel and reopen the pattern.";
+        }
+        else if (keys.Count == 0) return true;
+        else if (keys.Count != 1 || !SketchReference.TryParse(keys.Single(), out var reference) || !reference.IsEntity)
+        {
+            _patternError = $"Select one line or straight polyline edge for pattern {axis} direction.";
+        }
+        else
+        {
+            var candidate = _editingPattern! with
+            {
+                Kind = _patternDraft!.Staggered ? PatternKind.Staggered : PatternKind.Rectangular,
+                Columns = PatternCount(_patternDraft.Columns, out var columns) ? columns : _editingPattern.Columns,
+                Rows = PatternCount(_patternDraft.Rows, out var rows) ? rows : _editingPattern.Rows,
+                AngleDegrees = PatternNumber(_patternDraft.Angle, out var angle) ? angle : _editingPattern.AngleDegrees,
+                UDirectionReference = axis == "U" ? reference.ToString() : _patternDraft.UDirectionReference,
+                VDirectionReference = axis == "V" ? reference.ToString() : _patternDraft.VDirectionReference
+            };
+            if (DrawingPatternService.TryGetDirections(_document, candidate, out _, out _, out var reason))
+            {
+                if (axis == "U") _patternDraft.UDirectionReference = reference.ToString();
+                else _patternDraft.VDirectionReference = reference.ToString();
+                _patternDirectionPicking = null;
+                RefreshPatternPreview();
+                return true;
+            }
+            _patternError = reason;
+        }
+        _patternPreview = null;
+        _status = _patternError;
+        return true;
+    }
+
+    private void PickPatternDirection(string patternId, string axis, string reference)
+    {
+        if (_editingPattern?.Id != patternId || _patternDirectionPicking != axis || axis is not ("U" or "V")) return;
+        TryConsumePatternDirectionSelection(new HashSet<string>(StringComparer.Ordinal) { reference });
+        _patternDirectionSelectionConsumed = false;
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private void MovePatternCenter(string patternId, double x, double y, string phase)
@@ -162,6 +271,8 @@ public partial class DrawingWorkbench
         {
             Mode = pattern.Kind.ToString(), Columns = Text(pattern.Columns), Rows = Text(pattern.Rows),
             PitchX = Text(pattern.XPitch), PitchY = Text(pattern.YPitch), Angle = Text(pattern.AngleDegrees),
+            UDirectionReference = pattern.UDirectionReference, VDirectionReference = pattern.VDirectionReference,
+            StaggerFraction = Text(pattern.StaggerFraction),
             Count = Text(pattern.Count), CenterX = Text(pattern.Center.X), CenterY = Text(pattern.Center.Y),
             StepAngle = Text(pattern.StepAngleDegrees), FullCircle = pattern.FullCircle
         };
@@ -183,6 +294,7 @@ public partial class DrawingWorkbench
             return;
         }
         if (!Enum.TryParse<PatternKind>(draft.Mode, out var mode)) return;
+        if (mode == PatternKind.Radial) _patternDirectionPicking = null;
         var definition = _editingPattern with { Kind = mode };
         if (mode == PatternKind.Radial)
         {
@@ -198,7 +310,14 @@ public partial class DrawingWorkbench
             if (!PatternCount(draft.Rows, out var rows) || !PatternCount(draft.Columns, out var cols) ||
                 !PatternNumber(draft.PitchX, out var x) || !PatternNumber(draft.PitchY, out var y) || !PatternNumber(draft.Angle, out var angle))
                 _patternError = "Enter positive whole counts and finite pitch/rotation values.";
-            else definition = definition with { Rows = rows, Columns = cols, XPitch = x, YPitch = y, AngleDegrees = angle };
+            else if (!PatternNumber(draft.StaggerFraction, out var stagger) || stagger is < 0 or > 1)
+                _patternError = "Enter a stagger fraction between 0 and 1.";
+            else definition = definition with
+            {
+                Rows = rows, Columns = cols, XPitch = x, YPitch = y, AngleDegrees = angle,
+                UDirectionReference = draft.UDirectionReference, VDirectionReference = draft.VDirectionReference,
+                StaggerFraction = stagger
+            };
         }
         if (_patternError is null)
         {
@@ -245,6 +364,8 @@ public partial class DrawingWorkbench
     private void ClearPatternEditor()
     {
         ClearPatternCenterDrag();
+        _patternDirectionPicking = null;
+        _patternDirectionSelectionConsumed = false;
         _patternDraft = null; _editingPattern = null; _patternSourceDocument = null;
         _patternPreview = null; _patternError = null; _confirmDissolvePattern = false;
     }

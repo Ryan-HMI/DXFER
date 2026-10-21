@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { patternViewportGuides, patternViewportAnchors, createPatternCenterQueue } from '../../src/DXFER.Blazor/wwwroot/canvas/patternViewport.js';
-import { positionSnapCue } from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.js';
+import { positionSnapCue, pickPatternDirection } from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.js';
 const baseline = {sourceX: 10, sourceY: 10, pitchX: 3, pitchY: 4, angle: 0, centerX: 0, centerY: 0, step: 90};
 test('pattern pitch guides follow source and rotated axes', () => {
   const guides = patternViewportGuides({...baseline, patternKind: 'Rectangular', angle: 90});
@@ -16,6 +16,16 @@ test('radial guides retain center and show the angular step', () => {
   assert.ok(Math.abs(guides[1].end.x + 10) < 1e-8);
   assert.ok(Math.abs(guides[1].end.y - 10) < 1e-8);
   assert.deepEqual(patternViewportGuides({...baseline, step: 'bad'}), []);
+});
+test('linear guides use resolved U/V references, signed pitches and independent skew', () => {
+  const data={...baseline,patternKind:'Staggered',uX:0,uY:1,vX:.6,vY:.8,pitchX:-3,pitchY:4};
+  const guides=patternViewportGuides(data);
+  assert.deepEqual(guides[0],{start:{x:10,y:10},end:{x:10,y:7}});
+  assert.deepEqual(guides[1],{start:{x:10,y:10},end:{x:12.4,y:13.2}});
+  const anchors=patternViewportAnchors(data);
+  assert.deepEqual(anchors.x,{x:10,y:8.5});
+  assert.ok(Math.abs(anchors.stagger.x-12.4)<1e-10);
+  assert.ok(Math.abs(anchors.stagger.y-10.2)<1e-10);
 });
 test('viewport widget remains on canvas and clear of palettes', () => {
   const obstacles = [{x: 0, y: 0, width: 160, height: 650}, {x: 650, y: 0, width: 150, height: 360}];
@@ -54,4 +64,23 @@ test('center drag cancellation drops queued movement and disposal suppresses pen
   assert.deepEqual(sent.map(x=>x.phase),['begin','cancel']);
   queue.push({phase:'update'}); queue.dispose(); waiting.shift()(); await new Promise(setImmediate);
   assert.equal(sent.length,2);
+});
+
+test('armed direction picker accepts actual edges without changing selected source or beginning a drag', () => {
+  for(const [entity,point,key] of [
+    [{id:'edge',kind:'line',points:[{x:0,y:0},{x:10,y:0}]},{x:5,y:0},'edge'],
+    [{id:'edge',kind:'line',points:[{x:0,y:0},{x:10,y:0}],isLocked:true},{x:0,y:0},'edge'],
+    [{id:'poly',kind:'polyline',points:[{x:0,y:-2},{x:0,y:0},{x:10,y:0}]},{x:5,y:0},'poly|segment|1']
+  ]) {
+    const calls=[],widget={dataset:{patternId:'pattern',patternDirectionPicking:'U'}};
+    const state={patternEditing:true,activeTool:'select',document:{entities:[entity],constraints:[],dimensions:[]},
+      view:{scale:20,offsetX:100,offsetY:500},selectedKeys:new Set(['seed']),activeSelectionKey:'seed',
+      canvas:{dataset:{},parentElement:{querySelector:()=>widget}},dotnetRef:{invokeMethodAsync:(...args)=>calls.push(args)}};
+    assert.equal(pickPatternDirection(state,{x:point.x*20+100,y:500-point.y*20}),true);
+    assert.deepEqual(calls,[['OnPatternDirectionPicked','pattern','U',key]]);
+    assert.deepEqual([...state.selectedKeys],['seed']); assert.equal(state.activeSelectionKey,'seed');
+    assert.equal(state.geometryDrag,undefined);
+    widget.dataset.patternDirectionPicking=''; calls.length=0;
+    assert.equal(pickPatternDirection(state,{x:200,y:500}),false); assert.deepEqual(calls,[]);
+  }
 });

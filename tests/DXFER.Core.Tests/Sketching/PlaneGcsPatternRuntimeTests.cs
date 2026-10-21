@@ -9,6 +9,41 @@ namespace DXFER.Core.Tests.Sketching;
 public sealed class PlaneGcsPatternRuntimeTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LinkedDirectionEditsPassAdapterValidationAndNativeReopen(bool independentV)
+    {
+        using var runtime = CreateRuntime();
+        var solver = new PlaneGcsSketchSolverAdapter(runtime);
+        var baseline = new DrawingDocument([
+            new CircleEntity(EntityId.Create("seed"), new(3, 2), 1),
+            new LineEntity(EntityId.Create("u"), new(0, 0), new(10, 0)),
+            new LineEntity(EntityId.Create("v"), new(20, 0), new(20, 10))
+        ], [], [new("fixed-u-start", SketchConstraintKind.Fix, ["u:start"], SketchConstraintState.Satisfied)]);
+        DrawingPatternService.TryCreate(baseline, new PatternDefinition
+        {
+            Id = "linked", SourceEntityIds = ["seed"], Kind = PatternKind.Staggered,
+            Rows = 2, Columns = 3, XPitch = -8, YPitch = 6, StaggerFraction = 0.25,
+            UDirectionReference = "u", VDirectionReference = independentV ? "v" : null
+        }, out var document, out var reason).Should().BeTrue(reason);
+        solver.TryApplyDrag(document, "u:end", new(10, 0), new(8, 6), false,
+            out var result, out var status).Should().BeTrue(status);
+        DrawingPatternService.TryValidate(result, out reason).Should().BeTrue(reason);
+        var edge = result.Entities.OfType<LineEntity>().Single(e => e.Id.Value == "u");
+        edge.Start.Should().Be(new Point2(0, 0));
+        edge.End.X.Should().BeApproximately(8, 1e-6);
+        edge.End.Y.Should().BeApproximately(6, 1e-6);
+        var dxf = DXFER.CadIO.DxfDocumentWriter.Write(result, new(IncludeNativeDocument: true));
+        var reopened = DXFER.CadIO.DxfDocumentReader.Read(dxf, out var restored);
+        restored.Should().BeTrue();
+        reopened.Metadata.Patterns.Single().UDirectionReference.Should().Be("u");
+        reopened.Metadata.Patterns.Single().StaggerFraction.Should().Be(0.25);
+        solver.TryApplyDrag(reopened, "u:end", edge.End, new(6, 8), false,
+            out var edited, out status).Should().BeTrue(status);
+        DrawingPatternService.TryValidate(edited, out reason).Should().BeTrue(reason);
+    }
+
+    [Theory]
     [InlineData(PatternKind.Rectangular)]
     [InlineData(PatternKind.Staggered)]
     [InlineData(PatternKind.Radial)]
