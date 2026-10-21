@@ -105,12 +105,26 @@ try {
       groups.push({anchor, box});
     }
     const radial = await widget.getAttribute('data-pattern-kind') === 'Radial';
+    let sourceBounds = null;
     if (radial) {
       assert.deepEqual(groups.map(g=>g.anchor).sort(), ['center-handle','source'], 'one compact source card plus independent center handle');
       await expect(widget.getByLabel('Viewport pattern center X',{exact:true})).toHaveCount(0);
       await expect(widget.getByLabel('Viewport pattern center Y',{exact:true})).toHaveCount(0);
       const card=widget.locator('[data-pattern-anchor="source"]'), box=await card.boundingBox();
       assert.ok(box.width<=240 && box.height<=160, `${name}: compact radial card bounds ${box.width}x${box.height}`);
+      // The imported source is independently known: center (10,10), radius 1.
+      // Check the exported bounds too, so an empty/undersized obstacle cannot pass.
+      for (const [attribute, value] of Object.entries({'min-x':9,'min-y':9,'max-x':11,'max-y':11})) {
+        const actual=await widget.getAttribute(`data-source-${attribute}`);
+        assert.notEqual(actual,null,`${name}: source ${attribute} is present`);
+        close(Number(actual),value,`${name}: source ${attribute} matches native circle`);
+      }
+      sourceBounds=await canvas.evaluate(c=>{
+        const r=c.getBoundingClientRect(), scale=+c.dataset.scale;
+        return {x:r.left+9*scale+ +c.dataset.offsetX,y:r.top-11*scale+ +c.dataset.offsetY,
+          width:2*scale,height:2*scale};
+      });
+      assert.ok(!overlaps(box,sourceBounds),`${name}: radial card clears projected source bounds ${JSON.stringify({card:box,sourceBounds})}`);
       const count=card.getByLabel('Viewport pattern instances',{exact:true});
       await expect(count).toBeVisible();
       const fullCircle=card.getByRole('checkbox',{name:/^Full circle$/i});
@@ -133,7 +147,7 @@ try {
           'radial card controls fit without overflow');
       }
     } else assert.ok(groups.length >= 3, 'linear controls remain independent groups');
-    layouts.push({name, viewport: page.viewportSize(), canvas: c, groups});
+    layouts.push({name, viewport: page.viewportSize(), canvas: c, groups, sourceBounds});
     await page.screenshot({path:`${output}/${name}.png`});
   };
   const visibleControls = async radial => {
@@ -285,6 +299,36 @@ try {
   await expect(fullCircle).toBeChecked();
   await set('instances','8'); await expect(field('step angle')).toHaveCount(0);
   await layout('radial-full-circle-default');
+  for (const viewport of [{width:1440,height:1000},{width:1180,height:757},{width:1100,height:705}]) {
+    await page.setViewportSize(viewport); await tool('Fit pattern preview'); await page.waitForTimeout(300);
+    await layout(`radial-source-fit-${viewport.width}`);
+    for (let step=1;step<=8;step++) {
+      const point=await canvas.evaluate(c=>{
+        const r=c.getBoundingClientRect();
+        return {x:r.left+10*+c.dataset.scale+ +c.dataset.offsetX,y:r.top-10*+c.dataset.scale+ +c.dataset.offsetY};
+      });
+      assert.equal(await page.evaluate(p=>document.elementFromPoint(p.x,p.y)?.matches('canvas.drawing-canvas'),point),true,
+        'source center remains unobscured for zoom');
+      const scale=await canvas.getAttribute('data-scale');
+      await page.mouse.move(point.x,point.y); await page.mouse.wheel(0,-120); await page.waitForTimeout(300);
+      assert.notEqual(await canvas.getAttribute('data-scale'),scale,'radial wheel zoom changes camera');
+      await layout(`radial-source-zoom-${viewport.width}-${step}`);
+    }
+    const panPoint=await canvas.evaluate(c=>{
+      const r=c.getBoundingClientRect();
+      for(let y=r.top+80;y<r.bottom-80;y+=35)
+        for(let x=r.left+180;x<r.right-100;x+=35)
+          if(document.elementFromPoint(x,y)===c && document.elementFromPoint(x+40,y+30)===c) return {x,y};
+      throw new Error('No clear radial pan target');
+    });
+    const before=await canvas.getAttribute('data-offset-x');
+    await page.mouse.move(panPoint.x,panPoint.y); await page.mouse.down({button:'middle'});
+    try { await page.mouse.move(panPoint.x+40,panPoint.y+30,{steps:8}); }
+    finally { await page.mouse.up({button:'middle'}); }
+    await page.waitForTimeout(300); assert.notEqual(await canvas.getAttribute('data-offset-x'),before);
+    await layout(`radial-source-pan-${viewport.width}`);
+  }
+  await page.setViewportSize({width:1440,height:1000}); await tool('Fit pattern preview');
   await fullCircle.uncheck(); await expect(fullCircle).not.toBeChecked();
   await expect(field('step angle')).toHaveValue('45');
   await set('step angle','30.25');

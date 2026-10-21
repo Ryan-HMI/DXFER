@@ -56,9 +56,12 @@ public partial class DrawingWorkbench
 
     private DXFER.Core.Geometry.Point2 PatternSourceCenter(PatternDefinition pattern)
     {
-        var bounds = new DrawingDocument(_document.Entities.Where(e => pattern.SourceEntityIds.Contains(e.Id.Value))).GetBounds();
+        var bounds = PatternSourceBounds(pattern);
         return new((bounds.MinX + bounds.MaxX) / 2, (bounds.MinY + bounds.MaxY) / 2);
     }
+
+    private Bounds2 PatternSourceBounds(PatternDefinition pattern) =>
+        new DrawingDocument(_document.Entities.Where(e => pattern.SourceEntityIds.Contains(e.Id.Value))).GetBounds();
 
     private bool CanEditViewportPattern(PatternDefinition pattern) => !LayersReadOnly
         && pattern.SourceEntityIds.Concat(pattern.Members.Select(m => m.EntityId)).All(id => DrawingLayerService.CanEdit(_document, id));

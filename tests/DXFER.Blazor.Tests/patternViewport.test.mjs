@@ -1,8 +1,31 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { patternViewportGuides, patternViewportAnchors, createPatternCenterQueue } from '../../src/DXFER.Blazor/wwwroot/canvas/patternViewport.js';
+import { patternViewportGuides, patternViewportAnchors, patternSourceScreenBounds, createPatternCenterQueue } from '../../src/DXFER.Blazor/wwwroot/canvas/patternViewport.js';
 import { positionSnapCue, pickPatternDirection, openDrawingContextMenu } from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.js';
 const baseline = {sourceX: 10, sourceY: 10, pitchX: 3, pitchY: 4, angle: 0, centerX: 0, centerY: 0, step: 90};
+test('radial source obstacle follows actual bounds through pan and zoom', () => {
+  const data = {sourceMinX: '9', sourceMinY: '9', sourceMaxX: '11', sourceMaxY: '11'};
+  assert.deepEqual(patternSourceScreenBounds(data, {scale: 20, offsetX: 100, offsetY: 400}),
+    {x: 272, y: 172, width: 56, height: 56});
+  assert.deepEqual(patternSourceScreenBounds(data, {scale: 40, offsetX: 50, offsetY: 600}),
+    {x: 402, y: 152, width: 96, height: 96});
+  assert.equal(patternSourceScreenBounds({}, {scale: 20, offsetX: 0, offsetY: 0}), null);
+  assert.equal(patternSourceScreenBounds({...data, sourceMinX: 'bad'}, {scale: 20, offsetX: 0, offsetY: 0}), null);
+});
+
+test('radial card clears source extents as well as palettes at multiple zoom levels', () => {
+  const size = {width: 884, height: 650};
+  const palettes = [{x: 0, y: 0, width: 160, height: 650}, {x: 720, y: 0, width: 164, height: 270}];
+  const overlaps = (a,b) => a.x < b.x+b.width && a.x+a.width > b.x && a.y < b.y+b.height && a.y+a.height > b.y;
+  for (const scale of [24, 48, 80]) {
+    const view = {scale, offsetX: 500-10*scale, offsetY: 340+10*scale};
+    const source = patternSourceScreenBounds({sourceMinX: 9, sourceMinY: 9, sourceMaxX: 11, sourceMaxY: 11}, view);
+    const box = positionSnapCue({x:500, y:340},size,216,137,[...palettes,source]);
+    assert.ok(box);
+    for (const obstacle of [...palettes,source]) assert.equal(overlaps(box,obstacle),false);
+  }
+});
+
 test('active pattern context requests a view-only menu without changing draft selection', () => {
   const calls = [], selectedKeys = new Set(['seed']);
   const state = {patternEditing: true, activeTool: 'pattern', selectedKeys, activeSelectionKey: 'seed',

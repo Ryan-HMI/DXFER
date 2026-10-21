@@ -1,5 +1,6 @@
 using DXFER.Blazor.Components;
 using DXFER.Core.Documents;
+using DXFER.Core.Geometry;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -22,6 +23,7 @@ public sealed class RadialPatternCardTests
             var component = await renderer.RenderComponentAsync<PatternViewportControls>(ParameterView.FromDictionary(new Dictionary<string, object?>
             {
                 [nameof(PatternViewportControls.Pattern)] = new PatternDefinition { Id = "radial", Kind = PatternKind.Radial },
+                [nameof(PatternViewportControls.SourceBounds)] = new Bounds2(9, 9, 11, 11),
                 [nameof(PatternViewportControls.Draft)] = new PatternDraft { Mode = "Radial", FullCircle = fullCircle, Count = "6", StepAngle = "45" },
                 [nameof(PatternViewportControls.CanConfirm)] = true,
                 [nameof(PatternViewportControls.CanEdit)] = true
@@ -29,6 +31,7 @@ public sealed class RadialPatternCardTests
             return component.ToHtmlString();
         });
         html.Should().Contain("pattern-radial-card").And.Contain("data-pattern-center-handle");
+        html.Should().Contain("data-source-min-x=\"9\"").And.Contain("data-source-max-y=\"11\"");
         html.Should().Contain("aria-label=\"Confirm\"").And.Contain("aria-label=\"Cancel pattern changes\"");
         html.Should().Contain("type=\"checkbox\" aria-label=\"Full Circle\"");
         html.Should().NotContain("Viewport pattern center X").And.NotContain("Viewport pattern center Y");

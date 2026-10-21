@@ -6,6 +6,8 @@
 
 <section class="pattern-viewport-controls" aria-label="Viewport pattern parameters" data-pattern-id="@Pattern.Id"
          data-source-x="@Number(SourceCenter.X)" data-source-y="@Number(SourceCenter.Y)"
+         data-source-min-x="@(SourceBounds is { } minX ? Number(minX.MinX) : null)" data-source-min-y="@(SourceBounds is { } minY ? Number(minY.MinY) : null)"
+         data-source-max-x="@(SourceBounds is { } maxX ? Number(maxX.MaxX) : null)" data-source-max-y="@(SourceBounds is { } maxY ? Number(maxY.MaxY) : null)"
          data-pattern-kind="@Pattern.Kind" data-pitch-x="@Number(Pattern.XPitch)" data-pitch-y="@Number(Pattern.YPitch)"
          data-angle="@Number(Pattern.AngleDegrees)" data-center-x="@Number(Pattern.Center.X)" data-center-y="@Number(Pattern.Center.Y)"
          data-u-x="@Number(DirectionU.X)" data-u-y="@Number(DirectionU.Y)" data-v-x="@Number(DirectionV.X)" data-v-y="@Number(DirectionV.Y)"
@@ -120,6 +122,7 @@
     [Parameter, EditorRequired] public PatternDefinition Pattern { get; set; } = new();
     [Parameter] public PatternDraft? Draft { get; set; }
     [Parameter] public Point2 SourceCenter { get; set; }
+    [Parameter] public Bounds2? SourceBounds { get; set; }
     [Parameter] public Point2 DirectionU { get; set; } = new(1, 0);
     [Parameter] public Point2 DirectionV { get; set; } = new(0, 1);
     [Parameter] public string? PickingDirection { get; set; }

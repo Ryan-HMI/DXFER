@@ -291,7 +291,7 @@
         @if (ViewportPattern is { } pattern)
         {
             <PatternViewportControls @key="pattern.Id" Pattern="pattern" Draft="_patternDraft"
-                                     SourceCenter="PatternSourceCenter(pattern)" Units="@DocumentUnitsText"
+                                     SourceCenter="PatternSourceCenter(pattern)" SourceBounds="PatternSourceBounds(pattern)" Units="@DocumentUnitsText"
                                      DirectionU="PatternDirection(pattern, true)" DirectionV="PatternDirection(pattern, false)"
                                      PickingDirection="@_patternDirectionPicking" FlipDirection="FlipPatternAxis" PickDirection="BeginPatternDirectionPick" ClearDirection="ClearPatternDirection"
                                      CanConfirm="CanConfirmPatternPreview" CanEdit="CanEditViewportPattern(pattern)"

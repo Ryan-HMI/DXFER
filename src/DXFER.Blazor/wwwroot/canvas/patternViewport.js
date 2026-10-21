@@ -1,4 +1,17 @@
 // The existing pattern editor owns validation, commit and history.
+export function patternSourceScreenBounds(data, view, padding = 8) {
+  const keys = ['sourceMinX', 'sourceMinY', 'sourceMaxX', 'sourceMaxY'];
+  if (keys.some(key => data[key] == null || data[key] === '' || !Number.isFinite(Number(data[key])))
+    || !view || ![view.scale, view.offsetX, view.offsetY, padding].every(Number.isFinite)
+    || view.scale <= 0 || padding < 0) return null;
+  const [minX, minY, maxX, maxY] = keys.map(key => Number(data[key]));
+  if (maxX < minX || maxY < minY) return null;
+  return {x: minX * view.scale + view.offsetX - padding,
+    y: -maxY * view.scale + view.offsetY - padding,
+    width: (maxX - minX) * view.scale + 2 * padding,
+    height: (maxY - minY) * view.scale + 2 * padding};
+}
+
 export function patternViewportGuides(data) {
   const values = ['sourceX', 'sourceY', 'pitchX', 'pitchY', 'angle', 'centerX', 'centerY', 'step'];
   const n = Object.fromEntries(values.map(key => [key, Number(data[key])]));

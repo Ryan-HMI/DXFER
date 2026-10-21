@@ -1,6 +1,6 @@
 import { sampleControlSpline } from "./canvas/splineGeometry.js";
 import { measurePerimeterDistance } from "./perimeterDistance.js";
-import { patternViewportGuides, patternViewportAnchors, bindPatternCenterHandle } from "./canvas/patternViewport.js?v=20261021-pattern-directions";
+import { patternViewportGuides, patternViewportAnchors, patternSourceScreenBounds, bindPatternCenterHandle } from "./canvas/patternViewport.js?v=20261021-source-clearance";
 import { getSnapCue } from "./canvas/snapCue.js?v=20261019";
 import {
   addUniqueNumber,
@@ -975,7 +975,11 @@ function drawPatternViewportControls(state, size) {
     const world = anchors[group.dataset.patternAnchor];
     if (!world) { group.style.visibility = 'hidden'; continue; }
     const anchor = worldToScreen(state, world);
-    const box = positionSnapCue(anchor, size, group.offsetWidth, group.offsetHeight, obstacles);
+    const sourceBounds = data.patternKind === 'Radial' && group.dataset.patternAnchor === 'source'
+      ? patternSourceScreenBounds(data, state.view) : null;
+    // Keep actions reachable even when zoomed geometry fills the available canvas.
+    const box = (sourceBounds && positionSnapCue(anchor, size, group.offsetWidth, group.offsetHeight, [...obstacles, sourceBounds]))
+      || positionSnapCue(anchor, size, group.offsetWidth, group.offsetHeight, obstacles);
     if (!box) { group.style.visibility = 'hidden'; continue; }
     group.style.left = `${box.x}px`; group.style.top = `${box.y}px`;
     group.style.visibility = 'visible';
