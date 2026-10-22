@@ -102,6 +102,10 @@ try {
     const delta={x:1.25,y:-.75},original=exposed.doc.metadata.patterns[0].center;
     const initialScreen=await screen(original),grabOffset={x:(grab.x-initialScreen.x)/scale,y:-(grab.y-initialScreen.y)/scale};
     const camera=()=>canvas.evaluate(c=>({scale:+c.dataset.scale,offsetX:+c.dataset.offsetX,offsetY:+c.dataset.offsetY}));
+    const renderedCenter=()=>handle.evaluate(h=>{
+      const c=document.querySelector('canvas.drawing-canvas'),r=c.getBoundingClientRect(),b=h.getBoundingClientRect(),s=+c.dataset.scale;
+      return {x:(b.x+b.width/2-r.x- +c.dataset.offsetX)/s,y:-(b.y+b.height/2-r.y- +c.dataset.offsetY)/s};
+    });
     const beforeCamera=await camera();
     await page.mouse.move(grab.x,grab.y);await page.mouse.down();
     try{
@@ -109,6 +113,7 @@ try {
       await expect(canvas).toHaveAttribute('data-pattern-editing','true');
       await expect(widget).toHaveAttribute('data-center-dragging','true');
       let previous,stable=0;await expect.poll(async()=>{const current=JSON.stringify(await camera());stable=current===previous?stable+1:0;previous=current;return stable;},{intervals:[100,150,150]}).toBeGreaterThanOrEqual(2);
+      assert.deepEqual(await camera(),beforeCamera,'starting a center drag must not refit the camera');
       for(const fraction of [.35,.7,1]){
         const targetScreen=await screen({x:original.x+delta.x*fraction+grabOffset.x,y:original.y+delta.y*fraction+grabOffset.y});
         await page.mouse.move(targetScreen.x,targetScreen.y,{steps:6});
@@ -116,11 +121,11 @@ try {
         await expect(widget).toHaveAttribute('data-center-dragging','true');
         await expect(widget.getByRole('button',{name:'Confirm',exact:true})).toBeDisabled();
         try{
-          await expect.poll(async()=>Math.hypot(Number(await widget.getAttribute('data-center-x'))-original.x-delta.x*fraction,
-            Number(await widget.getAttribute('data-center-y'))-original.y-delta.y*fraction),{message:'held center coordinates update continuously'}).toBeLessThan(1e-6);
+          await expect.poll(async()=>{const p=await renderedCenter();return Math.hypot(p.x-original.x-delta.x*fraction,
+            p.y-original.y-delta.y*fraction)*scale;},{message:'rendered center follows the pointer while held'}).toBeLessThan(.1);
         }finally{
           results.drags.push({name,fraction,grab,beforeCamera,camera:await camera(),expected:{x:original.x+delta.x*fraction,y:original.y+delta.y*fraction},
-            actual:{x:Number(await widget.getAttribute('data-center-x')),y:Number(await widget.getAttribute('data-center-y'))}});
+            actual:await renderedCenter()});
         }
         near(Number(await widget.getAttribute('data-source-x')),source.center.x,'held source X');
         near(Number(await widget.getAttribute('data-source-y')),source.center.y,'held source Y');

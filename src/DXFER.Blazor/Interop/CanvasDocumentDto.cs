@@ -13,6 +13,8 @@ public sealed record CanvasDocumentDto(
     [property: JsonPropertyName("constraints")] IReadOnlyList<CanvasSketchConstraintDto> Constraints)
 {
     [JsonPropertyName("hasPatterns")] public bool HasPatterns { get; init; }
+    [JsonPropertyName("radialCenterPreviews")]
+    public IReadOnlyList<CanvasRadialCenterPreviewDto> RadialCenterPreviews { get; init; } = Array.Empty<CanvasRadialCenterPreviewDto>();
     public static CanvasDocumentDto Empty { get; } = new(
         Array.Empty<CanvasEntityDto>(),
         new CanvasBoundsDto(0, 0, 0, 0),
@@ -36,7 +38,78 @@ public sealed record CanvasDocumentDto(
         var dimensions = document.Dimensions.Where(d => IsVisible(d.ReferenceKeys)).Select(dimension => FromDimension(document, dimension)).ToArray();
         var constraints = document.Constraints.Where(c => IsVisible(c.ReferenceKeys)).Select(FromConstraint).ToArray();
 
-        return new CanvasDocumentDto(entities, FromBounds(bounds), dimensions, constraints) { HasPatterns = document.Metadata.Patterns.Count > 0 };
+        return new CanvasDocumentDto(entities, FromBounds(bounds), dimensions, constraints)
+        {
+            HasPatterns = document.Metadata.Patterns?.Count > 0,
+            RadialCenterPreviews = GetRadialCenterPreviews(document, layers)
+        };
+    }
+
+    private static IReadOnlyList<CanvasRadialCenterPreviewDto> GetRadialCenterPreviews(
+        DrawingDocument document, IReadOnlyDictionary<string, DxfEntityStyle> layers)
+    {
+        var patterns = document.Metadata.Patterns;
+        if (document.Metadata.Mode != DrawingDocumentMode.Editable || patterns is null
+            || patterns.Any(p => p is null || p.SourceEntityIds is null || p.Members is null || p.Members.Any(m => m is null))
+            || !patterns.Any(p => p.Kind == PatternKind.Radial)
+            || !DrawingPatternService.TryValidate(document, out _)) return Array.Empty<CanvasRadialCenterPreviewDto>();
+
+        var entities = document.Entities.ToDictionary(e => e.Id.Value, StringComparer.Ordinal);
+        bool ResolveReference(string key, out string entityId)
+        {
+            entityId = string.Empty;
+            if (!SketchReference.TryParse(key, out var reference)) return false;
+            entityId = reference.EntityId;
+            if (reference.IsOrigin) return true;
+            if (!entities.TryGetValue(entityId, out var entity)) return false;
+            if (reference.SegmentIndex is { } index
+                && (entity is not PolylineEntity polyline || index < 0 || index >= polyline.Vertices.Count - 1)) return false;
+            return reference.IsEntity || SketchReferenceResolver.TryGetPoint(document, reference.ToString(), out _);
+        }
+
+        // Local preview cannot update any intent, including reference measurements
+        // and suppressed relations. Resolve once here, never on pointer movement.
+        if (document.Constraints.Any(c => !Enum.IsDefined(c.Kind) || !Enum.IsDefined(c.State) || c.ReferenceKeys.Count == 0)
+            || document.Dimensions.Any(d => !Enum.IsDefined(d.Kind) || !double.IsFinite(d.Value) || d.ReferenceKeys.Count == 0
+                || d.Anchor is { } anchor && (!double.IsFinite(anchor.X) || !double.IsFinite(anchor.Y))))
+            return Array.Empty<CanvasRadialCenterPreviewDto>();
+        var intentIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var key in document.Constraints.SelectMany(c => c.ReferenceKeys).Concat(document.Dimensions.SelectMany(d => d.ReferenceKeys)))
+        {
+            if (!ResolveReference(key, out var id)) return Array.Empty<CanvasRadialCenterPreviewDto>();
+            intentIds.Add(id);
+        }
+        var dependencies = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var pattern in patterns)
+        {
+            var ids = pattern.SourceEntityIds.ToHashSet(StringComparer.Ordinal);
+            if (pattern.CenterPointId is { } centerId) ids.Add(centerId);
+            foreach (var key in new[] { pattern.UDirectionReference, pattern.VDirectionReference })
+            {
+                if (key is null) continue;
+                if (!ResolveReference(key, out var id)) return Array.Empty<CanvasRadialCenterPreviewDto>();
+                ids.Add(id);
+            }
+            dependencies.Add(pattern.Id, ids);
+        }
+
+        var previews = new List<CanvasRadialCenterPreviewDto>();
+        foreach (var pattern in patterns.Where(p => p.Kind == PatternKind.Radial))
+        {
+            var moved = pattern.Members.Select(m => m.EntityId).ToHashSet(StringComparer.Ordinal);
+            if (pattern.CenterPointId is { } centerId) moved.Add(centerId);
+            if (moved.Overlaps(intentIds)
+                || dependencies.Any(p => p.Key != pattern.Id && moved.Overlaps(p.Value))) continue;
+            var participants = moved.Concat(pattern.SourceEntityIds);
+            if (participants.Any(id => !entities.TryGetValue(id, out var entity)
+                || entity is not (PointEntity or LineEntity or PolylineEntity or CircleEntity or ArcEntity or EllipseEntity or PolygonEntity or SplineEntity)
+                || !layers.TryGetValue(DrawingLayerService.LayerName(document, id), out var layer)
+                || layer.IsHidden || layer.IsLocked)) continue;
+            previews.Add(new CanvasRadialCenterPreviewDto(pattern.Id, FromPoint(pattern.Center), pattern.CenterPointId,
+                pattern.FullCircle ? 360.0 / pattern.Count : pattern.StepAngleDegrees,
+                pattern.Members.Select(m => new CanvasRadialCenterPreviewMemberDto(m.EntityId, m.Column)).ToArray()));
+        }
+        return previews;
     }
 
     private static CanvasEntityDto FromEntity(DrawingEntity entity, DrawingDocumentMetadata metadata)
@@ -207,6 +280,17 @@ public sealed record CanvasDocumentDto(
                 ? constraint.ReferenceKeys
                 : Array.Empty<string>());
 }
+
+public sealed record CanvasRadialCenterPreviewDto(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("center")] CanvasPointDto Center,
+    [property: JsonPropertyName("centerPointId")] string? CenterPointId,
+    [property: JsonPropertyName("stepAngleDegrees")] double StepAngleDegrees,
+    [property: JsonPropertyName("members")] IReadOnlyList<CanvasRadialCenterPreviewMemberDto> Members);
+
+public sealed record CanvasRadialCenterPreviewMemberDto(
+    [property: JsonPropertyName("entityId")] string EntityId,
+    [property: JsonPropertyName("column")] int Column);
 
 public sealed record CanvasEntityDto(
     [property: JsonPropertyName("id")] string Id,

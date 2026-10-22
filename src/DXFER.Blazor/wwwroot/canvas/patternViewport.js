@@ -45,6 +45,108 @@ export function patternViewportAnchors(data) {
       y: center.y + .65 * (dx * Math.sin(angle) + dy * Math.cos(angle))}};
 }
 
+const finitePoint = p => p && Number.isFinite(p.x) && Number.isFinite(p.y);
+const samePoint = (a, b) => finitePoint(a) && finitePoint(b) && a.x === b.x && a.y === b.y;
+const pointArrays = ['points', 'controlPoints', 'fitPoints'];
+const pointFields = ['center', 'startTangentHandle', 'endTangentHandle'];
+
+// The server alone grants eligibility. Translation preserves radii, angles,
+// spline weights and ellipse axis vectors; every frame uses the same baseline.
+export function radialCenterTransform(document, id, center) {
+  const descriptor = document?.radialCenterPreviews?.find(p => p.id === id);
+  if (!descriptor || !samePoint(descriptor.center, center) || !Number.isFinite(descriptor.stepAngleDegrees)
+    || !Array.isArray(descriptor.members) || !Array.isArray(document.entities)) return null;
+  const moved = new Map();
+  for (const member of descriptor.members) {
+    if (!member.entityId || !Number.isInteger(member.column) || member.column < 1 || moved.has(member.entityId)) return null;
+    const angle = member.column * descriptor.stepAngleDegrees * Math.PI / 180;
+    if (!Number.isFinite(angle)) return null;
+    moved.set(member.entityId, {cos: Math.cos(angle), sin: Math.sin(angle)});
+  }
+  if (descriptor.centerPointId != null) {
+    if (moved.has(descriptor.centerPointId)) return null;
+    const entity = document.entities.find(e => e.id === descriptor.centerPointId);
+    if (entity?.kind !== 'point' || !samePoint(entity.points?.[0], center)) return null;
+    moved.set(descriptor.centerPointId, null);
+  }
+  const entities = new Map(document.entities.map(e => [e.id, e]));
+  if (entities.size !== document.entities.length) return null;
+  for (const id of moved.keys()) {
+    const entity = entities.get(id);
+    if (!entity || entity.isLocked || !['point', 'line', 'polyline', 'circle', 'arc', 'ellipse', 'polygon', 'spline'].includes(entity.kind)
+      || pointArrays.some(key => entity[key] != null && (!Array.isArray(entity[key]) || !entity[key].every(finitePoint)))
+      || pointFields.some(key => entity[key] != null && !finitePoint(entity[key]))) return null;
+  }
+  const origin = {...center};
+  return point => {
+    if (!finitePoint(point)) return null;
+    const dx = point.x - origin.x, dy = point.y - origin.y;
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) return null;
+    let valid = true;
+    const result = document.entities.map(entity => {
+      if (!moved.has(entity.id)) return entity;
+      const rotation = moved.get(entity.id);
+      if (rotation === null) return {...entity, points: [{...entity.points[0], ...point}]};
+      const x = rotation ? dx - rotation.cos * dx + rotation.sin * dy : dx;
+      const y = rotation ? dy - rotation.sin * dx - rotation.cos * dy : dy;
+      const translate = p => {
+        const translated = {...p, x: p.x + x, y: p.y + y};
+        valid &&= Boolean(finitePoint(translated));
+        return translated;
+      };
+      const copy = {...entity};
+      for (const key of pointArrays) if (entity[key]) copy[key] = entity[key].map(translate);
+      for (const key of pointFields) if (entity[key]) copy[key] = translate(entity[key]);
+      return copy;
+    });
+    return valid ? {...document, entities: result} : null;
+  };
+}
+
+export function createRadialCenterPreview({getDocument, render, requestFrame, cancelFrame}) {
+  let session = null, frame = null;
+  const cancelPendingFrame = () => { if (frame != null) cancelFrame(frame); frame = null; };
+  const paint = () => {
+    frame = null;
+    if (session) {
+      const document = session.transform(session.point);
+      render(document ? session.point : null, document);
+    }
+  };
+  const reset = () => { cancelPendingFrame(); session = null; render(null, null); };
+  return {
+    get busy() { return session != null; },
+    begin(id, center) {
+      if (session) return false;
+      const transform = radialCenterTransform(getDocument(), id, center);
+      if (!transform) return false;
+      session = {id, transform, point: {...center}, held: true, accepted: null};
+      return true;
+    },
+    move(point) {
+      if (!session || !finitePoint(point)) return;
+      session.point = {...point};
+      if (frame == null) frame = requestFrame(paint);
+    },
+    finish(point) {
+      if (!session) return;
+      session.held = false;
+      session.point = {...point};
+      cancelPendingFrame();
+      paint();
+      if (samePoint(session?.accepted, point)) reset();
+    },
+    accept(document) {
+      if (!session) return;
+      const descriptor = document?.radialCenterPreviews?.find(p => p.id === session.id);
+      if (!descriptor) { reset(); return; }
+      session.accepted = descriptor.center;
+      if (!session.held && samePoint(descriptor.center, session.point)) reset();
+    },
+    reset
+  };
+}
+
 // Serialize server previews and coalesce movement; never allow an old preview
 // to overtake the final release/cancel or flood the Blazor circuit.
 export function createPatternCenterQueue(send, onIdle, onError) {
@@ -76,24 +178,36 @@ export function createPatternCenterQueue(send, onIdle, onError) {
   };
 }
 
-export function bindPatternCenterHandle(widget, {toWorld, send, preview, select, onError}) {
-  let drag = null;
-  const queue = createPatternCenterQueue(send, () => {
+export function bindPatternCenterHandle(widget, {toWorld, send, preview, select, onError,
+  beginLocal, finishLocal, resetLocal, localBusy}) {
+  let drag = null, lastSent = null;
+  const queue = createPatternCenterQueue(value => { lastSent = value; return send(value); }, () => {
     if (!drag) { delete widget.dataset.centerDragging; preview(null); }
-  }, onError);
+  }, error => {
+    const failed = drag;
+    drag = null;
+    if (failed && widget.hasPointerCapture(failed.pointerId)) widget.releasePointerCapture(failed.pointerId);
+    delete widget.dataset.centerDragging;
+    resetLocal?.(); preview(null); onError(error);
+    // A failed response may have reached the server. Best-effort cancellation
+    // releases its staged drag guard; never retry updates or an end implicitly.
+    if (lastSent && lastSent.phase !== 'cancel') {
+      void Promise.resolve().then(() => send({...lastSent, phase: 'cancel'})).catch(onError);
+    }
+  });
   const prevent = e => { e.preventDefault(); e.stopPropagation(); };
-  const value = (phase, point) => ({id: widget.dataset.patternId, x: point.x, y: point.y, phase});
+  const value = (phase, point, id = drag?.id) => ({id, x: point.x, y: point.y, phase});
   const dragPoint = e => {
     const p = toWorld(e);
     return {x: p.x - drag.offset.x, y: p.y - drag.offset.y};
   };
   const down = e => {
     const handle = e.target.closest?.('[data-pattern-center-handle]');
-    if (!handle || handle.disabled || e.button !== 0 || drag || queue.busy) return;
+    if (!handle || handle.disabled || e.button !== 0 || drag || queue.busy || localBusy?.()) return;
     const center = {x: Number(widget.dataset.centerX), y: Number(widget.dataset.centerY)}, p = toWorld(e);
     if (![center.x, center.y, p.x, p.y].every(Number.isFinite)) return;
     prevent(e);
-    drag = {pointerId: e.pointerId, center, screen: {x: e.clientX, y: e.clientY}, started: false,
+    drag = {id: widget.dataset.patternId, pointerId: e.pointerId, center, screen: {x: e.clientX, y: e.clientY}, started: false,
       offset: {x: p.x - center.x, y: p.y - center.y}};
     widget.setPointerCapture(e.pointerId);
   };
@@ -101,6 +215,7 @@ export function bindPatternCenterHandle(widget, {toWorld, send, preview, select,
     if (drag.started) return true;
     if (Math.hypot(e.clientX - drag.screen.x, e.clientY - drag.screen.y) < 3) return false;
     drag.started = true;
+    drag.local = Boolean(beginLocal?.(drag.id, drag.center));
     widget.dataset.centerDragging = 'true';
     queue.push(value('begin', drag.center));
     return true;
@@ -110,22 +225,26 @@ export function bindPatternCenterHandle(widget, {toWorld, send, preview, select,
     prevent(e);
     if (!start(e)) return;
     const point = dragPoint(e);
+    if (!finitePoint(point)) return;
     preview(point);
-    queue.push(value('update', point));
+    if (!drag.local) queue.push(value('update', point));
   };
   const finish = (e, cancel) => {
     if (!drag || (e.pointerId !== undefined && drag.pointerId !== e.pointerId)) return;
     prevent(e);
     if (!cancel) start(e);
-    const point = cancel ? drag.center : dragPoint(e), pointerId = drag.pointerId, started = drag.started;
+    let point = cancel ? drag.center : dragPoint(e);
+    if (!finitePoint(point)) { cancel = true; point = drag.center; }
+    const {pointerId, started, id, local} = drag;
     drag = null;
     if (widget.hasPointerCapture(pointerId)) widget.releasePointerCapture(pointerId);
     if (!started) {
       if (!cancel) select?.(Boolean(e.shiftKey));
       return;
     }
-    preview(point);
-    queue.push(value(cancel ? 'cancel' : 'end', point));
+    if (local) finishLocal?.(point);
+    else preview(point);
+    queue.push(value(cancel ? 'cancel' : 'end', point, id));
   };
   const up = e => finish(e, false), cancel = e => finish(e, true);
   const key = e => {
@@ -142,7 +261,11 @@ export function bindPatternCenterHandle(widget, {toWorld, send, preview, select,
   widget.addEventListener('lostpointercapture', cancel);
   widget.addEventListener('keydown', key);
   return () => {
+    const active = drag;
     drag = null; queue.dispose();
+    if (active && widget.hasPointerCapture(active.pointerId)) widget.releasePointerCapture(active.pointerId);
+    delete widget.dataset.centerDragging;
+    resetLocal?.();
     for (const [name, fn] of [['pointerdown',down],['pointermove',move],['pointerup',up],
       ['pointercancel',cancel],['lostpointercapture',cancel],['keydown',key]]) widget.removeEventListener(name, fn);
   };

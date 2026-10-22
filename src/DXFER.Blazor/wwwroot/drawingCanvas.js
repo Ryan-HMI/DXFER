@@ -1,6 +1,6 @@
 import { sampleControlSpline } from "./canvas/splineGeometry.js";
 import { measurePerimeterDistance } from "./perimeterDistance.js";
-import { patternViewportGuides, patternViewportAnchors, patternSourceScreenBounds, bindPatternCenterHandle } from "./canvas/patternViewport.js?v=20261021-pattern-center";
+import { patternViewportGuides, patternViewportAnchors, patternSourceScreenBounds, bindPatternCenterHandle, createRadialCenterPreview } from "./canvas/patternViewport.js?v=20261021-pattern-center-latency";
 import { getSnapCue } from "./canvas/snapCue.js?v=20261019";
 import {
   addUniqueNumber,
@@ -280,6 +280,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
       pickPatternCenter(state, key, additive);
     },
     setDocument(document, fitToDocument = false) {
+      state.patternLocalPreview?.reset();
       if (state.solverEngine === "PlaneGCS") {
         cancelGeometryDrag(state);
         state.clickCandidate = null;
@@ -356,13 +357,16 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
     },
 
     setCornerPreview(document, handle, value, patternEditing = false) {
+      const centerDragging = state.patternLocalPreview?.busy
+        || state.patternHandleBinding?.widget.dataset.centerDragging === 'true';
       if (!patternEditing) state.patternPreviewFitted = false;
       state.patternEditing = patternEditing;
       state.canvas.dataset.patternEditing = patternEditing ? "true" : "false";
       state.cornerPreview = document ? { document, handle, value } : null;
       state.canvas.dataset.cornerPreview = document ? "true" : "false";
+      state.patternLocalPreview?.accept(document);
       if (patternEditing && document && !state.patternPreviewFitted) {
-        fitToExtents(state);
+        if (!centerDragging) fitToExtents(state);
         state.patternPreviewFitted = true;
       }
       if (!document) {
@@ -768,7 +772,7 @@ function draw(state) {
     drawPointTarget(state, { x: 0, y: 0 }, { strokeStyle: "#97a5b6", lineWidth: 1.5 });
   }
 
-  const entities = getDocumentEntities(state.cornerPreview?.document || state.document);
+  const entities = getDocumentEntities(state.patternCenterDocument || state.cornerPreview?.document || state.document);
   const diagnosticEntityIds = getSketchDiagnosticEntityIds(state.document);
   for (const entity of entities) {
     const affectedByDiagnostics = diagnosticEntityIds.has(getEntityId(entity));
@@ -919,11 +923,24 @@ export function pickPatternCenter(state, key, additive = false) {
 function drawPatternViewportControls(state, size) {
   const widget = state.canvas.parentElement?.querySelector?.('.pattern-viewport-controls');
   state.patternControlsVisible = Boolean(widget);
-  if (state.patternHandleBinding?.widget !== widget) {
+  if (state.patternHandleBinding?.widget !== widget
+    || state.patternHandleBinding?.id !== widget?.dataset.patternId) {
     state.patternHandleBinding?.dispose();
     state.patternHandleBinding = null;
     state.patternCenterPreview = null;
     if (widget) {
+      const local = createRadialCenterPreview({
+        getDocument: () => state.cornerPreview?.document || state.document,
+        requestFrame: callback => window.requestAnimationFrame(callback),
+        cancelFrame: token => window.cancelAnimationFrame(token),
+        render: (point, document) => {
+          state.patternCenterPreview = point;
+          state.patternCenterDocument = document;
+          state.canvas.dataset.patternCenterLocalPreview = document ? 'true' : 'false';
+          if (point && !state.disposed) draw(state);
+        }
+      });
+      state.patternLocalPreview = local;
       const dispose = bindPatternCenterHandle(widget, {
         select: additive => invokeDotNet(state, 'OnPatternCenterPicked', widget.dataset.patternId, additive),
         toWorld: event => {
@@ -932,10 +949,17 @@ function drawPatternViewportControls(state, size) {
         },
         send: value => state.disposed ? Promise.resolve() : state.dotnetRef.invokeMethodAsync(
           'OnPatternCenterChanged', value.id, value.x, value.y, value.phase),
-        preview: point => { state.patternCenterPreview = point; if (!state.disposed) draw(state); },
-        onError: error => console.error('Pattern center preview failed', error)
+        beginLocal: (id, center) => local.begin(id, center),
+        finishLocal: point => local.finish(point),
+        resetLocal: () => local.reset(),
+        localBusy: () => local.busy,
+        preview: point => { if (point) local.move(point); },
+        onError: error => {
+          if (!state.disposed) draw(state);
+          console.error('Pattern center preview failed', error);
+        }
       });
-      state.patternHandleBinding = {widget, dispose};
+      state.patternHandleBinding = {widget, id: widget.dataset.patternId, dispose};
     }
   }
   if (!widget) return;

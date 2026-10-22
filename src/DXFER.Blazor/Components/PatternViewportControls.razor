@@ -9,7 +9,7 @@
          data-source-min-x="@(SourceBounds is { } minX ? Number(minX.MinX) : null)" data-source-min-y="@(SourceBounds is { } minY ? Number(minY.MinY) : null)"
          data-source-max-x="@(SourceBounds is { } maxX ? Number(maxX.MaxX) : null)" data-source-max-y="@(SourceBounds is { } maxY ? Number(maxY.MaxY) : null)"
          data-pattern-kind="@Pattern.Kind" data-pattern-editing="@(Draft is not null ? "true" : "false")" data-pitch-x="@Number(Pattern.XPitch)" data-pitch-y="@Number(Pattern.YPitch)"
-         data-angle="@Number(Pattern.AngleDegrees)" data-center-x="@Number(Pattern.Center.X)" data-center-y="@Number(Pattern.Center.Y)"
+         data-angle="@Number(Pattern.AngleDegrees)" data-center-x="@Pattern.Center.X.ToString("G17", CultureInfo.InvariantCulture)" data-center-y="@Pattern.Center.Y.ToString("G17", CultureInfo.InvariantCulture)"
          data-u-x="@Number(DirectionU.X)" data-u-y="@Number(DirectionU.Y)" data-v-x="@Number(DirectionV.X)" data-v-y="@Number(DirectionV.Y)"
          data-pattern-direction-picking="@PickingDirection" data-u-reference="@Pattern.UDirectionReference" data-v-reference="@Pattern.VDirectionReference"
          data-step="@Number(Pattern.FullCircle ? 360d / Pattern.Count : Pattern.StepAngleDegrees)"
