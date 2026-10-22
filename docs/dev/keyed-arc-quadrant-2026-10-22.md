@@ -34,8 +34,14 @@ exports with zero browser errors. Rendered tooltip independently reports
 Google sign-in remains configured; Production/Test and Sync are untouched.
 Production/Test process IDs remain 3584417/3584475. Isolated QA5038 stopped.
 
-Flux independent acceptance of this new build is pending. The separate screenshot
-solver conflict is not covered or resolved by this correction.
+Flux independently accepted the keyed-radius omission on public Dev `cdfb098`
+(Slack delivery `653d66e242f2dcf2aff70bd1`). Auto ON, near-90-degree acquisition,
+radius 3 and Enter without pointer movement retain a satisfied center/end
+Horizontal alongside Coincident/Tangent. Native reopen/re-export retain radius
+and relation. Auto OFF adds no automatic constraints; re-aiming off-quadrant
+clears the candidate without retaining a stale relation. Auto constraints were
+restored ON. This closes that reported omission only. The separate screenshot
+solver conflict remains unverified and open.
 
 Existing arcs are not rewritten: drawings
 saved through the old path may still lack the intended quadrant relation, which
