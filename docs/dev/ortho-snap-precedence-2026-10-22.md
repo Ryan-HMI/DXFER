@@ -40,6 +40,10 @@ input remain with no snap card. Evidence directories under /tmp:
 dxfer-ortho-baseline-20261022-b, dxfer-ortho-candidate-20261022-d,
 dxfer-ortho-keyed-candidate-20261022.
 
+Installed on DXFer Dev as a2f6e65 at 2026-10-22T13:58:54Z.
+Public-browser replay passed all 16 cases, with the rendered build verified.
+Evidence: `/tmp/dxfer-ortho-a2f6e65-public`. Production/Test unchanged.
+
 Existing drawings are not rewritten. Previously missing intended relations
 require deliberate reapplication or recreation; geometry alone cannot establish
 which alignment the user intended. This is a concrete reproduced path, not

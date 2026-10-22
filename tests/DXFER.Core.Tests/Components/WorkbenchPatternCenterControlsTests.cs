@@ -19,6 +19,119 @@ public sealed class WorkbenchPatternCenterControlsTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CenterSelectionAfterShowPreservesModifiedDraftAndAllowsUnchangedSelection(bool modified)
+    {
+        await using var fixture = new Fixture();
+        await fixture.Run(() =>
+        {
+            fixture.Invoke("TogglePatternControls", fixture.Pattern);
+            if (modified)
+            {
+                fixture.Draft!.Count = "6";
+                fixture.Invoke("RefreshPatternPreview");
+            }
+            fixture.Invoke("SelectPatternCenter", fixture.Pattern.Id, false);
+            if (modified)
+            {
+                fixture.Draft!.Count.Should().Be("6");
+                fixture.Get<string>("_status").Should().Contain("Confirm or cancel");
+                fixture.Unchanged();
+            }
+            else
+            {
+                fixture.Draft.Should().BeNull();
+                fixture.Document.Metadata.Patterns.Single().CenterPointId.Should().NotBeNull();
+                fixture.Property("ViewportPattern").Should().NotBeNull("center remains reachable without a parameter card");
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ShowStartsEditableDraft_HideShowPreservesIt_CancelPreservesDocument(bool linear)
+    {
+        await using var fixture = new Fixture(linear ? "rectangular" : null);
+        await fixture.Run(() =>
+        {
+            fixture.Invoke("TogglePatternControls", fixture.Pattern);
+            fixture.Draft.Should().NotBeNull("Show must not require another Edit click");
+            var draft = fixture.Draft!;
+            if (linear) draft.Columns = "5";
+            else draft.Count = "5";
+            fixture.Invoke("RefreshPatternPreview");
+            fixture.Invoke("TogglePatternControls", fixture.Pattern);
+            fixture.Property("ViewportPattern").Should().BeNull();
+            fixture.Invoke("TogglePatternControls", fixture.Pattern);
+            fixture.Draft.Should().BeSameAs(draft);
+            fixture.Property("ViewportPattern").Should().NotBeNull();
+            fixture.Unchanged();
+            fixture.Invoke("ExitInspectorTool");
+            fixture.Draft.Should().BeNull();
+            fixture.Property("ViewportPattern").Should().BeNull();
+            fixture.Unchanged();
+        });
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task CountChangeStagesInstanceIntentRemoval_AcceptAndCancelAreAtomic(bool linear, bool accept)
+    {
+        await using var fixture = new Fixture(linear ? "rectangular" : null);
+        await fixture.Run(() =>
+        {
+            var original = fixture.Document;
+            var member = fixture.Pattern.Members.First().EntityId;
+            var originalWithIntent = new DrawingDocument(original.Entities,
+                [new SketchDimension("member-radius", SketchDimensionKind.Radius, [member], 1)],
+                [new SketchConstraint("member-fixed", SketchConstraintKind.Fix, [member], SketchConstraintState.Satisfied),
+                 new SketchConstraint("source-fixed", SketchConstraintKind.Fix, ["seed"], SketchConstraintState.Satisfied)], original.Metadata);
+            fixture.Set("_document", originalWithIntent);
+            fixture.Invoke("TogglePatternControls", fixture.Pattern);
+            if (linear) fixture.Draft!.Columns = "3";
+            else fixture.Draft!.Count = "5";
+            fixture.Invoke("RefreshPatternPreview");
+            fixture.Preview.Should().NotBeNull();
+            fixture.Preview!.Dimensions.Should().BeEmpty();
+            fixture.Preview.Constraints.Should().ContainSingle().Which.Id.Should().Be("source-fixed");
+            fixture.Document.Should().BeSameAs(originalWithIntent);
+            fixture.Undo.Should().BeEmpty();
+
+            // Restoring the original count must restore its intent, without a sticky deletion flag.
+            if (linear) fixture.Draft!.Columns = "2";
+            else fixture.Draft!.Count = "4";
+            fixture.Invoke("RefreshPatternPreview");
+            fixture.Preview!.Dimensions.Should().Equal(originalWithIntent.Dimensions);
+            fixture.Preview.Constraints.Should().Equal(originalWithIntent.Constraints);
+            if (linear) fixture.Draft!.Columns = "3";
+            else fixture.Draft!.Count = "5";
+            fixture.Invoke("RefreshPatternPreview");
+            fixture.Invoke(accept ? "CommitPatternPreview" : "ExitInspectorTool");
+            fixture.Draft.Should().BeNull();
+            fixture.Property("ViewportPattern").Should().BeNull();
+            if (!accept)
+            {
+                fixture.Document.Should().BeSameAs(originalWithIntent);
+                fixture.Undo.Should().BeEmpty();
+                return;
+            }
+            fixture.Document.Dimensions.Should().BeEmpty();
+            fixture.Document.Constraints.Should().ContainSingle().Which.Id.Should().Be("source-fixed");
+            var committed = fixture.Document;
+            fixture.Undo.Should().ContainSingle().Which.Should().BeSameAs(originalWithIntent);
+            fixture.Invoke("UndoLastDocumentChange");
+            fixture.Document.Should().BeSameAs(originalWithIntent);
+            fixture.Invoke("RedoLastDocumentChange");
+            fixture.Document.Should().BeSameAs(committed);
+        });
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
     [InlineData(true, false)]
@@ -44,7 +157,6 @@ public sealed class WorkbenchPatternCenterControlsTests
             var current = fixture.Document.Metadata.Patterns.Single();
             fixture.Invoke("TogglePatternControls", current);
             fixture.Property("ViewportPattern").Should().NotBeNull();
-            fixture.Invoke("EditViewportPattern", current);
             fixture.Draft.Should().NotBeNull();
             fixture.Property("ViewportPattern").Should().NotBeNull();
         });

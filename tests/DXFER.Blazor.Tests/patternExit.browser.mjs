@@ -104,12 +104,17 @@ try {
   };
   const reopen = async doc => {
     const pattern = doc.metadata.patterns[0];
-    const member = doc.entities.find(e => e.id === pattern.members.at(-1).entityId);
-    await hitCircle(member, 'right');
+    let picked = false;
+    for (const id of [...pattern.members.map(m => m.entityId).reverse(), ...pattern.sourceEntityIds]) {
+      try { await hitCircle(doc.entities.find(e => e.id === id), 'right'); picked = true; break; }
+      catch (error) { if (error.message !== 'No unobscured circle hit target') throw error; }
+    }
+    assert.ok(picked, 'A pattern instance must be reachable for its context menu');
     await context.getByRole('button', {name: 'Show pattern controls', exact: true}).click();
-    await expect(widget).toBeVisible(); await expect(editor).toHaveCount(0);
-    await widget.getByRole('button', {name: 'Edit pattern', exact: true}).click();
+    await expect(widget).toBeVisible();
+    await expect(widget.getByRole('button', {name: 'Edit pattern', exact: true})).toHaveCount(0);
     await expect(editor).toBeVisible(); await expect(canvas).toHaveAttribute('data-pattern-editing', 'true');
+    await expect(widget.locator('input[readonly]')).toHaveCount(0);
   };
   const validPattern = (doc, source, kind, count) => {
     assert.equal(doc.metadata.patterns.length, 1);
@@ -209,6 +214,43 @@ try {
     await expect(widget.getByLabel('Viewport pattern U count', {exact: true})).toHaveValue('3');
     await exit(surface, false);
     evidence.cases.push(name); console.log(`PASS ${name}`);
+  }
+  if (process.env.DXFER_PATTERN_COUNT_FIXTURES) {
+    for (const kind of ['Radial', 'Rectangular', 'Staggered']) {
+      const text = await readFile(`${process.env.DXFER_PATTERN_COUNT_FIXTURES}/${kind}.dxf`, 'utf8');
+      const native = decode(text);
+      for (const count of [2, 6]) for (const accept of [false, true]) {
+        const name = `${kind}-count-${count}-${accept ? 'accept' : 'cancel'}-member-intent`;
+        evidence.current = name;
+        await load(text, native.entities.length);
+        const baseline = await download(`${name}-before`);
+        await reopen(baseline.doc);
+        await set(widget, kind === 'Radial' ? 'Viewport pattern instances' : 'Viewport pattern U count', count);
+        await expect(widget.getByRole('button', {name: 'Confirm', exact: true})).toBeEnabled();
+        assert.deepEqual(content((await download(`${name}-draft`)).doc), content(baseline.doc), 'Preview cannot delete saved intent');
+        await page.screenshot({path: `${output}/${name}-editable.png`});
+        await exit('viewport', accept);
+        if (!accept) await unchanged(baseline.doc, `${name}-unchanged`);
+        else {
+          const after = await download(`${name}-after`);
+          assert.deepEqual(after.doc.dimensions.map(d => d.id), ['source-radius', 'other-radius']);
+          assert.deepEqual(after.doc.constraints.map(c => c.id), ['source-fixed', 'other-fixed', 'center-fixed']);
+          assert.ok(after.doc.constraints.every(c => c.state === 'Satisfied'));
+          assert.deepEqual(after.doc.entities.filter(e => ['seed', 'other', 'center'].includes(e.id)),
+            baseline.doc.entities.filter(e => ['seed', 'other', 'center'].includes(e.id)), 'Source, center and unrelated geometry remain exact');
+          assert.equal(after.doc.metadata.patterns[0][kind === 'Radial' ? 'count' : 'columns'], count);
+          await oneHistory(baseline.doc, after.doc, name);
+          await load(after.text, after.doc.entities.length);
+          assert.deepEqual(content((await download(`${name}-reopened`)).doc), content(after.doc));
+          await reopen(after.doc);
+          await set(widget, kind === 'Radial' ? 'Viewport pattern instances' : 'Viewport pattern U count', 3);
+          await exit('viewport', true);
+          const again = await download(`${name}-edited-again`);
+          assert.equal(again.doc.metadata.patterns[0][kind === 'Radial' ? 'count' : 'columns'], 3);
+        }
+        evidence.cases.push(name); console.log(`PASS ${name}`);
+      }
+    }
   }
   assert.deepEqual(evidence.errors, []); evidence.passed = true;
 } catch (error) {

@@ -177,7 +177,7 @@ try {
     await page.mouse.click(p.x, p.y, {button: 'right'}); await expect(context).toBeVisible();
   };
   const show = async doc => {
-    if (await handle.isVisible()) return;
+    if (await card.isVisible()) return;
     await openPatternContext(doc); await context.getByRole('button', {name: 'Show pattern controls', exact: true}).click();
     await expect(handle).toBeVisible(); await expect(card).toBeVisible();
   };
@@ -356,7 +356,7 @@ try {
       finally { await page.mouse.up({button: 'middle'}); }
       await expect.poll(async () => (await camera()).x).not.toBe(beforePan.x); await stableCamera();
       pointNear(await card.boundingBox(), moved, 'Pan does not move card', 1);
-      await widget.getByRole('button', {name: 'Edit pattern', exact: true}).click();
+      await expect(widget.getByRole('button', {name: 'Edit pattern', exact: true})).toHaveCount(0);
       await count.fill('5'); await count.press('Enter'); await expect(count).toHaveValue('5');
       pointNear(await card.boundingBox(), moved, 'Editing an input does not drag/reanchor card', 1);
       await openPatternContext(exposed.doc);
@@ -381,7 +381,10 @@ try {
     await load(original); await automatic(spec.automatic); await show(original.doc); await parkCard();
     let baseline = await download(`${spec.name}-before`);
     if (spec.mode === 'fixed') {
-      await handle.click(); await tool('Fix'); await canvas.press('Escape');
+      await handle.click();
+      await expect(canvas).toHaveAttribute('data-pattern-editing', 'false');
+      await expect(canvas).toHaveAttribute('data-selected-keys', centerId);
+      await tool('Fix'); await canvas.press('Escape');
       baseline = await download(`${spec.name}-fixed`);
       assert.ok(baseline.doc.constraints.some(c => c.kind === 'Fix' && c.state === 'Satisfied'
         && c.referenceKeys.some(k => owner(k) === centerId)), 'Center Fixed through real UI');

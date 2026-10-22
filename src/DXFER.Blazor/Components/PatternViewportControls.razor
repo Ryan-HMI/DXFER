@@ -21,6 +21,8 @@
                 title="Select or drag pattern center" aria-label="Move pattern center" disabled="@(!CanEdit)">
             <CadIcon Name="CadIconName.Point" />
         </button>
+        @if (Draft is not null)
+        {
         <div class="pattern-floating-card pattern-radial-card" data-pattern-card>
         <button type="button" class="pattern-card-drag" data-pattern-card-drag title="Move pattern card" aria-label="Move pattern card">
             <CadIcon Name="CadIconName.Move" />Radial pattern
@@ -34,11 +36,6 @@
                     <button type="button" class="pattern-icon-button" title="Confirm" aria-label="Confirm" disabled="@(!CanConfirm)" @onclick="Confirm"><CadIcon Name="CadIconName.Check" /></button>
                     <button type="button" class="pattern-icon-button" title="Cancel pattern changes" aria-label="Cancel pattern changes" @onclick="Cancel"><CadIcon Name="CadIconName.Close" /></button>
                 }
-                else
-                {
-                    <label>Instances<input aria-label="Viewport pattern instances" value="@Pattern.Count" readonly @ondblclick="Edit" /></label>
-                    <button type="button" class="pattern-icon-button" title="Edit pattern" aria-label="Edit pattern" disabled="@(!CanEdit)" @onclick="Edit"><CadIcon Name="CadIconName.CircularPattern" /></button>
-                }
             </div>
             <label class="pattern-full-circle"><input type="checkbox" aria-label="Full Circle" checked="@FullCircle" disabled="@(Draft is null)" @onchange="args => SetFullCircle(args.Value is true)" />Full Circle</label>
             @if (!FullCircle)
@@ -47,28 +44,20 @@
                 {
                     <label>Angle between instances (deg)<input aria-label="Viewport pattern step angle" type="number" step="any" value="@StepText" @onchange="SetStep" /></label>
                 }
-                else
-                {
-                    <label>Angle between instances (deg)<input aria-label="Viewport pattern step angle" value="@Number(Pattern.StepAngleDegrees)" readonly @ondblclick="Edit" /></label>
-                }
             }
             @if (Error is not null) { <p role="alert">@Error</p> }
         </div>
         </div>
         </div>
+        }
     }
-    else
+    else if (Draft is not null)
     {
         <div class="pattern-axis" data-pattern-anchor="x">
             @if (Draft is { } xDraft)
             {
                 <label>U count<input aria-label="Viewport pattern U count" type="number" min="1" step="1" @bind="xDraft.Columns" @bind:after="NotifyChanged" /></label>
                 <label>U pitch (@Units)<input aria-label="Viewport pattern U pitch" type="number" step="any" @bind="xDraft.PitchX" @bind:after="NotifyChanged" /></label>
-            }
-            else
-            {
-                <label>U count<input aria-label="Viewport pattern U count" value="@Pattern.Columns" readonly @ondblclick="Edit" /></label>
-                <label>U pitch (@Units)<input aria-label="Viewport pattern U pitch" value="@Number(Pattern.XPitch)" readonly @ondblclick="Edit" /></label>
             }
             @AxisTools("U")
         </div>
@@ -78,15 +67,10 @@
                 <label>V count<input aria-label="Viewport pattern V count" type="number" min="1" step="1" @bind="yDraft.Rows" @bind:after="NotifyChanged" /></label>
                 <label>V pitch (@Units)<input aria-label="Viewport pattern V pitch" type="number" step="any" @bind="yDraft.PitchY" @bind:after="NotifyChanged" /></label>
             }
-            else
-            {
-                <label>V count<input aria-label="Viewport pattern V count" value="@Pattern.Rows" readonly @ondblclick="Edit" /></label>
-                <label>V pitch (@Units)<input aria-label="Viewport pattern V pitch" value="@Number(Pattern.YPitch)" readonly @ondblclick="Edit" /></label>
-            }
             @AxisTools("V")
         </div>
     }
-    @if (!IsRadial)
+    @if (!IsRadial && Draft is not null)
     {
         <div class="pattern-stagger-controls" data-pattern-anchor="stagger">
             @if (Draft is { } staggerDraft)
@@ -97,17 +81,9 @@
                     <label class="pattern-stagger-fraction">Row shift (U fraction)<input type="number" min="0" max="1" step="any" aria-label="Viewport stagger fraction" @bind="staggerDraft.StaggerFraction" @bind:after="NotifyChanged" /></label>
                 }
             }
-            else
-            {
-                <label class="pattern-stagger"><input type="checkbox" aria-label="Viewport stagger rows" checked="@(Pattern.Kind == PatternKind.Staggered)" disabled />Stagger rows</label>
-                @if (Pattern.Kind == PatternKind.Staggered)
-                {
-                    <label class="pattern-stagger-fraction">Row shift (U fraction)<input aria-label="Viewport stagger fraction" value="@Number(Pattern.StaggerFraction)" readonly /></label>
-                }
-            }
         </div>
     }
-    @if (!IsRadial)
+    @if (!IsRadial && Draft is not null)
     {
         <div class="pattern-actions" data-pattern-anchor="actions">
             @if (Error is not null) { <p role="alert">@Error</p> }
@@ -117,10 +93,6 @@
                     <button type="button" disabled="@(!CanConfirm)" @onclick="Confirm">Confirm</button>
                     <button type="button" title="Cancel pattern changes" aria-label="Cancel pattern changes" @onclick="Cancel"><CadIcon Name="CadIconName.Close" /></button>
                 </div>
-            }
-            else
-            {
-                <button type="button" disabled="@(!CanEdit)" @onclick="Edit"><CadIcon Name="CadIconName.LinearPattern" />Edit pattern</button>
             }
         </div>
     }
@@ -141,7 +113,6 @@
     [Parameter] public EventCallback Changed { get; set; }
     [Parameter] public EventCallback Confirm { get; set; }
     [Parameter] public EventCallback Cancel { get; set; }
-    [Parameter] public EventCallback Edit { get; set; }
     [Parameter] public EventCallback<string> FlipDirection { get; set; }
     [Parameter] public EventCallback<string> PickDirection { get; set; }
     [Parameter] public EventCallback<string> ClearDirection { get; set; }

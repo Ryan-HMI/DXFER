@@ -38,6 +38,12 @@ public sealed class FloatingPatternCardTests
             return result.ToHtmlString();
         });
         html.Should().Contain("data-center-point-id=\"center\"").And.Contain("data-member-ids=\"[&quot;copy&quot;]\"");
+        if (!editing)
+        {
+            html.Should().NotContain("data-pattern-card").And.NotContain("<input").And.NotContain("Edit pattern");
+            if (radial) html.Should().Contain("data-pattern-center-handle");
+            return;
+        }
         if (radial)
         {
             html.Should().Contain("data-pattern-card").And.Contain("data-pattern-card-drag")
@@ -63,6 +69,5 @@ public sealed class FloatingPatternCardTests
             if (editing) html.Should().Contain("value=\"1.25\"").And.Contain("value=\"2.75\"");
         }
         if (editing) html.Should().Contain("Confirm").And.Contain("aria-label=\"Cancel pattern changes\"");
-        else html.Should().Contain("Edit pattern").And.NotContain("aria-label=\"Confirm\"");
     }
 }

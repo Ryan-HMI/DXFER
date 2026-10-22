@@ -133,7 +133,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         if (_pendingPatternCenterPick is { } pick && _canvas is not null)
         {
             _pendingPatternCenterPick = null;
-            await _canvas.PickPatternCenterAsync(_document, pick.Key, pick.Additive);
+            await _canvas.PickPatternCenterAsync(_document, pick.Key, pick.Additive, pick.EndPatternEditing);
         }
         if (_contextOpen && _contextFocus)
         {

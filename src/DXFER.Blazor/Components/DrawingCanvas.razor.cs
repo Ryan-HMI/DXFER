@@ -110,10 +110,17 @@ public partial class DrawingCanvas : IAsyncDisposable
         await InvokeAsync(StateHasChanged);
     }
 
-    public async Task PickPatternCenterAsync(DrawingDocument document, string key, bool additive)
+    public async Task PickPatternCenterAsync(DrawingDocument document, string key, bool additive, bool endPatternEditing = false)
     {
         if (_canvasInstance is null) return;
         await _canvasInstance.InvokeVoidAsync("setDocument", CanvasDocumentDto.FromDocument(document), false);
+        if (endPatternEditing)
+        {
+            // Finish the unchanged draft before the canvas's edit-mode guard.
+            // Ordinary constraint/dimension picks must retain their active draft.
+            await _canvasInstance.InvokeVoidAsync("setCornerPreview", null, null, CornerSize, false);
+            await _canvasInstance.InvokeVoidAsync("setActiveTool", "select");
+        }
         await _canvasInstance.InvokeVoidAsync("pickPatternCenter", key, additive);
     }
 

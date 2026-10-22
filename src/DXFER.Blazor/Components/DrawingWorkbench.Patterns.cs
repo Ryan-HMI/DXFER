@@ -27,7 +27,7 @@ public partial class DrawingWorkbench
     private Point2? _patternCenterOriginalSnapPosition;
     private string? _patternDirectionPicking;
     private bool _patternDirectionSelectionConsumed;
-    private (string Key, bool Additive)? _pendingPatternCenterPick;
+    private (string Key, bool Additive, bool EndPatternEditing)? _pendingPatternCenterPick;
     private bool PatternEditing => _patternDraft is not null;
     private DrawingDocument? PatternPreview => ReferenceEquals(_patternSourceDocument, _document) ? _patternPreview : null;
     private bool CanConfirmPatternPreview => !_patternCenterDragging && _patternDirectionPicking is null
@@ -46,7 +46,9 @@ public partial class DrawingWorkbench
             .Any(id => _selectedEntityIds.Any(key => key == id || key.StartsWith(id + "|", StringComparison.Ordinal))));
 
     private bool CanTogglePatternControls(PatternDefinition pattern) => !_patternCenterDragging && _patternDirectionPicking is null
-        && (!PatternEditing || _editingPattern?.Id == pattern.Id);
+        && (PatternEditing ? _editingPattern?.Id == pattern.Id : CanEditViewportPattern(pattern));
+
+    private bool PatternControlsVisible(PatternDefinition pattern) => PatternEditing && ViewportPattern?.Id == pattern.Id;
 
     private void RetainSelectedPatternControls()
     {
@@ -59,16 +61,17 @@ public partial class DrawingWorkbench
     private void TogglePatternControls(PatternDefinition pattern)
     {
         if (!CanTogglePatternControls(pattern)) return;
-        if (ViewportPattern?.Id == pattern.Id)
+        if (PatternControlsVisible(pattern))
         {
             _hiddenPatternControls.Add(pattern.Id);
             if (_shownPatternControlsId == pattern.Id) _shownPatternControlsId = null;
         }
-        else
+        else if (PatternEditing)
         {
             _hiddenPatternControls.Remove(pattern.Id);
             _shownPatternControlsId = pattern.Id;
         }
+        else OpenPatternEditor(pattern);
         CloseContextMenu();
     }
 
@@ -257,11 +260,24 @@ public partial class DrawingWorkbench
 
     private void SelectPatternCenter(string patternId, bool additive)
     {
+        var endPatternEditing = PatternEditing;
         if (PatternEditing)
         {
-            _status = "Confirm the pattern before constraining its center.";
+            var saved = _document.Metadata.Patterns.FirstOrDefault(p => p.Id == patternId);
+            var preview = PatternPreview?.Metadata.Patterns.FirstOrDefault(p => p.Id == patternId);
+            // Selecting an unchanged center switches to geometry selection, not a
+            // second read-only parameter-card state. Never discard a modified draft.
+            if (_patternError is not null || _patternCenterSnaps is { Length: > 0 } || saved is null || preview is null
+                || preview with { Members = saved.Members, SourceEntityIds = saved.SourceEntityIds,
+                    StepAngleDegrees = preview.FullCircle ? saved.StepAngleDegrees : preview.StepAngleDegrees } != saved)
+            {
+                _status = "Confirm or cancel pattern changes before constraining its center.";
+                return;
+            }
+            ClearPatternEditor();
+            _activeTool = null;
         }
-        else if (DrawingPatternService.TryExposeCenter(_document, patternId, out var next, out var reason))
+        if (DrawingPatternService.TryExposeCenter(_document, patternId, out var next, out var reason))
         {
             if (!ReferenceEquals(next, _document)
                 && !ApplyDocumentChangeCore(next, "Pattern center available for constraints.", patternCommand: true)) return;
@@ -269,7 +285,7 @@ public partial class DrawingWorkbench
             if (pointId is not null)
             {
                 _shownPatternControlsId = patternId;
-                _pendingPatternCenterPick = (pointId, additive);
+                _pendingPatternCenterPick = (pointId, additive, endPatternEditing);
             }
         }
         else _status = reason;
@@ -386,7 +402,7 @@ public partial class DrawingWorkbench
             DrawingDocument next;
             string reason;
             var accepted = exists
-                ? DrawingPatternService.TryUpdate(_document, definition, out next, out reason)
+                ? DrawingPatternService.TryEditParameters(_document, definition, out next, out reason)
                 : DrawingPatternService.TryCreate(_document, definition, out next, out reason);
             if (accepted && _patternCenterSnaps is { Length: > 0 } snaps)
             {

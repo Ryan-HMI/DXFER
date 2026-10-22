@@ -86,6 +86,29 @@ public static class DrawingPatternService
     public static bool TryUpdate(DrawingDocument document, PatternDefinition definition,
         out DrawingDocument result, out string reason) => TrySet(document, definition, true, out result, out reason);
 
+    /// <summary>Explicit parameter edit: a changed instance layout detaches member intent in the returned draft only.</summary>
+    public static bool TryEditParameters(DrawingDocument document, PatternDefinition definition,
+        out DrawingDocument result, out string reason)
+    {
+        result = document;
+        if (!TryValidate(document, out reason)) return false;
+        var previous = document.Metadata.Patterns.FirstOrDefault(p => p.Id == definition.Id);
+        var countChanged = previous is not null && (previous.Kind == PatternKind.Radial && definition.Kind == PatternKind.Radial
+            ? previous.Count != definition.Count
+            : previous.Kind != PatternKind.Radial && definition.Kind != PatternKind.Radial
+                && (previous.Rows != definition.Rows || previous.Columns != definition.Columns));
+        if (!countChanged) return TryUpdate(document, definition, out result, out reason);
+
+        // All old instances can move when a full-circle count changes, not just removed IDs.
+        var members = previous!.Members.Select(m => m.EntityId).ToHashSet(StringComparer.Ordinal);
+        var draft = new DrawingDocument(document.Entities,
+            document.Dimensions.Where(d => !References(d.ReferenceKeys, members)),
+            document.Constraints.Where(c => !References(c.ReferenceKeys, members)), document.Metadata);
+        if (!TryUpdate(draft, definition, out var updated, out reason)) return false;
+        result = updated;
+        return true;
+    }
+
     public static bool TryExposeCenter(DrawingDocument document, string patternId,
         out DrawingDocument result, out string reason)
     {

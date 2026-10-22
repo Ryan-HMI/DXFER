@@ -11,23 +11,6 @@ public sealed class WorkbenchPatternControlsTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Fact]
-    public void ToggleShowsUnselectedPatternAndHidesWithoutDocumentOrHistoryChanges()
-    {
-        var (workbench, document, pattern) = Fixture();
-        Property(workbench, "ViewportPattern").Should().BeNull();
-        Invoke(workbench, "TogglePatternControls", pattern);
-        Property(workbench, "ViewportPattern").Should().BeSameAs(pattern);
-        Invoke(workbench, "TogglePatternControls", pattern);
-        Property(workbench, "ViewportPattern").Should().BeNull();
-        Field(workbench, "_document").Should().BeSameAs(document);
-        ((Stack<DrawingDocument>)Field(workbench, "_undoStack")!).Should().BeEmpty();
-        Invoke(workbench, "TogglePatternControls", pattern);
-        Property(workbench, "ViewportPattern").Should().BeSameAs(pattern);
-        Invoke(workbench, "ClearHistory");
-        Property(workbench, "ViewportPattern").Should().BeNull();
-    }
-
-    [Fact]
     public void HidingDuringEditPreservesDraftAndDoesNotAllowAnotherPatternToReplaceIt()
     {
         var (workbench, document, pattern) = Fixture();
