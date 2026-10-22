@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.Components.Web
 
 <section class="pattern-viewport-controls" aria-label="Viewport pattern parameters" data-pattern-id="@Pattern.Id"
+         data-center-point-id="@Pattern.CenterPointId" data-member-ids="@System.Text.Json.JsonSerializer.Serialize(Pattern.Members.Select(m => m.EntityId))"
          data-source-x="@Number(SourceCenter.X)" data-source-y="@Number(SourceCenter.Y)"
          data-source-min-x="@(SourceBounds is { } minX ? Number(minX.MinX) : null)" data-source-min-y="@(SourceBounds is { } minY ? Number(minY.MinY) : null)"
          data-source-max-x="@(SourceBounds is { } maxX ? Number(maxX.MaxX) : null)" data-source-max-y="@(SourceBounds is { } maxY ? Number(maxY.MaxY) : null)"
@@ -20,7 +21,12 @@
                 title="Select or drag pattern center" aria-label="Move pattern center" disabled="@(!CanEdit)">
             <CadIcon Name="CadIconName.Point" />
         </button>
-        <div class="pattern-radial-card" data-pattern-anchor="source">
+        <div class="pattern-floating-card pattern-radial-card" data-pattern-card>
+        <button type="button" class="pattern-card-drag" data-pattern-card-drag title="Move pattern card" aria-label="Move pattern card">
+            <CadIcon Name="CadIconName.Move" />Radial pattern
+        </button>
+        <div class="pattern-card-content">
+        <div class="pattern-radial-fields">
             <div class="pattern-radial-count-row">
                 @if (Draft is { } countDraft)
                 {
@@ -47,6 +53,8 @@
                 }
             }
             @if (Error is not null) { <p role="alert">@Error</p> }
+        </div>
+        </div>
         </div>
     }
     else

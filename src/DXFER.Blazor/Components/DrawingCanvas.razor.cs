@@ -9,7 +9,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261022-symmetry-normal";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261022-pattern-center-snap-card";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -99,7 +99,7 @@ public partial class DrawingCanvas : IAsyncDisposable
     [Parameter] public DrawingDocument? PatternPreview { get; set; }
     [Parameter] public bool PatternEditing { get; set; }
     [Parameter] public RenderFragment? PatternControls { get; set; }
-    [Parameter] public Action<string, double, double, string>? PatternCenterChanged { get; set; }
+    [Parameter] public Action<string, double, double, string, CanvasCreationSnapDto[]?>? PatternCenterChanged { get; set; }
     [Parameter] public Action<string, bool>? PatternCenterPicked { get; set; }
     [Parameter] public Action<string, string, string>? PatternDirectionPicked { get; set; }
 
@@ -125,9 +125,10 @@ public partial class DrawingCanvas : IAsyncDisposable
     }
 
     [JSInvokable]
-    public async Task OnPatternCenterChanged(string patternId, double x, double y, string phase)
+    public async Task OnPatternCenterChanged(string patternId, double x, double y, string phase,
+        CanvasCreationSnapDto[]? creationSnaps = null)
     {
-        PatternCenterChanged?.Invoke(patternId, x, y, phase);
+        PatternCenterChanged?.Invoke(patternId, x, y, phase, creationSnaps);
         await InvokeAsync(StateHasChanged);
     }
 

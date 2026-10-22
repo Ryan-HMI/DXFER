@@ -1,7 +1,8 @@
 import { sampleControlSpline } from "./canvas/splineGeometry.js";
+import { createPatternCardLayout } from "./canvas/patternFloatingCard.js?v=20261022-floating-pattern-card";
 import { lineSlotDraft, lineSlotSourceIsCurrent, lineSlotPreview } from "./canvas/lineSlot.js";
 import { measurePerimeterDistance } from "./perimeterDistance.js";
-import { patternViewportGuides, patternViewportAnchors, patternSourceScreenBounds, bindPatternCenterHandle, createRadialCenterPreview } from "./canvas/patternViewport.js?v=20261021-pattern-center-latency";
+import { patternViewportGuides, patternViewportAnchors, patternSourceScreenBounds, bindPatternCenterHandle, createRadialCenterPreview } from "./canvas/patternViewport.js?v=20261022-pattern-center-snap";
 import { getSnapCue } from "./canvas/snapCue.js?v=20261021-tangent-arc-quadrants";
 import {
   addUniqueNumber,
@@ -464,6 +465,7 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
     dispose() {
       if (state.solverEngine === "PlaneGCS") cancelGeometryDrag(state);
       state.patternHandleBinding?.dispose();
+      state.patternCardLayout?.dispose();
       state.disposed = true;
       state.measurementFeedback?.remove();
       clearConstraintHoverRetention(state);
@@ -790,7 +792,7 @@ function draw(state) {
     drawEntity(state, entity, {
       strokeStyle: affectedByDiagnostics ? canvasInk(state, "#ff6c7c", "#a51628") : entity.isConstruction ? canvasInk(state, "#97a5b6", "#505050") : entity.layerColor || canvasInk(state, "#d3e1ed", "#202020"),
       lineWidth: affectedByDiagnostics ? 2.15 : entity.isConstruction ? 1.1 : 1.5,
-      lineDash: getEntityRenderLineDash(entity, entity.isConstruction ? [8, 5] : [])
+      lineDash: getEntityRenderLineDash(entity)
     });
     if (shouldShowPersistentSplineHandles(state, entity)) {
       drawPersistentSplineTangentHandles(state, entity);
@@ -896,6 +898,12 @@ function draw(state) {
 }
 
 export function getCurrentSnapCue(state) {
+  if (state.patternCenterSnap) {
+    const {target, point, intents} = state.patternCenterSnap;
+    const cue = getSnapCue({target, point, tool: 'point', pointCount: 0, intents,
+      automaticConstraints: state.automaticSnapConstraints !== false, draftPoints: []});
+    return cue ? {...cue, point} : null;
+  }
   if (!state.pointerScreenPoint || state.panning || state.selectionBox || state.cornerPreview) return null;
   const drag = state.geometryDrag;
   const tool = drag ? "point" : getSketchCreationTool(state);
@@ -908,6 +916,22 @@ export function getCurrentSnapCue(state) {
   const cue = getSnapCue({ target, point, tool, pointCount: drag ? 0 : state.toolDraft?.points?.length || 0,
     intents, automaticConstraints: state.automaticSnapConstraints !== false, draftPoints: drag ? [] : state.toolDraft?.points });
   return cue ? { ...cue, point } : null;
+}
+
+export function resolvePatternCenterSnap(state, point, excludedIds = []) {
+  const excluded = new Set(excludedIds);
+  const document = state.cornerPreview?.document || state.document;
+  // Use ordinary point snapping, without snapping the center to its own copies
+  // or borrowing pending creation/dimension selections from another tool.
+  const snapping = {...state, activeTool: 'point', toolDraft: null, geometryDrag: null,
+    dimensionDraft: null, selectedKeys: [], hoveredTarget: null,
+    document: {...document, entities: getDocumentEntities(document)
+      .filter(e => !excluded.has(getEntityId(e)))}};
+  const target = findNearestTarget(snapping, worldToScreen(state, point));
+  const snapped = getTargetWorldSnapPoint(target);
+  const intents = getCreationSnapIntents(snapping, target, snapped);
+  if (!snapped || !intents.length) return {point, target: null, intents: []};
+  return {point: snapped, target, intents};
 }
 
 export function pickPatternCenter(state, key, additive = false) {
@@ -958,8 +982,18 @@ function drawPatternViewportControls(state, size) {
           const rect = state.canvas.getBoundingClientRect();
           return screenToWorld(state, {x: event.clientX - rect.left, y: event.clientY - rect.top});
         },
+        resolveSnap: point => {
+          let members;
+          try { members = JSON.parse(widget.dataset.memberIds || '[]'); }
+          catch { return {point, intents: []}; }
+          if (!Array.isArray(members)) return {point, intents: []};
+          const snap = resolvePatternCenterSnap(state, point, [...members, widget.dataset.centerPointId]);
+          state.patternCenterSnap = snap.target ? snap : null;
+          return {point: snap.point, intents: state.automaticSnapConstraints === false ? [] : snap.intents};
+        },
+        clearSnap: () => { state.patternCenterSnap = null; },
         send: value => state.disposed ? Promise.resolve() : state.dotnetRef.invokeMethodAsync(
-          'OnPatternCenterChanged', value.id, value.x, value.y, value.phase),
+          'OnPatternCenterChanged', value.id, value.x, value.y, value.phase, value.creationSnaps || null),
         beginLocal: (id, center) => local.begin(id, center),
         finishLocal: point => local.finish(point),
         resetLocal: () => local.reset(),
@@ -1034,16 +1068,14 @@ function drawPatternViewportControls(state, size) {
     handle.style.visibility = box.x < 0 || box.y < 0 || box.x + width > size.width || box.y + height > size.height ? 'hidden' : 'visible';
     obstacles.push(box);
   }
+  state.patternCardLayout ??= createPatternCardLayout(state.canvas);
+  state.patternCardLayout.place(widget, size, obstacles);
   for (const group of widget.querySelectorAll('[data-pattern-anchor]')) {
     if (group === handle) continue;
     const world = anchors[group.dataset.patternAnchor];
     if (!world) { group.style.visibility = 'hidden'; continue; }
     const anchor = worldToScreen(state, world);
-    const sourceBounds = data.patternKind === 'Radial' && group.dataset.patternAnchor === 'source'
-      ? patternSourceScreenBounds(data, state.view) : null;
-    // Keep actions reachable even when zoomed geometry fills the available canvas.
-    const box = (sourceBounds && positionSnapCue(anchor, size, group.offsetWidth, group.offsetHeight, [...obstacles, sourceBounds]))
-      || positionSnapCue(anchor, size, group.offsetWidth, group.offsetHeight, obstacles);
+    const box = positionSnapCue(anchor, size, group.offsetWidth, group.offsetHeight, obstacles);
     if (!box) { group.style.visibility = 'hidden'; continue; }
     group.style.left = `${box.x}px`; group.style.top = `${box.y}px`;
     group.style.visibility = 'visible';
@@ -1103,9 +1135,17 @@ function drawSnapCue(state, size) {
   const obstacles = [...(state.dimensionInputs?.values() || []), ...(state.persistentDimensionInputs?.values() || [])]
     .filter(input => input.style.display !== "none")
     .map(input => ({ x: parseFloat(input.style.left) - 80, y: parseFloat(input.style.top) - 20, width: 160, height: 40 }));
-  const pointer = state.pointerScreenPoint;
+  const pointer = state.patternCenterSnap ? worldToScreen(state, cue.point)
+    : state.pointerScreenPoint || worldToScreen(state, cue.point);
   obstacles.push({ x: pointer.x - 10, y: pointer.y - 10, width: 20, height: 20 });
   obstacles.push(...getCanvasControlBounds(state));
+  const canvasRect = state.canvas.getBoundingClientRect();
+  for (const card of state.canvas.parentElement?.querySelectorAll?.('[data-pattern-card]') || []) {
+    const bounds = card.getBoundingClientRect();
+    if (bounds.width && bounds.height && card.style.visibility !== 'hidden') obstacles.push({
+      x: bounds.left - canvasRect.left, y: bounds.top - canvasRect.top, width: bounds.width, height: bounds.height
+    });
+  }
   const box = positionSnapCue(worldToScreen(state, cue.point), size, width, 44, obstacles);
   if (!box) { context.restore(); return; }
   state.canvas.dataset.snapCueBox = JSON.stringify(box);
@@ -1160,6 +1200,9 @@ function drawEntity(state, entity, style) {
 }
 
 export function getEntityRenderLineDash(entity, fallbackDash = []) {
+  if (entity?.isConstruction) {
+    return [8, 9];
+  }
   const lineTypeName = getEntityLineTypeName(entity);
   if (!lineTypeName) {
     return fallbackDash;
@@ -1664,7 +1707,7 @@ function drawToolPreview(state) {
   context.strokeStyle = state.constructionMode ? "#67e8f9" : "#facc15";
   context.fillStyle = state.constructionMode ? "#67e8f9" : "#facc15";
   context.lineWidth = 1.5;
-  context.setLineDash(state.constructionMode ? [3, 5] : [6, 4]);
+  context.setLineDash(getEntityRenderLineDash({ isConstruction: state.constructionMode }, [6, 4]));
 
   if (tool === "line") {
     const start = worldToScreen(state, first);
@@ -1890,7 +1933,7 @@ export function getTangentArcFallbackPreviewPoints(first, tangentPoint, end) {
 
 function getTargetSelectionLineDash(target, fallback = []) {
   return target && target.entity && target.entity.isConstruction
-    ? [8, 5]
+    ? getEntityRenderLineDash(target.entity)
     : fallback;
 }
 

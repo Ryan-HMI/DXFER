@@ -234,6 +234,13 @@ test("DXF dashed linetype renders with a canvas dash pattern", () => {
     [10, 4, 2, 4]);
 });
 
+test("construction geometry uses wider screen-space gaps regardless of imported linetype", () => {
+  for (const lineTypeName of [undefined, "CONTINUOUS", "DASHED", "CENTER"]) {
+    assert.deepEqual(getEntityRenderLineDash({ isConstruction: true, lineTypeName }), [8, 9]);
+  }
+  assert.deepEqual(getEntityRenderLineDash({ isConstruction: false }, [6, 4]), [6, 4]);
+});
+
 test("blank document fit uses a sane default sketch scale", () => {
   const view = getFitViewForDocument(
     {

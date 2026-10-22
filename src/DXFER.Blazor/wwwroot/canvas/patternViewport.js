@@ -179,7 +179,7 @@ export function createPatternCenterQueue(send, onIdle, onError) {
 }
 
 export function bindPatternCenterHandle(widget, {toWorld, send, preview, select, onError,
-  beginLocal, finishLocal, resetLocal, localBusy}) {
+  beginLocal, finishLocal, resetLocal, localBusy, resolveSnap, clearSnap}) {
   let drag = null, lastSent = null;
   const queue = createPatternCenterQueue(value => { lastSent = value; return send(value); }, () => {
     if (!drag) { delete widget.dataset.centerDragging; preview(null); }
@@ -188,6 +188,7 @@ export function bindPatternCenterHandle(widget, {toWorld, send, preview, select,
     drag = null;
     if (failed && widget.hasPointerCapture(failed.pointerId)) widget.releasePointerCapture(failed.pointerId);
     delete widget.dataset.centerDragging;
+    clearSnap?.();
     resetLocal?.(); preview(null); onError(error);
     // A failed response may have reached the server. Best-effort cancellation
     // releases its staged drag guard; never retry updates or an end implicitly.
@@ -196,10 +197,14 @@ export function bindPatternCenterHandle(widget, {toWorld, send, preview, select,
     }
   });
   const prevent = e => { e.preventDefault(); e.stopPropagation(); };
-  const value = (phase, point, id = drag?.id) => ({id, x: point.x, y: point.y, phase});
+  const value = (phase, point, id = drag?.id, snaps = null) => ({id, x: point.x, y: point.y, phase,
+    ...(snaps ? {creationSnaps: snaps} : {})});
   const dragPoint = e => {
     const p = toWorld(e);
-    return {x: p.x - drag.offset.x, y: p.y - drag.offset.y};
+    const point = {x: p.x - drag.offset.x, y: p.y - drag.offset.y};
+    const snap = resolveSnap?.(point);
+    drag.snaps = snap?.intents || null;
+    return snap?.point || point;
   };
   const down = e => {
     const handle = e.target.closest?.('[data-pattern-center-handle]');
@@ -227,7 +232,7 @@ export function bindPatternCenterHandle(widget, {toWorld, send, preview, select,
     const point = dragPoint(e);
     if (!finitePoint(point)) return;
     preview(point);
-    if (!drag.local) queue.push(value('update', point));
+    if (!drag.local) queue.push(value('update', point, drag.id, drag.snaps));
   };
   const finish = (e, cancel) => {
     if (!drag || (e.pointerId !== undefined && drag.pointerId !== e.pointerId)) return;
@@ -235,8 +240,9 @@ export function bindPatternCenterHandle(widget, {toWorld, send, preview, select,
     if (!cancel) start(e);
     let point = cancel ? drag.center : dragPoint(e);
     if (!finitePoint(point)) { cancel = true; point = drag.center; }
-    const {pointerId, started, id, local} = drag;
+    const {pointerId, started, id, local, snaps} = drag;
     drag = null;
+    clearSnap?.();
     if (widget.hasPointerCapture(pointerId)) widget.releasePointerCapture(pointerId);
     if (!started) {
       if (!cancel) select?.(Boolean(e.shiftKey));
@@ -244,7 +250,7 @@ export function bindPatternCenterHandle(widget, {toWorld, send, preview, select,
     }
     if (local) finishLocal?.(point);
     else preview(point);
-    queue.push(value(cancel ? 'cancel' : 'end', point, id));
+    queue.push(value(cancel ? 'cancel' : 'end', point, id, cancel ? null : snaps));
   };
   const up = e => finish(e, false), cancel = e => finish(e, true);
   const key = e => {
@@ -265,6 +271,7 @@ export function bindPatternCenterHandle(widget, {toWorld, send, preview, select,
     drag = null; queue.dispose();
     if (active && widget.hasPointerCapture(active.pointerId)) widget.releasePointerCapture(active.pointerId);
     delete widget.dataset.centerDragging;
+    clearSnap?.();
     resetLocal?.();
     for (const [name, fn] of [['pointerdown',down],['pointermove',move],['pointerup',up],
       ['pointercancel',cancel],['lostpointercapture',cancel],['keydown',key]]) widget.removeEventListener(name, fn);

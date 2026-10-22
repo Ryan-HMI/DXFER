@@ -350,7 +350,7 @@ public sealed class WorkbenchPatternCenterControlsTests
         }
 
         public Task Run(Action action) => _renderer.Dispatcher.InvokeAsync(action);
-        public void Move(string phase, double x, double y, string id = "pattern") => Invoke("MovePatternCenter", id, x, y, phase);
+        public void Move(string phase, double x, double y, string id = "pattern") => Invoke("MovePatternCenter", id, x, y, phase, null!);
         public void Invoke(string name, params object[] args) => typeof(DrawingWorkbench).GetMethod(name, Private)!.Invoke(_workbench, args);
         public object? Property(string name) => typeof(DrawingWorkbench).GetProperty(name, Private)!.GetValue(_workbench);
         public T Get<T>(string name) => (T)typeof(DrawingWorkbench).GetField(name, Private)!.GetValue(_workbench)!;

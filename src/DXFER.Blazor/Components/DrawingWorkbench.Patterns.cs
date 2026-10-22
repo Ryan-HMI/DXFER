@@ -1,4 +1,6 @@
 using System.Globalization;
+using DXFER.Blazor.Interop;
+using DXFER.Blazor.Sketching;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
 using DXFER.Core.Operations;
@@ -19,6 +21,10 @@ public partial class DrawingWorkbench
     private bool _patternCenterDragging;
     private string? _patternCenterOriginalX;
     private string? _patternCenterOriginalY;
+    private CanvasCreationSnapDto[]? _patternCenterSnaps;
+    private CanvasCreationSnapDto[]? _patternCenterOriginalSnaps;
+    private Point2? _patternCenterSnapPosition;
+    private Point2? _patternCenterOriginalSnapPosition;
     private string? _patternDirectionPicking;
     private bool _patternDirectionSelectionConsumed;
     private (string Key, bool Additive)? _pendingPatternCenterPick;
@@ -191,7 +197,7 @@ public partial class DrawingWorkbench
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private void MovePatternCenter(string patternId, double x, double y, string phase)
+    private void MovePatternCenter(string patternId, double x, double y, string phase, CanvasCreationSnapDto[]? creationSnaps)
     {
         if (phase is not ("begin" or "update" or "end" or "cancel")) return;
         if (phase == "begin")
@@ -212,6 +218,8 @@ public partial class DrawingWorkbench
             }
             _patternCenterOriginalX = _patternDraft!.CenterX;
             _patternCenterOriginalY = _patternDraft.CenterY;
+            _patternCenterOriginalSnaps = _patternCenterSnaps;
+            _patternCenterOriginalSnapPosition = _patternCenterSnapPosition;
             _patternCenterDragging = true;
         }
         else
@@ -224,12 +232,16 @@ public partial class DrawingWorkbench
             {
                 _patternDraft.CenterX = _patternCenterOriginalX!;
                 _patternDraft.CenterY = _patternCenterOriginalY!;
+                _patternCenterSnaps = _patternCenterOriginalSnaps;
+                _patternCenterSnapPosition = _patternCenterOriginalSnapPosition;
                 ClearPatternCenterDrag();
             }
             else
             {
                 _patternDraft.CenterX = Text(x);
                 _patternDraft.CenterY = Text(y);
+                _patternCenterSnaps = creationSnaps?.Select(s => s is null ? null! : s with { ReferenceKeys = s.ReferenceKeys?.ToArray()! }).ToArray();
+                _patternCenterSnapPosition = _patternCenterSnaps is { Length: > 0 } ? new Point2(x, y) : null;
                 if (phase == "end") ClearPatternCenterDrag();
             }
             RefreshPatternPreview();
@@ -269,6 +281,8 @@ public partial class DrawingWorkbench
         _patternCenterDragging = false;
         _patternCenterOriginalX = null;
         _patternCenterOriginalY = null;
+        _patternCenterOriginalSnaps = null;
+        _patternCenterOriginalSnapPosition = null;
     }
 
     private static string PatternLabel(PatternDefinition pattern) => pattern.Kind == PatternKind.Radial
@@ -300,6 +314,8 @@ public partial class DrawingWorkbench
 
     private void OpenPatternEditor(PatternDefinition pattern)
     {
+        _patternCenterSnaps = null;
+        _patternCenterSnapPosition = null;
         CloseContextMenu();
         _hiddenPatternControls.Remove(pattern.Id);
         _shownPatternControlsId = pattern.Id;
@@ -360,24 +376,45 @@ public partial class DrawingWorkbench
         }
         if (_patternError is null)
         {
+            if (_patternCenterSnaps is { Length: > 0 }
+                && (mode != PatternKind.Radial || _patternCenterSnapPosition != definition.Center))
+            {
+                _patternCenterSnaps = null;
+                _patternCenterSnapPosition = null;
+            }
             var exists = _document.Metadata.Patterns.Any(p => p.Id == definition.Id);
             DrawingDocument next;
             string reason;
             var accepted = exists
                 ? DrawingPatternService.TryUpdate(_document, definition, out next, out reason)
                 : DrawingPatternService.TryCreate(_document, definition, out next, out reason);
+            if (accepted && _patternCenterSnaps is { Length: > 0 } snaps)
+            {
+                if (!IsPlaneGcsEnabled)
+                {
+                    accepted = false;
+                    reason = "Pattern center snapping requires PlaneGCS.";
+                }
+                else accepted = PatternCenterSnapService.TryApply(_document, next, definition.Id, snaps,
+                    MenuCommandService?.AutomaticSnapConstraints ?? true, SketchSolver, CreateConstraintId, out next, out reason);
+            }
             if (accepted)
                 _patternPreview = next;
-            else _patternError = reason;
+            else _patternError = _patternCenterSnaps is { Length: > 0 } ? $"{reason} Geometry unchanged." : reason;
         }
         _status = _patternError ?? $"{mode} pattern preview.";
     }
 
     private void CommitPatternPreview()
     {
+        var snapped = _patternCenterSnaps is { Length: > 0 };
+        if (snapped && !_patternCenterDragging) RefreshPatternPreview();
         if (!CanConfirmPatternPreview || PatternPreview is not { } preview) return;
         var previous = _document;
-        ApplyDocumentChangeCore(preview, "Pattern saved.", patternCommand: true);
+        // Refresh above already solved and validated snapped previews with source/target
+        // protection. Do not replace that acceptance with a second unguarded solve.
+        if (snapped) CommitDocumentChange(preview, "Pattern saved.", patternCommand: true);
+        else ApplyDocumentChangeCore(preview, "Pattern saved.", patternCommand: true);
         if (!ReferenceEquals(previous, _document))
         {
             HideEditedPatternControls();
@@ -411,6 +448,8 @@ public partial class DrawingWorkbench
     private void ClearPatternEditor()
     {
         ClearPatternCenterDrag();
+        _patternCenterSnaps = null;
+        _patternCenterSnapPosition = null;
         _patternDirectionPicking = null;
         _patternDirectionSelectionConsumed = false;
         _patternDraft = null; _editingPattern = null; _patternSourceDocument = null;

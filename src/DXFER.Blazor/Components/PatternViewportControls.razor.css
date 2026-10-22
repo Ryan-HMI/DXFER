@@ -10,8 +10,11 @@
 }
 
 [data-pattern-anchor] { position: absolute; visibility: hidden; pointer-events: auto; box-sizing: border-box; }
+.pattern-floating-card { position: absolute; visibility: hidden; pointer-events: auto; box-sizing: border-box; display: flex; flex-direction: column; width: 216px; max-width: calc(100% - 16px); max-height: calc(100% - 16px); border: 1px solid var(--dx-border); border-radius: 4px; background: var(--dx-panel); overflow: hidden; }
+.pattern-floating-card .pattern-card-drag { flex: 0 0 28px; width: 100%; min-width: 0; justify-content: flex-start; border: 0; border-bottom: 1px solid var(--dx-border); border-radius: 0; cursor: move; touch-action: none; user-select: none; }
+.pattern-card-content { display: grid; gap: 8px; min-height: 0; padding: 8px; overflow-y: auto; overflow-x: hidden; }
 .pattern-axis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 182px; }
-.pattern-radial-card { display: grid; gap: 6px; width: 216px; max-width: 100%; padding: 8px; border: 1px solid var(--dx-border); border-radius: 4px; background: var(--dx-panel); }
+.pattern-radial-fields { display: grid; gap: 6px; min-width: 0; }
 .pattern-radial-count-row { display: flex; align-items: end; gap: 6px; }
 .pattern-radial-count-row > label { flex: 1; }
 .pattern-radial-count-row .pattern-icon-button { flex: 0 0 28px; width: 28px; height: 28px; padding: 3px; justify-content: center; }
