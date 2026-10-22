@@ -33,7 +33,19 @@ DXFER Dev only; no Sync, Test or Production changes.
   continuation, Auto ON/OFF, Undo/Redo and native DXF reopen. Nineteen exports
   inspected, zero browser errors. Actual palette icon and preview screenshots
   inspected. Evidence: `/tmp/dxfer-tangent-arc-qa-r3-final/results.json`.
-- Installed browser replay is pending.
+- Public Dev replay passed all three browser groups on tooltip-verified
+  `0123f2b`, with nineteen inspected exports and zero browser errors. Installed
+  icon and geometry screenshots inspected. Evidence:
+  `/tmp/dxfer-tangent-arc-installed/results.json`.
+
+## Deployment
+
+- Dev code `0123f2bf20e422d2c88788081bc2a4feb88d94e6` installed
+  `2026-10-22T02:06:14Z` at `https://dxferdev.sync.harrisonmetals.com`.
+- Normal Google authentication retained; Sync callbacks remain disabled.
+- Production and Test services stayed active with unchanged process IDs.
+- Isolated QA5038 stopped after verification. Independent Flux/Ryan acceptance
+  remains separate from owner browser verification.
 
 ## Underlying Changes
 
