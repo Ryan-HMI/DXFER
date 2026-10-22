@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {getDynamicSketchSnapHit, getTangentArc, getPostCommitSketchToolState,
-  getCreationSnapIntents, applyDraftDimensionValue} from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.js';
+  getCreationSnapIntents, applyDraftDimensionValue, getCurrentSnapCue} from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.js';
 import {getSnapCue} from '../../src/DXFER.Blazor/wwwroot/canvas/snapCue.js';
 
 const stateFor = (radius, scale = 100) => ({activeTool: 'tangentarc',
@@ -68,4 +68,57 @@ test('manual and hover arc creation both return to a tangent-capable Line chain'
     assert.equal(next.sketchChainContext.isTangentContinuation, true);
     assert.equal(next.sketchChainToggleRequiresExit, true);
   }
+});
+
+for (const [point, kind] of [[{x: 2.025, y: 2}, 'ArcQuadrantHorizontal'],
+  [{x: 0.025, y: 4}, 'ArcQuadrantVertical'], [{x: 2.025, y: -2}, 'ArcQuadrantHorizontal']]) {
+  test(`radius key-in remaps accepted ${kind} without reacquiring a mouse snap (${point.y})`, () => {
+    const state = stateFor();
+    state.pointerScreenPoint = screen(state, point);
+    state.hoveredTarget = getDynamicSketchSnapHit(state, state.pointerScreenPoint).target;
+    state.toolDraft.previewPoint = state.hoveredTarget.point;
+    const original = {...state.hoveredTarget.point};
+    for (const radius of [3, 3.125, 1.5]) {
+      assert.equal(applyDraftDimensionValue(state, 'radius', radius), true);
+      const target = state.toolDraft.keyedQuadrantTarget;
+      assert.ok(target);
+      const intents = getCreationSnapIntents(state, target, state.toolDraft.previewPoint);
+      assert.deepEqual(intents, [{kind, referenceKeys: [], point: state.toolDraft.previewPoint}]);
+      assert.equal(getCurrentSnapCue(state).detail, `Pending: ${kind.replace('ArcQuadrant', '')}`);
+      near(getTangentArc(...state.toolDraft.points, state.toolDraft.previewPoint).radius, radius);
+    }
+    assert.deepEqual(state.hoveredTarget.point, original, 'original pointer snap remains immutable');
+    state.automaticSnapConstraints = false;
+    assert.equal(getCurrentSnapCue(state).detail, 'Snap only (auto constraints off)');
+  });
+}
+
+test('radius entry does not infer quadrant intent merely from exact geometry', () => {
+  const state = stateFor();
+  state.toolDraft.previewPoint = {x: 2, y: 2};
+  applyDraftDimensionValue(state, 'radius', 3);
+  assert.equal(state.toolDraft.keyedQuadrantTarget, null);
+});
+
+test('accepted draft quadrant survives pointer leaving for radius input', () => {
+  const state = stateFor();
+  const target = getDynamicSketchSnapHit(state, screen(state, {x: 2.025, y: 2})).target;
+  state.toolDraft.previewPoint = target.point;
+  state.toolDraft.keyedQuadrantTarget = target;
+  state.hoveredTarget = null;
+  assert.equal(applyDraftDimensionValue(state, 'radius', 3), true);
+  assert.deepEqual(getCreationSnapIntents(state, state.toolDraft.keyedQuadrantTarget,
+    state.toolDraft.previewPoint), [{kind: 'ArcQuadrantHorizontal', referenceKeys: [],
+    point: state.toolDraft.previewPoint}]);
+});
+
+test('radius entry does not move an external endpoint snap or retain mismatched intent', () => {
+  const state = stateFor();
+  state.toolDraft.previewPoint = {x: 2, y: 2};
+  state.hoveredTarget = {point: {x: 2, y: 2}, creationRelations: [{kind: 'Coincident', referenceKeys: ['peer:end']}]};
+  applyDraftDimensionValue(state, 'radius', 3);
+  assert.equal(state.toolDraft.keyedQuadrantTarget, null);
+  state.hoveredTarget = {point: {x: 2, y: 2}, creationRelations: [{kind: 'ArcQuadrantHorizontal', referenceKeys: []}]};
+  applyDraftDimensionValue(state, 'radius', 4);
+  assert.equal(state.toolDraft.keyedQuadrantTarget, null, 'old snap does not match the current preview');
 });

@@ -41,10 +41,11 @@ function assertChain(doc, source, degrees, automatic, keyedRadius, hasFollowingL
     close((dx * (contact.x - arc.center.x) + dy * (contact.y - arc.center.y)) / (length * arc.radius), 0, 'line tangent to arc');
   };
   tangent(source, start);
-  const radialKind = degrees === 90 ? 'Horizontal' : 'Vertical';
-  const quadrant = doc.constraints.filter(c => c.kind === radialKind
+  const radialKind = degrees === 90 ? 'Horizontal' : degrees === 180 ? 'Vertical' : null;
+  const quadrant = doc.constraints.filter(c => ['Horizontal', 'Vertical'].includes(c.kind)
     && c.referenceKeys.includes(`${arc.id}:center`) && c.referenceKeys.includes(`${arc.id}:end`));
-  assert.equal(quadrant.length, automatic ? 1 : 0, 'Auto setting controls permanent endpoint-to-center quadrant relation');
+  assert.equal(quadrant.length, automatic && radialKind ? 1 : 0, 'only an accepted quadrant persists its endpoint-to-center relation');
+  if (automatic && radialKind) assert.equal(quadrant[0].kind, radialKind);
   if (automatic) {
     assert.ok(related(doc, 'Coincident', source.id, arc.id), 'incoming permanent coincidence');
     assert.ok(related(doc, 'Tangent', source.id, arc.id), 'incoming permanent tangency');
@@ -63,7 +64,22 @@ function assertChain(doc, source, degrees, automatic, keyedRadius, hasFollowingL
   return arc;
 }
 
-const evidence = {cases: [], previews: [], exports: [], errors: [], passed: false};
+const specs = [
+  {name: 'quarter-auto-on', degrees: 90, automatic: true, keyedRadius: null},
+  {name: 'half-keyed-radius-history', degrees: 180, automatic: true, keyedRadius: 2.125},
+  {name: 'quarter-auto-off', degrees: 90, automatic: false, keyedRadius: null},
+  ...[90, 180].flatMap(degrees => [true, false].map(automatic => ({
+    name: `${degrees === 90 ? 'quarter' : 'half'}-keyed-enter-auto-${automatic ? 'on' : 'off'}`,
+    degrees, automatic, keyedRadius: 3, enterWithoutMove: true
+  }))),
+  {name: 'quarter-keyed-radius-reaim-off-quadrant', degrees: 90, finalDegrees: 60,
+    automatic: true, keyedRadius: 3, enterWithoutMove: true, reaimAfterKeying: true}
+];
+const selectedSpecs = process.env.DXFER_TANGENT_CASE
+  ? specs.filter(spec => spec.name === process.env.DXFER_TANGENT_CASE) : specs;
+assert.ok(selectedSpecs.length, 'DXFER_TANGENT_CASE must name an existing case');
+const evidence = {requestedCases: selectedSpecs.map(spec => spec.name), cases: [], previews: [],
+  keyboardCommits: [], exports: [], errors: [], passed: false};
 const browser = await chromium.launch({headless: true, executablePath: process.env.DXFER_CHROMIUM});
 let page, failure;
 try {
@@ -123,6 +139,9 @@ try {
     const ctx = c.getContext('2d'), originalClear = ctx.clearRect;
     const originalBegin = ctx.beginPath, originalMove = ctx.moveTo, originalLine = ctx.lineTo, originalStroke = ctx.stroke;
     let points = [];
+    window.__tangentArcPointerEvents = {moves: 0, downs: 0, ups: 0};
+    for (const [type, key] of [['pointermove', 'moves'], ['pointerdown', 'downs'], ['pointerup', 'ups']])
+      document.addEventListener(type, () => window.__tangentArcPointerEvents[key]++, true);
     window.__tangentArcPaint = {frame: 0, paths: []};
     ctx.clearRect = function (...args) {
       window.__tangentArcPaint = {frame: window.__tangentArcPaint.frame + 1, paths: []};
@@ -136,7 +155,7 @@ try {
       return originalStroke.apply(this, args);
     };
   });
-  const preview = async (degrees, name) => {
+  const preview = async (degrees, name, toleranceDegrees = .0000005) => {
     const painted = () => page.evaluate(() => {
       const c = document.querySelector('canvas.drawing-canvas'), scale = +c.dataset.scale;
       for (const points of window.__tangentArcPaint.paths) {
@@ -147,7 +166,7 @@ try {
         const center = {x: (aa * (b.y - z.y) + bb * (z.y - a.y) + zz * (a.y - b.y)) / determinant,
           y: (aa * (z.x - b.x) + bb * (a.x - z.x) + zz * (b.x - a.x)) / determinant};
         const radius = Math.hypot(a.x - center.x, a.y - center.y);
-        if (radius / scale < 1 || radius / scale > 3) continue;
+        if (radius / scale < 1 || radius / scale > 4) continue;
         if (!points.every(p => Math.abs(Math.hypot(p.x - center.x, p.y - center.y) - radius) < 1e-5)) continue;
         let radians = 0;
         for (let i = 1; i < points.length; i++) {
@@ -157,13 +176,14 @@ try {
           if (delta < -Math.PI) delta += 2 * Math.PI;
           radians += delta;
         }
-        return {center, radius, sweepDegrees: Math.abs(radians) * 180 / Math.PI, pointCount: points.length, first: a, last: z};
+        return {center, radius, worldRadius: radius / scale, sweepDegrees: Math.abs(radians) * 180 / Math.PI,
+          pointCount: points.length, first: a, last: z};
       }
       return null;
     });
     await expect.poll(async () => {
-      const arc = await painted(); return arc ? arc.sweepDegrees : -1;
-    }).toBeCloseTo(degrees, 6);
+      const arc = await painted(); return arc ? Math.abs(arc.sweepDegrees - degrees) : Infinity;
+    }).toBeLessThan(toleranceDegrees);
     const arc = await painted(); assert.ok(arc);
     evidence.previews.push({name, degrees, arc, at: await page.evaluate(() => performance.now())});
     await expect(canvas).toHaveAttribute('data-entity-count', '1');
@@ -179,20 +199,22 @@ try {
   evidence.icon.quarterArcRendered = evidence.icon.paths.some(d => /[AaCcQq]/.test(d));
   await iconButton.screenshot({path: `${output}/line-quarter-arc-icon.png`});
 
-  for (const spec of [
-    {name: 'quarter-auto-on', degrees: 90, automatic: true, keyedRadius: null},
-    {name: 'half-keyed-radius-history', degrees: 180, automatic: true, keyedRadius: 2.125},
-    {name: 'quarter-auto-off', degrees: 90, automatic: false, keyedRadius: null}
-  ]) {
+  for (const spec of selectedSpecs) {
     evidence.current = spec.name; await automatic(spec.automatic); await menu('New drawing');
     await expect(canvas).toHaveAttribute('data-entity-count', '0');
     await expect(command('Undo')).toBeDisabled();
     const empty = await download(`${spec.name}-empty`);
+    await canvas.press('Escape');
+    await expect(canvas).toHaveAttribute('data-active-tool', 'select');
+    await expect(command('Line')).not.toHaveAttribute('aria-pressed', 'true');
     await command('Line').click();
     await expect(canvas).toHaveAttribute('data-active-tool', 'line');
     await expect(command('Line')).toHaveAttribute('aria-pressed', 'true');
+    await page.waitForTimeout(150);
     await page.mouse.click(400, 620); await expect(canvas).toHaveAttribute('data-tool-draft-point-count', '1');
-    await page.mouse.move(650, 620); await page.mouse.click(650, 620);
+    await page.mouse.move(650, 620, {steps: 12}); await page.waitForTimeout(100);
+    await expect(canvas).toHaveAttribute('data-tool-draft-point-count', '1');
+    await page.mouse.click(650, 620);
     await expect(canvas).toHaveAttribute('data-entity-count', '1'); await lineMode();
     const incoming = await download(`${spec.name}-incoming`), source = incoming.doc.entities[0];
     assert.equal(source.kind, 'line'); close(source.start.y, source.end.y, 'horizontal incoming line');
@@ -201,23 +223,61 @@ try {
     await move({x: source.end.x + 1, y: source.end.y - .5}); await move(source.end);
     await expect(canvas).toHaveAttribute('data-active-tool', 'tangentarc');
     await expect(canvas).toHaveAttribute('data-tool-draft-point-count', '2');
-    const radius = spec.keyedRadius ?? 2;
+    const radius = spec.enterWithoutMove ? 2 : spec.keyedRadius ?? 2;
     let target = {x: source.end.x + (spec.degrees === 90 ? radius : 0), y: source.end.y + (spec.degrees === 90 ? radius : 2 * radius)};
     // Approach just off a cardinal locus: exact input alone would not prove snapping.
     const scale = Number(await canvas.getAttribute('data-scale'));
     target = {...target, x: target.x + 2 / scale};
     await move(target);
+    let pointerBefore, beforeKeying;
+    if (spec.enterWithoutMove) {
+      const expectedCue = spec.automatic
+        ? new RegExp(`Arc quadrant.*Pending:.*${spec.degrees === 90 ? 'Horizontal' : 'Vertical'}`, 's')
+        : /Arc quadrant.*auto constraints off/is;
+      await expect(canvas).toHaveAttribute('data-snap-cue', expectedCue);
+      beforeKeying = await preview(spec.degrees, `${spec.name}-before-keying`);
+      assert.ok(Math.abs(beforeKeying.worldRadius - spec.keyedRadius) > .75, 'keyed radius substantially changes the acquired preview');
+      pointerBefore = await page.evaluate(() => ({...window.__tangentArcPointerEvents}));
+    }
     if (spec.keyedRadius !== null) {
       const input = page.locator('input[data-dimension-key="radius"]'); await expect(input).toBeVisible();
       // Tab cycles this sole field back to itself and intentionally clears its lock.
       await decimal(input, String(spec.keyedRadius));
-      await expect(canvas).toHaveAttribute('data-entity-count', '1'); await move(target);
+      await expect(canvas).toHaveAttribute('data-entity-count', '1');
+      if (!spec.enterWithoutMove) await move(target);
     }
-    await preview(spec.degrees, spec.name);
-    await click(target); await expect(canvas).toHaveAttribute('data-entity-count', '2');
+    let painted = await preview(spec.degrees, spec.name);
+    if (spec.enterWithoutMove) {
+      close(painted.worldRadius, spec.keyedRadius, 'painted keyed radius before Enter');
+      assert.deepEqual(await page.evaluate(() => ({...window.__tangentArcPointerEvents})), pointerBefore,
+        'typing radius alone performs no pointer movement or quadrant reacquisition');
+      if (spec.reaimAfterKeying) {
+        const radians = (spec.finalDegrees - 90) * Math.PI / 180;
+        target = {x: source.end.x + spec.keyedRadius * Math.cos(radians),
+          y: source.end.y + spec.keyedRadius + spec.keyedRadius * Math.sin(radians)};
+        await move(target);
+        await expect(canvas).not.toHaveAttribute('data-snap-cue', /Arc quadrant/);
+        // A non-snapped pixel gesture is near 60 degrees; native geometry must
+        // match the measured paint exactly, not an idealized world target.
+        painted = await preview(spec.finalDegrees, `${spec.name}-reaimed`, 1);
+        const afterReaim = await page.evaluate(() => ({...window.__tangentArcPointerEvents}));
+        assert.ok(afterReaim.moves > pointerBefore.moves, 'negative case actually re-aims the mouse');
+        evidence.keyboardCommits.push({name: `${spec.name}-reaim`, pointerBefore, pointerAfter: afterReaim});
+        pointerBefore = afterReaim;
+      }
+      const cueAfterKeying = await canvas.getAttribute('data-snap-cue');
+      await page.locator('input[data-dimension-key="radius"]').press('Enter');
+      await expect(canvas).toHaveAttribute('data-entity-count', '2');
+      const pointerAfter = await page.evaluate(() => ({...window.__tangentArcPointerEvents}));
+      evidence.keyboardCommits.push({name: spec.name, beforeKeying, painted, cueAfterKeying, pointerBefore, pointerAfter});
+      assert.deepEqual(pointerAfter, pointerBefore, 'typing/Enter performs no mouse movement, click, or quadrant reacquisition');
+    } else {
+      await click(target); await expect(canvas).toHaveAttribute('data-entity-count', '2');
+    }
     await lineMode();
     const curved = await download(`${spec.name}-arc`);
-    const arc = assertChain(curved.doc, source, spec.degrees, spec.automatic, spec.keyedRadius, false);
+    const finalDegrees = spec.reaimAfterKeying ? painted.sweepDegrees : spec.degrees;
+    const arc = assertChain(curved.doc, source, finalDegrees, spec.automatic, spec.keyedRadius, false);
     const end = pointOnArc(arc, arc.endAngleDegrees);
     const angle = arc.endAngleDegrees * Math.PI / 180;
     // Use the tangent direction of the committed arc without re-selecting a tool.
@@ -225,7 +285,7 @@ try {
     await expect(canvas).toHaveAttribute('data-entity-count', '3'); await lineMode();
     await canvas.press('Escape');
     const complete = await download(`${spec.name}-chain`);
-    assertChain(complete.doc, source, spec.degrees, spec.automatic, spec.keyedRadius, true);
+    assertChain(complete.doc, source, finalDegrees, spec.automatic, spec.keyedRadius, true);
     await page.screenshot({path: `${output}/${spec.name}-chain.png`});
     if (spec.keyedRadius !== null) {
       for (const [label, before] of [['arc', curved], ['incoming', incoming], ['empty', empty]]) {
@@ -243,7 +303,7 @@ try {
       await expect(canvas).toHaveAttribute('data-entity-count', '3');
       const reopened = await download(`${spec.name}-reopened`);
       assert.deepEqual(content(reopened.doc), content(complete.doc));
-      assertChain(reopened.doc, source, spec.degrees, spec.automatic, spec.keyedRadius, true);
+      assertChain(reopened.doc, source, finalDegrees, spec.automatic, spec.keyedRadius, true);
       await page.screenshot({path: `${output}/${spec.name}-reopened.png`});
     }
     evidence.cases.push(spec.name); console.log(`PASS ${spec.name}`);

@@ -900,7 +900,7 @@ export function getCurrentSnapCue(state) {
   const drag = state.geometryDrag;
   const tool = drag ? "point" : getSketchCreationTool(state);
   if (!tool || tool === 'slot') return null;
-  const target = drag ? drag.acceptedSnapTarget : state.hoveredTarget;
+  const target = drag ? drag.acceptedSnapTarget : state.toolDraft?.keyedQuadrantTarget || state.hoveredTarget;
   const point = drag ? drag.acceptedSnapPoint : state.toolDraft?.points?.length
     ? state.toolDraft.previewPoint : getTargetWorldSnapPoint(target);
   let intents = getCreationSnapIntents(state, target, point);
@@ -5181,9 +5181,14 @@ function handlePointerMove(state, event) {
       updateDebugAttributes(state);
       draw(state);
     } else if (state.toolDraft && state.toolDraft.points.length > 0) {
+      state.toolDraft.keyedQuadrantTarget = null;
       state.toolDraft.previewPoint = sketchTool === 'slot' && state.toolDraft.centerlineReferenceKey
         ? screenToWorld(state, screenPoint)
         : getSketchWorldPoint(state, screenPoint, nearestTarget, event, sketchTool || modifyTool);
+      if (sketchTool === "tangentarc") {
+        state.toolDraft.keyedQuadrantTarget = remapKeyedArcQuadrant(nearestTarget,
+          state.toolDraft.points, state.toolDraft.previewPoint, state.toolDraft.previewPoint);
+      }
       if (sketchTool) {
         applyLockedDraftDimensions(state);
       }
@@ -5951,6 +5956,7 @@ function handleSketchToolClick(state, screenPoint, event) {
     return;
   }
 
+  state.toolDraft.keyedQuadrantTarget = null;
   state.toolDraft.previewPoint = worldPoint;
   applyLockedDraftDimensions(state);
   worldPoint = state.toolDraft.previewPoint;
@@ -6568,7 +6574,7 @@ function commitSketchToolPoints(state, tool, points) {
   }
 
   const dimensionLocks = getSketchToolDimensionLocks(state.toolDraft);
-  rememberCreationSnap(state, state.hoveredTarget, points[points.length - 1]);
+  rememberCreationSnap(state, state.toolDraft.keyedQuadrantTarget || state.hoveredTarget, points[points.length - 1]);
   const creationSnaps = state.toolDraft.creationSnaps || [];
   const originSnapUsed = Boolean(state.toolDraft.originSnapUsed || state.hoveredTarget?.entityId === "$origin");
   const tangentReferenceKey = tool === "centercircle"
@@ -13414,12 +13420,32 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
     return false;
   }
 
+  if (tool === "tangentarc" && dimension === "radius") {
+    state.toolDraft.keyedQuadrantTarget = remapKeyedArcQuadrant(
+      state.toolDraft.keyedQuadrantTarget || state.hoveredTarget, points, previewPoint, nextPreviewPoint);
+  }
   state.toolDraft.previewPoint = nextPreviewPoint;
   state.toolDraft.dimensionValues = {
     ...(state.toolDraft.dimensionValues || {}),
     [dimension]: numericValue
   };
   return true;
+}
+
+function remapKeyedArcQuadrant(target, points, previousPoint, nextPoint) {
+  if (points.length !== 2 || !sameOptionalWorldPoint(target?.point, previousPoint)) return null;
+  const relation = target?.creationRelations?.find(r =>
+    r.kind === "ArcQuadrantHorizontal" || r.kind === "ArcQuadrantVertical");
+  if (!relation) return null;
+  const arc = getTangentArc(points[0], points[1], nextPoint);
+  if (!arc) return null;
+  const delta = relation.kind === "ArcQuadrantHorizontal"
+    ? nextPoint.y - arc.center.y : nextPoint.x - arc.center.x;
+  if (Math.abs(delta) > WORLD_GEOMETRY_TOLERANCE) return null;
+  // This relation belongs to the draft arc itself, not an external snap source.
+  return { ...createDynamicPointTarget(target.label, copyPoint(nextPoint),
+    [{ orientation: "segment", start: arc.center, point: copyPoint(nextPoint) }]),
+    creationRelations: [{kind: relation.kind, referenceKeys: []}] };
 }
 
 function applyRotateDraftDimensionValue(state, angleDegrees) {
