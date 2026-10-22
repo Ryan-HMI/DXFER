@@ -47,7 +47,16 @@ representation or arbitrary topology conversion:
   control/fit/rational splines, full/equal-axis/partial ellipses and polygons;
   Undo/Redo, DXF reopen and edit again. Disposable fixtures only.
 - Initial browser evidence: `/tmp/dxfer-symmetry-curves-browser-candidate-b`.
-  Installed-revision evidence is recorded after rollout.
+  Release candidate: `/tmp/dxfer-symmetry-21d4f5f-local` (14/14).
+- Installed Dev `69cf11a` at `2026-10-22T14:49:26Z`, with all 14 public browser
+  cases passing and the rendered build tooltip verified. Evidence:
+  `/tmp/dxfer-symmetry-69cf11a-public` (112 native exports and 14 screenshots).
+- Final core suite: 3,496 passed, zero failures. Final JS suite: 1,988 passed,
+  zero failures. Targeted adapter coverage includes fractional fixed ellipses.
+- Normal Google sign-in remains configured; Sync launch callbacks remain disabled.
+  Production/Test PIDs stayed 3584417/3584475. Isolated local QA was stopped.
+- Flux received the installed revision and a reconstructable spline fixture in
+  `#all-agents`; independent acceptance is pending, not claimed by these checks.
 
 ## Data And Isolation
 
