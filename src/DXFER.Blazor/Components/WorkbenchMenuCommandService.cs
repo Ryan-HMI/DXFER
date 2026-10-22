@@ -19,6 +19,18 @@ public sealed class WorkbenchMenuCommandService
 
     public bool HasSyncDocument { get; private set; }
     public event Action? SnapSettingsChanged;
+    public event Action? ViewSettingsChanged;
+    private bool _invertWheelZoom;
+    public bool InvertWheelZoom
+    {
+        get => _invertWheelZoom;
+        set
+        {
+            if (_invertWheelZoom == value) return;
+            _invertWheelZoom = value;
+            ViewSettingsChanged?.Invoke();
+        }
+    }
     private bool _automaticSnapConstraints = true;
     public bool AutomaticSnapConstraints
     {

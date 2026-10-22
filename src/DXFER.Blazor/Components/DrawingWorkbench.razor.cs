@@ -122,7 +122,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         PublishDocumentState();
         MenuCommandService.CommandRequested += InvokeWorkbenchCommand;
         MenuCommandService.FileOpenRequested += OpenFileAsync;
-        MenuCommandService.SnapSettingsChanged += OnSnapSettingsChanged;
+        MenuCommandService.SnapSettingsChanged += OnSettingsChanged;
+        MenuCommandService.ViewSettingsChanged += OnSettingsChanged;
         ToolHotkeys.BindingsChanged += OnToolHotkeysChanged;
     }
 
@@ -163,12 +164,13 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         MenuCommandService.CommandRequested -= InvokeWorkbenchCommand;
         MenuCommandService.FileOpenRequested -= OpenFileAsync;
-        MenuCommandService.SnapSettingsChanged -= OnSnapSettingsChanged;
+        MenuCommandService.SnapSettingsChanged -= OnSettingsChanged;
+        MenuCommandService.ViewSettingsChanged -= OnSettingsChanged;
         ToolHotkeys.BindingsChanged -= OnToolHotkeysChanged;
         _hotkeyDotNetReference?.Dispose();
     }
 
-    private void OnSnapSettingsChanged() => _ = InvokeAsync(StateHasChanged);
+    private void OnSettingsChanged() => _ = InvokeAsync(StateHasChanged);
 
     private void PublishDocumentState() => MenuCommandService.SetDocumentState(
         _fileName, DocumentUnitsText, HasUnsavedChanges,

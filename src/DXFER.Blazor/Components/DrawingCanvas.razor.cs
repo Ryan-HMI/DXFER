@@ -9,7 +9,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261021-source-clearance";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261021-invert-wheel";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -181,6 +181,9 @@ public partial class DrawingCanvas : IAsyncDisposable
     public bool AutomaticSnapConstraints { get; set; } = true;
 
     [Parameter]
+    public bool InvertWheelZoom { get; set; }
+
+    [Parameter]
     public int SelectionResetToken { get; set; }
 
     [Parameter]
@@ -281,6 +284,7 @@ public partial class DrawingCanvas : IAsyncDisposable
             await SetGrainDirectionAsync();
             await SetConstructionModeAsync();
             await _canvasInstance.InvokeVoidAsync("setAutomaticSnapConstraints", AutomaticSnapConstraints);
+            await _canvasInstance.InvokeVoidAsync("setInvertWheelZoom", InvertWheelZoom);
             await SetMeasurementAsync();
             await SetCornerPreviewAsync();
         }
@@ -307,6 +311,7 @@ public partial class DrawingCanvas : IAsyncDisposable
         await SetGrainDirectionAsync();
         await SetConstructionModeAsync();
         await _canvasInstance.InvokeVoidAsync("setAutomaticSnapConstraints", AutomaticSnapConstraints);
+        await _canvasInstance.InvokeVoidAsync("setInvertWheelZoom", InvertWheelZoom);
         await SetMeasurementAsync();
         await SetCornerPreviewAsync();
     }

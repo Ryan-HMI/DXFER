@@ -342,6 +342,10 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
       draw(state);
     },
 
+    setInvertWheelZoom(enabled) {
+      state.invertWheelZoom = Boolean(enabled);
+    },
+
     setMeasurement(measurement, units) {
       state.measurement = measurement;
       state.measurementUnits = units;
@@ -6582,7 +6586,8 @@ function handleWheel(state, event) {
     return;
   }
 
-  const zoomFactor = clamp(Math.exp(-normalizedDelta * 0.001), 0.2, 5);
+  const zoomDelta = state.invertWheelZoom ? -normalizedDelta : normalizedDelta;
+  const zoomFactor = clamp(Math.exp(-zoomDelta * 0.001), 0.2, 5);
   const nextScale = clamp(state.view.scale * zoomFactor, MIN_VIEW_SCALE, MAX_VIEW_SCALE);
 
   if (nextScale === state.view.scale) {

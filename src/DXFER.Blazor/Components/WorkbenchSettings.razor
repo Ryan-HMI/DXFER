@@ -9,6 +9,7 @@
         <section class="settings-dialog" @ref="_panel" role="dialog" aria-modal="true" aria-label="Settings" @onclick:stopPropagation="true">
             <header><h2>Settings</h2><button type="button" title="Close settings" aria-label="Close settings" @ref="_close" @onclick="Close"><CadIcon Name="CadIconName.Close" /></button></header>
             <label class="setting-row"><input type="checkbox" checked="@MenuCommands.AutomaticSnapConstraints" disabled="@(!_loaded)" @onchange="ChangeAutomaticConstraints" /><span>Automatic snap constraints</span></label>
+            <label class="setting-row"><input type="checkbox" checked="@MenuCommands.InvertWheelZoom" disabled="@(!_loaded)" @onchange="ChangeInvertWheelZoom" /><span>Invert wheel zoom</span></label>
         </section>
     </div>
 }
@@ -30,10 +31,12 @@
         if (_disposed) return;
         if (firstRender)
         {
-            var module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./_content/DXFER.Blazor/workbenchSettings.js?v=20261018");
+            var module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./_content/DXFER.Blazor/workbenchSettings.js?v=20261021-invert-wheel");
             if (_disposed) { await module.DisposeAsync(); return; }
             _module = module;
             MenuCommands.AutomaticSnapConstraints = await module.InvokeAsync<bool>("loadAutomaticSnapConstraints");
+            if (_disposed) return;
+            MenuCommands.InvertWheelZoom = await module.InvokeAsync<bool>("loadInvertWheelZoom");
             if (_disposed) return;
             _loaded = true;
             StateHasChanged();
@@ -55,6 +58,12 @@
     {
         await OnClose.InvokeAsync();
         if (_module is not null) await _module.InvokeVoidAsync("focusDrawingCanvas");
+    }
+    private async Task ChangeInvertWheelZoom(ChangeEventArgs args)
+    {
+        if (!_loaded || _module is null) return;
+        MenuCommands.InvertWheelZoom = args.Value is true;
+        await _module.InvokeVoidAsync("saveInvertWheelZoom", MenuCommands.InvertWheelZoom);
     }
     private Task KeyDown(KeyboardEventArgs e) => e.Key == "Escape" ? Close() : Task.CompletedTask;
     private async ValueTask ReleaseObserverAsync()

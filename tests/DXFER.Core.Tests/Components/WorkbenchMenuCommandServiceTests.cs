@@ -6,6 +6,27 @@ namespace DXFER.Core.Tests.Components;
 public sealed class WorkbenchMenuCommandServiceTests
 {
     [Fact]
+    public void WheelInversionDefaultsOffAndNotifiesOnlyViewChanges()
+    {
+        var service = new WorkbenchMenuCommandService();
+        var values = new List<bool>();
+        var snapChanges = 0;
+        service.ViewSettingsChanged += () => values.Add(service.InvertWheelZoom);
+        service.SnapSettingsChanged += () => snapChanges++;
+
+        service.InvertWheelZoom.Should().BeFalse();
+        service.InvertWheelZoom = false;
+        service.InvertWheelZoom = true;
+        service.InvertWheelZoom = true;
+        service.InvertWheelZoom = false;
+
+        values.Should().Equal(true, false);
+        snapChanges.Should().Be(0);
+        service.AutomaticSnapConstraints.Should().BeTrue();
+        service.DocumentState.HasUnsavedChanges.Should().BeFalse();
+    }
+
+    [Fact]
     public void DocumentStateStartsEmptyAndEqualPublicationIsANoOp()
     {
         var service = new WorkbenchMenuCommandService();
