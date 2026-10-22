@@ -12,6 +12,8 @@ public static class ConstraintIconGeometry
         ["concentric"] = new("M20 12a8 8 0 1 0-16 0a8 8 0 1 0 16 0ZM16 12a4 4 0 1 0-8 0a4 4 0 1 0 8 0Z", Dot(12, 12)),
         ["parallel"] = new("M4 17 16 5M8 21 20 9"),
         ["tangent"] = new("M18 9a6 6 0 1 0-12 0a6 6 0 1 0 12 0ZM3 15h18", Dot(12, 15)),
+        ["normal"] = new("M3 19Q12 8 21 19M12 14V3m-3 3 3-3 3 3M12 14h4v3"),
+        ["symmetric"] = new("M12 3v3m0 3v6m0 3v3M3 6l5 6-5 6m18-12-5 6 5 6"),
         ["horizontal"] = new("M3 12h18", Dot(3, 12) + Dot(21, 12)),
         ["vertical"] = new("M12 3v18", Dot(12, 3) + Dot(12, 21)),
         ["perpendicular"] = new("M5 3v16h16M5 13h6v6"),

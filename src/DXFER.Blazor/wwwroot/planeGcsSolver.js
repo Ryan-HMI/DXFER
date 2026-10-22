@@ -785,6 +785,28 @@ function mapRequest(request) {
         relation("point_on_line_pl", { p_id: p.id, l_id: line.id }, source,
             get => Math.abs(signedDistance(get(p.id), line, get)), temporary);
     }
+    function mirrorPoint(a, b, axis, source, temporary) {
+        requireSupported(lineLength(axis) > tolerance, `${source} requires a nonzero symmetry axis.`);
+        relation("p2p_symmetric_ppl", { p1_id: a.id, p2_id: b.id, l_id: axis.id }, source, get => {
+            const [start, end] = endpoints(axis, get), p = get(a.id), q = get(b.id);
+            const dx = end.x - start.x, dy = end.y - start.y, squared = dx * dx + dy * dy;
+            if (squared <= tolerance * tolerance) return Infinity;
+            const t = ((p.x - start.x) * dx + (p.y - start.y) * dy) / squared;
+            return distance(q, { x: 2 * (start.x + t * dx) - p.x, y: 2 * (start.y + t * dy) - p.y });
+        }, temporary);
+    }
+    function validateRelationCurve(ref, source) {
+        const entity = ref.shape?.entity;
+        requireSupported(["circle", "arc"].includes(ref.shape?.kind)
+            && Number.isFinite(entity?.radius) && entity.radius > tolerance,
+        `${source} requires a nondegenerate circle or arc.`);
+        if (ref.shape.kind === "arc") {
+            const sweep = entity.endAngleDegrees - entity.startAngleDegrees;
+            requireSupported(Number.isFinite(entity.startAngleDegrees) && Number.isFinite(entity.endAngleDegrees)
+                && Number.isFinite(sweep) && sweep !== 0 && sweep > -360 && sweep <= 360,
+            `${source} requires a valid finite arc sweep.`);
+        }
+    }
     function linePair(a, b, perpendicular, source, temporary = false) {
         relation(perpendicular ? "perpendicular_ll" : "parallel", { l1_id: a.id, l2_id: b.id }, source,
             get => Math.abs((perpendicular ? Math.cos : Math.sin)(lineAngle(a, get) - lineAngle(b, get))), temporary);
@@ -832,6 +854,84 @@ function mapRequest(request) {
         const refs = array(c.referenceKeys, source).map(resolve);
         const count = (...counts) => requireSupported(counts.includes(refs.length), `${source} has an unsupported reference count.`);
         switch (kind) {
+            case "symmetric": {
+                requireSupported(refs.length >= 3 && refs.length % 2 === 1,
+                    `${source} requires paired geometry followed by a symmetry axis.`);
+                const axis = getLine(refs.at(-1)), peers = refs.slice(0, -1);
+                requireSupported(peers.every(ref => ref.shape !== refs.at(-1).shape),
+                    `${source} requires an independent symmetry axis.`);
+                if (peers.every(ref => ref.point)) {
+                    for (let i = 0; i < peers.length; i += 2) {
+                        requireSupported(peers[i].point.id !== peers[i + 1].point.id
+                            && peers[i].shape !== peers[i + 1].shape,
+                        `${source} requires points on distinct entities.`);
+                        for (const index of [i, i + 1]) {
+                            const ref = peers[index], key = c.referenceKeys[index];
+                            requireSupported(!ref.shape || ["point", "line", "polyline", "circle", "arc"].includes(ref.shape.kind),
+                                `${source} has an unsupported point reference.`);
+                            if (ref.shape?.kind === "polyline") requireSupported(key.includes("|segment|"),
+                                `${source} requires a canonical segment point reference.`);
+                            if (peers.length > 2) requireSupported(["line", "polyline"].includes(ref.shape?.kind)
+                                && /:(start|end)$/.test(key), `${source} requires paired line endpoints.`);
+                        }
+                        mirrorPoint(getPoint(peers[i]), getPoint(peers[i + 1]), axis, source, temporary);
+                    }
+                } else {
+                    count(3);
+                    const [a, b] = peers.map(getCurve);
+                    requireSupported(peers[0].shape !== peers[1].shape && a.type === b.type
+                        && ["circle", "arc"].includes(peers[0].shape?.kind)
+                        && peers[0].shape.kind === peers[1].shape?.kind,
+                    `${source} requires two distinct matching circles or arcs.`);
+                    peers.forEach(ref => validateRelationCurve(ref, source));
+                    mirrorPoint(nodes.get(a.c_id), nodes.get(b.c_id), axis, source, temporary);
+                    if (a.type === "arc") {
+                        // Reflection reverses winding, so starts correspond to opposite ends.
+                        mirrorPoint(nodes.get(a.start_id), nodes.get(b.end_id), axis, source, temporary);
+                        // Mirroring both endpoint pairs adds a redundant radius equation.
+                        // Equal sweep supplies only the remaining angular freedom.
+                        const sweep = point({ x: a.end_angle - a.start_angle, y: 0 });
+                        equalParam(sweep, "y", 0, source);
+                        for (const curve of [a, b]) relation("difference", {
+                            param1: { o_id: curve.id, prop: "start_angle" },
+                            param2: { o_id: curve.id, prop: "end_angle" },
+                            difference: { o_id: sweep.id, prop: "x" }
+                        }, source, get => Math.abs(get(curve.id).end_angle - get(curve.id).start_angle - get(sweep.id).x), temporary);
+                    } else {
+                        relation("equal", { param1: { o_id: a.id, prop: "radius" }, param2: { o_id: b.id, prop: "radius" } },
+                            source, get => Math.abs(get(a.id).radius - get(b.id).radius), temporary);
+                    }
+                }
+                break;
+            }
+            case "normal": {
+                count(2);
+                const key = c.referenceKeys[0];
+                requireSupported(/:(start|end)$/.test(key), `${source} requires a line endpoint followed by a circle or arc.`);
+                const contact = getPoint(refs[0]), line = getLine(resolve(key.replace(/:(start|end)$/, "")));
+                const curve = getCurve(refs[1]);
+                validateRelationCurve(refs[1], source);
+                requireSupported(["circle", "arc"].includes(refs[1].shape?.kind) && lineLength(line) > tolerance,
+                    `${source} requires a nonzero line and a circle or arc.`);
+                onLine(nodes.get(curve.c_id), line, source, temporary);
+                relation(curve.type === "arc" ? "point_on_arc" : "point_on_circle",
+                    { p_id: contact.id, [curve.type === "arc" ? "a_id" : "c_id"]: curve.id }, source, get => {
+                        const p = get(contact.id), solved = get(curve.id), center = get(curve.c_id);
+                        if (lineLength(line, get) <= tolerance) return Infinity;
+                        if (curve.type === "arc") {
+                            const turn = 2 * Math.PI, wrap = value => ((value % turn) + turn) % turn;
+                            const angle = Math.atan2(p.y - center.y, p.x - center.x);
+                            const span = wrap(solved.end_angle - solved.start_angle) || turn;
+                            const at = angle => ({x: center.x + solved.radius * Math.cos(angle),
+                                y: center.y + solved.radius * Math.sin(angle)});
+                            if (wrap(angle - solved.start_angle) > span
+                                && distance(p, at(solved.start_angle)) > tolerance
+                                && distance(p, at(solved.end_angle)) > tolerance) return Infinity;
+                        }
+                        return Math.abs(distance(p, center) - solved.radius);
+                    }, temporary);
+                break;
+            }
             case "coincident":
                 count(2);
                 samePoint(getPoint(refs[0]), getPoint(refs[1]), source, temporary);

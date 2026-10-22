@@ -4,7 +4,7 @@ using DXFER.Core.Sketching;
 
 namespace DXFER.Blazor.Sketching;
 
-public static class SketchCommandFactory
+public static partial class SketchCommandFactory
 {
     private const double GeometryTolerance = 0.000001;
 
@@ -222,6 +222,9 @@ public static class SketchCommandFactory
         ArgumentNullException.ThrowIfNull(selectionKeys);
 
         var selectionArray = selectionKeys.ToArray();
+        // These contracts carry ordered, durable references, not filtered picks.
+        if (kind is SketchConstraintKind.Symmetric or SketchConstraintKind.Normal)
+            return TryBuildOrderedRelation(document, selectionArray, kind, id, out constraint, out status);
         var axisConstraint = kind is SketchConstraintKind.Horizontal or SketchConstraintKind.Vertical
             || kind == SketchConstraintKind.Midpoint && selectionArray.Length == 3;
         var picks = kind == SketchConstraintKind.Concentric

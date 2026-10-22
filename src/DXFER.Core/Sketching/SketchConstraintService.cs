@@ -83,6 +83,8 @@ public static class SketchConstraintService
             SketchConstraintKind.Concentric => IsConcentric(document.Entities, constraint),
             SketchConstraintKind.Equal => IsEqual(document.Entities, constraint),
             SketchConstraintKind.Midpoint => IsMidpoint(document.Entities, constraint),
+            SketchConstraintKind.Symmetric => SketchSymmetryAndNormalValidation.IsSymmetric(document.Entities, constraint.ReferenceKeys),
+            SketchConstraintKind.Normal => SketchSymmetryAndNormalValidation.IsNormal(document.Entities, constraint.ReferenceKeys),
             SketchConstraintKind.Fix => true,
             _ => false
         };

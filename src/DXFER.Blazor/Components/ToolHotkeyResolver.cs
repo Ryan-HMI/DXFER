@@ -126,6 +126,8 @@ public static class ToolHotkeyResolver
         WorkbenchCommandId.Concentric,
         WorkbenchCommandId.Parallel,
         WorkbenchCommandId.Tangent,
+        WorkbenchCommandId.Normal,
+        WorkbenchCommandId.Symmetric,
         WorkbenchCommandId.Horizontal,
         WorkbenchCommandId.Vertical,
         WorkbenchCommandId.Perpendicular,

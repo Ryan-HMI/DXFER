@@ -78,7 +78,7 @@ import {
   isPanPointerDownForTool,
   isTargetEligibleForConstraintTool,
   shouldDrawSelectionTargetOverlay
-} from "./canvas/targets.js?v=20261019-point-on-circle";
+} from "./canvas/targets.js?v=20261022-symmetry-normal";
 import {
   CONSTRAINT_KEY_PREFIX,
   POINT_KEY_SEPARATOR,
@@ -4469,6 +4469,10 @@ export function getConstraintGlyphIcon(kind) {
       return "parallel";
     case "tangent":
       return "tangent";
+    case "normal":
+      return "normal";
+    case "symmetric":
+      return "symmetric";
     case "horizontal":
       return "horizontal";
     case "vertical":
@@ -9084,7 +9088,7 @@ function createOriginTarget() {
 function canPickOrigin(state) {
   const tool = normalizeToolName(state.activeTool);
   return tool === "select" || Boolean(getSketchCreationTool(state)) || isDimensionTool(state)
-    || ["coincident", "horizontal", "vertical", "midpoint", "concentric"].includes(tool);
+    || ["coincident", "horizontal", "vertical", "midpoint", "concentric", "symmetric"].includes(tool);
 }
 
 function createDimensionTarget(dimension) {
@@ -14469,6 +14473,8 @@ function getConstraintTool(state) {
     case "concentric":
     case "parallel":
     case "tangent":
+    case "normal":
+    case "symmetric":
     case "horizontal":
     case "vertical":
     case "perpendicular":

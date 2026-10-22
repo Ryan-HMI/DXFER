@@ -437,8 +437,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             Command(WorkbenchCommandId.Perpendicular, WorkbenchTool.Perpendicular, CadIconName.Perpendicular, "Perpendicular", tooltip: ConstraintTooltip(SketchConstraintKind.Perpendicular)),
             Command(WorkbenchCommandId.Equal, WorkbenchTool.Equal, CadIconName.Equal, "Equal", tooltip: ConstraintTooltip(SketchConstraintKind.Equal)),
             Command(WorkbenchCommandId.Midpoint, WorkbenchTool.Midpoint, CadIconName.Midpoint, "Midpoint", tooltip: ConstraintTooltip(SketchConstraintKind.Midpoint)),
-            Command(WorkbenchCommandId.Normal, WorkbenchTool.Normal, CadIconName.Normal, "Normal", disabled: true, isFuture: true),
-            Command(WorkbenchCommandId.Symmetric, WorkbenchTool.Symmetric, CadIconName.Symmetric, "Symmetric", disabled: true, isFuture: true),
+            Command(WorkbenchCommandId.Normal, WorkbenchTool.Normal, CadIconName.Normal, "Normal", tooltip: ConstraintTooltip(SketchConstraintKind.Normal)),
+            Command(WorkbenchCommandId.Symmetric, WorkbenchTool.Symmetric, CadIconName.Symmetric, "Symmetric", tooltip: ConstraintTooltip(SketchConstraintKind.Symmetric)),
             Command(WorkbenchCommandId.Fix, WorkbenchTool.Fix, CadIconName.Fix, "Fix", tooltip: ConstraintTooltip(SketchConstraintKind.Fix))
         }, "Solve", InitiallyOpen: false),
         new WorkbenchToolGroup("Cleanup", CleanupCommands, "Prep", InitiallyOpen: false),
@@ -956,6 +956,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchCommandId.Concentric:
             case WorkbenchCommandId.Parallel:
             case WorkbenchCommandId.Tangent:
+            case WorkbenchCommandId.Normal:
+            case WorkbenchCommandId.Symmetric:
             case WorkbenchCommandId.Horizontal:
             case WorkbenchCommandId.Vertical:
             case WorkbenchCommandId.Perpendicular:
@@ -2183,7 +2185,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
-        if (kind == SketchConstraintKind.Midpoint && _selectedEntityIds.Count == 3)
+        if (kind == SketchConstraintKind.Midpoint && _selectedEntityIds.Count == 3
+            || kind is SketchConstraintKind.Normal or SketchConstraintKind.Symmetric && _selectedEntityIds.Count > 0)
         {
             ActivateTool(tool, _status);
             return;
@@ -3808,6 +3811,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchCommandId.Tangent:
                 kind = SketchConstraintKind.Tangent;
                 return true;
+            case WorkbenchCommandId.Normal:
+                kind = SketchConstraintKind.Normal;
+                return true;
+            case WorkbenchCommandId.Symmetric:
+                kind = SketchConstraintKind.Symmetric;
+                return true;
             case WorkbenchCommandId.Horizontal:
                 kind = SketchConstraintKind.Horizontal;
                 return true;
@@ -3854,6 +3863,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchTool.Tangent:
                 kind = SketchConstraintKind.Tangent;
                 return true;
+            case WorkbenchTool.Normal:
+                kind = SketchConstraintKind.Normal;
+                return true;
+            case WorkbenchTool.Symmetric:
+                kind = SketchConstraintKind.Symmetric;
+                return true;
             case WorkbenchTool.Horizontal:
                 kind = SketchConstraintKind.Horizontal;
                 return true;
@@ -3893,6 +3908,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 return true;
             case SketchConstraintKind.Tangent:
                 tool = WorkbenchTool.Tangent;
+                return true;
+            case SketchConstraintKind.Normal:
+                tool = WorkbenchTool.Normal;
+                return true;
+            case SketchConstraintKind.Symmetric:
+                tool = WorkbenchTool.Symmetric;
                 return true;
             case SketchConstraintKind.Horizontal:
                 tool = WorkbenchTool.Horizontal;
@@ -3960,6 +3981,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         SketchConstraintKind.Concentric => "Select two circles or arcs, or a circle/arc and the origin.",
         SketchConstraintKind.Parallel => "Select two lines or polyline segments.",
         SketchConstraintKind.Tangent => "Select a line/circle/arc plus another circle/arc or line.",
+        SketchConstraintKind.Normal => "Select a straight line endpoint and a circle or arc. A line body pick uses the nearest endpoint.",
+        SketchConstraintKind.Symmetric => "Select two points or like entities, then a distinct straight axis as the third pick. Polylines require matching topology.",
         SketchConstraintKind.Horizontal => "Select one line or two editable points.",
         SketchConstraintKind.Vertical => "Select one line or two editable points.",
         SketchConstraintKind.Perpendicular => "Select two lines or polyline segments.",
