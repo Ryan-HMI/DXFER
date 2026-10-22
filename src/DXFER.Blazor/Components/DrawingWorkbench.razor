@@ -21,6 +21,7 @@
                        PatternEditing="PatternEditing"
                        PatternControls="ViewportPatternControls"
                        PatternCenterChanged="MovePatternCenter"
+                       PatternCenterPicked="SelectPatternCenter"
                        PatternDirectionPicked="PickPatternDirection"
                        CornerHandle="@(CornerPreview is not null && _cornerPreviewHandle is not null ? new CanvasPointDto(_cornerPreviewHandle.Value.X, _cornerPreviewHandle.Value.Y) : null)"
                        CornerSize="GetCornerModifyDistance()"

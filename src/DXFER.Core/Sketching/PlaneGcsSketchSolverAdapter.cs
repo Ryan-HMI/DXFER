@@ -76,6 +76,8 @@ public sealed class PlaneGcsSketchSolverAdapter : ISketchSolver
 
             var entities = PlaneGcsDocumentMapper.ReadEntities(request.Document, response.Entities);
             var candidate = new DrawingDocument(entities, effective.Dimensions, effective.Constraints, request.Document.Metadata);
+            if (!DrawingPatternService.TryReadCenterParameters(candidate, out candidate, out reason))
+                return Failure(request, drag, reason);
             if (!PlaneGcsValidation.ValidateResult(request.Document, candidate, fixedKeys, drag, out reason))
                 return Failure(request, drag, reason);
 

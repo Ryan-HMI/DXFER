@@ -21,6 +21,7 @@ public partial class DrawingWorkbench
     private string? _patternCenterOriginalY;
     private string? _patternDirectionPicking;
     private bool _patternDirectionSelectionConsumed;
+    private (string Key, bool Additive)? _pendingPatternCenterPick;
     private bool PatternEditing => _patternDraft is not null;
     private DrawingDocument? PatternPreview => ReferenceEquals(_patternSourceDocument, _document) ? _patternPreview : null;
     private bool CanConfirmPatternPreview => !_patternCenterDragging && _patternDirectionPicking is null
@@ -32,11 +33,22 @@ public partial class DrawingWorkbench
     private PatternDefinition? ViewportPatternCandidate => PatternEditing
         ? PatternPreview?.Metadata.Patterns.FirstOrDefault(p => p.Id == _editingPattern?.Id) ?? _editingPattern
         : _document.Metadata.Patterns.FirstOrDefault(p => p.Id == _shownPatternControlsId)
-          ?? _document.Metadata.Patterns.FirstOrDefault(p => p.SourceEntityIds.Concat(p.Members.Select(m => m.EntityId))
+          ?? SelectedPattern;
+
+    private PatternDefinition? SelectedPattern => _document.Metadata.Patterns.FirstOrDefault(p => p.SourceEntityIds.Concat(p.Members.Select(m => m.EntityId))
+            .Concat(p.CenterPointId is { } centerId ? new[] { centerId } : Array.Empty<string>())
             .Any(id => _selectedEntityIds.Any(key => key == id || key.StartsWith(id + "|", StringComparison.Ordinal))));
 
     private bool CanTogglePatternControls(PatternDefinition pattern) => !_patternCenterDragging && _patternDirectionPicking is null
         && (!PatternEditing || _editingPattern?.Id == pattern.Id);
+
+    private void RetainSelectedPatternControls()
+    {
+        // Tool activation clears selection, but the selected pattern's center
+        // must remain reachable as the next constraint or dimension reference.
+        if (!PatternEditing && SelectedPattern is { } pattern && !_hiddenPatternControls.Contains(pattern.Id))
+            _shownPatternControlsId = pattern.Id;
+    }
 
     private void TogglePatternControls(PatternDefinition pattern)
     {
@@ -64,7 +76,9 @@ public partial class DrawingWorkbench
         new DrawingDocument(_document.Entities.Where(e => pattern.SourceEntityIds.Contains(e.Id.Value))).GetBounds();
 
     private bool CanEditViewportPattern(PatternDefinition pattern) => !LayersReadOnly
-        && pattern.SourceEntityIds.Concat(pattern.Members.Select(m => m.EntityId)).All(id => DrawingLayerService.CanEdit(_document, id));
+        && pattern.SourceEntityIds.Concat(pattern.Members.Select(m => m.EntityId))
+            .Concat(pattern.CenterPointId is { } centerId ? new[] { centerId } : Array.Empty<string>())
+            .All(id => DrawingLayerService.CanEdit(_document, id));
 
     private void EditViewportPattern(PatternDefinition pattern)
     {
@@ -229,6 +243,27 @@ public partial class DrawingWorkbench
         _ = InvokeAsync(StateHasChanged);
     }
 
+    private void SelectPatternCenter(string patternId, bool additive)
+    {
+        if (PatternEditing)
+        {
+            _status = "Confirm the pattern before constraining its center.";
+        }
+        else if (DrawingPatternService.TryExposeCenter(_document, patternId, out var next, out var reason))
+        {
+            if (!ReferenceEquals(next, _document)
+                && !ApplyDocumentChangeCore(next, "Pattern center available for constraints.", patternCommand: true)) return;
+            var pointId = _document.Metadata.Patterns.Single(p => p.Id == patternId).CenterPointId;
+            if (pointId is not null)
+            {
+                _shownPatternControlsId = patternId;
+                _pendingPatternCenterPick = (pointId, additive);
+            }
+        }
+        else _status = reason;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     private void ClearPatternCenterDrag()
     {
         _patternCenterDragging = false;
@@ -240,7 +275,8 @@ public partial class DrawingWorkbench
         ? $"Radial ({pattern.Count})" : $"{pattern.Kind} ({pattern.Columns} x {pattern.Rows})";
 
     private IEnumerable<PatternDefinition> ContextPatterns => _document.Metadata.Patterns.Where(p =>
-        p.SourceEntityIds.Any(id => _contextEntities.Contains(id)) || p.Members.Any(m => _contextEntities.Contains(m.EntityId)));
+        p.SourceEntityIds.Any(id => _contextEntities.Contains(id)) || p.Members.Any(m => _contextEntities.Contains(m.EntityId))
+        || p.CenterPointId is { } centerId && _contextEntities.Contains(centerId));
 
     private void BeginPattern(bool radial)
     {

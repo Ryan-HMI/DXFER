@@ -169,7 +169,7 @@ try {
     await expect(canvas).toHaveAttribute('data-pattern-editing', 'false');
     const pattern = doc.metadata.patterns[0], source = doc.entities.find(e => e.id === pattern.sourceEntityIds[0]);
     const handle = widget.locator('[data-pattern-center-handle]');
-    await expect(handle).toHaveAttribute('title', 'Move pattern center');
+    await expect(handle).toHaveAttribute('title', 'Select or drag pattern center');
     await expect(handle).toHaveAccessibleName('Move pattern center');
     const initialBox = await handle.boundingBox();
     const screenCenter = await canvas.evaluate((c, point) => ({x: c.getBoundingClientRect().left + point.x * +c.dataset.scale + +c.dataset.offsetX,
@@ -178,16 +178,29 @@ try {
     close(initialBox.y + initialBox.height / 2, screenCenter.y, 'handle is at exact world center Y', 1);
     // A slightly off-center grab must preserve its offset throughout the gesture.
     const start = {x: screenCenter.x + 3, y: screenCenter.y - 2};
+    const initialScale = +(await canvas.getAttribute('data-scale'));
+    const grabOffset = {x:3/initialScale,y:2/initialScale};
     await page.mouse.move(start.x, start.y); await page.mouse.down();
     try {
+      await expect(canvas).toHaveAttribute('data-pattern-editing', 'false');
+      await page.mouse.move(start.x + 4, start.y);
       await expect(widget).toHaveAttribute('data-center-dragging', 'true');
       await expect(canvas).toHaveAttribute('data-pattern-editing', 'true');
       await expect(widget.getByRole('button', {name: 'Confirm', exact: true})).toBeDisabled();
-      const scale = +(await canvas.getAttribute('data-scale'));
+      // Opening the draft may fit its preview once. Project subsequent targets
+      // through the settled current view, retaining the original world grab offset.
+      let previous, stable = 0;
+      await expect.poll(async () => {
+        const view = await canvas.evaluate(c => JSON.stringify([c.dataset.scale,c.dataset.offsetX,c.dataset.offsetY]));
+        stable = view === previous ? stable + 1 : 0; previous = view; return stable;
+      }, {intervals:[100,150,150]}).toBeGreaterThanOrEqual(2);
       let pixels = await canvas.screenshot();
       for (const fraction of [.25, .6, 1]) {
         const target = {x: pattern.center.x + delta.x * fraction, y: pattern.center.y + delta.y * fraction};
-        await page.mouse.move(start.x + delta.x * scale * fraction, start.y - delta.y * scale * fraction, {steps: 8});
+        const pointer = await canvas.evaluate((c,p) => ({x:c.getBoundingClientRect().left+p.x*+c.dataset.scale+ +c.dataset.offsetX,
+          y:c.getBoundingClientRect().top-p.y*+c.dataset.scale+ +c.dataset.offsetY}),
+          {x:target.x+grabOffset.x,y:target.y+grabOffset.y});
+        await page.mouse.move(pointer.x,pointer.y,{steps:8});
         await expect.poll(async () => Math.hypot(+(await centerField('X').inputValue()) - target.x,
           +(await centerField('Y').inputValue()) - target.y), {message: 'held motion updates sidebar coordinates before release'}).toBeLessThan(1e-5);
         await expect(canvas).toHaveAttribute('data-corner-preview', 'true');
@@ -195,8 +208,10 @@ try {
         close(+(await widget.getAttribute('data-source-x')), source.center.x, 'held source X unchanged');
         close(+(await widget.getAttribute('data-source-y')), source.center.y, 'held source Y unchanged');
         const box = await handle.boundingBox();
-        close(box.x + box.width / 2, screenCenter.x + delta.x * scale * fraction, 'held handle X', 1);
-        close(box.y + box.height / 2, screenCenter.y - delta.y * scale * fraction, 'held handle Y', 1);
+        const targetScreen = await canvas.evaluate((c,p) => ({x:c.getBoundingClientRect().left+p.x*+c.dataset.scale+ +c.dataset.offsetX,
+          y:c.getBoundingClientRect().top-p.y*+c.dataset.scale+ +c.dataset.offsetY}),target);
+        close(box.x + box.width / 2, targetScreen.x, 'held handle X', 1);
+        close(box.y + box.height / 2, targetScreen.y, 'held handle Y', 1);
         const member = pattern.members[0];
         const angle = member.column * (pattern.fullCircle ? 360 / pattern.count : pattern.stepAngleDegrees) * Math.PI / 180;
         const dx = source.center.x - target.x, dy = source.center.y - target.y;

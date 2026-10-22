@@ -1,5 +1,6 @@
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
+using DXFER.Core.IO;
 using DXFER.Core.Operations;
 using DXFER.Core.Sketching;
 using FluentAssertions;
@@ -8,6 +9,90 @@ namespace DXFER.Core.Tests.Sketching;
 
 public sealed class PlaneGcsPatternRuntimeTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExposedRadialCenterConstraintSolvesThroughNodeReadbackAndNativeReopen(bool centerReference)
+    {
+        using var runtime = CreateRuntime();
+        var observed = new ObservedRuntime(runtime);
+        var solver = new PlaneGcsSketchSolverAdapter(observed);
+        var original = Document(PatternKind.Radial);
+        DrawingPatternService.TryExposeCenter(original, "array", out original, out var reason).Should().BeTrue(reason);
+        var centerId = original.Metadata.Patterns.Single().CenterPointId!;
+        var centerKey = centerId + (centerReference ? ":center" : "");
+        var firstTarget = new Point2(2, -1);
+        var secondTarget = new Point2(-1, -3);
+        original = new DrawingDocument(original.Entities.Concat(new DrawingEntity[]
+        {
+            new PointEntity(EntityId.Create("target-a"), firstTarget, true),
+            new PointEntity(EntityId.Create("target-b"), secondTarget, true)
+        }), original.Dimensions,
+        [
+            new("fixed-seed", SketchConstraintKind.Fix, ["seed"], SketchConstraintState.Satisfied),
+            new("fixed-a", SketchConstraintKind.Fix, ["target-a"], SketchConstraintState.Satisfied),
+            new("fixed-b", SketchConstraintKind.Fix, ["target-b"], SketchConstraintState.Satisfied)
+        ], original.Metadata);
+
+        var relation = new SketchConstraint("center-position", SketchConstraintKind.Coincident,
+            [centerKey, "target-a"], SketchConstraintState.Unsatisfied);
+        var first = solver.Solve(new(original, [relation], []));
+        first.Status.Should().Be(SketchSolveStatus.Solved, string.Join(" ", first.Diagnostics));
+        AssertCenterReadback(original, first.Document, observed, centerId, firstTarget);
+        observed.Request!.Document.Metadata.GetProperty("patterns")[0].GetProperty("centerPointId").GetString()
+            .Should().Be(centerId);
+        first.Document.Constraints.Single(c => c.Id == relation.Id).State.Should().Be(SketchConstraintState.Satisfied);
+
+        var native = DxferDocumentSerializer.Read(DxferDocumentSerializer.Write(first.Document));
+        var embedded = DXFER.CadIO.DxfDocumentReader.Read(
+            DXFER.CadIO.DxfDocumentWriter.Write(first.Document, new(IncludeNativeDocument: true)), out var restored);
+        restored.Should().BeTrue();
+        foreach (var reopened in new[] { native, embedded })
+        {
+            reopened.Metadata.Patterns.Single().CenterPointId.Should().Be(centerId);
+            reopened.Metadata.Patterns.Single().Center.Should().Be(first.Document.Metadata.Patterns.Single().Center);
+            reopened.Constraints.Single(c => c.Id == relation.Id).ReferenceKeys.Should().Equal(centerKey, "target-a");
+            var replacement = new SketchConstraint(relation.Id, SketchConstraintKind.Coincident,
+                [centerKey, "target-b"], SketchConstraintState.Unsatisfied);
+            var second = solver.Solve(new(reopened, [replacement], []));
+            second.Status.Should().Be(SketchSolveStatus.Solved, string.Join(" ", second.Diagnostics));
+            AssertCenterReadback(reopened, second.Document, observed, centerId, secondTarget);
+            second.Document.Constraints.Single(c => c.Id == relation.Id).ReferenceKeys.Should().Equal(centerKey, "target-b");
+            DxferDocumentSerializer.Read(DxferDocumentSerializer.Write(second.Document)).Metadata.Patterns.Single().Center
+                .Should().Be(second.Document.Metadata.Patterns.Single().Center);
+        }
+        original.Metadata.Patterns.Single().Center.Should().Be(new Point2(1, -2));
+    }
+
+    private static void AssertCenterReadback(DrawingDocument before, DrawingDocument result, ObservedRuntime observed,
+        string centerId, Point2 expectedCenter)
+    {
+        observed.Response!.Engine.Should().Be("PlaneGCS");
+        observed.Response.Status.Should().Be("solved");
+        var rawCenter = observed.Response.Entities!.Single(e => e.Id == centerId).Points.Single();
+        var point = result.Entities.OfType<PointEntity>().Single(p => p.Id.Value == centerId);
+        point.Location.Should().Be(new Point2(rawCenter.X, rawCenter.Y));
+        point.Location.X.Should().BeApproximately(expectedCenter.X, 1e-7);
+        point.Location.Y.Should().BeApproximately(expectedCenter.Y, 1e-7);
+        point.IsConstruction.Should().BeTrue();
+        var pattern = result.Metadata.Patterns.Single();
+        pattern.Center.Should().Be(point.Location);
+        pattern.Center.Should().NotBe(before.Metadata.Patterns.Single().Center);
+        pattern.Members.Should().Equal(before.Metadata.Patterns.Single().Members);
+        result.Entities.Select(e => e.Id).Should().Equal(before.Entities.Select(e => e.Id));
+        Circle(result, "seed").Should().Be(Circle(before, "seed"));
+        AssertNoAutomaticMemberFixes(before, observed.Request!);
+        observed.Request!.FixedReferenceKeys.Should().NotContain(centerId);
+        foreach (var member in pattern.Members)
+        {
+            var wire = observed.Response.Entities!.Single(e => e.Id == member.EntityId);
+            var accepted = Circle(result, member.EntityId);
+            accepted.Center.Should().Be(new Point2(wire.Center!.X, wire.Center.Y));
+            accepted.Radius.Should().Be(wire.Radius!.Value);
+        }
+        DrawingPatternService.TryValidate(result, out var reason).Should().BeTrue(reason);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

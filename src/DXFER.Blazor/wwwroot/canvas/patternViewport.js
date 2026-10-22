@@ -76,7 +76,7 @@ export function createPatternCenterQueue(send, onIdle, onError) {
   };
 }
 
-export function bindPatternCenterHandle(widget, {toWorld, send, preview, onError}) {
+export function bindPatternCenterHandle(widget, {toWorld, send, preview, select, onError}) {
   let drag = null;
   const queue = createPatternCenterQueue(send, () => {
     if (!drag) { delete widget.dataset.centerDragging; preview(null); }
@@ -93,14 +93,22 @@ export function bindPatternCenterHandle(widget, {toWorld, send, preview, onError
     const center = {x: Number(widget.dataset.centerX), y: Number(widget.dataset.centerY)}, p = toWorld(e);
     if (![center.x, center.y, p.x, p.y].every(Number.isFinite)) return;
     prevent(e);
-    drag = {pointerId: e.pointerId, center, offset: {x: p.x - center.x, y: p.y - center.y}};
-    widget.dataset.centerDragging = 'true';
+    drag = {pointerId: e.pointerId, center, screen: {x: e.clientX, y: e.clientY}, started: false,
+      offset: {x: p.x - center.x, y: p.y - center.y}};
     widget.setPointerCapture(e.pointerId);
-    queue.push(value('begin', center));
+  };
+  const start = e => {
+    if (drag.started) return true;
+    if (Math.hypot(e.clientX - drag.screen.x, e.clientY - drag.screen.y) < 3) return false;
+    drag.started = true;
+    widget.dataset.centerDragging = 'true';
+    queue.push(value('begin', drag.center));
+    return true;
   };
   const move = e => {
     if (!drag || drag.pointerId !== e.pointerId) return;
     prevent(e);
+    if (!start(e)) return;
     const point = dragPoint(e);
     preview(point);
     queue.push(value('update', point));
@@ -108,14 +116,25 @@ export function bindPatternCenterHandle(widget, {toWorld, send, preview, onError
   const finish = (e, cancel) => {
     if (!drag || (e.pointerId !== undefined && drag.pointerId !== e.pointerId)) return;
     prevent(e);
-    const point = cancel ? drag.center : dragPoint(e), pointerId = drag.pointerId;
+    if (!cancel) start(e);
+    const point = cancel ? drag.center : dragPoint(e), pointerId = drag.pointerId, started = drag.started;
     drag = null;
     if (widget.hasPointerCapture(pointerId)) widget.releasePointerCapture(pointerId);
+    if (!started) {
+      if (!cancel) select?.(Boolean(e.shiftKey));
+      return;
+    }
     preview(point);
     queue.push(value(cancel ? 'cancel' : 'end', point));
   };
   const up = e => finish(e, false), cancel = e => finish(e, true);
-  const key = e => { if (e.key === 'Escape' && drag) finish(e, true); };
+  const key = e => {
+    if (e.key === 'Escape' && drag) finish(e, true);
+    else if ((e.key === 'Enter' || e.key === ' ') && !drag && !queue.busy
+      && e.target.closest?.('[data-pattern-center-handle]') && !e.target.disabled) {
+      prevent(e); select?.(Boolean(e.shiftKey));
+    }
+  };
   widget.addEventListener('pointerdown', down);
   widget.addEventListener('pointermove', move);
   widget.addEventListener('pointerup', up);

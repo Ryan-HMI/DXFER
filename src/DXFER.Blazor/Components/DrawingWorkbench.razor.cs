@@ -130,6 +130,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         PublishDocumentState();
+        if (_pendingPatternCenterPick is { } pick && _canvas is not null)
+        {
+            _pendingPatternCenterPick = null;
+            await _canvas.PickPatternCenterAsync(_document, pick.Key, pick.Additive);
+        }
         if (_contextOpen && _contextFocus)
         {
             _contextFocus = false;
@@ -2605,6 +2610,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void ClearHistory()
     {
+        _pendingPatternCenterPick = null;
         ClearPatternEditor();
         _hiddenPatternControls.Clear();
         _shownPatternControlsId = null;
@@ -2940,6 +2946,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         {
             _selectedEntityIds.Add(selectedEntityId);
         }
+        RetainSelectedPatternControls();
 
         if (_activeSelectionKey is not null && !_selectedEntityIds.Contains(_activeSelectionKey))
         {

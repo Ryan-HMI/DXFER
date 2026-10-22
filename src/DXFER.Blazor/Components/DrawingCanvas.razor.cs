@@ -9,7 +9,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261021-invert-wheel";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261021-pattern-center";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -100,7 +100,22 @@ public partial class DrawingCanvas : IAsyncDisposable
     [Parameter] public bool PatternEditing { get; set; }
     [Parameter] public RenderFragment? PatternControls { get; set; }
     [Parameter] public Action<string, double, double, string>? PatternCenterChanged { get; set; }
+    [Parameter] public Action<string, bool>? PatternCenterPicked { get; set; }
     [Parameter] public Action<string, string, string>? PatternDirectionPicked { get; set; }
+
+    [JSInvokable]
+    public async Task OnPatternCenterPicked(string patternId, bool additive)
+    {
+        PatternCenterPicked?.Invoke(patternId, additive);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async Task PickPatternCenterAsync(DrawingDocument document, string key, bool additive)
+    {
+        if (_canvasInstance is null) return;
+        await _canvasInstance.InvokeVoidAsync("setDocument", CanvasDocumentDto.FromDocument(document), false);
+        await _canvasInstance.InvokeVoidAsync("pickPatternCenter", key, additive);
+    }
 
     [JSInvokable]
     public async Task OnPatternDirectionPicked(string patternId, string axis, string reference)

@@ -1,6 +1,6 @@
 import { sampleControlSpline } from "./canvas/splineGeometry.js";
 import { measurePerimeterDistance } from "./perimeterDistance.js";
-import { patternViewportGuides, patternViewportAnchors, patternSourceScreenBounds, bindPatternCenterHandle } from "./canvas/patternViewport.js?v=20261021-source-clearance";
+import { patternViewportGuides, patternViewportAnchors, patternSourceScreenBounds, bindPatternCenterHandle } from "./canvas/patternViewport.js?v=20261021-pattern-center";
 import { getSnapCue } from "./canvas/snapCue.js?v=20261019";
 import {
   addUniqueNumber,
@@ -275,6 +275,9 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
     },
     refreshPatternControls() {
       if (state.patternControlsVisible || state.canvas.parentElement?.querySelector?.('.pattern-viewport-controls')) draw(state);
+    },
+    pickPatternCenter(key, additive = false) {
+      pickPatternCenter(state, key, additive);
     },
     setDocument(document, fitToDocument = false) {
       if (state.solverEngine === "PlaneGCS") {
@@ -892,6 +895,27 @@ export function getCurrentSnapCue(state) {
   return cue ? { ...cue, point } : null;
 }
 
+export function pickPatternCenter(state, key, additive = false) {
+  if (state.disposed || state.patternEditing) return false;
+  const entity = getDocumentEntities(state.document).find(e => getEntityId(e) === key);
+  if (!entity || getEntityKind(entity) !== 'point' || entity.isLocked) return false;
+  const target = createEntityTarget(entity);
+  if (!target) return false;
+  if (isDimensionTool(state)) {
+    const point = getEntityPoints(entity)[0];
+    if (!point) return false;
+    handleDimensionToolClick(state, worldToScreen(state, point), {}, target);
+  } else {
+    if (!additive && !getConstraintTool(state)) clearSelectedTargets(state);
+    applyDirectSelectionClick(state, key);
+    notifySelectionChanged(state);
+  }
+  updateDebugAttributes(state);
+  draw(state);
+  focusCanvas(state.canvas);
+  return true;
+}
+
 function drawPatternViewportControls(state, size) {
   const widget = state.canvas.parentElement?.querySelector?.('.pattern-viewport-controls');
   state.patternControlsVisible = Boolean(widget);
@@ -901,6 +925,7 @@ function drawPatternViewportControls(state, size) {
     state.patternCenterPreview = null;
     if (widget) {
       const dispose = bindPatternCenterHandle(widget, {
+        select: additive => invokeDotNet(state, 'OnPatternCenterPicked', widget.dataset.patternId, additive),
         toWorld: event => {
           const rect = state.canvas.getBoundingClientRect();
           return screenToWorld(state, {x: event.clientX - rect.left, y: event.clientY - rect.top});
@@ -6135,13 +6160,13 @@ export function getNextSketchToolDimensionFocusKey(tool, nextPoints) {
   return tool === "centerpointarc" ? "sweep" : null;
 }
 
-function handleDimensionToolClick(state, screenPoint, event) {
+function handleDimensionToolClick(state, screenPoint, event, explicitTarget = null) {
   if (!isDimensionTool(state)) {
     return false;
   }
 
   const draft = state.dimensionDraft || createEmptyDimensionDraft();
-  const target = findNearestTarget(state, screenPoint);
+  const target = explicitTarget || findNearestTarget(state, screenPoint);
   const selectionKey = getDimensionSelectionKey(target);
   if (draft.complete && draft.selectionKeys.length > 0) {
     if (canExtendDimensionSelection(state, draft.selectionKeys, selectionKey)) {

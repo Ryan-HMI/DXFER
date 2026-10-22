@@ -34,8 +34,25 @@ export function mapPlaneGcsPatterns(context) {
             "Stagger fraction must be between zero and one.");
         const axes = !radial && (pattern.uDirectionReference || pattern.vDirectionReference)
             ? mapDirections(pattern) : null;
-        const origin = radial ? point(pattern.center) : null;
-        if (origin) origin.fixed = true;
+        const liveOrigin = radial && pattern.centerPointId != null;
+        let origin = null;
+        if (pattern.centerPointId != null) {
+            const id = pattern.centerPointId, entity = byId.get(id);
+            requireSupported(typeof id === "string" && id.length > 0 && entity
+                && lower(entity.kind) === "point" && entity.isConstruction === true
+                && !entity.isGenerated && !allMembers.has(id) && !sources.includes(id),
+            `Pattern ${pattern.id} center must reference a non-generated construction point outside its sources.`);
+            requireSupported(Array.isArray(entity.points) && entity.points.length === 1
+                && Number.isFinite(entity.points[0]?.x) && Number.isFinite(entity.points[0]?.y),
+            `Pattern ${pattern.id} center point must be finite.`);
+            requireSupported(Number.isFinite(pattern.center?.x) && Number.isFinite(pattern.center?.y)
+                && entity.points[0].x === pattern.center.x && entity.points[0].y === pattern.center.y,
+                `Pattern ${pattern.id} center point does not match its stored center.`);
+            if (radial) origin = model(id).points[0];
+        } else if (radial) {
+            origin = point(pattern.center);
+            origin.fixed = true;
+        }
         const slots = new Set();
         for (const member of members) {
             const { sourceEntityId, entityId, row, column } = member;
@@ -94,7 +111,9 @@ export function mapPlaneGcsPatterns(context) {
                 const u = (column + (kind === "staggered" && row % 2 ? stagger : 0)) * pattern.xPitch;
                 const v = row * pattern.yPitch;
                 sourcePoints.forEach((p, index) => mapDirectedPoint(p, targetPoints[index], axes, u, v, label));
-            } else sourcePoints.forEach((p, index) => mapPoint(p, targetPoints[index], c, s, dx, dy, label, origin));
+            } else sourcePoints.forEach((p, index) => liveOrigin
+                ? mapLiveCenterPoint(p, targetPoints[index], c, s, label, origin)
+                : mapPoint(p, targetPoints[index], c, s, dx, dy, label, origin));
             if (source.curve) {
                 relation("equal", { param1: parameter(source.curve, "radius"), param2: parameter(target.curve, "radius") },
                     label, get => Math.abs(get(source.curve.id).radius - get(target.curve.id).radius));
@@ -239,6 +258,39 @@ export function mapPlaneGcsPatterns(context) {
             get => Math.abs(get(scaled.id).y - factor * get(scaled.id).x));
         seedOperations.push(() => { Object.assign(scaled, { x: input[prop], y: factor * input[prop] }); return true; });
         return parameter(scaled, "y");
+    }
+
+    function mapLiveCenterPoint(source, target, c, s, label, origin) {
+        // T = O + R(S - O), using the same persistent O as ordinary sketch intent.
+        // Affine equations stay defined when either point passes through O.
+        const relative = point({ x: source.x - origin.x, y: source.y - origin.y });
+        for (const prop of ["x", "y"])
+            relation("difference", { param1: parameter(origin, prop), param2: parameter(source, prop),
+                difference: parameter(relative, prop) }, label,
+            get => Math.abs(get(source.id)[prop] - get(origin.id)[prop] - get(relative.id)[prop]));
+        seedOperations.push(() => {
+            Object.assign(relative, { x: source.x - origin.x, y: source.y - origin.y });
+            return true;
+        });
+        const cx = scaledParameter(relative, "x", c, label), sy = scaledParameter(relative, "y", s, label);
+        const sx = scaledParameter(relative, "x", s, label), cy = scaledParameter(relative, "y", c, label);
+        const rotated = point({ x: c * relative.x - s * relative.y, y: s * relative.x + c * relative.y });
+        relation("difference", { param1: sy, param2: cx, difference: parameter(rotated, "x") }, label,
+            get => Math.abs(c * get(relative.id).x - s * get(relative.id).y - get(rotated.id).x));
+        relation("difference", { param1: sx, param2: parameter(rotated, "y"), difference: cy }, label,
+            get => Math.abs(get(rotated.id).y - s * get(relative.id).x - c * get(relative.id).y));
+        for (const prop of ["x", "y"])
+            relation("difference", { param1: parameter(origin, prop), param2: parameter(target, prop),
+                difference: parameter(rotated, prop) }, label,
+            get => Math.abs(get(target.id)[prop] - get(origin.id)[prop] - get(rotated.id)[prop]));
+        seedOperations.push(() => {
+            Object.assign(rotated, { x: c * relative.x - s * relative.y, y: s * relative.x + c * relative.y });
+            const x = origin.x + rotated.x, y = origin.y + rotated.y;
+            if (target.fixed || fixedParameterIds.has(target.id))
+                return Math.hypot(target.x - x, target.y - y) <= 1e-6;
+            Object.assign(target, { x, y });
+            return true;
+        });
     }
 
     function mapPoint(source, target, c, s, dx, dy, label, origin) {

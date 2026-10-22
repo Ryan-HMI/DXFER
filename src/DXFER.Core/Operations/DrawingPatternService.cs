@@ -86,6 +86,79 @@ public static class DrawingPatternService
     public static bool TryUpdate(DrawingDocument document, PatternDefinition definition,
         out DrawingDocument result, out string reason) => TrySet(document, definition, true, out result, out reason);
 
+    public static bool TryExposeCenter(DrawingDocument document, string patternId,
+        out DrawingDocument result, out string reason)
+    {
+        result = document;
+        if (!TryValidate(document, out reason)) return false;
+        var pattern = document.Metadata.Patterns.FirstOrDefault(p => p.Id == patternId);
+        if (pattern is null || pattern.Kind != PatternKind.Radial)
+            return Refuse("Select a radial pattern to expose its center.", out reason);
+        var layers = DrawingLayerService.GetLayers(document);
+        var participants = pattern.SourceEntityIds.Concat(pattern.Members.Select(m => m.EntityId));
+        if (pattern.CenterPointId is { } existingId) participants = participants.Append(existingId);
+        if (document.Metadata.Mode != DrawingDocumentMode.Editable || participants.Any(id => !CanEdit(document, id, layers)))
+            return Refuse("Show and unlock the pattern geometry before exposing its center.", out reason);
+        if (pattern.CenterPointId is not null)
+        {
+            reason = "Pattern center is already exposed.";
+            return true;
+        }
+        if (document.Entities.Count >= MaxDocumentEntities)
+            return Refuse("Exposing the pattern center exceeds the document limits.", out reason);
+        var prefix = "pattern-center-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(pattern.Id)))[..24].ToLowerInvariant();
+        var ids = document.Entities.Select(e => e.Id.Value).ToHashSet(StringComparer.Ordinal);
+        var id = prefix;
+        for (var suffix = 1; ids.Contains(id); suffix++) id = prefix + "-" + suffix;
+        var point = new PointEntity(EntityId.Create(id), pattern.Center, IsConstruction: true);
+        var styles = new Dictionary<string, DxfEntityStyle>(document.Metadata.EntityStyles, StringComparer.Ordinal)
+        {
+            [id] = SourceStyle(document, pattern.SourceEntityIds[0])
+        };
+        var metadata = document.Metadata with
+        {
+            Patterns = Array.AsReadOnly(document.Metadata.Patterns.Select(p => p.Id == patternId ? p with { CenterPointId = id } : p).ToArray()),
+            EntityStyles = styles
+        };
+        var candidate = new DrawingDocument(document.Entities.Append(point), document.Dimensions, document.Constraints, metadata);
+        if (!TryValidate(candidate, out reason) || !PreservesDependencies(document, candidate, out reason)) return false;
+        result = candidate;
+        reason = "Pattern center exposed as a construction point.";
+        return true;
+    }
+
+    // Parameter readback only. Member geometry is validated separately, never repaired here.
+    internal static bool TryReadCenterParameters(DrawingDocument document, out DrawingDocument result, out string reason)
+    {
+        result = document;
+        reason = string.Empty;
+        var patterns = new List<PatternDefinition>();
+        var changed = false;
+        foreach (var pattern in document.Metadata.Patterns)
+        {
+            if (!TryGetCenterPoint(document, pattern, out var point, out reason)) return false;
+            var updated = point is not null && point.Location != pattern.Center ? pattern with { Center = point.Location } : pattern;
+            changed |= !ReferenceEquals(updated, pattern);
+            patterns.Add(updated);
+        }
+        if (changed) result = WithPatterns(document, patterns);
+        return true;
+    }
+
+    private static bool TryGetCenterPoint(DrawingDocument document, PatternDefinition pattern, out PointEntity? point, out string reason)
+    {
+        point = null;
+        reason = string.Empty;
+        if (pattern.CenterPointId is not { } id) return true;
+        point = document.Entities.FirstOrDefault(e => e.Id.Value == id) as PointEntity;
+        if (string.IsNullOrWhiteSpace(id) || point is not { IsConstruction: true }
+            || !double.IsFinite(point.Location.X) || !double.IsFinite(point.Location.Y))
+            return Refuse("Pattern center must reference an existing finite construction point.", out reason);
+        if (pattern.SourceEntityIds.Contains(id) || document.Metadata.Patterns.Any(p => p?.Members?.Any(m => m?.EntityId == id) == true))
+            return Refuse("Pattern center cannot reference a source or generated pattern member.", out reason);
+        return true;
+    }
+
     public static bool TryDissolve(DrawingDocument document, string patternId,
         out DrawingDocument result, out string reason)
     {
@@ -94,8 +167,10 @@ public static class DrawingPatternService
         var pattern = document.Metadata.Patterns.FirstOrDefault(p => p.Id == patternId);
         if (pattern is null) return Refuse("Pattern no longer exists.", out reason);
         var layers = DrawingLayerService.GetLayers(document);
+        var participants = pattern.SourceEntityIds.Concat(pattern.Members.Select(m => m.EntityId));
+        if (pattern.CenterPointId is { } centerId) participants = participants.Append(centerId);
         if (document.Metadata.Mode != DrawingDocumentMode.Editable
-            || pattern.SourceEntityIds.Concat(pattern.Members.Select(m => m.EntityId)).Any(id => !CanEdit(document, id, layers)))
+            || participants.Any(id => !CanEdit(document, id, layers)))
             return Refuse("Show and unlock the pattern geometry before unlinking it.", out reason);
         result = WithPatterns(document, document.Metadata.Patterns.Where(p => p.Id != patternId));
         reason = "Pattern unlinked; generated geometry is now independent.";
@@ -113,7 +188,16 @@ public static class DrawingPatternService
             return Refuse(update ? "Pattern no longer exists." : "Pattern ID already exists.", out reason);
         if (document.Metadata.Mode != DrawingDocumentMode.Editable)
             return Refuse("Reference-only documents cannot be patterned.", out reason);
-        if (!TryBuild(document, definition, out var normalized, out var generated, out reason)) return false;
+        if (previous?.CenterPointId is { } linkedId && definition.CenterPointId != linkedId)
+            return Refuse("An exposed pattern center must retain its construction point. Unlink the pattern to remove the association.", out reason);
+        var working = document;
+        if (previous?.CenterPointId is not null && definition.Center != previous.Center)
+        {
+            if (!TryGetCenterPoint(document, previous, out var centerPoint, out reason)) return false;
+            working = new DrawingDocument(document.Entities.Select(e => e.Id == centerPoint!.Id
+                ? centerPoint with { Location = definition.Center } : e), document.Dimensions, document.Constraints, document.Metadata);
+        }
+        if (!TryBuild(working, definition, out var normalized, out var generated, out reason)) return false;
         var oldMembers = previous?.Members.Select(m => m.EntityId).ToHashSet(StringComparer.Ordinal) ?? new();
         var allMembers = document.Metadata.Patterns.SelectMany(p => p.Members).Select(m => m.EntityId).ToHashSet(StringComparer.Ordinal);
         if (normalized.SourceEntityIds.Any(allMembers.Contains))
@@ -121,7 +205,7 @@ public static class DrawingPatternService
         var layers = DrawingLayerService.GetLayers(document);
         if (normalized.SourceEntityIds.Concat(oldMembers).Any(id => !CanEdit(document, id, layers)))
             return Refuse("Show and unlock the pattern geometry first.", out reason);
-        var retained = document.Entities.Where(e => !oldMembers.Contains(e.Id.Value)).ToArray();
+        var retained = working.Entities.Where(e => !oldMembers.Contains(e.Id.Value)).ToArray();
         var retainedIds = retained.Select(e => e.Id.Value).ToHashSet(StringComparer.Ordinal);
         if (generated.Any(e => retainedIds.Contains(e.Id.Value)))
             return Refuse("A generated member ID collides with existing geometry.", out reason);
@@ -134,7 +218,7 @@ public static class DrawingPatternService
         CopyMemberStyles(document, normalized, styles);
         var candidate = new DrawingDocument(retained.Concat(generated), document.Dimensions, document.Constraints,
             document.Metadata with { Patterns = Array.AsReadOnly(patterns), EntityStyles = styles });
-        if (!PreservesDependencies(document, candidate, out reason)) return false;
+        if (!TryValidate(candidate, out reason) || !PreservesDependencies(document, candidate, out reason)) return false;
         result = RefreshReferences(candidate);
         reason = update ? "Pattern updated." : "Pattern created.";
         return true;
@@ -146,7 +230,19 @@ public static class DrawingPatternService
     {
         result = previous;
         if (!Same(previous.Metadata.Patterns, candidate.Metadata.Patterns))
-            return Refuse("Use the pattern create, update, or Unlink pattern command to change definitions.", out reason);
+        {
+            if (previous.Metadata.Patterns.Count != candidate.Metadata.Patterns.Count)
+                return Refuse("Use the pattern create, update, or Unlink pattern command to change definitions.", out reason);
+            for (var index = 0; index < previous.Metadata.Patterns.Count; index++)
+            {
+                var before = previous.Metadata.Patterns[index];
+                var after = candidate.Metadata.Patterns[index];
+                if (Same(before, after)) continue;
+                if (before.CenterPointId is null || !TryGetCenterPoint(candidate, before, out var point, out reason)
+                    || after.Center != point!.Location || !Same(before with { Center = after.Center }, after))
+                    return Refuse("Use the pattern create, update, or Unlink pattern command to change definitions.", out reason);
+            }
+        }
         if (previous.Metadata.Patterns.Count == 0)
         {
             result = candidate;
@@ -158,11 +254,12 @@ public static class DrawingPatternService
             return Refuse("Reference-only pattern geometry cannot be edited.", out reason);
         if (candidate.Entities.Select(e => e.Id.Value).Distinct(StringComparer.Ordinal).Count() != candidate.Entities.Count)
             return Refuse("Duplicate entity IDs cannot be reconciled.", out reason);
+        if (!TryReadCenterParameters(candidate, out candidate, out reason)) return false;
         var entities = candidate.Entities.ToDictionary(e => e.Id.Value, StringComparer.Ordinal);
         var originals = previous.Entities.ToDictionary(e => e.Id.Value, StringComparer.Ordinal);
         var styles = new Dictionary<string, DxfEntityStyle>(candidate.Metadata.EntityStyles, StringComparer.Ordinal);
         var geometryChanged = false;
-        foreach (var pattern in previous.Metadata.Patterns)
+        foreach (var pattern in candidate.Metadata.Patterns)
         {
             if (!TryBuild(candidate, pattern, out _, out var generated, out reason)) return false;
             var sourcesByMember = pattern.Members.ToDictionary(m => m.EntityId, m => m.SourceEntityId, StringComparer.Ordinal);
@@ -200,7 +297,7 @@ public static class DrawingPatternService
                 reconciled.Constraints, reconciled.Metadata);
             if (!TryValidate(reconciled, out reason)) return false;
         }
-        if (!PreservesDependencies(previous, reconciled, out reason)) return false;
+        if (!TryValidate(reconciled, out reason) || !PreservesDependencies(previous, reconciled, out reason)) return false;
         result = RefreshReferences(reconciled);
         reason = string.Empty;
         return true;
@@ -272,6 +369,9 @@ public static class DrawingPatternService
         var sourceMap = document.Entities.ToDictionary(e => e.Id.Value, StringComparer.Ordinal);
         if (definition.SourceEntityIds.Any(id => !sourceMap.TryGetValue(id, out var e) || !Supported(e)))
             return Refuse("A pattern source is missing or unsupported. Unlink the pattern before deleting its source.", out reason);
+        if (!TryGetCenterPoint(document, definition, out var centerPoint, out reason)) return false;
+        if (centerPoint is not null && definition.Center != centerPoint.Location)
+            return Refuse("Pattern center metadata does not match its construction point.", out reason);
         var members = new List<PatternMember>();
         var entities = new List<DrawingEntity>();
         if (!TryGetDirections(document, definition, out var u, out var v, out reason)) return false;
@@ -352,6 +452,8 @@ public static class DrawingPatternService
         }
         var patternIds = candidate.Metadata.Patterns.SelectMany(p => p.SourceEntityIds.Concat(p.Members.Select(m => m.EntityId)))
             .ToHashSet(StringComparer.Ordinal);
+        foreach (var pattern in candidate.Metadata.Patterns)
+            if (pattern.CenterPointId is { } centerId) patternIds.Add(centerId);
         foreach (var pattern in candidate.Metadata.Patterns.Where(p => p.Kind != PatternKind.Radial))
             foreach (var key in new[] { pattern.UDirectionReference, pattern.VDirectionReference })
                 if (key is not null && SketchReference.TryParse(key, out var reference)) patternIds.Add(reference.EntityId);

@@ -20,6 +20,7 @@ public sealed record PatternDefinition
     public double StaggerFraction { get; init; } = 0.5;
     public int Count { get; init; } = 4;
     public Point2 Center { get; init; }
+    public string? CenterPointId { get; init; }
     public double StepAngleDegrees { get; init; } = 90;
     public bool FullCircle { get; init; } = true;
     public IReadOnlyList<PatternMember> Members { get; init; } = Array.Empty<PatternMember>();
