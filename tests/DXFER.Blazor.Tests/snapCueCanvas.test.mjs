@@ -1,12 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {getCurrentSnapCue, positionSnapCue, getCanvasControlBounds} from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.js';
+import {getCurrentSnapCue, drawSnapCue, positionSnapCue, getCanvasControlBounds} from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.js';
 
 const point = {x: 5, y: 0};
 const source = {id: 'source', kind: 'line', points: [{x: 0, y: 0}, {x: 10, y: 0}]};
 const target = {key: 'source|point|mid|5|0', entityId: 'source', entity: source, kind: 'point', label: 'mid', point};
 const state = () => ({activeTool: 'line', pointerScreenPoint: {x: 400, y: 300}, hoveredTarget: target,
   document: {entities: [source]}, toolDraft: {points: [{x: 2, y: 4}], previewPoint: point}, automaticSnapConstraints: true});
+
+test('snap metadata remains accessible without painting an information card', () => {
+  const value = state(), attributes = {};
+  value.canvas = {dataset:{snapCueBox:'old box'},
+    setAttribute:(key, text) => attributes[key] = text, removeAttribute:key => delete attributes[key]};
+  value.context = new Proxy({}, {get() {throw new Error('Snap descriptions must not paint a card');}});
+  drawSnapCue(value);
+  assert.match(attributes['aria-description'], /Midpoint/);
+  assert.equal(value.canvas.dataset.snapCueBox, undefined);
+  value.hoveredTarget = null;
+  drawSnapCue(value);
+  assert.equal(attributes['aria-description'], undefined);
+});
 
 test('first pick names its snap before a draft preview exists', () => {
   const value = state(); value.toolDraft = {points: []};

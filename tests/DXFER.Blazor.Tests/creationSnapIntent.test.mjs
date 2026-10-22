@@ -1,12 +1,42 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {applyGeometryDragPreview, getCreationSnapIntents, getDynamicSketchSnapHit, rememberAcquiredSnapPoint} from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.js';
+import {applyGeometryDragPreview, getCreationSnapIntents, getDynamicSketchSnapHit, getSketchWorldPoint, rememberAcquiredSnapPoint} from '../../src/DXFER.Blazor/wwwroot/drawingCanvas.js';
 
 const point=(x,y)=>({x,y});
 const line=(id,start=point(0,0),end=point(10,0))=>({id,kind:'line',start,end});
 const target=(entity,label,p)=>({entity,entityId:entity.id,kind:'point',label,
   key:`${entity.id}|point|${label}|${p.x}|${p.y}`,point:p});
 const intent=(p,kind,...keys)=>keys.map(key=>({point:p,kind,referenceKeys:[key]}));
+
+for (const kind of ['Horizontal', 'Vertical']) {
+  test(`accepted ${kind} guide survives competing draft-axis ortho adjustment`, () => {
+    const horizontal = kind === 'Horizontal';
+    const source = line('source', point(0, 0), point(0, 4));
+    const p = horizontal ? point(5, 2) : point(0, 7);
+    const state = {activeTool:'line', document:{entities:[source]},
+      toolDraft:{points:[horizontal ? point(-5, 2.05) : point(.05, -3)], dimensionValues:{}},
+      acquiredSnapPoints:[], selectedKeys:new Set(), view:{scale:30,offsetX:400,offsetY:400}};
+    rememberAcquiredSnapPoint(state, target(source, 'mid', point(0, 2)));
+    const screen = point(400 + p.x * 30, 400 - p.y * 30);
+    const hit = getDynamicSketchSnapHit(state, screen);
+    assert.ok(hit);
+    const committed = getSketchWorldPoint(state, screen, hit.target, {shiftKey:false});
+    assert.deepEqual(committed, p, 'Acquired target must not be moved by a second automatic snap');
+    assert.deepEqual(getCreationSnapIntents(state, hit.target, committed), intent(p, kind, 'source:mid'));
+  });
+}
+
+test('unsnapped free placement still gets automatic ortho, while Shift deliberately overrides a target', () => {
+  const state = {activeTool:'line', toolDraft:{points:[point(0,0)]},
+    view:{scale:30,offsetX:400,offsetY:400}, polarSnapIncrementDegrees:15};
+  const free = getSketchWorldPoint(state, point(550,399), null, {shiftKey:false});
+  assert.equal(free.y, 0);
+  const p = point(5,.05), snap = target(line('source'), 'end', p);
+  assert.deepEqual(getSketchWorldPoint(state, point(550,398.5), snap, {shiftKey:false}), p);
+  const shifted = getSketchWorldPoint(state, point(550,398.5), snap, {shiftKey:true});
+  assert.equal(shifted.y, 0);
+  assert.deepEqual(getCreationSnapIntents(state, snap, shifted), [], 'No stale intent after explicit override');
+});
 
 test('source endpoints use stable references instead of stored coordinates',()=>{
   const source=line('source'),p=point(10,0);

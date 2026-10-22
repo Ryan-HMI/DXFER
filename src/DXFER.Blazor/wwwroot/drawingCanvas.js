@@ -875,7 +875,7 @@ function draw(state) {
   drawDimensionToolPreview(state);
   drawPatternViewportControls(state, size);
   drawGrainDirection(state, size);
-  drawSnapCue(state, size);
+  drawSnapCue(state);
 
   if (state.cornerPreview?.handle) {
     const point = worldToScreen(state, state.cornerPreview.handle);
@@ -1117,7 +1117,7 @@ export function positionSnapCue(anchor, size, width, height, obstacles = []) {
   return best;
 }
 
-function drawSnapCue(state, size) {
+export function drawSnapCue(state) {
   const cue = getCurrentSnapCue(state);
   const text = cue?.text || "";
   if (state.canvas.dataset.snapCue !== text) {
@@ -1126,41 +1126,7 @@ function drawSnapCue(state, size) {
     else state.canvas.removeAttribute?.("aria-description");
   }
   delete state.canvas.dataset.snapCueBox;
-  if (!cue) return;
-  const context = state.context;
-  const detail = cue.detail;
-  context.save();
-  context.font = "12px sans-serif";
-  const width = Math.min(size.width - 16, Math.max(context.measureText(cue.snapType).width, context.measureText(detail).width) + 16);
-  const obstacles = [...(state.dimensionInputs?.values() || []), ...(state.persistentDimensionInputs?.values() || [])]
-    .filter(input => input.style.display !== "none")
-    .map(input => ({ x: parseFloat(input.style.left) - 80, y: parseFloat(input.style.top) - 20, width: 160, height: 40 }));
-  const pointer = state.patternCenterSnap ? worldToScreen(state, cue.point)
-    : state.pointerScreenPoint || worldToScreen(state, cue.point);
-  obstacles.push({ x: pointer.x - 10, y: pointer.y - 10, width: 20, height: 20 });
-  obstacles.push(...getCanvasControlBounds(state));
-  const canvasRect = state.canvas.getBoundingClientRect();
-  for (const card of state.canvas.parentElement?.querySelectorAll?.('[data-pattern-card]') || []) {
-    const bounds = card.getBoundingClientRect();
-    if (bounds.width && bounds.height && card.style.visibility !== 'hidden') obstacles.push({
-      x: bounds.left - canvasRect.left, y: bounds.top - canvasRect.top, width: bounds.width, height: bounds.height
-    });
-  }
-  const box = positionSnapCue(worldToScreen(state, cue.point), size, width, 44, obstacles);
-  if (!box) { context.restore(); return; }
-  state.canvas.dataset.snapCueBox = JSON.stringify(box);
-  context.fillStyle = canvasInk(state, "#17232e", "#ffffff");
-  context.strokeStyle = canvasInk(state, "#66d9ff", "#005a75");
-  context.lineWidth = 1;
-  context.setLineDash([]);
-  context.fillRect(box.x, box.y, box.width, box.height);
-  context.strokeRect(box.x, box.y, box.width, box.height);
-  context.textBaseline = "top";
-  context.fillStyle = canvasInk(state, "#b7efff", "#004557");
-  context.fillText(cue.snapType, box.x + 8, box.y + 6, box.width - 16);
-  context.fillStyle = canvasInk(state, "#d3e1ed", "#202020");
-  context.fillText(detail, box.x + 8, box.y + 24, box.width - 16);
-  context.restore();
+  // Keep accessible snap descriptions; markers/guides are drawn separately.
 }
 
 function drawEntity(state, entity, style) {
@@ -4722,7 +4688,12 @@ function handleDimensionInputKeyDown(state, input, event) {
       event.preventDefault();
       return;
     }
-    if (!commitDimensionInputValue(state, input)) {
+    // Enter on an untouched readout accepts the acquired snap. Parsing its
+    // rounded display as a keyed value would move the endpoint off that snap.
+    const acceptedUneditedSnap = input.dataset.dimensionEditing !== 'true'
+      && !Number.isFinite(getLockedDraftDimensionValue(state, input.dataset.dimensionKey))
+      && getCreationSnapIntents(state, state.hoveredTarget, state.toolDraft?.previewPoint).length > 0;
+    if (!acceptedUneditedSnap && !commitDimensionInputValue(state, input)) {
       event.preventDefault();
       return;
     }
@@ -7000,8 +6971,12 @@ function getScreenNormal(first, second) {
   };
 }
 
-function getSketchWorldPoint(state, screenPoint, target = state.hoveredTarget, event = null, toolOverride = null) {
+export function getSketchWorldPoint(state, screenPoint, target = state.hoveredTarget, event = null, toolOverride = null) {
   const tool = toolOverride || getSketchCreationTool(state);
+  const acceptedSnap = getTargetWorldSnapPoint(target);
+  // A second automatic axis adjustment would invalidate the accepted target
+  // and discard its persistent relation. Explicit Shift remains an override.
+  if (acceptedSnap && !event?.shiftKey) return copyPoint(acceptedSnap);
   if (target && target.kind === "point" && target.point) {
     return applyPolarSnapIfRequested(state, target.point, tool, event);
   }
