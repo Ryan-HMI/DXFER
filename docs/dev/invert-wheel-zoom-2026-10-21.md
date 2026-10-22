@@ -9,6 +9,8 @@ Add one checkbox row to the existing File > Settings dialog using its current al
 - All 1,803 JavaScript tests and 306 component tests passed. Targeted coverage includes default-off storage, blocked storage, independent snap preferences, all wheel delta modes, cursor anchoring, sensitivity and the polygon side-count branch.
 - Isolated candidate browser replay passed eight wheel checks, both reload states, independent automatic-constraint behavior, exact native geometry comparison and Undo/Redo. No browser errors.
 - Settings screenshots checked at 1440x1000 and 1100x705. Evidence: `/tmp/dxfer-invert-wheel-qa-r2`.
-- Dev rollout/public verification pending. Production/Test remain outside scope. Flux/Ryan independent acceptance is not claimed.
+- Dev `0ad9a953c1faf9efb79811312061ba1202ba7b2a` deployed 2026-10-22T00:44:23Z. Public browser replay passed the same eight wheel checks, persistence, geometry and history assertions; rendered build tooltip verified. Evidence/screenshots: `/tmp/dxfer-invert-wheel-installed`.
+- Public canvas/settings module hashes match source. Normal Google authentication remains configured. Production/Test processes unchanged; isolated QA service stopped. Rollback publish: `/home/ryan/dxfer-runtime/dev-publish-before-0ad9a95`.
+- Flux/Ryan independent acceptance is not claimed.
 
 The shared canvas wheel handler applies the preference, not individual tools. This preference needs no existing drawing repair or file-format migration.
