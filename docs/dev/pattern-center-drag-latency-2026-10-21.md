@@ -24,6 +24,14 @@ The final local frame stays visible until the corresponding server-rendered prev
 - 3,237 core/component tests passed; the two radial-card precision tests were rerun after the final markup change.
 - Isolated candidate passed all 13 functional browser cases, including constraints, dimension edits, native history/reopen, fixed-center refusal and drag Confirm/Cancel. Evidence: `/tmp/dxfer-pattern-center-latency-functional-r2`.
 - With 300 ms deliberately added to server long-poll responses, two candidate sustained drags measured 17.2 ms p95 and 33.5-34.6 ms maxima, with no held-drag camera movement. The old build under the same delayed-response setup measured 2.1-2.25 seconds p95. These are observed test traces, not a guarantee for all devices/drawing sizes. Evidence: `/tmp/dxfer-pattern-center-latency-candidate-r1-300-r2` and `/tmp/dxfer-pattern-center-latency-9a0678f-delay300`.
-- Dev deployment pending. No new Flux/Ryan acceptance claimed.
+- Public Dev replay passed all 13 functional cases. With 100 long-poll responses delayed 300 ms, the installed build measured 16.9/17.3 ms p95 and 34/35 ms maxima across two sustained drags. No camera movement or browser errors. Evidence: `/tmp/dxfer-pattern-center-latency-installed` and `/tmp/dxfer-pattern-center-latency-functional-installed`. Screenshots inspected. No new Flux/Ryan acceptance claimed.
+- Public delayed-network Fixed-center control also passed both sustained drags without false geometry, saved changes or camera movement: `/tmp/dxfer-pattern-center-latency-fixed-installed-r2`. The first invocation supplied the free-center fixture and correctly failed the fixture prerequisite; rerun used the verified Fixed-center native fixture.
 
 This corrects the preview transport/rendering cause for eligible free-center drags. Constrained preview latency is not claimed fixed. No existing document or business-record repair is needed.
+
+## Deployment
+
+- DXFer Dev only: `d1293c56c6df0550f939a83eaacd72fe4773126a`, installed 2026-10-22T01:20:34Z at `https://dxferdev.sync.harrisonmetals.com`.
+- Public tooltip verified the revision; both changed JavaScript files matched source hashes. Normal Google sign-in remains configured, Sync callbacks disabled.
+- Production/Test services remained active with unchanged PIDs 3584417/3584475. HMI-Sync was not touched.
+- Rollback publish: `/home/ryan/dxfer-runtime/dev-publish-before-d1293c5`.
