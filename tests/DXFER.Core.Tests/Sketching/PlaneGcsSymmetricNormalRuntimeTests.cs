@@ -14,7 +14,7 @@ public sealed class PlaneGcsSymmetricNormalRuntimeTests
     public static IEnumerable<object[]> CurvePairs()
     {
         foreach (var reverse in new[] { false, true })
-        foreach (var kind in new[] { "spline", "fit", "rational", "ellipse", "round-ellipse", "partial-ellipse", "polygon" })
+        foreach (var kind in new[] { "spline", "fit", "rational", "ellipse", "fractional-ellipse", "round-ellipse", "partial-ellipse", "polygon" })
             yield return [kind, reverse];
     }
 
@@ -35,6 +35,7 @@ public sealed class PlaneGcsSymmetricNormalRuntimeTests
                 "spline" or "rational" => new SplineEntity(Id(id), 3, points, [0, 0, 0, 0, 1, 1, 1, 1],
                     kind == "rational" ? [1, 2, 3, 1] : null),
                 "polygon" => new PolygonEntity(Id(id), new(-5 + shift, 1), shift == 0 ? 3 : 2, shift == 0 ? 20 : 130, 5),
+                "fractional-ellipse" => new EllipseEntity(Id(id), new(-5.1 + shift, 1.7), new(3.2, 1.3), .37),
                 _ => new EllipseEntity(Id(id), new(-5 + shift, 1), new(shift == 0 ? 3 : -2, 1),
                     kind == "round-ellipse" ? 1 : 0.5, kind == "partial-ellipse" ? 20 : 0, kind == "partial-ellipse" ? 100 : 360)
             };

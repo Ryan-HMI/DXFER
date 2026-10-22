@@ -1556,12 +1556,15 @@ function mapRequest(request) {
             return originals.map(entity => {
                 const result = copy(entity), shape = models.get(entity.id);
                 if (!shape) return result;
-                // Avoid round-trip noise from focal -> axis conversion when the
-                // native ellipse's independent parameters have not changed at all.
-                if (shape.ellipse && [shape.center, shape.focus].every(p => {
+                const unchangedPoints = points => points.every(p => {
                     const original = initialPoints.get(p.id), solved = get(p.id);
                     return original.x === solved.x && original.y === solved.y;
-                }) && ["radmin", ...(shape.ellipse.type === "arc_of_ellipse" ? ["start_angle", "end_angle"] : [])]
+                });
+                // Avoid round-trip noise from native ellipse parameter conversion
+                // only when every independent parameter is exactly unchanged.
+                if (shape.ellipseAxes && unchangedPoints(shape.points)) return result;
+                if (shape.ellipse && unchangedPoints([shape.center, shape.focus])
+                    && ["radmin", ...(shape.ellipse.type === "arc_of_ellipse" ? ["start_angle", "end_angle"] : [])]
                     .every(prop => get(shape.ellipse.id)[prop] === shape.ellipse[prop])) return result;
                 const xy = p => {
                     const solved = get(p.id);

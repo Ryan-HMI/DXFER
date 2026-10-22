@@ -56,6 +56,10 @@ test('full ellipse symmetry retains focal-reference constraints',async()=>{
   const result=await run(a,b,false,{fixedReferenceKeys:['axis','a','a:focus1']});solved(result);
   assert.deepEqual(result.entities[1],a);near(result.entities[2].center.x,5);
 });
+test('fixed fractional ellipse axes retain exact serialized ratio',async()=>{
+  const a={id:'a',kind:'ellipse',center:p(-5.1,1.7),majorAxisEndPoint:p(3.2,1.3),minorRadiusRatio:.37};
+  const b={...a,id:'b',center:p(6,2)};const result=await run(a,b);solved(result);assert.deepEqual(result.entities[1],a);
+});
 test('a symmetry cycle retains independent ellipse orthogonality',async()=>{
   const a={id:'a',kind:'ellipse',center:p(-5,1),majorAxisEndPoint:p(3,1),minorRadiusRatio:.5};
   const b={id:'b',kind:'ellipse',center:p(6,2),majorAxisEndPoint:p(-2,1),minorRadiusRatio:.7};
