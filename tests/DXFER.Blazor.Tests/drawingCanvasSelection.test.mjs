@@ -1242,15 +1242,15 @@ test("committed tangent arc chain continues from the arc endpoint", () => {
   assert.ok(distanceBetweenTestPoints(arcDraft.points[0], arcDraft.points[1]) > 0);
 });
 
-test("tangent arc commit stays in arc mode until the next last vertex hover", () => {
+test("tangent arc commit returns to line from the arc endpoint", () => {
   const state = getPostCommitSketchToolState(
     "tangentarc",
     [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 2 }],
     true
   );
 
-  assert.equal(state.activeTool, "tangentarc");
-  assert.equal(state.toolDraft.points.length, 2);
+  assert.equal(state.activeTool, "line");
+  assert.equal(state.toolDraft.points.length, 1);
   assert.deepEqual(state.toolDraft.points[0], { x: 2, y: 2 });
   assert.equal(state.toolDraft.previewPoint, null);
   assert.equal(state.sketchChainVertexHovering, false);

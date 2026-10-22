@@ -42,6 +42,7 @@ function snapTypeFor(target) {
   const label = String(target.label || "").toLowerCase();
   const entityKind = String(target.entity?.kind || target.entity?.Kind || "").toLowerCase();
   if (target.entityId === "$origin" || target.key === "$origin:center") return "Origin";
+  if (/^arc-quadrant-/.test(label)) return "Arc quadrant";
   if (target.tangentReferenceKey || /^(circle-tangent|tangent)(-|$)/.test(label)) return "Tangent";
   if (/^normal(-|$)/.test(label)) return "Normal";
   if (/^perpendicular(-|$)/.test(label)) return "Perpendicular";
@@ -137,6 +138,12 @@ export function getSnapCue({ target, point, tool, pointCount, intents = [], auto
   const constraintKinds = [];
   let uncertainInference = false;
   if (automaticConstraints === true) {
+    if (normalizedTool === "tangentarc" && pointCount === 2) {
+      for (const relation of target.creationRelations || []) {
+        if (relation.kind === "ArcQuadrantHorizontal") constraintKinds.push("Horizontal");
+        if (relation.kind === "ArcQuadrantVertical") constraintKinds.push("Vertical");
+      }
+    }
     if (hasPersistentDestination(normalizedTool, pointCount) && Array.isArray(intents)) {
       for (const intent of intents) {
         if (!intent || !POINT_RELATIONS.has(intent.kind) || !samePoint(intent.point, point)

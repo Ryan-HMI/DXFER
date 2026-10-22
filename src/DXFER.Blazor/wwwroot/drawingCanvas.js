@@ -2,7 +2,7 @@ import { sampleControlSpline } from "./canvas/splineGeometry.js";
 import { lineSlotDraft, lineSlotSourceIsCurrent, lineSlotPreview } from "./canvas/lineSlot.js";
 import { measurePerimeterDistance } from "./perimeterDistance.js";
 import { patternViewportGuides, patternViewportAnchors, patternSourceScreenBounds, bindPatternCenterHandle, createRadialCenterPreview } from "./canvas/patternViewport.js?v=20261021-pattern-center-latency";
-import { getSnapCue } from "./canvas/snapCue.js?v=20261021-line-slot";
+import { getSnapCue } from "./canvas/snapCue.js?v=20261021-tangent-arc-quadrants";
 import {
   addUniqueNumber,
   addUniquePoint,
@@ -573,10 +573,11 @@ export function getSketchChainContextFromCommittedTool(tool, points) {
 export function getPostCommitSketchToolState(tool, points, wasAutoChained = false) {
   const normalizedTool = normalizeToolName(tool);
   const chainContext = getSketchChainContextFromCommittedTool(normalizedTool, points);
+  const nextTool = normalizedTool === "tangentarc" && chainContext ? "line" : normalizedTool;
 
   return {
-    activeTool: normalizedTool,
-    toolDraft: getChainedSketchToolDraft(normalizedTool, normalizedTool, chainContext),
+    activeTool: nextTool,
+    toolDraft: getChainedSketchToolDraft(normalizedTool, nextTool, chainContext),
     sketchChainContext: chainContext,
     sketchChainVertexHovering: false,
     sketchChainToggleRequiresExit: Boolean(chainContext)
@@ -7313,6 +7314,7 @@ export function getDynamicSketchSnapHit(state, screenPoint, highlightedTarget = 
   addHighlightedGeometryOrthoSnapCandidates(candidates, state, highlightedTarget);
   addLineStartGeometrySnapCandidate(candidates, state, tool, worldPoint);
   addDynamicTangentSnapCandidates(candidates, state, tool, highlightedTarget, worldPoint);
+  addTangentArcQuadrantCandidates(candidates, state, tool, worldPoint);
 
   const hits = [];
   for (const candidate of candidates) {
@@ -7338,6 +7340,31 @@ export function getDynamicSketchSnapHit(state, screenPoint, highlightedTarget = 
     second.priority - first.priority
     || first.distance - second.distance);
   return hits[0];
+}
+
+function addTangentArcQuadrantCandidates(candidates, state, tool, worldPoint) {
+  const points = state.toolDraft?.points;
+  if (tool !== "tangentarc" || points?.length !== 2) return;
+  const keyedRadius = state.toolDraft.dimensionValues?.radius;
+  const end = Number.isFinite(keyedRadius) && keyedRadius > 0
+    ? getTangentArcEndPointWithRadius(points[0], points[1], worldPoint, keyedRadius)
+    : worldPoint;
+  if (!end) return;
+  const arc = getTangentArc(points[0], points[1], end);
+  if (!arc || !Number.isFinite(arc.radius)) return;
+  // A candidate on this same circle keeps the start and its tangent unchanged.
+  for (const angle of [0, 90, 180, 270]) {
+    const point = pointOnCircle(arc.center, arc.radius, angle);
+    if (distanceBetweenWorldPoints(point, points[0]) <= WORLD_GEOMETRY_TOLERANCE) continue;
+    const horizontal = angle % 180 === 0;
+    candidates.push({
+      label: `arc-quadrant-${horizontal ? "horizontal" : "vertical"}`,
+      point,
+      creationRelations: [{ kind: horizontal ? "ArcQuadrantHorizontal" : "ArcQuadrantVertical", referenceKeys: [] }],
+      guides: [{ orientation: "segment", start: arc.center, point }],
+      priority: 12
+    });
+  }
 }
 
 function addAcquiredProjectionSnapCandidates(candidates, state, worldPoint) {

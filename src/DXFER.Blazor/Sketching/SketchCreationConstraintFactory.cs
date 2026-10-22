@@ -81,19 +81,24 @@ public static class SketchCreationConstraintFactory
         {
             AddExplicitCircleTangentConstraint(constraints, existingEntities, createdEntities, tangentReferenceKey, createConstraintId);
         }
-        AddExplicitPointSnaps(constraints, existingEntities, createdEntities, creationSnaps, createConstraintId);
+        AddExplicitPointSnaps(constraints, existingEntities, createdEntities, creationSnaps, createConstraintId, toolName);
         return constraints;
     }
 
     private static void AddExplicitPointSnaps(ICollection<SketchConstraint> constraints,
         IReadOnlyList<DrawingEntity> existing, IReadOnlyList<DrawingEntity> created,
-        IReadOnlyList<CanvasCreationSnapDto>? snaps, Func<SketchConstraintKind, string> nextId)
+        IReadOnlyList<CanvasCreationSnapDto>? snaps, Func<SketchConstraintKind, string> nextId, string toolName)
     {
         if (snaps is null || snaps.Count == 0) return;
         var document = new DrawingDocument(existing.Concat(created));
         var createdPoints = EnumeratePointReferences(created).ToArray();
         foreach (var snap in snaps)
         {
+            if (snap.Kind is "ArcQuadrantHorizontal" or "ArcQuadrantVertical")
+            {
+                AddArcQuadrantSnap(constraints, document, created, snap, nextId, toolName);
+                continue;
+            }
             if (!Enum.TryParse<SketchConstraintKind>(snap.Kind, out var kind)
                 || kind is not (SketchConstraintKind.Coincident or SketchConstraintKind.Midpoint
                     or SketchConstraintKind.Horizontal or SketchConstraintKind.Vertical or SketchConstraintKind.PointOnLine)
@@ -108,6 +113,28 @@ public static class SketchCreationConstraintFactory
                 AddConstraintIfMissing(constraints, kind, nextId, keys);
             }
         }
+    }
+
+    private static void AddArcQuadrantSnap(ICollection<SketchConstraint> constraints, DrawingDocument document,
+        IReadOnlyList<DrawingEntity> created, CanvasCreationSnapDto snap,
+        Func<SketchConstraintKind, string> nextId, string toolName)
+    {
+        if (NormalizeToolName(toolName) != "tangentarc" || created.Count != 1 || created[0] is not ArcEntity arc
+            || snap.ReferenceKeys is not { Length: 0 } || !IsFinitePoint(snap.Point)
+            || !IsFinitePoint(arc.Center) || !double.IsFinite(arc.Radius) || arc.Radius <= GeometryTolerance)
+            throw new InvalidOperationException("Unsupported arc quadrant snap. Geometry unchanged.");
+
+        // Clockwise creation stores its committed endpoint as :start, not :end.
+        var matchesStart = AreClose(PointOnArc(arc, arc.StartAngleDegrees), snap.Point);
+        var matchesEnd = AreClose(PointOnArc(arc, arc.EndAngleDegrees), snap.Point);
+        if (matchesStart == matchesEnd)
+            throw new InvalidOperationException("Arc quadrant snap no longer matches its endpoint. Geometry unchanged.");
+        var kind = snap.Kind == "ArcQuadrantHorizontal" ? SketchConstraintKind.Horizontal : SketchConstraintKind.Vertical;
+        var keys = new[] { arc.Id.Value + ":center", arc.Id.Value + (matchesStart ? ":start" : ":end") };
+        var candidate = new SketchConstraint("arc-quadrant-validation", kind, keys);
+        if (SketchConstraintService.ValidateConstraint(document, candidate).State != SketchConstraintState.Satisfied)
+            throw new InvalidOperationException("Arc quadrant snap no longer matches its center. Geometry unchanged.");
+        AddConstraintIfMissing(constraints, kind, nextId, keys);
     }
 
     private static void AddExplicitCircleTangentConstraint(

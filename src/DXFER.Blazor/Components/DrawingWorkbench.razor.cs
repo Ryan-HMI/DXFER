@@ -374,7 +374,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }, "Display"),
         new WorkbenchToolGroup("Sketch", new[]
         {
-            Command(WorkbenchCommandId.Line, WorkbenchTool.Line, CadIconName.Line, "Line"),
+            Command(WorkbenchCommandId.Line, WorkbenchTool.Line, CadIconName.TangentArc, "Line",
+                pressed: _activeTool is WorkbenchTool.Line or WorkbenchTool.TangentArc),
             Command(WorkbenchCommandId.MidpointLine, WorkbenchTool.MidpointLine, CadIconName.MidpointLine, "Midpoint line"),
             Command(WorkbenchCommandId.TwoPointRectangle, WorkbenchTool.TwoPointRectangle, CadIconName.Rectangle, "Two-point rectangle"),
             Command(WorkbenchCommandId.CenterRectangle, WorkbenchTool.CenterRectangle, CadIconName.CenterRectangle, "Center rectangle"),
@@ -570,7 +571,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.ThreePointCircle => "Three-point circle: click three points on the circumference. Esc: cancel.",
         WorkbenchTool.Ellipse => "Ellipse: click center, major radius point, then minor radius point. Esc: cancel.",
         WorkbenchTool.ThreePointArc => "Three-point arc: click start point, through point, then end point. Esc: cancel.",
-        WorkbenchTool.TangentArc => "Tangent arc: click start point, tangent direction point, then end point. Esc: cancel.",
+        WorkbenchTool.TangentArc => "Tangent arc: click start point, tangent direction point, then end point. Returns to Line after one arc. Esc: cancel.",
         WorkbenchTool.CenterPointArc => "Center point arc: click center, start radius point, then end angle point. Esc: cancel.",
         WorkbenchTool.EllipticalArc => "Elliptical arc: click center, major radius point, minor radius point, then end parameter point. Esc: cancel.",
         WorkbenchTool.Conic => "Conic: click start, control point, then end point. Esc: cancel.",
@@ -3922,7 +3923,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.ThreePointCircle => "Pick three points on the circle.",
         WorkbenchTool.Ellipse => "Pick center, major radius, then minor radius.",
         WorkbenchTool.ThreePointArc => "Pick start point, through point, then end point.",
-        WorkbenchTool.TangentArc => "Pick start, tangent direction, then endpoint. In a chain, hover the last vertex to switch back to line.",
+        WorkbenchTool.TangentArc => "Pick start, tangent direction, then endpoint. Returns to Line after one arc.",
         WorkbenchTool.CenterPointArc => "Pick center, start radius point, then end angle point.",
         WorkbenchTool.EllipticalArc => "Pick center, major radius, minor radius, then arc endpoint.",
         WorkbenchTool.Conic => "Pick start, control point, then end point.",
