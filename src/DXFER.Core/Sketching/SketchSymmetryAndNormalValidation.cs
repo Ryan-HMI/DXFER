@@ -13,6 +13,25 @@ internal static class SketchSymmetryAndNormalValidation
             || !SketchReference.TryParse(keys[^1], out var axisReference)
             || !TryLine(entities, axisReference, out var axis, out var ux, out var uy)) return false;
 
+        if (keys.Count == 3 && SketchReference.TryParse(keys[0], out var firstWhole)
+            && SketchReference.TryParse(keys[1], out var secondWhole)
+            && firstWhole.IsEntity && secondWhole.IsEntity && !firstWhole.SegmentIndex.HasValue && !secondWhole.SegmentIndex.HasValue
+            && TryEntity(entities, firstWhole, out var a) && TryEntity(entities, secondWhole, out var b)
+            && a is SplineEntity or EllipseEntity or PolygonEntity)
+        {
+            if (a.Id == b.Id || a.Id.Value == axisReference.EntityId || b.Id.Value == axisReference.EntityId) return false;
+            Point2 Mirror(Point2 p) => Reflect(p, axis.Start, ux, uy);
+            return (a, b) switch
+            {
+                (SplineEntity x, SplineEntity y) => SplineSymmetric(x, y, Mirror),
+                (PolygonEntity x, PolygonEntity y) => x.SideCount == y.SideCount && x.Circumscribed == y.Circumscribed
+                    && x.SideCount >= 3 && x.SideCount <= 64 && x.Radius > Tolerance && y.Radius > Tolerance
+                    && Close(Mirror(x.Center), y.Center) && Close(Mirror(x.GetRadiusPoint()), y.GetRadiusPoint()),
+                (EllipseEntity x, EllipseEntity y) => EllipseSymmetric(x, y, Mirror),
+                _ => false
+            };
+        }
+
         if (keys.Count == 3
             && SketchReference.TryParse(keys[0], out var firstCurveReference)
             && SketchReference.TryParse(keys[1], out var secondCurveReference)
@@ -88,7 +107,7 @@ internal static class SketchSymmetryAndNormalValidation
         if (!TryEntity(entities, reference, out var entity)) return false;
         if (vertexOnly && (entity is not (LineEntity or PolylineEntity)
                 || reference.Target is not (SketchReferenceTarget.Start or SketchReferenceTarget.End))) return false;
-        if (entity is not (LineEntity or PolylineEntity or PointEntity or CircleEntity or ArcEntity)) return false;
+        if (entity is not (LineEntity or PolylineEntity or PointEntity or CircleEntity or ArcEntity or SplineEntity or EllipseEntity or PolygonEntity)) return false;
         if (entity is PolylineEntity && !reference.SegmentIndex.HasValue) return false;
         return SketchGeometryEditor.TryGetPoint(entities, reference, out point) && Finite(point);
     }
@@ -125,6 +144,49 @@ internal static class SketchSymmetryAndNormalValidation
             || !double.IsFinite(sweep) || sweep > 360 || sweep <= -360) return false;
         if (sweep < 0) sweep += 360;
         return sweep > 0;
+    }
+
+    private static bool SplineSymmetric(SplineEntity a, SplineEntity b, Func<Point2, Point2> mirror)
+    {
+        if (a.Degree != b.Degree || a.ControlPoints.Count != b.ControlPoints.Count
+            || a.FitPoints.Count != b.FitPoints.Count) return false;
+        bool Points(IReadOnlyList<Point2> xs, IReadOnlyList<Point2> ys) => xs.Count == ys.Count
+            && xs.Select((p, i) => Close(mirror(p), ys[i])).All(value => value);
+        bool Handle(Point2? x, Point2? y) => x.HasValue == y.HasValue && (!x.HasValue || Close(mirror(x.Value), y!.Value));
+        if (!Points(a.ControlPoints, b.ControlPoints) || !Points(a.FitPoints, b.FitPoints)
+            || !Handle(a.StartTangentHandle, b.StartTangentHandle) || !Handle(a.EndTangentHandle, b.EndTangentHandle)) return false;
+        if (a.FitPoints.Count >= 2) return true;
+        var startA = a.Knots[a.Degree]; var spanA = a.Knots[a.ControlPoints.Count] - startA;
+        var startB = b.Knots[b.Degree]; var spanB = b.Knots[b.ControlPoints.Count] - startB;
+        return spanA > 0 && spanB > 0 && a.Knots.Count == b.Knots.Count
+            && a.Knots.Select((k, i) => Math.Abs((k - startA) / spanA - (b.Knots[i] - startB) / spanB) <= 1e-10).All(value => value)
+            && a.Weights.Select((w, i) => w > 0 && b.Weights[i] > 0
+                && Math.Abs(w / a.Weights[0] - b.Weights[i] / b.Weights[0]) <= 1e-10).All(value => value);
+    }
+
+    private static bool EllipseSymmetric(EllipseEntity a, EllipseEntity b, Func<Point2, Point2> mirror)
+    {
+        var majorA = SketchGeometryEditor.Distance(new(0, 0), a.MajorAxisEndPoint);
+        var majorB = SketchGeometryEditor.Distance(new(0, 0), b.MajorAxisEndPoint);
+        var minorA = majorA * a.MinorRadiusRatio; var minorB = majorB * b.MinorRadiusRatio;
+        if (!Close(mirror(a.Center), b.Center) || !double.IsFinite(majorA + majorB + minorA + minorB)
+            || Math.Min(Math.Min(majorA, majorB), Math.Min(minorA, minorB)) <= Tolerance
+            || Math.Abs(Math.Max(majorA, minorA) - Math.Max(majorB, minorB)) > Tolerance
+            || Math.Abs(Math.Min(majorA, minorA) - Math.Min(majorB, minorB)) > Tolerance) return false;
+        var sweepA = Mod(a.EndParameterDegrees - a.StartParameterDegrees);
+        var sweepB = Mod(b.EndParameterDegrees - b.StartParameterDegrees);
+        if (sweepA < 1e-8) sweepA = 360;
+        if (sweepB < 1e-8) sweepB = 360;
+        if (Math.Abs(sweepA - sweepB) * Math.PI / 180 * Math.Max(majorA, minorA) > Tolerance) return false;
+        if (Math.Abs(majorA - minorA) > Tolerance)
+        {
+            var reflected = mirror(a.PointAtParameterDegrees(a.MinorRadiusRatio > 1 ? 90 : 0));
+            var target = b.PointAtParameterDegrees(b.MinorRadiusRatio > 1 ? 90 : 0);
+            var opposite = new Point2(2 * b.Center.X - target.X, 2 * b.Center.Y - target.Y);
+            if (!Close(reflected, target) && !Close(reflected, opposite)) return false;
+        }
+        return sweepA == 360 || Close(mirror(a.PointAtParameterDegrees(a.StartParameterDegrees)), b.PointAtParameterDegrees(b.EndParameterDegrees))
+            && Close(mirror(a.PointAtParameterDegrees(a.EndParameterDegrees)), b.PointAtParameterDegrees(b.StartParameterDegrees));
     }
 
     private static bool OnArc(ArcEntity arc, Point2 point)

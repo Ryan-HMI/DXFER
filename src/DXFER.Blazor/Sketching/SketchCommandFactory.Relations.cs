@@ -12,7 +12,7 @@ public static partial class SketchCommandFactory
         constraint = default!;
         status = kind == SketchConstraintKind.Normal
             ? "Normal requires a straight line endpoint and a circle or arc."
-            : "Symmetric requires two like entities or two points, then a distinct nondegenerate straight axis. Polylines must have matching topology.";
+            : "Symmetric requires two like entities or two points, then a distinct nondegenerate straight axis. Curves must have matching topology.";
         var keys = picks.Select(key => NormalizeRelationPick(document, key, kind == SketchConstraintKind.Normal)).ToArray();
         var references = kind == SketchConstraintKind.Normal
             ? BuildNormalReferences(document, keys)
@@ -88,6 +88,11 @@ public static partial class SketchCommandFactory
             && TryRelationCurve(document, keys[1], out var secondCurve, out _, out _)
             && firstCurve.GetType() == secondCurve.GetType()) return [first.EntityId, second.EntityId, axisKey];
         if (first.IsEntity && !first.SegmentIndex.HasValue && second.IsEntity && !second.SegmentIndex.HasValue
+            && TryFindEntity(document, first.EntityId, out var firstShape)
+            && TryFindEntity(document, second.EntityId, out var secondShape)
+            && firstShape is SplineEntity or EllipseEntity or PolygonEntity && firstShape.GetType() == secondShape.GetType())
+            return [first.EntityId, second.EntityId, axisKey];
+        if (first.IsEntity && !first.SegmentIndex.HasValue && second.IsEntity && !second.SegmentIndex.HasValue
             && TryFindEntity(document, first.EntityId, out var a) && a is PolylineEntity firstPoly
             && TryFindEntity(document, second.EntityId, out var b) && b is PolylineEntity secondPoly)
             return BuildPolylineSymmetry(firstPoly, secondPoly, axis, axisKey);
@@ -140,7 +145,7 @@ public static partial class SketchCommandFactory
         point = default;
         if (reference.IsOrigin) return true;
         if (!TryFindEntity(document, reference.EntityId, out var entity)
-            || entity is not (PointEntity or LineEntity or PolylineEntity or CircleEntity or ArcEntity)
+            || entity is not (PointEntity or LineEntity or PolylineEntity or CircleEntity or ArcEntity or SplineEntity or EllipseEntity or PolygonEntity)
             || entity is not PolylineEntity && reference.SegmentIndex.HasValue
             || entity is PolylineEntity poly && (!reference.SegmentIndex.HasValue || reference.SegmentIndex.Value >= poly.Vertices.Count - 1)) return false;
         return SketchReferenceResolver.TryGetPoint(document, reference.ToString(), out point) && FiniteRelationPoint(point);

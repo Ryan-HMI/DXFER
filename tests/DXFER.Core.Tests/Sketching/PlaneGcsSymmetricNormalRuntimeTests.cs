@@ -2,6 +2,8 @@ using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
 using DXFER.Core.IO;
 using DXFER.Core.Sketching;
+using DXFER.Blazor.Sketching;
+using DXFER.CadIO;
 using FluentAssertions;
 
 namespace DXFER.Core.Tests.Sketching;
@@ -9,6 +11,78 @@ namespace DXFER.Core.Tests.Sketching;
 [Collection("PlaneGCS resource budget")]
 public sealed class PlaneGcsSymmetricNormalRuntimeTests
 {
+    public static IEnumerable<object[]> CurvePairs()
+    {
+        foreach (var reverse in new[] { false, true })
+        foreach (var kind in new[] { "spline", "fit", "rational", "ellipse", "round-ellipse", "partial-ellipse", "polygon" })
+            yield return [kind, reverse];
+    }
+
+    [Theory]
+    [MemberData(nameof(CurvePairs))]
+    public void WholeCurveSymmetryUsesExactNativeGeometryAndSurvivesReopenAndEdit(string kind, bool reverse)
+    {
+        using var runtime = CreateRuntime();
+        var solver = new PlaneGcsSketchSolverAdapter(runtime);
+        DrawingEntity Curve(string id, double shift)
+        {
+            Point2[] points = shift == 0
+                ? [new(-6, 0), new(-5, 2), new(-4, -1), new(-3, 1)]
+                : [new(7, .5), new(6, 2.5), new(5, -.5), new(4, 1.5)];
+            return kind switch
+            {
+                "fit" => SplineEntity.FromFitPoints(Id(id), points),
+                "spline" or "rational" => new SplineEntity(Id(id), 3, points, [0, 0, 0, 0, 1, 1, 1, 1],
+                    kind == "rational" ? [1, 2, 3, 1] : null),
+                "polygon" => new PolygonEntity(Id(id), new(-5 + shift, 1), shift == 0 ? 3 : 2, shift == 0 ? 20 : 130, 5),
+                _ => new EllipseEntity(Id(id), new(-5 + shift, 1), new(shift == 0 ? 3 : -2, 1),
+                    kind == "round-ellipse" ? 1 : 0.5, kind == "partial-ellipse" ? 20 : 0, kind == "partial-ellipse" ? 100 : 360)
+            };
+        }
+        var original = new DrawingDocument([Axis(), Curve("a", 0), Curve("b", 10)], [],
+            [new SketchConstraint("axis-fixed", SketchConstraintKind.Fix, ["axis"], SketchConstraintState.Satisfied)],
+            new DrawingDocumentMetadata { SourceFileName = $"symmetry-{kind}.dxf", Units = DrawingUnits.Inches });
+        SketchCommandFactory.TryBuildConstraint(original, reverse ? ["b", "a", "axis"] : ["a", "b", "axis"],
+            SketchConstraintKind.Symmetric, "mirror", out var intent, out var status).Should().BeTrue(status);
+        var result = solver.Solve(new(original, [intent], [], fixedReferenceKeys: ["a"]));
+        AssertSolved(result, "mirror");
+        result.Document.Entities[1].Should().Be(original.Entities[1]);
+        var refusal = solver.Solve(new(original, [intent], [], fixedReferenceKeys: ["a", "b"]));
+        refusal.Status.Should().Be(SketchSolveStatus.Failed);
+        refusal.Document.Entities.Should().Equal(original.Entities);
+        var reopened = DxfDocumentReader.Read(DxfDocumentWriter.Write(result.Document, new DxfWriteOptions(IncludeNativeDocument: true)));
+        var key = kind is "spline" or "rational" ? "a|point|control-1|-5|2" : kind == "fit" ? "a|point|fit-1|-5|2" : "a:center";
+        Point2 start;
+        if (reopened.Entities[1] is SplineEntity spline) start = (kind == "fit" ? spline.FitPoints : spline.ControlPoints)[1];
+        else SketchReferenceResolver.TryGetPoint(reopened, key, out start).Should().BeTrue();
+        solver.TryApplyDrag(reopened, key, start, new(start.X - 1, start.Y + 0.5), false,
+            out var edited, out status).Should().BeTrue(status);
+        SketchConstraintService.ValidateConstraint(edited, edited.Constraints.Single(c => c.Id == "mirror"))
+            .State.Should().Be(SketchConstraintState.Satisfied);
+        if (edited.Entities[1] is SplineEntity a && edited.Entities[2] is SplineEntity b)
+        {
+            a.Degree.Should().Be(b.Degree); a.Knots.Should().Equal(b.Knots); a.Weights.Should().Equal(b.Weights);
+            a.ControlPoints.Zip(b.ControlPoints).Should().OnlyContain(pair => Math.Abs(pair.First.X + pair.Second.X) < 1e-6
+                && Math.Abs(pair.First.Y - pair.Second.Y) < 1e-6);
+        }
+        var output = Environment.GetEnvironmentVariable("DXFER_SYMMETRY_FIXTURES");
+        if (!string.IsNullOrWhiteSpace(output) && !reverse)
+        {
+            Directory.CreateDirectory(output);
+            File.WriteAllText(Path.Combine(output, $"{kind}-before.dxf"), DxfDocumentWriter.Write(original, new DxfWriteOptions(IncludeNativeDocument: true)));
+            Point2 Body(DrawingEntity entity) => entity switch {
+                SplineEntity s => s.GetSamplePoints()[s.GetSamplePoints().Count / 3],
+                EllipseEntity e => e.PointAtParameterDegrees(kind == "partial-ellipse" ? 53 : 38),
+                PolygonEntity p => new(p.GetVertices()[0].X * .63 + p.GetVertices()[1].X * .37,
+                    p.GetVertices()[0].Y * .63 + p.GetVertices()[1].Y * .37),
+                _ => throw new InvalidOperationException()
+            };
+            File.WriteAllText(Path.Combine(output, $"{kind}-picks.json"), System.Text.Json.JsonSerializer.Serialize(
+                new[] { Body(original.Entities[1]), Body(original.Entities[2]), new Point2(0, 8) },
+                new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase }));
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

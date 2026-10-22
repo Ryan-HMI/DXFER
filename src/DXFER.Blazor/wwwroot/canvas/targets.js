@@ -67,7 +67,7 @@ export function isTargetEligibleForConstraintTool(tool, target) {
         && (kind === "line" && ["start", "end"].includes(target.label)
           || kind === "polyline" && /^vertex-\d+$/.test(target.label || ""));
     case "symmetric":
-      return isPoint || isLine || isCircleLike || kind === "polyline"
+      return isPoint || isLine || isCircleLike || target.kind === "entity" && ["spline", "ellipse", "polygon"].includes(kind) || kind === "polyline"
         && (target.kind === "entity" || target.kind === "point" && /^vertex-\d+$/.test(target.label || ""));
     case "concentric":
       return isCircleLike || target.key === "$origin:center";

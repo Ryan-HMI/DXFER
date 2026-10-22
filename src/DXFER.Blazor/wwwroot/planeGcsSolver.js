@@ -232,6 +232,12 @@ function mapRequest(request) {
     const dimensions = unionById(document.dimensions, request.dimensions, "Dimensions");
     const ellipseAxisModels = new Set();
     const ellipseAxisPatternMembers = new Set();
+    const ellipseSymmetryParents = new Map();
+    const ellipseSymmetryRoot = id => {
+        if (!ellipseSymmetryParents.has(id)) ellipseSymmetryParents.set(id, id);
+        while (ellipseSymmetryParents.get(id) !== id) id = ellipseSymmetryParents.get(id);
+        return id;
+    };
     function referenceEntity(key) {
         if (typeof key !== "string") return undefined;
         const raw = key.trim();
@@ -260,6 +266,21 @@ function mapRequest(request) {
         if (Math.abs(entity.minorRadiusRatio - 1) < 1e-8 || (!focalReferences.has(entity.id) && (axisDrag || axisDimension)))
             ellipseAxisModels.add(entity.id);
     }
+    const fullEllipse = entity => Math.abs(angleDelta(((entity.endAngleDegrees ?? 360)
+        - (entity.startAngleDegrees ?? 0)) * radians)) < 1e-10;
+    for (const constraint of constraints) {
+        if (lower(constraint.kind) !== "symmetric" || lower(constraint.state) === "suppressed"
+            || constraint.referenceKeys?.length !== 3) continue;
+        const [a, b] = constraint.referenceKeys.map(key => byId.get(key));
+        if (lower(a?.kind) !== "ellipse" || lower(b?.kind) !== "ellipse" || !fullEllipse(a) || !fullEllipse(b)
+            || focalReferences.has(a.id) || focalReferences.has(b.id)) continue;
+        ellipseAxisModels.add(a.id); ellipseAxisModels.add(b.id);
+        const rootA = ellipseSymmetryRoot(a.id), rootB = ellipseSymmetryRoot(b.id);
+        if (rootA !== rootB) ellipseSymmetryParents.set(rootB, rootA);
+    }
+    // Reflection already preserves orthogonal axes. Keep one independent frame
+    // equation per connected family, even when symmetry relations form a cycle.
+    const ellipseSymmetryMembers = new Set([...ellipseSymmetryParents.keys()].filter(id => ellipseSymmetryRoot(id) !== id));
     // A pattern family must use the same independent parameters on both sides.
     // Settings and ownership are validated by the pattern mapper below.
     if (Array.isArray(patterns)) {
@@ -496,7 +517,7 @@ function mapRequest(request) {
                 // Validated rigid pattern equations already preserve the seed's
                 // perpendicular frame. Duplicating it confuses native initial rank
                 // when a gesture seeds the source ahead of its coupled members.
-                if (!ellipseAxisPatternMembers.has(entityId))
+                if (!ellipseAxisPatternMembers.has(entityId) && !ellipseSymmetryMembers.has(entityId))
                     relation("perpendicular_ll", { l1_id: majorLine.id, l2_id: minorLine.id },
                         `${entityId} ellipse axes`, axisResidual);
                 else checks.push({ source: `${entityId} patterned ellipse axes`, check: axisResidual });
@@ -867,7 +888,7 @@ function mapRequest(request) {
                         `${source} requires points on distinct entities.`);
                         for (const index of [i, i + 1]) {
                             const ref = peers[index], key = c.referenceKeys[index];
-                            requireSupported(!ref.shape || ["point", "line", "polyline", "circle", "arc"].includes(ref.shape.kind),
+                            requireSupported(!ref.shape || supportedEntities.has(ref.shape.kind),
                                 `${source} has an unsupported point reference.`);
                             if (ref.shape?.kind === "polyline") requireSupported(key.includes("|segment|"),
                                 `${source} requires a canonical segment point reference.`);
@@ -875,6 +896,64 @@ function mapRequest(request) {
                                 && /:(start|end)$/.test(key), `${source} requires paired line endpoints.`);
                         }
                         mirrorPoint(getPoint(peers[i]), getPoint(peers[i + 1]), axis, source, temporary);
+                    }
+                } else if (peers.length === 2 && peers[0].shape?.kind === "spline" && peers[1].shape?.kind === "spline") {
+                    const [a, b] = peers.map(ref => ref.shape);
+                    requireSupported(a !== b && a.hermite === b.hermite, `${source} requires distinct splines with matching representations.`);
+                    const same = (xs, ys) => xs.length === ys.length && xs.every((v, i) => Math.abs(v - ys[i]) <= 1e-10);
+                    const normalizedKnots = e => {
+                        const start = e.splineKnots[e.splineDegree], span = e.splineKnots[e.controlPoints.length] - start;
+                        return e.splineKnots.map(v => (v - start) / span);
+                    };
+                    requireSupported(a.entity.splineDegree === b.entity.splineDegree && a.poles.length === b.poles.length
+                        && (a.hermite || same(normalizedKnots(a.entity), normalizedKnots(b.entity))
+                            && same(a.entity.splineWeights.map(w => w / a.entity.splineWeights[0]),
+                                b.entity.splineWeights.map(w => w / b.entity.splineWeights[0]))),
+                    `${source}: spline degree, control count, normalized knots and weights must match; no approximation is applied.`);
+                    const pairs = a.poles.map((p, i) => [p, b.poles[i]]);
+                    if (a.hermite) {
+                        requireSupported(a.fitPoints.length === b.fitPoints.length, `${source}: spline fit-point counts differ.`);
+                        pairs.push(...a.fitPoints.map((p, i) => [p, b.fitPoints[i]]));
+                    }
+                    for (const name of ["startTangentHandle", "endTangentHandle"]) {
+                        requireSupported(Boolean(a.handles[name]) === Boolean(b.handles[name]), `${source}: spline tangent-handle representations differ.`);
+                        if (a.handles[name]) pairs.push([a.handles[name], b.handles[name]]);
+                    }
+                    const seen = new Set();
+                    for (const [p, q] of pairs) if (!seen.has(`${p.id}:${q.id}`)) {
+                        mirrorPoint(p, q, axis, source, temporary); seen.add(`${p.id}:${q.id}`);
+                    }
+                } else if (peers.length === 2 && peers.every(ref => ref.shape?.kind === "polygon")) {
+                    const [a, b] = peers.map(ref => ref.shape);
+                    requireSupported(a !== b && a.entity.sideCount === b.entity.sideCount
+                        && a.entity.circumscribed === b.entity.circumscribed, `${source}: polygon topology must match.`);
+                    mirrorPoint(a.center, b.center, axis, source, temporary);
+                    mirrorPoint(a.guide, b.guide, axis, source, temporary);
+                } else if (peers.length === 2 && peers.every(ref => ref.shape?.kind === "ellipse")) {
+                    const [a, b] = peers.map(ref => ref.shape);
+                    requireSupported(a !== b && fullEllipse(a.entity) === fullEllipse(b.entity), `${source}: ellipse topology must match.`);
+                    mirrorPoint(a.center, b.center, axis, source, temporary);
+                    if (a.ellipseAxes && b.ellipseAxes && fullEllipse(a.entity)) {
+                        mirrorPoint(a.ellipseAxes.majorEnd, b.ellipseAxes.majorEnd, axis, source, temporary);
+                        mirrorPoint(a.ellipseAxes.minorEnd, ellipsePoint(b, -Math.PI / 2), axis, source, temporary);
+                    } else {
+                        requireSupported(a.ellipse && b.ellipse && a.ellipse.type === b.ellipse.type,
+                            `${source}: partial equal-axis ellipses are not mapped for symmetry.`);
+                        mirrorPoint(a.focus, b.focus, axis, source, temporary);
+                        relation("equal", { param1: { o_id: a.ellipse.id, prop: "radmin" }, param2: { o_id: b.ellipse.id, prop: "radmin" } },
+                            source, get => Math.abs(get(a.ellipse.id).radmin - get(b.ellipse.id).radmin), temporary);
+                        if (a.ellipse.type === "arc_of_ellipse") {
+                            // Keep the nearest equivalent turn after normalized native
+                            // save/reopen, instead of asking the solver to unwind 360 degrees.
+                            const turn = 2 * Math.PI;
+                            const sum = turn * Math.round((a.ellipse.start_angle + b.ellipse.end_angle
+                                + a.ellipse.end_angle + b.ellipse.start_angle) / (2 * turn));
+                            const total = point({x: sum, y: 0}); total.fixed = true;
+                            for (const [left, right] of [["start_angle", "end_angle"], ["end_angle", "start_angle"]])
+                                relation("difference", { param1: { o_id: b.ellipse.id, prop: right },
+                                    param2: { o_id: total.id, prop: "x" }, difference: { o_id: a.ellipse.id, prop: left } },
+                                source, get => Math.abs(get(a.ellipse.id)[left] + get(b.ellipse.id)[right] - sum), temporary);
+                        }
                     }
                 } else {
                     count(3);
@@ -1477,6 +1556,13 @@ function mapRequest(request) {
             return originals.map(entity => {
                 const result = copy(entity), shape = models.get(entity.id);
                 if (!shape) return result;
+                // Avoid round-trip noise from focal -> axis conversion when the
+                // native ellipse's independent parameters have not changed at all.
+                if (shape.ellipse && [shape.center, shape.focus].every(p => {
+                    const original = initialPoints.get(p.id), solved = get(p.id);
+                    return original.x === solved.x && original.y === solved.y;
+                }) && ["radmin", ...(shape.ellipse.type === "arc_of_ellipse" ? ["start_angle", "end_angle"] : [])]
+                    .every(prop => get(shape.ellipse.id)[prop] === shape.ellipse[prop])) return result;
                 const xy = p => {
                     const solved = get(p.id);
                     return { x: solved.x, y: solved.y };

@@ -11,7 +11,7 @@ for (const tool of ['normal', 'symmetric']) {
     for (const kind of ['circle', 'arc'])
       assert.equal(isTargetEligibleForConstraintTool(tool, {kind: 'point', label: 'quadrant-90', entity: {kind}}), true);
     for (const kind of ['ellipse', 'spline', 'polygon'])
-      assert.equal(isTargetEligibleForConstraintTool(tool, {kind: 'entity', entity: {kind}}), false);
+      assert.equal(isTargetEligibleForConstraintTool(tool, {kind: 'entity', entity: {kind}}), tool === 'symmetric');
     assert.equal(isTargetEligibleForConstraintTool(tool, {kind: 'point', label: 'vertex-2', entity: {kind: 'polyline'}}), true);
     assert.equal(isTargetEligibleForConstraintTool(tool, {kind: 'point', dynamic: true, label: 'end', entity: {kind: 'line'}}), false);
   });
