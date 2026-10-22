@@ -25,7 +25,8 @@ public sealed class ToolHotkeyResolverTests
             WorkbenchCommandId.Construction,
             WorkbenchCommandId.SplitAtPoint,
             WorkbenchCommandId.Dimension);
-        ToolHotkeyResolver.ToolCommandIds.Should().NotContain(WorkbenchCommandId.TangentArc);
+        ToolHotkeyResolver.ToolCommandIds.Should().Contain(WorkbenchCommandId.TangentArc);
+        ToolHotkeyResolver.ToolCommandIds.Should().Contain(WorkbenchCommandId.Tangent);
     }
 
     [Fact]
@@ -53,6 +54,8 @@ public sealed class ToolHotkeyResolverTests
     [InlineData(WorkbenchCommandId.CenterRectangle, "Center rectangle")]
     [InlineData(WorkbenchCommandId.ThreePointCircle, "Three-point circle")]
     [InlineData(WorkbenchCommandId.ThreePointArc, "Three-point arc")]
+    [InlineData(WorkbenchCommandId.TangentArc, "Tangent arc")]
+    [InlineData(WorkbenchCommandId.Tangent, "Tangent constraint")]
     [InlineData(WorkbenchCommandId.CenterPointArc, "Center point arc")]
     [InlineData(WorkbenchCommandId.SplitAtPoint, "Split at point")]
     public void FormatsImplementedToolNamesForHotkeyEditing(
@@ -88,6 +91,23 @@ public sealed class ToolHotkeyResolverTests
         commandId.Should().Be(WorkbenchCommandId.Line);
         ToolHotkeyResolver.TryResolve(bindings, ToolHotkeyPress.Plain("A"), out _)
             .Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(WorkbenchCommandId.TangentArc)]
+    [InlineData(WorkbenchCommandId.Tangent)]
+    public void TangentBindingsSurviveLoadAndDoNotOverrideDefaults(WorkbenchCommandId command)
+    {
+        var service = new ToolHotkeyService();
+        service.GetKey(command).Should().BeNull();
+        service.SetBinding(command, "Alt+T");
+        var reopened = new ToolHotkeyService();
+        reopened.Load(service.Bindings);
+        reopened.GetKey(command).Should().Be("Alt+T");
+        reopened.GetKey(WorkbenchCommandId.Line).Should().Be("Shift+A");
+        reopened.TryResolve(new ToolHotkeyPress("t", AltKey: true), out var resolved).Should().BeTrue();
+        resolved.Should().Be(command);
+        reopened.TryResolve(new ToolHotkeyPress("t", AltKey: true, IsEditableTarget: true), out _).Should().BeFalse();
     }
 
     [Fact]

@@ -3690,6 +3690,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             case WorkbenchCommandId.ThreePointArc:
                 tool = WorkbenchTool.ThreePointArc;
                 return true;
+            case WorkbenchCommandId.TangentArc:
+                tool = WorkbenchTool.TangentArc;
+                return true;
             case WorkbenchCommandId.CenterPointArc:
                 tool = WorkbenchTool.CenterPointArc;
                 return true;
