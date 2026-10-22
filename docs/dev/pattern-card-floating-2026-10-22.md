@@ -20,6 +20,8 @@ Do not change geometry, snapping, validation, or history.
   arrow-key movement; Escape during movement restores the pre-drag position.
 - Clamp the entire card to the canvas viewport with an 8px margin. Constrain
   width/height on small viewports; scroll contents vertically rather than overflow.
+- Keep the floating card above tool palettes so a corner placement cannot hide
+  its move handle. Geometry handles retain their lower stacking order.
 - Store position in the canvas session, not the drawing document or localStorage.
   Preserve it across camera changes, draft rerenders, hide/show and pattern edits;
   clamp only when dimensions/viewport change. Dispose pointer listeners/capture
@@ -35,6 +37,8 @@ the DrawingCanvas module cache token remain parent-owned.
 
 Focused tests cover initialization, bounds, resize, pointer capture/cancellation,
 non-header exclusions, keyboard movement, rerender/hide/show persistence, and
-rendered compact radial controls and unchanged linear anchors. Candidate screenshots at
-1440x1000 and 1100x705 must verify placement and unchanged center/action behavior;
-no deployment is authorized by this task.
+rendered compact radial controls and unchanged linear anchors. Public Dev c6aa442
+browser checks passed at 1440x1000 and 1100x705: header drag, Escape restoration,
+pan/zoom stability, draft edits, Hide/Show, bounds and Cancel/history preservation.
+Screenshot review additionally found a palette-overlap case; the follow-up adds
+header hit-testing at each tested position, not merely viewport-bounds checks.

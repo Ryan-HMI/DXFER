@@ -74,6 +74,11 @@
 
 .drawing-pattern-overlay { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
 
+/* Let the movable card sit above palettes without raising geometry handles. */
+.drawing-pattern-overlay:has([data-pattern-card]) { z-index: auto; }
+.drawing-pattern-overlay ::deep [data-pattern-anchor] { z-index: 5; }
+.drawing-pattern-overlay ::deep [data-pattern-card] { z-index: 9; }
+
 ::deep .drawing-measurement-feedback {
     position: absolute;
     width: 218px;
