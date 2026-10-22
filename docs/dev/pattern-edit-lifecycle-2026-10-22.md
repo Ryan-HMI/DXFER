@@ -26,3 +26,9 @@ Candidate evidence:
 - Additional browser passes: origin snap ON, midpoint snap OFF, cancellation, and explicit center selection/Fix refusal. The last case verified the canvas edit-state transition correction in `/tmp/dxfer-pattern-show-edit-fixed-20261022-b`.
 
 Existing documents are not rewritten. Generated-member intent is removed only when an explicit count change is accepted; no data repair is needed for this fix.
+
+## Installed Evidence
+
+DXFer Dev `11529ad`, installed 2026-10-22T14:14:53Z. Public replay verified the rendered revision and passed all 24 lifecycle/count cases plus six center-snap/protection/floating-card cases. Evidence: `/tmp/dxfer-pattern-edit-11529ad-public` and `/tmp/dxfer-pattern-edit-11529ad-public-layout-snap`.
+
+Production and Test processes stayed unchanged. Public auth status retains Google configuration and disabled Sync launch; normal interactive Google sign-in was not independently retested. Isolated QA host stopped after verification. No historical data repair was performed or required.
