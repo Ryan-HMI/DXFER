@@ -27,8 +27,7 @@ for(const [tool,points] of [
   ['point',[[300,300]]],['line',[[300,300],[500,400]]],
   ['twopointrectangle',[[300,300],[500,400]]],['centerrectangle',[[300,300],[500,400]]],
   ['centercircle',[[300,300],[500,400]]],['threepointcircle',[[300,300],[500,300],[400,450]]],
-  ['ellipse',[[300,300],[500,300],[400,450]]],['threepointarc',[[300,300],[500,300],[400,450]]],
-  ['slot',[[300,300],[500,300],[400,450]]]
+  ['ellipse',[[300,300],[500,300],[400,450]]],['threepointarc',[[300,300],[500,300],[400,450]]]
 ]) test(`${tool}: moving press/release commits the same points once as stationary clicks`,t=>{
   const h=harness(t,tool);
   for(const [x,y] of points)h.click(x,y);
@@ -36,6 +35,18 @@ for(const [tool,points] of [
   h.instance.setActiveTool('select');h.instance.setActiveTool(tool);h.calls.length=0;
   for(const [x,y] of points)h.click(x,y,true);
   assert.deepEqual(h.commits(),expected);
+});
+
+test('Slot moving click selects an existing centerline and commits width once', t => {
+  const h = harness(t, 'slot');
+  h.instance.setDocument({entities: [{id: 'centerline', kind: 'line', points: [{x: 2, y: 3}, {x: 12, y: 3}]}],
+    constraints: [], dimensions: [], bounds: {minX: 0, minY: 0, maxX: 20, maxY: 15}}, true);
+  const d = h.canvas.dataset, x = 7 * +d.scale + +d.offsetX, y = -3 * +d.scale + +d.offsetY;
+  h.click(x, y, true); h.click(x, y - 2 * +d.scale, true);
+  const commits = h.calls.filter(c => c[0] === 'CommitLineSlot');
+  assert.equal(commits.length, 1); assert.equal(commits[0][1], 'centerline');
+  assert.ok(Math.abs(commits[0][2] - 4) < 1e-12); assert.equal(commits[0][3], false);
+  assert.deepEqual(h.commits(), []);
 });
 
 test('cancelled moving creation contributes no point; next gesture recovers',t=>{

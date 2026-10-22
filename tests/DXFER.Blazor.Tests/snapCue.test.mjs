@@ -26,7 +26,7 @@ for (const [tool, supported, unsupported] of [
   ["threepointarc", [0, 2], [1, 3]],
   ["tangentarc", [0, 2], [1, 3]],
   ["centerpointarc", [0, 1], [2, 3]],
-  ["slot", [0, 1], [2]],
+  ["slot", [], [0, 1, 2]],
   ["spline", [0], [1, 2]],
   ["splinecontrolpoint", [0], [1, 2]],
   ["bezier", [0, 3], [1, 2, 4]]

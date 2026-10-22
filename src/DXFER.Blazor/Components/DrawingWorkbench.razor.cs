@@ -580,7 +580,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.Bezier => "Bezier: click four control points. Esc: cancel.",
         WorkbenchTool.SplineControlPoint => "Add spline point: click a fit-point spline where the new fit point belongs. Esc: cancel.",
         WorkbenchTool.Point => "Point: click to place a persistent sketch point. Esc: cancel.",
-        WorkbenchTool.Slot => "Slot: click first center, second center, then radius point. Esc: cancel.",
+        WorkbenchTool.Slot => "Slot: select a centerline, then set width. Esc: cancel.",
         WorkbenchTool.Construction => "Construction: click geometry to toggle construction state. Esc: cancel.",
         WorkbenchTool.PowerTrim => _status,
         WorkbenchTool.SplitAtPoint => _status,
@@ -1010,8 +1010,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             default:
                 if (TryGetImplementedSketchTool(commandId, out var tool))
                 {
+                    if (tool == WorkbenchTool.Slot) await SyncSelectionFromCanvasAsync();
                     ActivateTool(tool, $"{FormatCommandName(commandId)} active. {GetToolPrompt(tool)} Press Esc to cancel.");
-                    ResetSelection();
+                    if (tool != WorkbenchTool.Slot) ResetSelection();
                     break;
                 }
 
@@ -1031,6 +1032,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         IReadOnlyList<CanvasCreationSnapDto>? creationSnaps)
     {
         if (!CanEditPlaneGcsDependencies(_document)) return;
+        if (NormalizeToolName(toolName) == "slot")
+        {
+            ReportSolveFailure("Select an existing line as the slot centerline. Geometry unchanged.");
+            return;
+        }
         var toolPoints = points.Select(ToPoint).ToArray();
         var newEntities = CreateEntitiesForTool(toolName, toolPoints, dimensionValues).ToArray();
         if (newEntities.Length == 0)
@@ -3927,7 +3933,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         WorkbenchTool.SplineControlPoint => "Click a fit-point spline where the new fit point belongs.",
         WorkbenchTool.Point => "Pick a point on the canvas.",
         WorkbenchTool.Construction => "Click geometry to toggle construction state.",
-        WorkbenchTool.Slot => "Pick first center, second center, then radius point.",
+        WorkbenchTool.Slot => "Select an existing line as the centerline, then set the slot width.",
         WorkbenchTool.PowerTrim => "Click a line, polyline, polygon, circle, arc, ellipse, spline, or point section to trim, or click past a line endpoint to extend.",
         WorkbenchTool.AddSplinePoint => "Click the selected fit-point spline where the new fit point belongs.",
         WorkbenchTool.Offset => "Click the through side or radius point.",

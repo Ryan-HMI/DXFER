@@ -1,7 +1,8 @@
 import { sampleControlSpline } from "./canvas/splineGeometry.js";
+import { lineSlotDraft, lineSlotSourceIsCurrent, lineSlotPreview } from "./canvas/lineSlot.js";
 import { measurePerimeterDistance } from "./perimeterDistance.js";
 import { patternViewportGuides, patternViewportAnchors, patternSourceScreenBounds, bindPatternCenterHandle, createRadialCenterPreview } from "./canvas/patternViewport.js?v=20261021-pattern-center-latency";
-import { getSnapCue } from "./canvas/snapCue.js?v=20261019";
+import { getSnapCue } from "./canvas/snapCue.js?v=20261021-line-slot";
 import {
   addUniqueNumber,
   addUniquePoint,
@@ -287,6 +288,11 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
       }
       state.documentEpoch++;
       state.document = document || null;
+      if (state.toolDraft?.centerlineReferenceKey && !lineSlotSourceIsCurrent(state.document, state.toolDraft)) {
+        state.toolDraft = createEmptyToolDraft();
+        clearTransientDimensionInputs(state);
+        slotFeedback(state, 'The centerline changed. Select the line again before setting the slot width.');
+      }
       reconcileDimensionAnchorOverrides(state, fitToDocument);
       state.acquiredSnapPoints = [];
       if (fitToDocument) {
@@ -433,6 +439,10 @@ export function createDrawingCanvas(canvas, dotnetRef, dimensionOverlay = null, 
 
       state.activeTool = nextTool;
       state.toolDraft = draft;
+      if (nextTool === 'slot') {
+        if (state.selectedKeys.size) beginLineSlot(state, [...state.selectedKeys]);
+        else slotFeedback(state, 'Select an existing straight line for the slot centerline.');
+      }
       state.sketchChainAutoTool = false;
       state.sketchChainVertexHovering = previousTool === nextTool && state.sketchChainContext
         ? state.sketchChainVertexHovering
@@ -888,7 +898,7 @@ export function getCurrentSnapCue(state) {
   if (!state.pointerScreenPoint || state.panning || state.selectionBox || state.cornerPreview) return null;
   const drag = state.geometryDrag;
   const tool = drag ? "point" : getSketchCreationTool(state);
-  if (!tool) return null;
+  if (!tool || tool === 'slot') return null;
   const target = drag ? drag.acceptedSnapTarget : state.hoveredTarget;
   const point = drag ? drag.acceptedSnapPoint : state.toolDraft?.points?.length
     ? state.toolDraft.previewPoint : getTargetWorldSnapPoint(target);
@@ -1636,14 +1646,15 @@ function drawToolPreview(state) {
     return drawModifyToolPreview(state, modifyTool);
   }
 
-  if (!tool || !state.toolDraft || state.toolDraft.points.length === 0 || !state.toolDraft.previewPoint) {
+  if (!tool || !state.toolDraft || state.toolDraft.points.length === 0
+    || (!state.toolDraft.previewPoint && !(tool === 'slot' && state.toolDraft.centerlineReferenceKey))) {
     return [];
   }
 
   const points = state.toolDraft.points;
   const first = points[0];
   const second = points.length > 1 ? points[1] : state.toolDraft.previewPoint;
-  const third = state.toolDraft.previewPoint;
+  const third = state.toolDraft.previewPoint || first;
   const { context } = state;
   const dimensions = [];
   const suppressChainDimensions = shouldSuppressSketchChainPreviewDimensions(state);
@@ -1821,7 +1832,16 @@ function drawToolPreview(state) {
       drawWorldPolyline(state, draftPoints);
     }
   } else if (tool === "slot") {
-    if (points.length === 1) {
+    if (state.toolDraft.centerlineReferenceKey) {
+      const slot = lineSlotPreview(first, second, third);
+      if (slot) {
+        drawWorldPolyline(state, slot.points.concat(slot.points[0]));
+        addLinearPreviewDimension(dimensions, state, 'width', 'Width', slot.widthStart, slot.widthEnd);
+      } else {
+        const middle = worldToScreen(state, {x: first.x / 2 + second.x / 2, y: first.y / 2 + second.y / 2});
+        dimensions.push({key: 'width', label: 'Width', value: 0, point: {x: middle.x, y: middle.y - 24}});
+      }
+    } else if (points.length === 1) {
       drawWorldPolyline(state, [first, second]);
       addLinearPreviewDimension(dimensions, state, "length", "Length", first, second);
     } else {
@@ -4646,6 +4666,14 @@ function handleDimensionInputKeyDown(state, input, event) {
   }
 
   if (event.key === "Enter") {
+    if (state.toolDraft?.centerlineReferenceKey && input.dataset.dimensionKey === 'width'
+      && input.dataset.dimensionEditing !== 'true' && !Number.isFinite(state.toolDraft.dimensionValues.width)) {
+      if (commitLineSlot(state)) focusCanvasWithoutDimensionCommit(state);
+      updateDebugAttributes(state);
+      draw(state);
+      event.preventDefault();
+      return;
+    }
     if (!commitDimensionInputValue(state, input)) {
       event.preventDefault();
       return;
@@ -4684,6 +4712,9 @@ function handleDimensionInputKeyDown(state, input, event) {
 
 function commitDimensionInputValue(state, input, live = false) {
   const text = String(input.value || "").trim();
+  if (state.toolDraft?.centerlineReferenceKey && input.dataset.dimensionKey === 'width') {
+    state.toolDraft.slotWidthInputInvalid = !text || !Number.isFinite(Number(text)) || Number(text) <= WORLD_GEOMETRY_TOLERANCE;
+  }
   if (!text) {
     input.dataset.dimensionEditing = live ? "true" : "false";
     if (clearDraftDimensionValue(state, input.dataset.dimensionKey)) {
@@ -5149,7 +5180,9 @@ function handlePointerMove(state, event) {
       updateDebugAttributes(state);
       draw(state);
     } else if (state.toolDraft && state.toolDraft.points.length > 0) {
-      state.toolDraft.previewPoint = getSketchWorldPoint(state, screenPoint, nearestTarget, event, sketchTool || modifyTool);
+      state.toolDraft.previewPoint = sketchTool === 'slot' && state.toolDraft.centerlineReferenceKey
+        ? screenToWorld(state, screenPoint)
+        : getSketchWorldPoint(state, screenPoint, nearestTarget, event, sketchTool || modifyTool);
       if (sketchTool) {
         applyLockedDraftDimensions(state);
       }
@@ -5874,6 +5907,19 @@ function handleSketchToolClick(state, screenPoint, event) {
     return;
   }
 
+  if (tool === 'slot') {
+    if (!state.toolDraft?.centerlineReferenceKey) {
+      const {nearestEdgeHit} = getNearestEntityHits(state, screenPoint);
+      const target = nearestEdgeHit?.distance <= HIT_TEST_TOLERANCE ? nearestEdgeHit.target : null;
+      beginLineSlot(state, target?.entity ? [getEntityId(target.entity)] : []);
+    } else {
+      state.toolDraft.previewPoint = screenToWorld(state, screenPoint);
+      applyLockedDraftDimensions(state);
+      commitLineSlot(state);
+    }
+    return;
+  }
+
   if (isAddSplinePointSketchTool(tool)) {
     commitAddSplinePointOnClickedSpline(state, screenPoint);
     return;
@@ -6390,11 +6436,55 @@ export function getRadialDimensionPreference(target, event = {}) {
   return kind === "arc" && Boolean(event.shiftKey);
 }
 
+function slotFeedback(state, message) {
+  if (state.canvas.dataset.slotFeedback === message) return;
+  state.canvas.dataset.slotFeedback = message;
+  invokeDotNet(state, 'OnSketchToolFeedback', message);
+}
+
+function beginLineSlot(state, keys) {
+  const {draft, reason} = lineSlotDraft(state.document, keys);
+  if (!draft) {
+    state.toolDraft = createEmptyToolDraft();
+    slotFeedback(state, reason);
+    return false;
+  }
+  state.toolDraft = draft;
+  state.pendingDimensionFocusKey = 'width';
+  slotFeedback(state, 'Set the slot width, then click or press Enter.');
+  return true;
+}
+
+function commitLineSlot(state) {
+  const draft = state.toolDraft;
+  if (draft?.slotWidthInputInvalid) {
+    slotFeedback(state, 'Enter a valid positive slot width before committing.');
+    return false;
+  }
+  if (!lineSlotSourceIsCurrent(state.document, draft)) {
+    slotFeedback(state, 'The centerline changed. Select the line again before setting the slot width.');
+    state.toolDraft = createEmptyToolDraft();
+    clearTransientDimensionInputs(state);
+    return false;
+  }
+  const slot = lineSlotPreview(...draft.points, draft.previewPoint);
+  if (!slot) { slotFeedback(state, 'Slot width must be greater than zero.'); return false; }
+  const keyedWidth = Number.isFinite(draft.dimensionValues.width);
+  const width = keyedWidth ? draft.dimensionValues.width : slot.width;
+  const reference = draft.centerlineReferenceKey;
+  state.toolDraft = createEmptyToolDraft();
+  clearTransientDimensionInputs(state);
+  setHoveredTarget(state, null);
+  invokeDotNet(state, 'CommitLineSlot', reference, width, keyedWidth);
+  return true;
+}
+
 function commitCurrentSketchTool(state, allowVariablePointCommit = false) {
   const tool = getSketchCreationTool(state);
   if (!tool || !state.toolDraft || state.toolDraft.points.length === 0) {
     return false;
   }
+  if (tool === 'slot') return commitLineSlot(state);
 
   const points = state.toolDraft.previewPoint
     ? state.toolDraft.points.concat(state.toolDraft.previewPoint)
@@ -6573,6 +6663,14 @@ function handleKeyDown(state, event) {
   if (event.key === "Escape") {
     cancelActiveTool(state);
     event.preventDefault();
+    return;
+  }
+
+  if (event.key === 'Enter' && activeTool === 'slot' && !event.repeat) {
+    commitCurrentSketchTool(state);
+    event.preventDefault();
+    updateDebugAttributes(state);
+    draw(state);
     return;
   }
 
@@ -13219,6 +13317,9 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
     nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
   } else if (tool === "circumscribedpolygon" && dimension === "apothem") {
     nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);
+  } else if (tool === 'slot' && state.toolDraft.centerlineReferenceKey) {
+    if (dimension !== 'width' || points.length !== 2) return false;
+    nextPreviewPoint = getSlotRadiusPointWithLength(anchor, points[1], previewPoint, numericValue / 2);
   } else if (tool === "slot" && dimension === "length") {
     if (points.length === 1) {
       nextPreviewPoint = pointFromAnchorWithLength(anchor, previewPoint, numericValue);

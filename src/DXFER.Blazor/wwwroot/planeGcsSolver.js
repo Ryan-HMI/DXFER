@@ -789,6 +789,18 @@ function mapRequest(request) {
         relation(perpendicular ? "perpendicular_ll" : "parallel", { l1_id: a.id, l2_id: b.id }, source,
             get => Math.abs((perpendicular ? Math.cos : Math.sin)(lineAngle(a, get) - lineAngle(b, get))), temporary);
     }
+    function joinedArcEndpoint(line, curve) {
+        if (curve.type !== "arc") return null;
+        for (const c of constraints) {
+            if (lower(c.kind) !== "coincident" || lower(c.state) === "suppressed" || c.referenceKeys?.length !== 2) continue;
+            const points = c.referenceKeys.map(resolve).map(ref => ref.point?.id);
+            for (const [linePoint, arcPoint] of [points, [...points].reverse()]) {
+                if ((linePoint === line.p1_id || linePoint === line.p2_id)
+                    && (arcPoint === curve.start_id || arcPoint === curve.end_id)) return arcPoint;
+            }
+        }
+        return null;
+    }
     function fixReference(ref, source) {
         if (ref.point) fixPoint(ref.point, source);
         else if (ref.line) for (const p of endpoints(ref.line)) fixPoint(p, source);
@@ -907,9 +919,21 @@ function mapRequest(request) {
                 const l = refs.find(ref => ref.line), curves = refs.filter(ref => ref.curve).map(getCurve);
                 if (l && curves.length === 1) {
                     const curve = curves[0];
-                    relation(curve.type === "arc" ? "tangent_la" : "tangent_lc",
-                        { l_id: l.line.id, [curve.type === "arc" ? "a_id" : "c_id"]: curve.id }, source,
-                        get => Math.abs(Math.abs(signedDistance(get(curve.c_id), l.line, get)) - get(curve.id).radius), temporary);
+                    const joined = joinedArcEndpoint(l.line, curve);
+                    const tangentResidual = get => Math.abs(Math.abs(signedDistance(get(curve.c_id), l.line, get)) - get(curve.id).radius);
+                    if (joined) {
+                        // At a declared shared endpoint, distance-to-radius has a singular
+                        // Jacobian. Perpendicular radius/line expresses the same tangency
+                        // with an independent first-order equation and stable native rank.
+                        relation("perpendicular_pppp", { l1p1_id: l.line.p1_id, l1p2_id: l.line.p2_id,
+                            l2p1_id: curve.c_id, l2p2_id: joined }, source, get => Math.max(tangentResidual(get),
+                                Math.abs(Math.cos(lineAngle(l.line, get) - Math.atan2(get(joined).y - get(curve.c_id).y,
+                                    get(joined).x - get(curve.c_id).x)))), temporary);
+                    } else {
+                        relation(curve.type === "arc" ? "tangent_la" : "tangent_lc",
+                            { l_id: l.line.id, [curve.type === "arc" ? "a_id" : "c_id"]: curve.id }, source,
+                            tangentResidual, temporary);
+                    }
                 } else {
                     requireSupported(curves.length === 2, `${source} requires line/circle or two circle-like references.`);
                     const [a, b] = curves, d = distance(nodes.get(a.c_id), nodes.get(b.c_id));

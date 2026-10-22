@@ -9,7 +9,7 @@ namespace DXFER.Blazor.Components;
 
 public partial class DrawingCanvas : IAsyncDisposable
 {
-    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261021-pattern-center-latency";
+    private const string CanvasModulePath = "./_content/DXFER.Blazor/drawingCanvas.js?v=20261021-line-slot";
 
     private ElementReference _canvas;
     private ElementReference _dimensionOverlay;
@@ -218,6 +218,12 @@ public partial class DrawingCanvas : IAsyncDisposable
 
     [Parameter]
     public Action<string, IReadOnlyList<CanvasPointDto>, IReadOnlyDictionary<string, double>, string?, bool, IReadOnlyList<CanvasCreationSnapDto>?>? ToolCommitRequested { get; set; }
+
+    [Parameter]
+    public Action<string, double, bool>? SlotCommitRequested { get; set; }
+
+    [Parameter]
+    public Action<string>? ToolFeedbackRequested { get; set; }
 
     [Parameter]
     public Action<string>? ToolModeChanged { get; set; }
@@ -435,6 +441,20 @@ public partial class DrawingCanvas : IAsyncDisposable
         SelectionChanged?.Invoke(SelectedEntityIds);
         ActiveSelectionChanged?.Invoke(ActiveSelectionKey);
         _ = InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task CommitLineSlot(string centerlineReferenceKey, double width, bool keyedWidth)
+    {
+        SlotCommitRequested?.Invoke(centerlineReferenceKey, width, keyedWidth);
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnSketchToolFeedback(string message)
+    {
+        ToolFeedbackRequested?.Invoke(message);
         return Task.CompletedTask;
     }
 

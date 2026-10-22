@@ -22,8 +22,7 @@ function hasPersistentDestination(tool, pointCount) {
     case "twopointrectangle": return pointCount <= 1;
     case "midpointline":
     case "centerrectangle": return pointCount === 1;
-    case "alignedrectangle":
-    case "slot": return pointCount <= 1;
+    case "alignedrectangle": return pointCount <= 1;
     case "centercircle":
     case "ellipse":
     case "ellipticalarc":
