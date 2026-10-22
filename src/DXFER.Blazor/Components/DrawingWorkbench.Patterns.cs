@@ -380,6 +380,7 @@ public partial class DrawingWorkbench
         ApplyDocumentChangeCore(preview, "Pattern saved.", patternCommand: true);
         if (!ReferenceEquals(previous, _document))
         {
+            HideEditedPatternControls();
             ClearPatternEditor();
             _activeTool = null;
             ResetSelection();
@@ -398,6 +399,13 @@ public partial class DrawingWorkbench
             ResetSelection();
         }
         else _patternError = reason;
+    }
+
+    private void HideEditedPatternControls()
+    {
+        if (_editingPattern is not { } pattern) return;
+        _hiddenPatternControls.Add(pattern.Id);
+        if (_shownPatternControlsId == pattern.Id) _shownPatternControlsId = null;
     }
 
     private void ClearPatternEditor()

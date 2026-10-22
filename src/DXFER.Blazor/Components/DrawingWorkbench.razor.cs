@@ -480,6 +480,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private void ExitInspectorTool()
     {
+        if (PatternEditing) _patternDirectionPicking = null;
         OnToolCanceled();
         _focusCanvasAfterRender = true;
     }
@@ -1351,6 +1352,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             _ = InvokeAsync(StateHasChanged);
             return;
         }
+        HideEditedPatternControls();
         ClearPatternEditor();
         ClearCornerPreview();
         _solveFailureStatus = null;

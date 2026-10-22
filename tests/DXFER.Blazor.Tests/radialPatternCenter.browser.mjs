@@ -45,7 +45,12 @@ try {
     },p.sourceEntityIds.map(id=>doc.entities.find(e=>e.id===id)));
     await page.mouse.move(at.x+10,at.y+10);await page.mouse.move(at.x,at.y);
     await expect.poll(async()=>(await canvas.getAttribute('data-hovered-id')??'').startsWith(at.id)).toBe(true);
-    await page.mouse.click(at.x,at.y);
+    await page.mouse.click(at.x,at.y,{button:'right'});
+    const context=page.getByRole('dialog',{name:'Drawing context commands'});
+    await expect(context).toBeVisible();
+    const show=context.getByRole('button',{name:'Show pattern controls',exact:true});
+    if(await show.isVisible())await show.click();
+    else await context.getByRole('button',{name:'Close',exact:true}).click();
     await expect(handle).toBeVisible();
   };
   const centerPoint=doc=>{

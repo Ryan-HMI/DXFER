@@ -18,6 +18,72 @@ public sealed class WorkbenchPatternCenterControlsTests
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task AcceptAndCancelDismissControlsUntilExplicitShow(bool linear, bool accept)
+    {
+        await using var fixture = new Fixture(linear ? "rectangular" : null);
+        await fixture.Run(() =>
+        {
+            fixture.Invoke("EditViewportPattern", fixture.Pattern);
+            if (linear) fixture.Draft!.Columns = "3";
+            else fixture.Draft!.Count = "5";
+            fixture.Invoke("RefreshPatternPreview");
+            fixture.Property("CanConfirmPatternPreview").Should().Be(true);
+            fixture.Invoke(accept ? "CommitPatternPreview" : "ExitInspectorTool");
+            fixture.Draft.Should().BeNull();
+            fixture.Property("ViewportPattern").Should().BeNull();
+            fixture.Get<string?>("_shownPatternControlsId").Should().BeNull();
+            fixture.Set("_selectedEntityIds", new HashSet<string>(StringComparer.Ordinal) { "seed" });
+            fixture.Property("ViewportPattern").Should().BeNull("selection must not resurrect a dismissed card");
+            if (accept) fixture.Undo.Should().ContainSingle();
+            else fixture.Unchanged();
+            var current = fixture.Document.Metadata.Patterns.Single();
+            fixture.Invoke("TogglePatternControls", current);
+            fixture.Property("ViewportPattern").Should().NotBeNull();
+            fixture.Invoke("EditViewportPattern", current);
+            fixture.Draft.Should().NotBeNull();
+            fixture.Property("ViewportPattern").Should().NotBeNull();
+        });
+    }
+
+    [Fact]
+    public async Task ExplicitCancelClosesDirectionPickerAndWholePatternEditor()
+    {
+        await using var fixture = new Fixture("rectangular");
+        await fixture.Run(() =>
+        {
+            fixture.Invoke("EditViewportPattern", fixture.Pattern);
+            fixture.Invoke("BeginPatternDirectionPick", "U");
+            fixture.Get<string?>("_patternDirectionPicking").Should().Be("U");
+            fixture.Invoke("ExitInspectorTool");
+            fixture.Draft.Should().BeNull();
+            fixture.Property("ViewportPattern").Should().BeNull();
+            fixture.Get<string?>("_patternDirectionPicking").Should().BeNull();
+            fixture.Invoke("PickPatternDirection", "pattern", "U", "seed");
+            fixture.Unchanged();
+        });
+    }
+
+    [Fact]
+    public async Task InvalidAcceptKeepsEditorAndControlsOpen()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Run(() =>
+        {
+            fixture.Invoke("EditViewportPattern", fixture.Pattern);
+            fixture.Draft!.Count = "0";
+            fixture.Invoke("RefreshPatternPreview");
+            fixture.Invoke("CommitPatternPreview");
+            fixture.Draft.Should().NotBeNull();
+            fixture.Property("ViewportPattern").Should().NotBeNull();
+            fixture.Unchanged();
+        });
+    }
+
     [Fact]
     public async Task HeldCenterMoveOnlyPreviews_EndUsesLatestPosition_ConfirmCreatesOneHistoryEntry()
     {

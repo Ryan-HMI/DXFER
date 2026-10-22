@@ -54,7 +54,12 @@ try {
     await expect(input).toHaveValue(value);
     await expect(widget).toHaveAttribute(`data-center-${axis.toLowerCase()}`,value);
   };
-  const cancel = () => widget.getByRole('button', {name: 'Cancel pattern changes', exact: true}).click();
+  const exitedEditor = async () => {
+    await expect(canvas).toHaveAttribute('data-pattern-editing','false');
+    await expect(editor).toBeHidden();await hiddenControls();
+  };
+  const cancel = async () => { await widget.getByRole('button', {name: 'Cancel pattern changes', exact: true}).click(); await exitedEditor(); };
+  const confirm = async () => { await widget.getByRole('button', {name: 'Confirm', exact: true}).click(); await exitedEditor(); };
   const tool = async name => { await page.getByRole('button', {name, exact: true}).click(); await page.waitForTimeout(150); };
   const menu = async name => { await tool('Open application menu'); await page.getByRole('button', {name:'File',exact:true}).hover(); await tool(name); };
   const download = async name => { const pending = page.waitForEvent('download'); await menu('Download DXF');
@@ -71,11 +76,18 @@ try {
       for (const e of entities.slice(1)) {
         const x=r.left+(e.center.x+e.radius*.6)*+c.dataset.scale+ +c.dataset.offsetX;
         const y=r.top-(e.center.y+e.radius*.8)*+c.dataset.scale+ +c.dataset.offsetY;
-        if (document.elementFromPoint(x,y)===c) return {x,y};
+        if (document.elementFromPoint(x,y)===c) return {x,y,id:e.id};
       }
       throw new Error('No unobscured pattern member');
     }, doc.entities);
-    await page.mouse.click(point.x,point.y,{button:'right'}); await page.waitForTimeout(200);
+    await page.mouse.move(point.x+10,point.y+10);await page.mouse.move(point.x,point.y);
+    await expect.poll(async()=>(await canvas.getAttribute('data-hovered-id')??'').startsWith(point.id)).toBe(true);
+    await page.mouse.click(point.x,point.y,{button:'right'}); await expect(context).toBeVisible();
+  };
+  const showControls = async doc => {
+    await hiddenControls();await rightClickMember(doc);
+    await context.getByRole('button',{name:'Show pattern controls',exact:true}).click();
+    await expect(context).toBeHidden();await visibleControls(doc.metadata.patterns[0].kind==='Radial');
   };
   const set = async (name,value) => { const input=field(name); await input.fill(value); await input.press('Enter'); await expect(input).toHaveValue(value); };
   const layout = async name => {
@@ -287,7 +299,7 @@ try {
   await page.mouse.up({button:'middle'}); await page.waitForTimeout(200);
   assert.notEqual(await canvas.getAttribute('data-offset-x'), panBefore); await layout('rectangular-pan-zoom');
   await page.setViewportSize({width:1100,height:705}); await page.waitForTimeout(300); await layout('rectangular-1100');
-  await widget.getByRole('button',{name:'Confirm',exact:true}).click(); await expect(canvas).toHaveAttribute('data-entity-count','12');
+  await confirm(); await expect(canvas).toHaveAttribute('data-entity-count','12');
   saved=await download('rectangular-saved'); const pattern=saved.doc.metadata.patterns[0];
   assert.equal(pattern.columns,4); assert.equal(pattern.rows,3); assert.equal(pattern.xPitch,1.25); assert.equal(pattern.yPitch,2.5);
   await tool('Undo'); await expect(canvas).toHaveAttribute('data-entity-count','1'); await tool('Redo'); await expect(canvas).toHaveAttribute('data-entity-count','12');
@@ -301,10 +313,10 @@ try {
   await visibleControls(false);
   await widget.getByRole('button',{name:'Edit pattern',exact:true}).click(); await set('U count','5');
   await cancel(); assert.equal((await download('cancelled')).doc.entities.length,12);
-  await canvas.press('Escape'); await click(10.6,10.8); await widget.getByRole('button',{name:'Edit pattern',exact:true}).click();
+  await canvas.press('Escape'); await showControls(saved.doc); await widget.getByRole('button',{name:'Edit pattern',exact:true}).click();
   await widget.getByRole('checkbox',{name:'Viewport stagger rows',exact:true}).check();
   await set('U pitch','3.25'); await set('V pitch','4.5'); await tool('Fit pattern preview'); await layout('staggered');
-  await widget.getByRole('button',{name:'Confirm',exact:true}).click();
+  await confirm();
   const staggered=await download('staggered-saved'); assert.equal(staggered.doc.metadata.patterns[0].kind,'Staggered');
   assert.equal(staggered.doc.metadata.patterns[0].xPitch,3.25); assert.equal(staggered.doc.metadata.patterns[0].yPitch,4.5);
   await page.setViewportSize({width:1440,height:1000}); await load(fixture,1);
@@ -351,7 +363,7 @@ try {
   await setCenter('X', '1.25'); await setCenter('Y', '-2.5');
   await tool('Fit pattern preview'); await layout('radial');
   await page.setViewportSize({width:1100,height:705}); await page.waitForTimeout(300); await layout('radial-1100');
-  await widget.getByRole('button',{name:'Confirm',exact:true}).click();
+  await confirm();
   await expect(canvas).toHaveAttribute('data-entity-count','8'); const radial=await download('radial-saved');
   assert.equal(radial.doc.metadata.patterns[0].count,8); assert.equal(radial.doc.metadata.patterns[0].stepAngleDegrees,30.25);
   assert.equal(radial.doc.metadata.patterns[0].fullCircle,false);
@@ -367,21 +379,20 @@ try {
   await widget.getByRole('button',{name:'Edit pattern',exact:true}).click();
   await fullCircle.check(); await expect(field('step angle')).toHaveCount(0);
   await expect(fullCircle).toBeChecked();
-  await widget.getByRole('button',{name:'Confirm',exact:true}).click();
+  await confirm();
   full = await download('radial-reopened-edit'); assert.equal(full.doc.metadata.patterns[0].fullCircle,true);
   for (const viewport of [{width:1440,height:1000}, {width:1100,height:705}]) {
     await page.setViewportSize(viewport); await load(full.text,8);
-    await rightClickMember(full.doc);
-    const show = context.getByRole('button', {name:'Show pattern controls',exact:true});
-    if (await show.count()) await show.click(); else await context.press('Escape');
+    await showControls(full.doc);
     await visibleControls(true); await layout(`center-saved-${viewport.width}`);
     const source = full.doc.entities.find(e => e.id === full.doc.metadata.patterns[0].sourceEntityIds[0]);
     await centerDrag(full.doc, {x: 1.75, y: -1.25}, `center-cancel-${viewport.width}`);
     await cancel();
     await expect(canvas).toHaveAttribute('data-pattern-editing', 'false');
     assert.deepEqual(geometry((await download(`center-cancelled-${viewport.width}`)).doc), geometry(full.doc));
+    await showControls(full.doc);
     const target = await centerDrag(full.doc, {x: 2.5, y: 1.25}, `center-commit-${viewport.width}`);
-    await widget.getByRole('button', {name:'Confirm',exact:true}).click();
+    await confirm();
     await expect(canvas).toHaveAttribute('data-pattern-editing', 'false');
     const committed = await download(`center-committed-${viewport.width}`);
     radialGeometry(committed.doc, target, source);
@@ -389,12 +400,10 @@ try {
     assert.deepEqual(geometry((await download(`center-undo-${viewport.width}`)).doc), geometry(full.doc), 'one undo restores pre-center-drag native state');
     await tool('Redo');
     assert.deepEqual(geometry((await download(`center-redo-${viewport.width}`)).doc), geometry(committed.doc));
-    await load(committed.text,8); await rightClickMember(committed.doc);
-    const reopen = context.getByRole('button', {name:'Show pattern controls',exact:true});
-    if (await reopen.count()) await reopen.click(); else await context.press('Escape');
+    await load(committed.text,8); await showControls(committed.doc);
     await visibleControls(true);
     const next = await centerDrag(committed.doc, {x: -.75, y: .5}, `center-reopened-${viewport.width}`);
-    await widget.getByRole('button', {name:'Confirm',exact:true}).click();
+    await confirm();
     await expect(canvas).toHaveAttribute('data-pattern-editing', 'false');
     radialGeometry((await download(`center-reopened-edited-${viewport.width}`)).doc, next, source);
   }
@@ -467,9 +476,7 @@ try {
     await page.setViewportSize(viewport);
     for (const [kind, baseline] of [['linear', saved], ['radial', full]]) {
       const radial = kind === 'radial', name = `draft-context-${kind}-${viewport.width}`;
-      await load(baseline.text, baseline.doc.entities.length); await rightClickMember(baseline.doc);
-      const show = context.getByRole('button',{name:'Show pattern controls',exact:true});
-      if (await show.count()) await show.click(); else await context.getByRole('button',{name:'Close',exact:true}).click();
+      await load(baseline.text, baseline.doc.entities.length); await showControls(baseline.doc);
       await visibleControls(radial); await widget.getByRole('button',{name:'Edit pattern',exact:true}).click();
       const originalValue = radial ? baseline.doc.metadata.patterns[0].center.x : baseline.doc.metadata.patterns[0].xPitch;
       const value = originalValue + .625, parameter = radial ? 'center X' : 'U pitch';
@@ -490,7 +497,7 @@ try {
       await visibleControls(radial); await expect(radial ? centerField('X') : field(parameter)).toHaveValue(String(value));
       assert.deepEqual(await draftState(), draft, 'show preserves staged edit');
       await layout(`${name}-restored`);
-      await widget.getByRole('button',{name:'Confirm',exact:true}).click();
+      await confirm();
       const committed = await download(`${name}-committed`);
       if (radial) radialGeometry(committed.doc, {...baseline.doc.metadata.patterns[0].center, x:value}, circles[0]);
       else {
@@ -504,13 +511,14 @@ try {
       await tool('Undo'); assert.deepEqual(geometry((await download(`${name}-undo`)).doc), geometry(baseline.doc), 'one undo crosses all draft menu actions');
       await tool('Redo'); assert.deepEqual(geometry((await download(`${name}-redo`)).doc), geometry(committed.doc));
 
+      await showControls(committed.doc);
       await widget.getByRole('button',{name:'Edit pattern',exact:true}).click(); await setDraftParameter(radial, value + .375);
       const cancelDraft = await draftState(), cancelCircles = previewCircles(committed.doc, radial, value + .375);
       await draftRightClick('member', cancelCircles); await context.getByRole('button',{name:'Hide pattern controls',exact:true}).click();
       await hiddenControls(); assert.deepEqual(await draftState(), cancelDraft);
       assert.deepEqual(geometry((await download(`${name}-cancel-uncommitted`)).doc), geometry(committed.doc));
       await editor.getByRole('button',{name:'Cancel',exact:true}).click();
-      await expect(canvas).toHaveAttribute('data-pattern-editing','false');
+      await exitedEditor();
       assert.deepEqual(geometry((await download(`${name}-cancelled`)).doc), geometry(committed.doc));
       await tool('Undo'); assert.deepEqual(geometry((await download(`${name}-cancel-history`)).doc), geometry(baseline.doc), 'hide/cancel adds no history entry');
       await tool('Redo'); assert.deepEqual(geometry((await download(`${name}-cancel-redo`)).doc), geometry(committed.doc));

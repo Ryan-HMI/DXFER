@@ -49,13 +49,37 @@ try{
   const menu=async name=>{await tool('Open application menu');await page.getByRole('button',{name:'File',exact:true}).hover();await tool(name);};
   const download=async name=>{const pending=page.waitForEvent('download');await menu('Download DXF');const text=await readFile(await(await pending).path(),'utf8');await writeFile(`${output}/${name}.dxf`,text);return native(text);};
   const screen=p=>canvas.evaluate((c,p)=>({x:c.getBoundingClientRect().left+p.x*+c.dataset.scale+ +c.dataset.offsetX,y:c.getBoundingClientRect().top-p.y*+c.dataset.scale+ +c.dataset.offsetY}),p);
+  const hiddenControls=async()=>{
+    await expect(widget).toHaveCount(0);await expect(editor).toBeHidden();
+    await expect(page.locator('[data-pattern-center-handle]')).toHaveCount(0);
+    await expect(canvas).toHaveAttribute('data-pattern-editing','false');
+  };
+  const showControls=async doc=>{
+    await hiddenControls();
+    const pattern=doc.metadata.patterns[0],ids=[...pattern.sourceEntityIds,...pattern.members.map(m=>m.entityId)];
+    const at=await canvas.evaluate((c,entities)=>{
+      const r=c.getBoundingClientRect(),s=+c.dataset.scale;
+      for(const e of entities)for(let i=0;i<16;i++){
+        const a=.23+i*Math.PI/8,x=r.left+(e.center.x+e.radius*Math.cos(a))*s+ +c.dataset.offsetX,
+          y=r.top-(e.center.y+e.radius*Math.sin(a))*s+ +c.dataset.offsetY;
+        if(x>r.left+8&&x<r.right-8&&y>r.top+8&&y<r.bottom-8&&document.elementFromPoint(x,y)===c)return {x,y,id:e.id};
+      }throw new Error('No unobscured pattern circumference for Show pattern controls');
+    },ids.map(id=>doc.entities.find(e=>e.id===id)));
+    await page.mouse.move(at.x+10,at.y+10);await page.mouse.move(at.x,at.y);
+    await expect.poll(async()=>(await canvas.getAttribute('data-hovered-id')??'').startsWith(at.id)).toBe(true);
+    await page.mouse.click(at.x,at.y,{button:'right'});
+    const context=page.getByRole('dialog',{name:'Drawing context commands'});
+    await expect(context).toBeVisible();
+    await context.getByRole('button',{name:'Show pattern controls',exact:true}).click();
+    await expect(context).toBeHidden();await expect(handle).toBeVisible();
+  };
   if(process.env.DXFER_PATTERN_LATENCY_FIXTURE){
     const text=await readFile(process.env.DXFER_PATTERN_LATENCY_FIXTURE,'utf8'),doc=native(text);
     await page.locator('input[type=file]').setInputFiles({name:'latency-pattern.dxf',mimeType:'application/dxf',buffer:Buffer.from(text)});
     await expect(canvas).toHaveAttribute('data-entity-count',String(doc.entities.length));await tool('Fit extents');
     await page.getByRole('region',{name:'Patterns',exact:true}).getByRole('button',{name:'Radial (6)',exact:true}).click();
     await expect(editor).toBeVisible();await widget.getByRole('button',{name:'Cancel pattern changes',exact:true}).click();
-    await expect(canvas).toHaveAttribute('data-pattern-editing','false');await expect(handle).toBeVisible();
+    await hiddenControls();await showControls(doc);
   }else{
   await page.locator('input[type=file]').setInputFiles({name:'latency-circle.dxf',mimeType:'application/dxf',buffer:Buffer.from(fixture)});
   await expect(canvas).toHaveAttribute('data-entity-count','1');await tool('Fit extents');await canvas.press('Escape');
@@ -66,6 +90,7 @@ try{
   for(const [axis,value]of[['X','2'],['Y','3']]){const input=editor.getByRole('spinbutton',{name:`Pattern center ${axis}`,exact:true});await input.fill(value);await input.press('Tab');await expect(widget).toHaveAttribute(`data-center-${axis.toLowerCase()}`,value);}
   await expect(widget.getByRole('spinbutton',{name:'Viewport pattern instances',exact:true})).toHaveValue('6');
   await widget.getByRole('button',{name:'Confirm',exact:true}).click();await expect(canvas).toHaveAttribute('data-pattern-editing','false');
+  await hiddenControls();await showControls(await download('created-pattern'));
   await handle.click();await expect(canvas).toHaveAttribute('data-selected-count','1');
   }
   const baseline=await download('baseline');
@@ -73,6 +98,7 @@ try{
   if(fixedCenter)assert.ok(baseline.constraints.some(c=>c.kind==='Fix'&&c.referenceKeys.some(key=>key===pattern.centerPointId||key.startsWith(`${pattern.centerPointId}:`))),'negative fixture fixes the actual center point');
   const opposite=baseline.entities.find(e=>e.id===pattern.members.find(m=>m.column===3).entityId);assert.equal(opposite.kind,'circle');
   for(let run=1;run<=2;run++){
+    if(run>1)await showControls(baseline);
     await expect(canvas).toHaveAttribute('data-pattern-editing','false');
     await expect.poll(async()=>{const box=await handle.boundingBox(),p=await screen(pattern.center);return Math.hypot(box.x+box.width/2-p.x,box.y+box.height/2-p.y);},{message:'committed center handle has settled before the next gesture'}).toBeLessThan(1);
     const beforeCamera=await canvas.evaluate(c=>({scale:+c.dataset.scale,x:+c.dataset.offsetX,y:+c.dataset.offsetY}));
@@ -163,7 +189,7 @@ try{
     }
     assert.deepEqual(content(await download(`run-${run}-uncommitted`)),content(baseline));
     await widget.getByRole('button',{name:'Cancel pattern changes',exact:true}).click();
-    await expect(canvas).toHaveAttribute('data-pattern-editing','false');
+    await hiddenControls();
     assert.deepEqual(content(await download(`run-${run}-cancelled`)),content(baseline));
   }
   assert.deepEqual(evidence.errors,[]);evidence.completed=true;
