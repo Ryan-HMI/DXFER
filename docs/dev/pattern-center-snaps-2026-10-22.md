@@ -42,6 +42,15 @@ the far top-left placement could put its move header behind the View palette.
 The follow-up gives only the floating card precedence over palettes and adds
 an actual elementFromPoint header-reachability assertion to browser coverage.
 
+Final Dev 8ae31bb deployed 2026-10-22T13:42:13Z. The public browser verified
+the exact tooltip and passed origin snap ON, both desktop card cases including
+header hit-testing over palettes, and construction dash rendering (4/4).
+Evidence: /tmp/dxfer-pattern-card-8ae31bb-public/results.json. Loopback tests
+also passed both card viewports before that follow-up deployment. The previous
+18-case c6aa442 pass covers the unchanged solver/snap implementation.
+Production/Test service PIDs remain 3584417/3584475. No independent Flux or
+Ryan acceptance of this new handoff is claimed.
+
 The shared handle-to-snap pipeline is corrected, not patched per drawing.
 No manufacturing records or saved drawings were modified. Previously committed
 snap-only placements have no relation to recover automatically; re-snap them
