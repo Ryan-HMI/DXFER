@@ -14,10 +14,18 @@ Use the existing canvas input/preview styling and placement rules: compact fixed
 - JavaScript suite: 1896 passed, including native rank checks with reversed constraint/reference order and fixed-geometry refusal. Existing-line midpoint/end selections normalize to the owning line; unrelated points remain invalid sources.
 - Isolated browser candidate passed four workflow groups: selection-first decimal key-in/Enter, tool-first pointer/click, width/source edits with native reopen and Undo/Redo, and Escape/invalid-width/locked-source refusal. Ten consecutive moving-pointer samples show both preview boundaries changing before motion stops. Screenshots inspected; zero browser errors. Evidence: `/tmp/dxfer-line-slot-qa-r2`.
 - Browser source-end drag retained exact width and tangent/center relationships; its solved endpoint was 0.47 screen pixels from the observed pointer target. This verifies linked source editing, not exact pointer tracking for every solver drag.
-- Deployment pending.
+- Public Dev replay passed the same four workflow groups, ten moving-preview pixel checks and 25 native exports on tooltip-verified `bb254c8`; zero browser errors. Screenshot inspected. Evidence: `/tmp/dxfer-line-slot-installed`. Independent Flux/Ryan acceptance remains separate.
 
 ## Shared Solver Correction
 
 The first real-engine width-edit tests exposed a singular line/arc tangent distance equation when the line and arc already have an explicit shared endpoint. Creation looked correct, but a subsequent driving width edit failed the native rank check. For declared Coincident line/arc endpoint joins, the mapper now uses the native perpendicular radius/line equation. It retains angular and distance validation, rather than dropping tangent intent or bypassing rank checks. Unjoined tangencies retain the existing mapping. Equal end-arc radii plus anchored centers and four joined tangencies imply parallel slot sides, so creation does not add a redundant Parallel relation.
 
 No historical drawing conversion or data repair is included. Existing native endpoint-joined tangencies use the corrected mapping on future solves.
+
+## Deployment
+
+- DXFer Dev only: `bb254c8e139623bf603e1cb24218c9af4cf112a5`, installed 2026-10-22T01:49:57Z at `https://dxferdev.sync.harrisonmetals.com`.
+- Google sign-in remains configured; runtime settings and disabled Sync callbacks unchanged.
+- Production/Test remained active with unchanged PIDs 3584417/3584475. HMI-Sync untouched.
+- Rollback publish: `/home/ryan/dxfer-runtime/dev-publish-before-bb254c8`.
+- Isolated QA service stopped after verification. Source artifacts and existing drawings were not rewritten.
