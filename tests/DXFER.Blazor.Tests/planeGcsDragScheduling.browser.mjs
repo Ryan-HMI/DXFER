@@ -77,7 +77,7 @@ try {
     await start(); await count('previews', 1); await center(0, 0);
     await move(2, 2); const latest = await move(3, 4);
     await count('previews', 1);
-    await resolvePreview(0, 1, 1); await count('previews', 2); await center(0, 0);
+    await resolvePreview(0, 1, 1); await count('previews', 2); await center(1, 1);
     const queued = await page.evaluate(() => window.qa.previews[1].args);
     assert.deepEqual(queued[2], latest, 'Queued request retains the exact actual pointer coordinates');
     await resolvePreview(1, 3, 4); await center(3, 4);

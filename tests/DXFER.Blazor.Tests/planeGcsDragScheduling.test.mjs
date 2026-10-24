@@ -63,12 +63,51 @@ test('opt-in routes ordinary drags to PlaneGCS and coalesces to the latest point
   assert.ok(h.calls.every(c => c.method !== 'GetOffsetDragPreview'));
 });
 
+test('continuous movement paints completed solves while coalescing pending pointer positions', async t => {
+  const h = harness(t); h.begin(); await flush();
+  for (let i = 0; i < 12; i++) {
+    const solved = h.requests[i].args[2];
+    h.pointer('pointermove', p(2 + i, 3 + i));
+    h.pointer('pointermove', p(2.5 + i, 3.5 + i));
+    assert.equal(h.requests.length, i + 1, 'Only one solve can be in flight');
+    h.requests[i].resolve(result(solved.x, solved.y)); await flush();
+    h.center(solved.x, solved.y);
+    assert.equal(h.requests.length, i + 2, 'Next solve uses the latest queued pointer');
+    assert.deepEqual(h.requests[i + 1].args[2], p(2.5 + i, 3.5 + i));
+  }
+  h.pointer('pointerup', p(20, 21));
+  assert.equal(h.commits.length, 1);
+  assert.deepEqual(h.commits[0].args.slice(3, 5), [20, 21]);
+  h.requests[12].resolve(result(99, 99)); h.commits[0].resolve(false); await flush();
+  h.center(0, 0);
+});
+
 test('same position with a superseded modifier cannot paint', async t => {
   const h = harness(t); h.begin(); await flush();
   h.pointer('pointermove', p(1, 1), true);
   h.requests[0].resolve(result(1, 1)); await flush(); h.center(0, 0);
   assert.equal(h.requests[1].args[3], true);
   h.requests[1].resolve(result(1, 0)); await flush(); h.center(1, 0);
+});
+
+test('leaving a snap invalidates its in-flight preview even during continuous motion', async t => {
+  const original = documentOf(); original.entities.push({id: 'peer', kind: 'point', points: [p(5, 5)]});
+  const h = harness(t, {solverEngine: 'PlaneGCS'}, original);
+  h.begin(p(5, 5)); await flush();
+  h.pointer('pointermove', p(9, 7));
+  h.requests[0].resolve(result(5, 5)); await flush(); h.center(0, 0);
+  assert.equal(h.requests[1].args[4], null);
+  h.requests[1].resolve(result(9, 7)); await flush(); h.center(9, 7);
+});
+
+test('superseded failed solve does not flash back to the baseline', async t => {
+  const h = harness(t); h.begin(); await flush();
+  h.requests[0].resolve(result(1, 1)); await flush(); h.center(1, 1);
+  h.pointer('pointermove', p(2, 2)); await flush();
+  h.pointer('pointermove', p(3, 3));
+  h.requests[1].resolve({engine: 'PlaneGCS', document: null, reason: 'Refused'}); await flush();
+  h.center(1, 1);
+  h.requests[2].resolve(result(3, 3)); await flush(); h.center(3, 3);
 });
 
 for (const response of [null, {engine: 'Legacy', document: documentOf(9, 9)},

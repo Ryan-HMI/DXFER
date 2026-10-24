@@ -5691,11 +5691,15 @@ export function updateGeometryDrag(state, screenPoint, event = {}, requestPrevie
   return true;
 }
 
-function isCurrentPlaneGcsPreview(state, request) {
+function isActivePlaneGcsPreview(state, request) {
   return !state.disposed && state.solverEngine === "PlaneGCS"
     && state.documentEpoch === request.epoch
     && state.planeGcsDragSession === request.session
-    && state.geometryDrag === request.drag
+    && state.geometryDrag === request.drag;
+}
+
+function isCurrentPlaneGcsPreview(state, request) {
+  return isActivePlaneGcsPreview(state, request)
     && state.planeGcsPreviewLatest === request
     && request.drag.planeGcsSequence === request.sequence;
 }
@@ -5720,9 +5724,14 @@ function dispatchPlaneGcsDragPreview(state) {
   if (state.planeGcsPreviewPending || !request || !isCurrentPlaneGcsPreview(state, request)) return;
   state.planeGcsPreviewPending = request;
   const apply = result => {
-    if (!isCurrentPlaneGcsPreview(state, request)) return;
+    if (!isActivePlaneGcsPreview(state, request)) return;
+    const current = isCurrentPlaneGcsPreview(state, request);
     const validEngine = result?.engine === "PlaneGCS";
     const document = validEngine && Array.isArray(result.document?.entities) ? result.document : null;
+    // One solve is in flight: show its valid result while the next pointer waits,
+    // instead of starving every frame during sustained motion. Changed intent still invalidates it.
+    if (!current && (!document || request.constrain !== request.drag.constrainToCurrentVector
+      || JSON.stringify(request.temporarySnapIntent) !== JSON.stringify(request.drag.temporarySnapIntent))) return;
     state.document = document || request.drag.originalDocument;
     state.canvas.dataset.planeGcsPreviewEngine = typeof result?.engine === "string" ? result.engine : "";
     state.canvas.dataset.planeGcsPreviewReason = validEngine
@@ -5730,7 +5739,7 @@ function dispatchPlaneGcsDragPreview(state) {
     const target = resolveSelectionTarget(state, request.targetKey);
     const movedPoint = target?.kind === "point" ? target.point
       : getEntityKind(target?.entity) === "point" ? getPointEntityLocation(target.entity) : null;
-    let currentSnapTarget = request.snapTarget ? resolveSelectionTarget(state, request.snapTarget.key) : null;
+    let currentSnapTarget = current && request.snapTarget ? resolveSelectionTarget(state, request.snapTarget.key) : null;
     if (getEntityKind(currentSnapTarget?.entity) === "point") {
       currentSnapTarget = withSnapPoint(currentSnapTarget, getPointEntityLocation(currentSnapTarget.entity));
     }
