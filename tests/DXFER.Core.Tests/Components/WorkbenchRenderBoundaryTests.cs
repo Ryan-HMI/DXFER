@@ -178,7 +178,7 @@ public sealed class WorkbenchRenderBoundaryTests
     }
 
     [Fact]
-    public void WorkbenchSyncSaveButtonStaysClickableWhenCallbackIsReady()
+    public void WorkbenchSyncSaveButtonRequiresLoadedGeometryAndNoLoadFailure()
     {
         var workbench = FindRepositoryFile("src", "DXFER.Blazor", "Components", "DrawingWorkbench.razor.cs");
         var source = File.ReadAllText(workbench);
@@ -197,8 +197,10 @@ public sealed class WorkbenchRenderBoundaryTests
 
         propertyBody.Should().Contain("_syncLaunchOptions.IsCallbackConfigured");
         propertyBody.Should().Contain("!_isSyncSaveInFlight");
-        propertyBody.Should().NotContain("HasDocument",
-            "the button should remain clickable for ready Sync launches so a failed/missing document can report a status instead of looking inert");
+        propertyBody.Should().Contain("HasDocument");
+        propertyBody.Should().Contain("!_isSyncLoadInFlight");
+        propertyBody.Should().Contain("_syncLoadError is null");
+        saveBody.Should().Contain("_isSyncLoadInFlight || _syncLoadError is not null");
         saveBody.Should().Contain("if (!HasDocument)");
     }
 
