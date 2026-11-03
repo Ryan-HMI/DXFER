@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -16,6 +17,7 @@ using DXFER.Core.Sync;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 
 namespace DXFER.Blazor.Components;
@@ -47,6 +49,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private bool _constructionMode;
     private bool _manualOverride;
     private bool _syncLaunchLoadAttempted;
+    private bool _isSyncLoadInFlight;
+    private string? _syncLoadError;
     private bool _isSyncSaveInFlight;
     private int _selectionResetToken;
     private int _documentFitToken = 1;
@@ -83,6 +87,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     [Inject]
     private SyncCallbackClient SyncCallbackClient { get; set; } = default!;
+
+    [Inject]
+    private ILogger<DrawingWorkbench> Logger { get; set; } = default!;
 
     protected override void OnInitialized()
     {
@@ -189,15 +196,31 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private bool CanSaveBackToSync =>
         _syncLaunchOptions.IsCallbackConfigured
+        && HasDocument
+        && !_isSyncLoadInFlight
+        && _syncLoadError is null
         && !_isSyncSaveInFlight;
 
     private string SyncCallbackStateText =>
-        _syncLaunchOptions.IsCallbackConfigured ? "Sync connection ready" : "Sync connection missing";
+        _isSyncLoadInFlight ? "Loading Sync DXF..."
+        : _syncLoadError ?? (_syncLaunchOptions.IsCallbackConfigured
+            ? HasDocument ? "Sync DXF loaded" : "No Sync DXF loaded"
+            : "Sync connection missing");
 
     private string SyncCallbackStateClass =>
-        _syncLaunchOptions.IsCallbackConfigured
+        _syncLoadError is not null
+            ? "dxfer-sync-state dxfer-sync-state-missing dxfer-sync-state-error"
+            : _isSyncLoadInFlight
+            ? "dxfer-sync-state"
+            : _syncLaunchOptions.IsCallbackConfigured && HasDocument
             ? "dxfer-sync-state dxfer-sync-state-ready"
             : "dxfer-sync-state dxfer-sync-state-missing";
+
+    private bool CanRetrySyncLoad =>
+        _syncLoadError is not null
+        && _syncLaunchOptions.HasInput
+        && !_isSyncLoadInFlight
+        && !_isSyncSaveInFlight;
 
     private string SyncArtifactText =>
         string.IsNullOrWhiteSpace(_syncLaunchOptions.ArtifactId)
@@ -218,11 +241,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         _isSyncSaveInFlight ? "Saving..." : "Save to Sync";
 
     private string SyncSaveButtonTitle =>
-        CanSaveBackToSync
-            ? HasDocument
-                ? "Save the normalized DXF and geometry metadata back to Sync."
-                : "Sync connection is ready, but no DXF is loaded. Click to show the current load status."
-            : "Sync launch fields are missing.";
+        _isSyncLoadInFlight ? "Loading Sync DXF."
+        : _syncLoadError ?? (!_syncLaunchOptions.IsCallbackConfigured
+            ? "Sync launch fields are missing."
+            : !HasDocument ? "No DXF geometry is loaded."
+            : _isSyncSaveInFlight ? "Saving to Sync."
+            : "Save the normalized DXF and geometry metadata back to Sync.");
 
     private bool CanAddSplinePoint =>
         GetSelectedWholeEntities()
@@ -394,6 +418,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         get
         {
             var classes = new List<string> { "dxfer-workbench" };
+            if (IsSyncLaunch)
+            {
+                classes.Add("dxfer-workbench-sync");
+            }
+
             return string.Join(" ", classes);
         }
     }
@@ -535,25 +564,87 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private async Task TryLoadSyncLaunchDocumentAsync()
     {
-        if (_syncLaunchLoadAttempted || !_syncLaunchOptions.HasInput)
+        if (_syncLaunchLoadAttempted || _isSyncLoadInFlight || !IsSyncLaunch)
         {
             return;
         }
 
         _syncLaunchLoadAttempted = true;
+        _isSyncLoadInFlight = true;
+        _syncLoadError = null;
+        var timer = Stopwatch.StartNew();
+        var stage = string.IsNullOrWhiteSpace(_syncLaunchOptions.InputPath) ? "download" : "file";
         try
         {
+            await InvokeAsync(StateHasChanged);
+            if (!_syncLaunchOptions.HasInput)
+            {
+                SetSyncLoadFailure("missing-source", "Sync launch is missing a DXF source.", stage, timer.ElapsedMilliseconds);
+                return;
+            }
+
+            Logger.LogInformation("Sync DXF load started. Source={Source}", stage);
             var (fileName, text) = await ReadSyncLaunchDxfAsync();
-            LoadDxfText(fileName, text, trustedSource: true, autoNormalize: _syncLaunchOptions.AutoNormalize);
+            stage = "import";
+            if (!LoadDxfText(fileName, text, trustedSource: true, autoNormalize: _syncLaunchOptions.AutoNormalize))
+            {
+                SetSyncLoadFailure("no-geometry", "Sync import failed: no supported DXF geometry.", stage, timer.ElapsedMilliseconds);
+                return;
+            }
+
+            Logger.LogInformation("Sync DXF loaded: {EntityCount} entities. ElapsedMs={ElapsedMs}",
+                _document.Entities.Count, timer.ElapsedMilliseconds);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or HttpRequestException or InvalidOperationException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or HttpRequestException
+            or InvalidOperationException or OperationCanceledException or ArgumentException)
         {
-            _status = $"Sync launch load failed: {ex.Message}";
+            var (category, message) = DescribeSyncLoadFailure(ex, stage);
+            SetSyncLoadFailure(category, message, stage, timer.ElapsedMilliseconds,
+                ex is HttpRequestException { StatusCode: { } statusCode } ? (int)statusCode : null);
         }
         finally
         {
+            _isSyncLoadInFlight = false;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private async Task RetrySyncLaunchDocumentAsync()
+    {
+        if (!CanRetrySyncLoad)
+        {
+            return;
+        }
+
+        _syncLaunchLoadAttempted = false;
+        await TryLoadSyncLaunchDocumentAsync();
+    }
+
+    private static (string Category, string Message) DescribeSyncLoadFailure(Exception exception, string stage) =>
+        exception switch
+        {
+            OperationCanceledException => ("timeout", "Sync load timed out."),
+            HttpRequestException { InnerException: FileNotFoundException or FileLoadException } =>
+                ("service-load", "Sync download failed: service dependency unavailable."),
+            FileNotFoundException or FileLoadException when stage == "download" =>
+                ("service-load", "Sync download failed: service dependency unavailable."),
+            HttpRequestException { StatusCode: { } status } => ("http", $"Sync download failed (HTTP {(int)status})."),
+            HttpRequestException { HttpRequestError: HttpRequestError.SecureConnectionError } => ("tls", "Sync download failed: TLS connection."),
+            HttpRequestException { HttpRequestError: HttpRequestError.NameResolutionError } => ("dns", "Sync download failed: DNS resolution."),
+            HttpRequestException { HttpRequestError: HttpRequestError.ConnectionError } => ("connection", "Sync download failed: connection unavailable."),
+            HttpRequestException => ("network", "Sync download failed: network error."),
+            UnauthorizedAccessException => ("file-access", "Sync source file access denied."),
+            IOException => ("io", "Sync source could not be read."),
+            _ when stage == "import" => ("import", "Sync DXF import failed."),
+            _ => ("source", "Sync source could not be opened.")
+        };
+
+    private void SetSyncLoadFailure(string category, string message, string stage, long elapsedMilliseconds, int? statusCode = null)
+    {
+        _syncLoadError = message;
+        // Exception text and launch values may contain signed URLs. Log only allowlisted diagnostics.
+        Logger.LogWarning("Sync DXF load failed. Category={Category} Stage={Stage} HttpStatus={HttpStatus} ElapsedMs={ElapsedMs}",
+            category, stage, statusCode, elapsedMilliseconds);
     }
 
     private async Task<(string FileName, string Text)> ReadSyncLaunchDxfAsync()
@@ -578,7 +669,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         throw new InvalidOperationException("Sync launch did not include inputPath or downloadUrl.");
     }
 
-    private void LoadDxfText(
+    private bool LoadDxfText(
         string fileName,
         string text,
         bool trustedSource,
@@ -593,7 +684,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         {
             _status = "No supported DXF entities were found. V1 reads LINE, CIRCLE, ARC, POINT, LWPOLYLINE, POLYLINE, and SPLINE."
                 + FormatWarningSummary(document.Metadata.Warnings);
-            return;
+            return false;
         }
 
         if (autoNormalize)
@@ -616,9 +707,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         _document = document;
+        _syncLoadError = null;
         _documentFitToken++;
         ClearHistory();
         ResetSelection();
+        return true;
     }
 
     private static DrawingDocument WithOpenFileMetadata(
@@ -2187,6 +2280,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private async Task SaveToSyncCallbackAsync()
     {
         if (_isSyncSaveInFlight)
+        {
+            return;
+        }
+
+        if (_isSyncLoadInFlight || _syncLoadError is not null)
         {
             return;
         }

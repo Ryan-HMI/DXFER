@@ -40,14 +40,23 @@
     @if (IsSyncLaunch)
     {
         <section class="dxfer-sync-control-bar" aria-label="Sync connection status">
-            <span class="@SyncCallbackStateClass">@SyncCallbackStateText</span>
-            <button type="button"
-                    class="dxfer-sync-send-button"
-                    title="@SyncSaveButtonTitle"
-                    disabled="@(!CanSaveBackToSync)"
-                    @onclick="() => InvokeWorkbenchCommand(WorkbenchCommandId.SendToSync)">
-                @SyncSaveButtonText
-            </button>
+            <span class="@SyncCallbackStateClass" role="status" aria-live="polite" aria-atomic="true">@SyncCallbackStateText</span>
+            <div class="dxfer-sync-actions">
+                @if (_syncLaunchOptions.HasInput && (_syncLoadError is not null || _isSyncLoadInFlight))
+                {
+                    <CadIconButton Icon="CadIconName.Redo"
+                                   Label="Retry Sync download"
+                                   Disabled="@(!CanRetrySyncLoad)"
+                                   OnClick="RetrySyncLaunchDocumentAsync" />
+                }
+                <button type="button"
+                        class="dxfer-sync-send-button"
+                        title="@SyncSaveButtonTitle"
+                        disabled="@(!CanSaveBackToSync)"
+                        @onclick="() => InvokeWorkbenchCommand(WorkbenchCommandId.SendToSync)">
+                    @SyncSaveButtonText
+                </button>
+            </div>
         </section>
     }
 
