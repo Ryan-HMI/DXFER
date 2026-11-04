@@ -22,8 +22,9 @@ public sealed class SketchSolveRequest
         Document = document;
         Constraints = Array.AsReadOnly(constraintArray);
         Dimensions = Array.AsReadOnly(dimensionArray);
+        RawFixedReferenceKeys = Array.AsReadOnly(ResolveFixedReferenceKeys(fixedReferenceKeys, constraintArray).ToArray());
         FixedReferenceKeys = Array.AsReadOnly(
-            ResolveFixedReferenceKeys(fixedReferenceKeys, constraintArray)
+            RawFixedReferenceKeys.Select(key => SketchReference.TryNormalize(key, out var normalized) ? normalized : key)
                 .Concat(document.Constraints.Concat(constraintArray).SelectMany(c => c.ReferenceKeys)
                     .Concat(document.Dimensions.Concat(dimensionArray).SelectMany(d => d.ReferenceKeys))
                     .Where(key => SketchReference.TryParse(key, out var reference) && reference.IsOrigin)
@@ -41,6 +42,8 @@ public sealed class SketchSolveRequest
     public ReadOnlyCollection<SketchDimension> Dimensions { get; }
 
     public ReadOnlyCollection<string> FixedReferenceKeys { get; }
+
+    internal ReadOnlyCollection<string> RawFixedReferenceKeys { get; }
 
     public ReadOnlyCollection<SketchSolveInitialGuess> InitialGuesses { get; }
 
@@ -68,12 +71,10 @@ public sealed class SketchSolveRequest
                 continue;
             }
 
-            var normalized = SketchReference.TryNormalize(key, out var parsed)
-                ? parsed
-                : key.Trim();
-            if (seen.Add(normalized))
+            var raw = key.Trim();
+            if (seen.Add(raw))
             {
-                yield return normalized;
+                yield return raw;
             }
         }
     }

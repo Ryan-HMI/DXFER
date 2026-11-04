@@ -29,7 +29,7 @@ internal static class PlaneGcsValidation
                 return Refuse($"Invalid dimension '{dimension.Id}'.", out reason);
         }
         foreach (var guess in guesses)
-            if (!Finite(guess.Point) || !TryReference(document, guess.ReferenceKey))
+            if (!Finite(guess.Point) || !TryReference(document, guess.RawReferenceKey))
                 return Refuse("Invalid PlaneGCS initial guess.", out reason);
         if (drag is not null)
         {

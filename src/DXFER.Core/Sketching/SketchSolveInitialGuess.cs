@@ -8,13 +8,16 @@ public sealed record SketchSolveInitialGuess
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(referenceKey);
 
+        RawReferenceKey = referenceKey.Trim();
         ReferenceKey = SketchReference.TryNormalize(referenceKey, out var normalized)
             ? normalized
-            : referenceKey.Trim();
+            : RawReferenceKey;
         Point = point;
     }
 
     public string ReferenceKey { get; }
+
+    internal string RawReferenceKey { get; }
 
     public Point2 Point { get; }
 }

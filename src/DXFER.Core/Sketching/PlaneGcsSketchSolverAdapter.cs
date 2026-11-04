@@ -29,7 +29,9 @@ public sealed class PlaneGcsSketchSolverAdapter : ISketchSolver
                 Merge(request.Document.Dimensions, request.Dimensions, d => d.Id),
                 Merge(request.Document.Constraints, request.Constraints, c => c.Id), request.Document.Metadata);
             var fixedKeys = GetFixedKeys(request.FixedReferenceKeys, effective);
-            if (!PlaneGcsValidation.ValidateInput(effective, fixedKeys, request.InitialGuesses, drag, out var reason))
+            // Retain acquisition identities until validation, even when they normalize to an existing lock.
+            var validationKeys = request.RawFixedReferenceKeys.Concat(fixedKeys).Distinct(StringComparer.Ordinal).ToArray();
+            if (!PlaneGcsValidation.ValidateInput(effective, validationKeys, request.InitialGuesses, drag, out var reason))
                 return Failure(request, drag, reason);
             var document = PlaneGcsDocumentMapper.Document(effective);
             foreach (var entity in document.Entities) PlaneGcsDocumentMapper.CheckFinite(entity);

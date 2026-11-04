@@ -80,6 +80,7 @@ public sealed class PlaneGcsPolygonCreationRuntimeTests
 
         var radius = new SketchDimension("source-radius", SketchDimensionKind.Radius, ["source"], 15, isDriving: true);
         var resized = solver.Solve(new(RoundTrip(translated), [], [radius], fixedReferenceKeys: ["source:center"]));
+        ExportRadiusFailure(observed, circumscribed, vertex, keyed);
         AssertSolved(resized, observed, vertex);
         var resizedSource = resized.Document.Entities.OfType<PolygonEntity>().Single();
         AssertPoint(resizedSource.Center, target);
@@ -100,12 +101,10 @@ public sealed class PlaneGcsPolygonCreationRuntimeTests
             "source|segment|0", "source|segment|4", "source|segment|5",
             "source|segment|0:center", "source|segment|0:mid",
             "source|segment|5:start", "source|segment|5:end", "source|segment|99:end",
-            "source|segment|-1:start", "source|point|vertex-99|23|-1"
+            "source|segment|-1:start", "source|point|vertex-5|23|-1", "source|point|vertex-99|23|-1"
         })
         foreach (var fixedReference in new[] { false, true })
             yield return [key, fixedReference];
-        // Constraint keys retain the canvas index; fixed keys are canonicalized before validation.
-        yield return ["source|point|vertex-5|23|-1", false];
     }
 
     [Theory]
@@ -126,6 +125,57 @@ public sealed class PlaneGcsPolygonCreationRuntimeTests
         result.Diagnostics.Should().Contain(message => message.Contains(fixedReference
             ? "Unsupported or missing fixed reference" : "Unsupported or missing reference in constraint"));
         result.Document.Entities.Should().Equal(document.Entities);
+    }
+
+    [Theory]
+    [InlineData("fixed-first")]
+    [InlineData("fixed-last")]
+    [InlineData("document-fix")]
+    [InlineData("request-fix")]
+    [InlineData("initial-guess")]
+    public void InvalidRawIdentityCannotMergeIntoValidClosingEndpoint(string path)
+    {
+        const string invalid = "source|point|vertex-5|23|-1";
+        const string valid = "source|segment|4:end";
+        var source = Source(false);
+        var fix = new SketchConstraint("fix", SketchConstraintKind.Fix, [invalid]);
+        var document = new DrawingDocument([source], [], path == "document-fix" ? [fix] : []);
+        var request = new SketchSolveRequest(document, path == "request-fix" ? [fix] : [], [],
+            fixedReferenceKeys: path == "fixed-first" ? [invalid, valid]
+                : path == "fixed-last" ? [valid, invalid] : [valid],
+            initialGuesses: path == "initial-guess" ? [new SketchSolveInitialGuess(invalid, source.GetVertices()[0])] : []);
+        request.FixedReferenceKeys.Should().Equal(valid);
+        using var runtime = CreateRuntime();
+        var observed = new ObservedRuntime(runtime);
+
+        var result = new PlaneGcsSketchSolverAdapter(observed).Solve(request);
+
+        result.Status.Should().Be(SketchSolveStatus.Failed);
+        observed.Response.Should().BeNull();
+        result.Document.Entities.Should().Equal(document.Entities);
+    }
+
+    [Theory]
+    [InlineData("source|point|vertex-4|999|-999", "source|segment|3:end", 4)]
+    [InlineData("source|segment|4:end", "source|segment|4:end", 0)]
+    public void ValidAcquisitionIdentitiesStillUseCanonicalFixedAndInitialGuessKeys(string key, string canonical, int vertex)
+    {
+        var source = Source(false);
+        var document = new DrawingDocument([source]);
+        var request = new SketchSolveRequest(document, [], [], fixedReferenceKeys: [key, canonical],
+            initialGuesses: [new SketchSolveInitialGuess(key, source.GetVertices()[vertex])]);
+        request.FixedReferenceKeys.Should().Equal(canonical);
+        using var runtime = CreateRuntime();
+        var observed = new ObservedRuntime(runtime);
+
+        var result = new PlaneGcsSketchSolverAdapter(observed).Solve(request);
+
+        result.Status.Should().Be(SketchSolveStatus.Solved, string.Join(" ", result.Diagnostics));
+        AssertEngine(observed);
+        observed.Request!.FixedReferenceKeys.Should().Equal(canonical, SketchReference.OriginKey);
+        observed.Request.InitialGuesses.Should().ContainSingle().Which.ReferenceKey.Should().Be(canonical);
+        var solved = result.Document.Entities.Should().ContainSingle().Which.Should().BeOfType<PolygonEntity>().Which;
+        AssertPoint(solved.GetVertices()[vertex], source.GetVertices()[vertex]);
     }
 
     [Theory]
@@ -239,6 +289,20 @@ public sealed class PlaneGcsPolygonCreationRuntimeTests
         AssertPoint(line.End, created.End);
     }
 
+    private static void ExportRadiusFailure(ObservedRuntime observed, bool circumscribed, int vertex, bool keyed)
+    {
+        var output = Environment.GetEnvironmentVariable("DXFER_CREATION_REFERENCE_DIAGNOSTICS");
+        if (string.IsNullOrWhiteSpace(output) || observed.Response is null || observed.Response.Status == "solved"
+            || observed.Request is null || !observed.Request.Dimensions.Any(d => d.Id == "source-radius")) return;
+        Directory.CreateDirectory(output);
+        var name = $"{(circumscribed ? "circumscribed" : "inscribed")}-vertex-{vertex}-{(keyed ? "keyed" : "pointer")}-radius";
+        var options = new JsonSerializerOptions { WriteIndented = true };
+        File.WriteAllText(Path.Combine(output, name + "-request.json"), JsonSerializer.Serialize(observed.Request, options));
+        File.WriteAllText(Path.Combine(output, name + "-response.json"), JsonSerializer.Serialize(observed.Response, options));
+        File.WriteAllText(Path.Combine(output, name + "-frame.jsonl"),
+            JsonSerializer.Serialize(new { id = 1, request = observed.Request }) + Environment.NewLine);
+    }
+
     private static void AssertPoint(Point2 actual, Point2 expected)
     {
         actual.X.Should().BeApproximately(expected.X, 1e-6);
@@ -265,7 +329,13 @@ public sealed class PlaneGcsPolygonCreationRuntimeTests
 
     private sealed class ObservedRuntime(IPlaneGcsRuntime inner) : IPlaneGcsRuntime
     {
+        public PlaneGcsRequest? Request { get; private set; }
         public PlaneGcsResponse? Response { get; private set; }
-        public PlaneGcsResponse Solve(PlaneGcsRequest request) => Response = inner.Solve(request);
+        public PlaneGcsResponse Solve(PlaneGcsRequest request)
+        {
+            Request = request;
+            Response = null;
+            return Response = inner.Solve(request);
+        }
     }
 }
