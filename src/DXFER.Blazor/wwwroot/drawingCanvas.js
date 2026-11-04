@@ -13412,9 +13412,10 @@ export function applyDraftDimensionValue(state, dimensionKey, value) {
     nextPreviewPoint = getThreePointArcEndPointWithRadius(points[0], points[1], previewPoint, numericValue);
   } else if (tool === "threepointarc" && dimension === "sweep" && points.length >= 2) {
     nextPreviewPoint = getThreePointArcEndPointWithSweep(points[0], points[1], previewPoint, numericValue);
-  } else if (tool === "twopointrectangle" && (dimension === "width" || dimension === "height")) {
-    const width = dimension === "width" ? numericValue : Math.abs(previewPoint.x - anchor.x);
-    const height = dimension === "height" ? numericValue : Math.abs(previewPoint.y - anchor.y);
+  } else if ((tool === "twopointrectangle" || tool === "centerrectangle") && (dimension === "width" || dimension === "height")) {
+    const extent = tool === "centerrectangle" ? numericValue / 2 : numericValue;
+    const width = dimension === "width" ? extent : Math.abs(previewPoint.x - anchor.x);
+    const height = dimension === "height" ? extent : Math.abs(previewPoint.y - anchor.y);
     const signX = previewPoint.x < anchor.x ? -1 : 1;
     const signY = previewPoint.y < anchor.y ? -1 : 1;
     nextPreviewPoint = {

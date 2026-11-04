@@ -67,13 +67,14 @@ public static class SketchCreationConstraintFactory
             if (NormalizeToolName(toolName) is "line" or "midpointline") constraints.Clear();
             return constraints;
         }
+        var createdPoints = EnumerateCreationPointReferences(toolName, createdEntities).ToArray();
         if (originSnapUsed)
         {
-            foreach (var point in EnumeratePointReferences(createdEntities).Where(p => AreClose(p.Point, new Point2(0, 0))))
-                AddConstraintIfMissing(constraints, SketchConstraintKind.Coincident, createConstraintId,
-                    "$origin:center", point.Reference.ToString());
+            foreach (var point in createdPoints.Where(p => AreClose(p.Point, new Point2(0, 0))))
+                AddCreationPointSnap(constraints, point, SketchConstraintKind.Coincident,
+                    "$origin:center", createConstraintId);
         }
-        AddPointSnapConstraints(constraints, existingEntities, createdEntities, createConstraintId);
+        AddPointSnapConstraints(constraints, existingEntities, createdPoints, createConstraintId);
         AddPerpendicularSnapConstraints(constraints, existingEntities, createdEntities, createConstraintId);
         AddTangentArcConstraints(constraints, existingEntities, createdEntities, createConstraintId);
         AddInsertedLineTangentConstraints(constraints, existingEntities, createdEntities, createConstraintId);
@@ -91,7 +92,7 @@ public static class SketchCreationConstraintFactory
     {
         if (snaps is null || snaps.Count == 0) return;
         var document = new DrawingDocument(existing.Concat(created));
-        var createdPoints = EnumeratePointReferences(created).ToArray();
+        var createdPoints = EnumerateCreationPointReferences(toolName, created).ToArray();
         foreach (var snap in snaps)
         {
             if (snap.Kind is "ArcQuadrantHorizontal" or "ArcQuadrantVertical")
@@ -106,11 +107,11 @@ public static class SketchCreationConstraintFactory
                 throw new InvalidOperationException("Unsupported creation snap. Geometry unchanged.");
             foreach (var point in createdPoints.Where(p => AreClose(p.Point, snap.Point)))
             {
-                var keys = new[] { snap.ReferenceKeys[0], point.Reference.ToString() };
-                var candidate = new SketchConstraint("snap-validation", kind, keys);
+                var (relationKind, keys) = CreationPointSnap(point, kind, snap.ReferenceKeys[0]);
+                var candidate = new SketchConstraint("snap-validation", relationKind, keys);
                 if (SketchConstraintService.ValidateConstraint(document, candidate).State != SketchConstraintState.Satisfied)
                     throw new InvalidOperationException("Creation snap no longer matches its source. Geometry unchanged.");
-                AddConstraintIfMissing(constraints, kind, nextId, keys);
+                AddConstraintIfMissing(constraints, relationKind, nextId, keys);
             }
         }
     }
@@ -282,13 +283,13 @@ public static class SketchCreationConstraintFactory
     private static void AddPointSnapConstraints(
         ICollection<SketchConstraint> constraints,
         IReadOnlyList<DrawingEntity> existingEntities,
-        IReadOnlyList<DrawingEntity> createdEntities,
+        IReadOnlyList<PointReference> createdPoints,
         Func<SketchConstraintKind, string> createConstraintId)
     {
         var existingPoints = EnumeratePointReferences(existingEntities).ToArray();
         var existingLines = EnumerateLineReferences(existingEntities).ToArray();
 
-        foreach (var createdPoint in EnumeratePointReferences(createdEntities))
+        foreach (var createdPoint in createdPoints)
         {
             foreach (var existingPoint in existingPoints)
             {
@@ -297,12 +298,8 @@ public static class SketchCreationConstraintFactory
                     continue;
                 }
 
-                AddConstraintIfMissing(
-                    constraints,
-                    SketchConstraintKind.Coincident,
-                    createConstraintId,
-                    existingPoint.Reference.ToString(),
-                    createdPoint.Reference.ToString());
+                AddCreationPointSnap(constraints, createdPoint, SketchConstraintKind.Coincident,
+                    existingPoint.Reference.ToString(), createConstraintId);
             }
 
             foreach (var existingLine in existingLines)
@@ -312,12 +309,8 @@ public static class SketchCreationConstraintFactory
                     continue;
                 }
 
-                AddConstraintIfMissing(
-                    constraints,
-                    SketchConstraintKind.Midpoint,
-                    createConstraintId,
-                    existingLine.Reference.ToString(),
-                    createdPoint.Reference.ToString());
+                AddCreationPointSnap(constraints, createdPoint, SketchConstraintKind.Midpoint,
+                    existingLine.Reference.ToString(), createConstraintId);
             }
         }
     }
@@ -482,6 +475,53 @@ public static class SketchCreationConstraintFactory
             .Select(point => new PointReference(point.Reference, point.Point));
     }
 
+    private static IEnumerable<PointReference> EnumerateCreationPointReferences(
+        string toolName, IReadOnlyList<DrawingEntity> entities)
+    {
+        foreach (var point in EnumeratePointReferences(entities))
+            yield return point;
+
+        var lines = entities.OfType<LineEntity>().ToArray();
+        switch (NormalizeToolName(toolName))
+        {
+            case "midpointline" when lines.Length == 1:
+                yield return new PointReference(new SketchReference(lines[0].Id.Value, SketchReferenceTarget.Midpoint),
+                    Midpoint(lines[0]));
+                break;
+            case "centerrectangle" when lines.Length == 4:
+                // The creation factory emits a perimeter loop. Its diagonal defines
+                // the logical center without adding a point or construction diagonal.
+                yield return new PointReference(new SketchReference(lines[0].Id.Value, SketchReferenceTarget.Start),
+                    new Point2(lines[0].Start.X / 2 + lines[2].Start.X / 2,
+                        lines[0].Start.Y / 2 + lines[2].Start.Y / 2),
+                    new SketchReference(lines[2].Id.Value, SketchReferenceTarget.Start));
+                break;
+        }
+    }
+
+    private static void AddCreationPointSnap(ICollection<SketchConstraint> constraints, PointReference point,
+        SketchConstraintKind kind, string sourceKey, Func<SketchConstraintKind, string> nextId)
+    {
+        var (relationKind, keys) = CreationPointSnap(point, kind, sourceKey);
+        AddConstraintIfMissing(constraints, relationKind, nextId, keys);
+    }
+
+    private static (SketchConstraintKind Kind, string[] Keys) CreationPointSnap(
+        PointReference point, SketchConstraintKind kind, string sourceKey)
+    {
+        if (point.OppositeReference is not { } opposite)
+            return (kind, [sourceKey, point.Reference.ToString()]);
+
+        if (kind == SketchConstraintKind.Midpoint
+            && SketchReference.TryParse(sourceKey, out var source) && source.IsEntity)
+            sourceKey = new SketchReference(source.EntityId, SketchReferenceTarget.Midpoint, source.SegmentIndex).ToString();
+        else if (kind != SketchConstraintKind.Coincident)
+            throw new InvalidOperationException("Unsupported creation snap for a derived center. Geometry unchanged.");
+
+        // Three-point midpoint stores the middle first, then the two outer points.
+        return (SketchConstraintKind.Midpoint, [sourceKey, point.Reference.ToString(), opposite.ToString()]);
+    }
+
     private static IEnumerable<LineReference> EnumerateLineReferences(IReadOnlyList<DrawingEntity> entities)
     {
         foreach (var entity in entities)
@@ -640,7 +680,8 @@ public static class SketchCreationConstraintFactory
             .Replace("_", string.Empty, StringComparison.Ordinal)
             .ToLowerInvariant();
 
-    private readonly record struct PointReference(SketchReference Reference, Point2 Point);
+    private readonly record struct PointReference(
+        SketchReference Reference, Point2 Point, SketchReference? OppositeReference = null);
 
     private readonly record struct LineReference(SketchReference Reference, LineEntity Line);
 }

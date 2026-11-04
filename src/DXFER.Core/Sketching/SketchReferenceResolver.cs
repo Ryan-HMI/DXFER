@@ -70,6 +70,7 @@ public static class SketchReferenceResolver
         if (SketchReference.TryParseCanvasPointCoordinates(key, out var entityId, out var label, out point)
             && SketchGeometryEditor.TryFindEntity(document.Entities, entityId, out _, out var entity))
         {
+            if (entity is EllipseEntity) return TryGetEllipseAxisPoint(document, key, out point);
             if (entity is PolylineEntity polyline) return TryGetPolylineCanvasPoint(polyline, label, out point);
             if (entity is SplineEntity spline) return TryGetSplineCanvasPoint(spline, label, out point);
             return true;
@@ -77,6 +78,38 @@ public static class SketchReferenceResolver
 
         point = default;
         return false;
+    }
+
+    internal static bool TryGetEllipseAxisPoint(DrawingDocument document, string key, out Point2 point)
+    {
+        point = default;
+        // Canvas coordinates are a finite acquisition snapshot, never the axis identity.
+        if (!SketchReference.TryParseCanvasPointCoordinates(key, out var entityId, out var label, out var stored)
+            || key.Trim().Split('|') is not [_, "point", _, _, _]
+            || !double.IsFinite(stored.X) || !double.IsFinite(stored.Y)
+            || !SketchGeometryEditor.TryFindEntity(document.Entities, entityId, out _, out var entity)
+            || entity is not EllipseEntity ellipse) return false;
+
+        var major = ellipse.MajorAxisEndPoint;
+        var radius = Math.Sqrt(major.X * major.X + major.Y * major.Y);
+        var minorRadius = radius * ellipse.MinorRadiusRatio;
+        if (!double.IsFinite(ellipse.Center.X) || !double.IsFinite(ellipse.Center.Y)
+            || !double.IsFinite(radius) || radius <= SketchGeometryEditor.Tolerance
+            || !double.IsFinite(minorRadius) || minorRadius <= SketchGeometryEditor.Tolerance
+            || !double.IsFinite(ellipse.StartParameterDegrees) || !double.IsFinite(ellipse.EndParameterDegrees)) return false;
+
+        var offset = label.ToLowerInvariant() switch
+        {
+            "major-start" => new Point2(-major.X, -major.Y),
+            "major-end" => major,
+            "minor-start" => new Point2(major.Y * ellipse.MinorRadiusRatio, -major.X * ellipse.MinorRadiusRatio),
+            "minor-end" => new Point2(-major.Y * ellipse.MinorRadiusRatio, major.X * ellipse.MinorRadiusRatio),
+            _ => new Point2(double.NaN, double.NaN)
+        };
+        var resolved = new Point2(ellipse.Center.X + offset.X, ellipse.Center.Y + offset.Y);
+        if (!double.IsFinite(resolved.X) || !double.IsFinite(resolved.Y)) return false;
+        point = resolved;
+        return true;
     }
 
     internal static bool TryGetSplineCanvasPoint(SplineEntity spline, string label, out Point2 point)

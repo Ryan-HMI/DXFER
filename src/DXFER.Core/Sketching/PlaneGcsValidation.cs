@@ -13,23 +13,23 @@ internal static class PlaneGcsValidation
         if (document.Entities.Select(e => e.Id.Value).Distinct(StringComparer.Ordinal).Count() != document.Entities.Count)
             return Refuse("Duplicate entity IDs cannot be solved.", out reason);
         foreach (var key in fixedKeys)
-            if (!TryReference(document, key, out _))
+            if (!TryReference(document, key))
                 return Refuse($"Unsupported or missing fixed reference '{key}'.", out reason);
         foreach (var constraint in document.Constraints.Where(c => c.State != SketchConstraintState.Suppressed))
         {
             if (!Enum.IsDefined(constraint.Kind) || constraint.ReferenceKeys.Count == 0
-                || constraint.ReferenceKeys.Any(key => !TryReference(document, key, out _)))
+                || constraint.ReferenceKeys.Any(key => !TryReference(document, key)))
                 return Refuse($"Unsupported or missing reference in constraint '{constraint.Id}'.", out reason);
         }
         foreach (var dimension in document.Dimensions)
         {
             if (!double.IsFinite(dimension.Value) || dimension.Anchor is { } anchor && !Finite(anchor)
                 || !Enum.IsDefined(dimension.Kind) || dimension.ReferenceKeys.Count == 0
-                || dimension.ReferenceKeys.Any(key => !TryReference(document, key, out _)))
+                || dimension.ReferenceKeys.Any(key => !TryReference(document, key)))
                 return Refuse($"Invalid dimension '{dimension.Id}'.", out reason);
         }
         foreach (var guess in guesses)
-            if (!Finite(guess.Point) || !TryReference(document, guess.ReferenceKey, out _))
+            if (!Finite(guess.Point) || !TryReference(document, guess.ReferenceKey))
                 return Refuse("Invalid PlaneGCS initial guess.", out reason);
         if (drag is not null)
         {
@@ -51,8 +51,16 @@ internal static class PlaneGcsValidation
         reason = string.Empty;
         foreach (var key in fixedKeys)
         {
-            if (!TryReference(original, key, out var reference))
+            if (!TryReference(original, key))
                 return Refuse($"Unsupported fixed reference '{key}'.", out reason);
+            if (!SketchReference.TryParse(key, out var reference))
+            {
+                if (!SketchReferenceResolver.TryGetEllipseAxisPoint(original, key, out var beforeAxisPoint)
+                    || !SketchReferenceResolver.TryGetEllipseAxisPoint(candidate, key, out var afterAxisPoint)
+                    || !SketchGeometryEditor.AreClose(beforeAxisPoint, afterAxisPoint))
+                    return Refuse($"PlaneGCS would move fixed point '{key}'.", out reason);
+                continue;
+            }
             if (reference.IsOrigin) continue;
             if (reference.IsEntity && !reference.SegmentIndex.HasValue)
             {
@@ -107,9 +115,10 @@ internal static class PlaneGcsValidation
         return Math.Abs(measured - Math.Abs(dimension.Value)) <= 0.001;
     }
 
-    private static bool TryReference(DrawingDocument document, string key, out SketchReference reference)
+    private static bool TryReference(DrawingDocument document, string key)
     {
-        if (!SketchReference.TryParse(key, out reference)) return false;
+        if (!SketchReference.TryParse(key, out var reference))
+            return SketchReferenceResolver.TryGetEllipseAxisPoint(document, key, out _);
         if (reference.IsOrigin) return true;
         if (!SketchGeometryEditor.TryGetEntity(document.Entities, reference, out _, out var entity)) return false;
         if (reference.SegmentIndex is { } segment
@@ -123,7 +132,7 @@ internal static class PlaneGcsValidation
         if (string.IsNullOrWhiteSpace(key)) return false;
         if (SketchReference.TryParseCanvasPointCoordinates(key, out var pointId, out _, out _))
             entityId = pointId;
-        else if (TryReference(document, key, out var reference) && !reference.IsOrigin)
+        else if (TryReference(document, key) && SketchReference.TryParse(key, out var reference) && !reference.IsOrigin)
             entityId = reference.EntityId;
         var selectedId = entityId;
         return document.Entities.Any(e => e.Id.Value == selectedId);

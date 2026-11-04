@@ -28,12 +28,17 @@ public sealed class PlaneGcsSketchSolverAdapter : ISketchSolver
             var effective = new DrawingDocument(request.Document.Entities,
                 Merge(request.Document.Dimensions, request.Dimensions, d => d.Id),
                 Merge(request.Document.Constraints, request.Constraints, c => c.Id), request.Document.Metadata);
-            var fixedKeys = GetFixedKeys(request, effective);
+            var fixedKeys = GetFixedKeys(request.FixedReferenceKeys, effective);
             if (!PlaneGcsValidation.ValidateInput(effective, fixedKeys, request.InitialGuesses, drag, out var reason))
                 return Failure(request, drag, reason);
             var document = PlaneGcsDocumentMapper.Document(effective);
             foreach (var entity in document.Entities) PlaneGcsDocumentMapper.CheckFinite(entity);
-            var attemptedDrivingIds = (drag is null
+            // Only an exact accepted snapshot restores existing intent. Additional
+            // request-only locks are not in that snapshot and must still be checked.
+            var restoresAcceptedSnapshot = drag is null
+                && PlaneGcsDiagnostics.RestoresAcceptedSnapshot(request.Document, effective)
+                && !fixedKeys.Except(GetFixedKeys([], effective), StringComparer.Ordinal).Any();
+            var attemptedDrivingIds = restoresAcceptedSnapshot ? Array.Empty<string>() : (drag is null
                 ? request.Dimensions.Where(update => update.IsDriving && !request.Document.Dimensions.Any(existing =>
                     SameDrivingIntent(existing, update))).Select(d => d.Id).ToArray()
                 : Array.Empty<string>())
@@ -142,9 +147,9 @@ public sealed class PlaneGcsSketchSolverAdapter : ISketchSolver
             .Concat(updates.Where(item => !originalIds.Contains(id(item)))).ToArray();
     }
 
-    private static string[] GetFixedKeys(SketchSolveRequest request, DrawingDocument effective)
+    private static string[] GetFixedKeys(IEnumerable<string> requestedKeys, DrawingDocument effective)
     {
-        var keys = request.FixedReferenceKeys
+        var keys = requestedKeys
             .Concat(effective.Constraints
                 .Where(c => c.Kind == SketchConstraintKind.Fix && c.State != SketchConstraintState.Suppressed)
                 .SelectMany(c => c.ReferenceKeys))

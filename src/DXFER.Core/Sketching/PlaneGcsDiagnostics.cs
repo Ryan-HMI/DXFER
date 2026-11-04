@@ -29,6 +29,7 @@ public static class PlaneGcsDiagnostics
     public static bool IsWellFormed(PlaneGcsSolveEvidence evidence) =>
         evidence.Engine == "PlaneGCS" && evidence.Version > 0 && Enum.IsDefined(evidence.Status)
         && Signature(evidence.SnapshotSignature)
+        && (evidence.LastAcceptedSnapshotSignature is null || Signature(evidence.LastAcceptedSnapshotSignature))
         && evidence.EngineStatus is null or "solved" or "failed" or "unsupported"
         && evidence.Intents.Count <= 100000
         && evidence.Intents.All(item => item is not null && !string.IsNullOrWhiteSpace(item.ItemId)
@@ -58,6 +59,15 @@ public static class PlaneGcsDiagnostics
             PlaneGcsSemanticSnapshot.Document(candidate), SketchSolveStatus.Solved, document.SolveEvidence.EngineStatus,
             document.SolveEvidence.Intents.Where(i => i.ItemKind != "constraint" || !removed.Contains(i.ItemId)).ToArray()));
     }
+
+    internal static bool RestoresAcceptedSnapshot(DrawingDocument baseline, DrawingDocument effective) =>
+        baseline.SolveEvidence?.LastAcceptedSnapshotSignature is { } signature
+        && Read(baseline).HasCurrentEvidence
+        && signature == PlaneGcsSemanticSnapshot.Document(effective);
+
+    private static string? AcceptedSnapshotSignature(PlaneGcsSolveEvidence evidence) =>
+        evidence.Status == SketchSolveStatus.Solved && evidence.EngineStatus == "solved"
+            ? evidence.SnapshotSignature : evidence.LastAcceptedSnapshotSignature;
 
     internal static IEnumerable<string> PendingDrivingDimensionIds(DrawingDocument document)
     {
@@ -116,7 +126,8 @@ public static class PlaneGcsDiagnostics
                 : before is not null ? prior.GetDimensionState(before) : SketchConstraintState.Unknown;
             entries.Add(Entry(dimension.Id, "dimension", signature, state, diagnostic ?? prior.FindDiagnostic("dimension", dimension.Id)));
         }
-        return WithEvidence(retained, Create(retained, status, engineStatus, entries));
+        return WithEvidence(retained, Create(retained, status, engineStatus, entries,
+            prior.HasCurrentEvidence ? AcceptedSnapshotSignature(baseline.SolveEvidence!) : null));
     }
 
     private static PlaneGcsIntentEvidence Entry(string id, string kind, string signature, SketchConstraintState state,
@@ -125,9 +136,10 @@ public static class PlaneGcsDiagnostics
             diagnostic?.Message is { } message ? message[..Math.Min(message.Length, 8192)] : string.Empty);
 
     private static PlaneGcsSolveEvidence Create(DrawingDocument document, SketchSolveStatus status, string? engineStatus,
-        IEnumerable<PlaneGcsIntentEvidence> intents) =>
+        IEnumerable<PlaneGcsIntentEvidence> intents, string? lastAcceptedSnapshotSignature = null) =>
         new("PlaneGCS", PlaneGcsSolveEvidence.CurrentVersion, PlaneGcsSemanticSnapshot.Document(document), status,
-            engineStatus is "solved" or "failed" or "unsupported" ? engineStatus : null, intents.ToArray());
+            engineStatus is "solved" or "failed" or "unsupported" ? engineStatus : null, intents.ToArray(),
+            lastAcceptedSnapshotSignature);
 
     private static DrawingDocument WithEvidence(DrawingDocument document, PlaneGcsSolveEvidence evidence) =>
         new(document.Entities, document.Dimensions, document.Constraints, document.Metadata, evidence);
