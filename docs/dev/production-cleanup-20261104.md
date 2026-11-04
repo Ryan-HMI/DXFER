@@ -128,3 +128,36 @@ Flux handoff: #all-agents `1793831565.154829`. Independent acceptance is not
 claimed. Test Google OAuth still rejects the exact Test callback with
 `redirect_uri_mismatch`; that external client configuration issue is separate
 and was not changed. Preserve both metadata hotfixes in future promotions.
+
+## Sync Save Feedback Follow-Up
+
+Flux independently saved disposable MANUAL artifact 276 as 279 and AUTO 275 as
+280 on Test `0f95047`: originals retained, 9 entities/3 contours/15 x 15 bounds,
+66.282743-inch cut; manual reopen applied no further cleanup. These are bounded
+generic cleanup passes, not metadata-specific acceptance. The saved UI stayed
+open with Save enabled and a misleading zero-duplicate-cleanup message.
+
+Root cause: `CommandPromptText` preferred `_duplicateCleanupStatus` over the
+later successful `_status`, and Save had no terminal state for a consumed job.
+The follow-up gives save feedback priority and a persistent live-status badge.
+Confirmed success disables repeat sends through both the button and menu; blocked
+or timed-out tab closure cannot change that result. Definite rejection remains
+visible/retryable. A timeout, transport interruption, 401 or 5xx response is
+unconfirmed, not proof of success: it disables blind retry and directs inspection
+in Sync. Failure to write the existing optional fallback cannot hide the result.
+
+Layout contract: retain the top-right desktop strip and mobile row above the
+palette, existing wrapping and viewport bounds, existing action height and focus
+behavior; reserve 8rem minimum button width across labels. Reuse the green status,
+warning style and footer; no extra panel, popup or camera movement.
+
+Ten added component cases cover pending/repeat sends, success with blocked or
+throwing closure, bounded pending import/close interop, rejection/retry, uncertain
+responses and failed fallback writes. The dedicated browser replay uses only
+localhost synthetic callbacks, checks desktop/mobile feedback and stable action
+width, and verifies that a genuinely script-opened tab still closes on success.
+Existing cleanup and failed-load/retry browser suites remain regression gates.
+
+This follow-up is Test-first; independent Flux replay is required before its
+Production promotion. No existing artifacts require repair for this UI defect:
+the two reported saves already committed. No records or authentication changed.

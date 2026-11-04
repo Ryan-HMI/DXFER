@@ -97,6 +97,8 @@
 
 .dxfer-sync-send-button {
     display: inline-flex;
+    box-sizing: border-box;
+    min-width: 8rem;
     align-items: center;
     justify-content: center;
     min-height: 1.75rem;
