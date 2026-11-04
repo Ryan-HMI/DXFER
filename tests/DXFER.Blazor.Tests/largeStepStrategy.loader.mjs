@@ -18,7 +18,8 @@ export async function load(url, context, nextLoad) {
                         || request.attemptedDrivingDimensionIds?.includes(d.id))
                         ? options.filter(option => option !== target) : [] }, source,
                     get => {
-                        const solvedTarget = get(angular.id).angle;
+                        // Pre-native seed validation supplies geometry nodes only.
+                        const solvedTarget = get(angular.id)?.angle ?? target;
                         if (!options.some(option => Math.abs(angleDelta(option - solvedTarget)) < 1e-12)) return Infinity;
                         return Math.abs(angleDelta(lineAngle(b, get) - lineAngle(a, get) - solvedTarget));
                     });`);
