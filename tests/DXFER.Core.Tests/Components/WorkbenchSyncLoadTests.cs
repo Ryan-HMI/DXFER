@@ -96,7 +96,7 @@ public sealed class WorkbenchSyncLoadTests
         await harness.InvokeAsync("TryLoadSyncLaunchDocumentAsync");
 
         var html = await harness.HtmlAsync();
-        html.Should().Contain("no supported DXF geometry");
+        html.Should().Contain("Production cleanup requires review");
         SaveButton(html).Should().Contain("disabled");
         AssertNoSecrets(html, harness.Logger);
     }

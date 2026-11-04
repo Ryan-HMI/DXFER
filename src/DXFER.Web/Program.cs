@@ -213,7 +213,16 @@ app.MapPost("/api/dxfer/normalize", async (HttpRequest request) =>
     await using var stream = file.OpenReadStream();
     using var reader = new StreamReader(stream);
     var sourceText = await reader.ReadToEndAsync();
-    var sourceDocument = ManufacturingUnits.AssumeInches(WithApiMetadata(DxfDocumentReader.Read(sourceText), file.FileName, sourceText));
+    ProductionPreparedDxf prepared;
+    try
+    {
+        prepared = ProductionDxfPreparation.Prepare(sourceText, request.HttpContext.RequestAborted);
+    }
+    catch (ProductionDxfPreparationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    var sourceDocument = WithApiMetadata(prepared.Document, file.FileName, sourceText);
     if (sourceDocument.Entities.Count == 0)
     {
         return Results.BadRequest(new { error = "No supported DXF entities were found." });
@@ -231,6 +240,7 @@ app.MapPost("/api/dxfer/normalize", async (HttpRequest request) =>
     {
         normalizedDxfFileName = normalizedFileName,
         normalizedDxf,
+        productionCleanup = prepared.Cleanup,
         boundingWidth = bounds.Width,
         boundingHeight = bounds.Height,
         cutLengthInches = cutLength.CutLengthInches,

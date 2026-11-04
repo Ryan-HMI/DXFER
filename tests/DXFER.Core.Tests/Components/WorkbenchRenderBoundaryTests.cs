@@ -281,7 +281,7 @@ public sealed class WorkbenchRenderBoundaryTests
         source.Should().Contain("syncExportCallbackPath = \"/api/dxfer/edit-callback\"");
         source.Should().Contain("manualFileControls = new[]");
         source.Should().Contain("DrawingNormalizationService.AutoNormalize");
-        source.Should().Contain("DxfDocumentReader.Read");
+        source.Should().Contain("ProductionDxfPreparation.Prepare");
         source.Should().Contain("DxfDocumentWriter.Write");
         source.Should().Contain("AddAuthentication");
         source.Should().Contain("AddGoogle");

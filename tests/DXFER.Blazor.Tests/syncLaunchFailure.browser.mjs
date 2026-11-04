@@ -36,7 +36,7 @@ const launch = path => {
     return url.toString();
 };
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH });
 try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors = [];
@@ -70,7 +70,7 @@ try {
     for (const width of [1440, 390, 320]) {
         await page.setViewportSize({ width, height: 844 });
         await page.goto(launch("/empty"));
-        await status.filter({ hasText: "no supported DXF geometry" }).waitFor();
+        await status.filter({ hasText: "Production cleanup requires review" }).waitFor();
         assert.ok(await save.isDisabled());
         const metrics = await page.locator(".dxfer-sync-control-bar").evaluate(bar => {
             const status = bar.querySelector("[role=status]");
