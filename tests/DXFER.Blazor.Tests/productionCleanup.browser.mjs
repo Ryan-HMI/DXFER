@@ -13,8 +13,7 @@ const outline = line('SHEETMETAL_CUT_LINES', -5, -5, 10, -5)
     + line('SHEETMETAL_CUT_LINES', 10, -5, 10, 10)
     + line('SHEETMETAL_CUT_LINES', 10, 10, -5, 10)
     + line('SHEETMETAL_CUT_LINES', -5, 10, -5, -5);
-const fixture = dxf(outline + line('SHEETMETAL_FORM_TEAR', 0, 0, 3, 0)
-    + line('SHEETMETAL_FORM_UP', 0, 0, 3, 1) + line('BEND', 0, 2, 3, 2) + circle(.0249) + circle(.025));
+const fixture = await readFile(new URL('../Fixtures/production-cleanup-louver.dxf', import.meta.url), 'utf8');
 const unsafe = dxf(outline + line('SHEETMETAL_FORM_TEAR', 0, 0, 3, 0) + line('CUT', 1, -1, 1, 1));
 let callback;
 const source = http.createServer(async (req, res) => {
