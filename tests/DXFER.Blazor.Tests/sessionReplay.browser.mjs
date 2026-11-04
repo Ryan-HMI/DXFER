@@ -35,7 +35,7 @@ const server = spawn('dotnet', ['run', '--project', 'src/DXFER.Web', '--no-build
 let serverLog = '';
 server.stdout.on('data', d => { serverLog += d; }); server.stderr.on('data', d => { serverLog += d; });
 let browser, page;
-const results = {cases: [], errors: [], mapperRevision: process.env.DXFER_SESSION_MAPPER_REVISION ?? 'worktree'};
+const results = {cases: [], rectangleEdits: [], errors: [], mapperRevision: process.env.DXFER_SESSION_MAPPER_REVISION ?? 'worktree'};
 try {
   await expect.poll(async () => { try { return (await fetch(`${url}/auth/status`)).status; } catch { return 0; } },
     {timeout: 30000}).toBe(200);
@@ -76,6 +76,15 @@ try {
   const screen = p => canvas.evaluate((c, p) => ({x: c.getBoundingClientRect().left + p.x * +c.dataset.scale + +c.dataset.offsetX,
     y: c.getBoundingClientRect().top - p.y * +c.dataset.scale + +c.dataset.offsetY}), p);
   const trace = async () => (await readFile(`${output}/native-frames.jsonl`, 'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse);
+  let nativePid;
+  const sameNativeSession = frames => {
+    assert.ok(frames.some(f => f.direction === 'request'), 'The UI operation must reach the native sidecar');
+    for (const frame of frames) {
+      nativePid ??= frame.pid;
+      assert.equal(frame.pid, nativePid, 'Opening another drawing must not restart the sidecar to hide contamination');
+    }
+  };
+  const reload = async () => { await page.reload(); await ready(); nativePid = undefined; };
   const pick = async p => { const q = await screen(p); await page.mouse.click(q.x, q.y); await page.waitForTimeout(150); };
   const requests = new Map();
   const addMirror = async () => {
@@ -94,6 +103,7 @@ try {
     await canvas.press('Escape');
     const doc = await download(results.currentCase);
     const frames = (await trace()).slice(offset);
+    sameNativeSession(frames);
     results.cases.push({name: results.currentCase, frames, visibleText});
     const request = structuredClone(frames.find(f => f.direction === 'request')?.frame.request);
     assert.ok(request, 'The actual UI must reach the native solver');
@@ -107,19 +117,35 @@ try {
     assert.ok(doc.constraints.every(c => c.state === 'Satisfied'), JSON.stringify(frames));
     assert.ok(frames.some(f => f.direction === 'response' && f.frame.result.status === 'solved'));
     const polys = doc.entities.filter(e => e.kind === 'polygon');
+    assert.deepEqual(doc.entities.find(e => e.id === 'axis'), axis, 'The fixed mirror axis must stay exact');
+    assert.deepEqual(doc.dimensions, loaded.dimensions, 'The stored driving radius must not change');
     for (const e of polys) assert.ok(Math.abs(e.radius - loaded.dimensions[0].value) < 1e-6);
     assert.ok(Math.abs(polys[0].center.x + polys[1].center.x - 2 * axis.start.x) < 1e-6);
     assert.ok(Math.abs(polys[0].center.y - polys[1].center.y) < 1e-6);
+    const vertices = polygon => Array.from({length: polygon.sideCount}, (_, i) => {
+      const phase = polygon.rotationAngleDegrees * Math.PI / 180 + (polygon.circumscribed ? Math.PI / polygon.sideCount : 0)
+        + i * 2 * Math.PI / polygon.sideCount;
+      const radius = polygon.circumscribed ? polygon.radius / Math.cos(Math.PI / polygon.sideCount) : polygon.radius;
+      return {x: polygon.center.x + radius * Math.cos(phase), y: polygon.center.y + radius * Math.sin(phase)};
+    });
+    const mirrored = vertices(polys[1]);
+    for (const vertex of vertices(polys[0])) assert.ok(mirrored.some(peer =>
+      Math.abs(vertex.x + peer.x - 2 * axis.start.x) < 1e-6 && Math.abs(vertex.y - peer.y) < 1e-6),
+    'The actual polygon contour must mirror, not only its center and radius');
   };
   await menu('Settings'); await page.getByRole('checkbox', {name: 'Automatic snap constraints', exact: true}).setChecked(false);
   await tool('Close settings');
   const editRectangle = async () => {
     await load('rectangle', 4);
+    const offset = (await trace()).length;
     const width = page.locator('input[data-dimension-id="width"]');
     await width.dblclick(); await width.fill('16'); await width.press('Enter');
     await expect(width).toHaveAttribute('data-dimension-value', '16'); await canvas.press('Escape');
     const rectangle = await download(results.currentCase);
     assert.ok(rectangle.constraints.every(c => c.state === 'Satisfied'));
+    const frames = (await trace()).slice(offset);
+    sameNativeSession(frames);
+    results.rectangleEdits.push({name: results.currentCase, frames});
   };
   if (process.env.DXFER_SESSION_WITNESS === 'rectangle') {
     results.currentCase = 'witness-rectangle'; await editRectangle();
@@ -133,18 +159,18 @@ try {
       try { await addMirror(); }
       catch (error) { failure ??= error; results.cases.at(-1).failure = error.message; }
     }
-    await page.reload(); await ready();
+    await reload();
     results.currentCase = 'session-witness-reload'; await load('session-witness'); await addMirror();
     results.reloadRecovered = true;
     if (failure) throw failure;
   }
   for (const circumscribed of [false, true]) {
-    await page.reload(); await ready();
+    await reload();
     for (let i = 0; i < 4; i++) {
       results.currentCase = `polygon-${circumscribed}-open-${i}`;
       await load(`polygon-${circumscribed ? 'True' : 'False'}`); await addMirror(circumscribed);
     }
-    await page.reload(); await ready(); results.currentCase = `rectangle-before-${circumscribed}`;
+    await reload(); results.currentCase = `rectangle-before-${circumscribed}`;
     await editRectangle();
     results.currentCase = `polygon-${circumscribed}-after-rectangle`;
     await load(`polygon-${circumscribed ? 'True' : 'False'}`); await addMirror(circumscribed);

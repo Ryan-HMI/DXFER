@@ -3,14 +3,16 @@
 ## Status
 
 Reproduced on local application/mapper baseline `6d6e6e1` (public mapper
-`46d24cb`) through real browser interactions. This commit adds evidence and
-regressions, **not a production fix**. No deployment or existing drawing edits.
+`46d24cb`) through real browser interactions, then corrected in the isolated
+session worktree by integrating the complete-system native retry strategy from
+`c179e05` and `84d25b2`. Both formerly failing native witnesses and both actual
+browser triggers now pass. No deployment or existing drawing edits.
 
-Two new native tests intentionally fail until the shared native solve path is
-corrected. Recreating the UI or restarting the sidecar when opening a file would
-mask the failure, not establish a root-cause fix.
+The initial evidence commit `97fc0b6` deliberately retained the two red native
+regressions. They pass with the shared mapper using `solveNativeWithFallback`;
+no browser/C# lifecycle reset, WASM module restart, or hard-only recovery is used.
 
-## Reproduction
+## Original Reproduction
 
 `PlaneGcsBrowserSessionFixturesTests` creates an unchanged native DXF baseline
 with two six-sided polygons, one driving radius, and a whole-fixed vertical
@@ -62,9 +64,51 @@ solver requests or invoke internal workbench methods.
   distinguish shape-stability preferences from temporary pointer goals: silently
   dropping a drag target could report success without the requested movement.
 
-`planeGcsSolver.js` is owned by the parent integration task and was not edited.
-Any correction must preserve hard constraints, fixed geometry and normal drag
-validation; do not simply accept a failed native result.
+## Verified Correction
+
+The parent authorized applying the proposed mapper integration only in this
+isolated worktree. On primary failure, the shared strategy rebuilds a native
+system from the original input primitives, solves the hard system with DogLeg,
+then solves it with every original auxiliary preference still present. It never
+publishes a failed partial solution. Normal residual, fixed-geometry and driving
+rank checks still run afterward.
+
+Observed actual native stages across four identical witness requests:
+
+| Request | LM hard | LM with preferences | DogLeg hard | DogLeg with preferences |
+| --- | --- | --- | --- | --- |
+| First | 0 | 0 | Not needed | Not needed |
+| Second through fourth | 0 | 2 | 0 | 0 |
+
+All four requests share one WASM module. Unlike retrying only the failed
+auxiliary stage, this complete retry re-solves hard intent from the original
+seed before adding preferences. That recovers this numerical false refusal
+without discarding goals. This is a shared solve-path correction, not an
+affected-document repair. The exact native C++ numerical cause remains narrower
+than a proven allocator/global-state defect; no such unsupported claim is made.
+
+Verification on the integrated isolated worktree:
+
+- Real browser reopen mode: all 14 symmetry cases pass, including the original
+  baseline three times in one sidecar session and once after actual page reload.
+- Real browser rectangle-first mode: all 11 symmetry cases pass. The unrelated
+  width 15-to-16 edit and first witness share the same sidecar PID.
+- Browser replay now asserts sidecar continuity until page reload, identical
+  reopened documents and solve requests, exact fixed axis and driving radius,
+  satisfied relations, and mirrored contour vertices rather than only centers.
+- Four focused witness tests pass, including same-session constrained diagonal
+  drag projection and contradictory-diameter refusal after the recovered solves.
+  The failed request leaves geometry unchanged; another witness solve still works.
+- Existing ten native session controls and five retry-strategy tests pass.
+- Full JavaScript suite: 2,097 pass, no unexpected failures; the two known full-ellipse
+  TODOs remain owned by the parent's separate integration.
+- Full C# suite: 3,772 pass, one known full-ellipse skip, no failures. Focused
+  native-runtime/large-step/session fixture checks pass 22/22.
+
+The exact Flux native file remains unavailable; these are genuine UI replays of
+the reduced synthetic witness with the same two failure triggers, not a claim
+that Flux's original file has independently passed. Previously stored failed
+intent is not automatically removed or repaired by these changes.
 
 ## Run
 
@@ -105,6 +149,16 @@ Evidence from the original investigation:
 - `/tmp/dxfer-session-vary-68.json`: exact reduced request under `.q`.
 - `/tmp/dxfer-session-ui-browser/` and `/tmp/dxfer-session-ui-old-browser/`:
   ten passing ordinary controls under current/historical mappers.
+
+Passing integration evidence:
+
+- `/tmp/dxfer-session-dogleg-reopen-final/`: repeated opens, actual reload,
+  screenshots, exported native drawings and unchanged solver request frames.
+- `/tmp/dxfer-session-dogleg-rectangle-final/`: unrelated rectangle edit followed
+  by first-use polygon, with explicit sidecar continuity assertions.
+- `/tmp/dxfer-session-dogleg-focused-final.log`: 19 witness/lifecycle/strategy tests.
+- `/tmp/dxfer-session-dogleg-all-js.log` and
+  `/tmp/dxfer-session-dogleg-all-csharp.log`: full suite output.
 
 These temporary evidence files are not a durable archive. The fixture generator,
 native regression and browser replay preserve the reproducible case in source.

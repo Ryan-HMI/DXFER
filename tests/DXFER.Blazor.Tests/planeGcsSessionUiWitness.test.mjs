@@ -78,3 +78,37 @@ test('fresh native modules consistently accept the witness', async () => {
         finally { solver.dispose(); }
     }
 });
+
+test('session recovery retains constrained pointer goals and refuses hard conflicts', async () => {
+    const solver = await createPlaneGcsSolver(), request = witness();
+    const circle = {id: 'circle', kind: 'circle', center: p(12, 0), radius: 2, points: []};
+    const diameter = value => ({id: `diameter-${value}`, kind: 'Diameter', referenceKeys: ['circle'],
+        value, isDriving: true});
+    const drag = {
+        document: {
+            entities: [{id: 'peer', kind: 'line', points: [p(0, -3), p(0, 3)]}, circle],
+            constraints: [constraint('fixed-peer', 'Fix', ['peer']), constraint('vertical', 'Vertical', ['peer']),
+                constraint('alignment', 'Horizontal', ['circle:center', 'peer:mid'])],
+            dimensions: [diameter(4)]
+        },
+        drag: {key: 'circle|point|center|12|0', start: p(12, 0), end: p(17, 3), constrain: false}
+    };
+    try {
+        for (let i = 0; i < 3; i++) assertSolved(solver.solve(structuredClone(request)), request, `recovery ${i}`);
+        const before = structuredClone(drag), moved = solver.solve(drag);
+        assert.equal(moved.status, 'solved', JSON.stringify(moved.diagnostics));
+        assert.deepEqual(moved.entities[0], drag.document.entities[0], 'The fixed peer must remain exact');
+        const actual = moved.entities.find(entity => entity.id === 'circle');
+        assert.ok(Math.abs(actual.center.x - 17) < 1e-6, 'The pointer goal must not be silently discarded');
+        assert.ok(Math.abs(actual.center.y) < 1e-6, 'The allowed drag must project onto Horizontal');
+        assert.ok(Math.abs(actual.radius - 2) < 1e-6);
+        assert.deepEqual(drag, before);
+
+        const conflict = structuredClone(drag);
+        conflict.document.dimensions.push(diameter(6));
+        const refused = solver.solve(conflict);
+        assert.equal(refused.status, 'failed', JSON.stringify(refused.diagnostics));
+        assert.deepEqual(refused.entities, conflict.document.entities, 'Failed native candidates must never publish');
+        assertSolved(solver.solve(structuredClone(request)), request, 'witness after rejected drag');
+    } finally { solver.dispose(); }
+});
