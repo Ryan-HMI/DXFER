@@ -8,8 +8,11 @@ internal static class DxfSmallCircleFilter
     internal const decimal MinimumDiameterInches = 0.050m;
     internal sealed record Result(byte[] Bytes, int RemovedCount, int ProtectedCount);
 
-    internal static async Task<string> SaveWithOriginalAsync(string path, byte[] original, byte[] cleaned, CancellationToken ct)
+    internal static async Task<string?> SaveWithOriginalAsync(string path, byte[] original, byte[] cleaned, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+        if (original.AsSpan().SequenceEqual(cleaned)) return null;
+
         var backup = path + ".original-" + Convert.ToHexString(SHA256.HashData(original)) + ".dxf";
         if (!File.Exists(backup))
         {
@@ -38,6 +41,7 @@ internal static class DxfSmallCircleFilter
     internal static Result Apply(byte[] source, CancellationToken ct = default)
     {
         var pairs = DxfCompatibility.ReadPairs(source, ct);
+        ValidateUnits(pairs);
         var removals = new List<(int Start, int End)>();
         var section = "";
         var protectedCount = 0;
@@ -62,7 +66,11 @@ internal static class DxfSmallCircleFilter
                 {
                     var handle = fields.FirstOrDefault(p => p.Code == 5)?.Value;
                     if (native || handle is not null && referenced.Contains(handle)) protectedCount++;
-                    else removals.Add((record.Start, end < pairs.Count ? pairs[end].Start : source.Length));
+                    else
+                    {
+                        ValidateRemovalCandidate(fields);
+                        removals.Add((record.Start, end < pairs.Count ? pairs[end].Start : source.Length));
+                    }
                 }
             }
             i = end;
@@ -79,5 +87,38 @@ internal static class DxfSmallCircleFilter
         }
         output.Write(source.AsSpan(offset));
         return new(output.ToArray(), removals.Count, protectedCount);
+    }
+
+    private static void ValidateUnits(IReadOnlyList<DxfCompatibility.Pair> pairs)
+    {
+        var declarations = pairs.Select((pair, index) => (pair, index))
+            .Where(item => item.pair.Code == 9 && item.pair.Value.Equals("$INSUNITS", StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (declarations.Length == 0) return;
+        if (declarations.Length != 1)
+            throw new InvalidDataException("Ambiguous DXF units; small-circle cleanup was not applied.");
+        var values = pairs.Skip(declarations[0].index + 1).TakeWhile(pair => pair.Code is not (0 or 9))
+            .Where(pair => pair.Code != 999).ToArray();
+        if (values.Length != 1 || values[0].Code != 70 ||
+            !int.TryParse(values[0].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var units) || units is not (0 or 1))
+            throw new InvalidDataException("Small-circle cleanup requires inch or unitless DXF coordinates.");
+    }
+
+    private static void ValidateRemovalCandidate(IReadOnlyList<DxfCompatibility.Pair> fields)
+    {
+        double Read(int code, double? fallback = null)
+        {
+            var values = fields.Where(pair => pair.Code == code).ToArray();
+            if (values.Length == 0 && fallback.HasValue) return fallback.Value;
+            if (values.Length != 1 ||
+                !double.TryParse(values[0].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) || !double.IsFinite(value))
+                throw new InvalidDataException("Invalid or ambiguous circle coordinates; small-circle cleanup was not applied.");
+            return value;
+        }
+
+        // Deleting malformed geometry would hide it from DXFER's source validation.
+        _ = Read(10);
+        _ = Read(20);
+        if (Read(30, 0) != 0 || Read(39, 0) != 0 || Read(210, 0) != 0 || Read(220, 0) != 0 || Read(230, 1) != 1)
+            throw new InvalidDataException("Non-planar circle; small-circle cleanup was not applied.");
     }
 }

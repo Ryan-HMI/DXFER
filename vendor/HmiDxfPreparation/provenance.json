@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "upstreamRepository": "HMI-Sync",
-  "upstreamCommit": "f8674c7f09e974797062ba012e37f4ea2625509a",
+  "upstreamCommit": "6aa81c8417dc29358878aff1bd64206297df532a",
   "files": [
     {
       "role": "algorithm",
@@ -14,9 +14,9 @@
     {
       "role": "algorithm",
       "upstreamPath": "HmiSync.Web/Infrastructure/DxfSmallCircleFilter.cs",
-      "upstreamSha256": "17f49e63fceb1396c4e9e356cb6aaeda746fb8a6a261ed6f8f66b045a06521bf",
+      "upstreamSha256": "2fad9180ca3b4e10e53d97b4cb94d3de1514d055bea074ecf66daee94f5c5b91",
       "vendoredPath": "vendor/HmiDxfPreparation/Infrastructure/DxfSmallCircleFilter.cs",
-      "vendoredSha256": "17f49e63fceb1396c4e9e356cb6aaeda746fb8a6a261ed6f8f66b045a06521bf",
+      "vendoredSha256": "2fad9180ca3b4e10e53d97b4cb94d3de1514d055bea074ecf66daee94f5c5b91",
       "adaptation": "verbatim"
     },
     {
@@ -86,10 +86,18 @@
     {
       "role": "test",
       "upstreamPath": "HMISync.Tests/Engineering/DxfSmallCircleFilterTests.cs",
-      "upstreamSha256": "30f6b57da82b1b7241b1115494987110653bbb20275685123c56905cca746e71",
+      "upstreamSha256": "81da8b5cda86daaa2e1e7f23df76c8ef636f32176af8d8e0513ba5191b1e10ed",
       "vendoredPath": "tests/DXFER.Core.Tests/ProductionPreparationVendor/DxfSmallCircleFilterTests.cs",
       "vendoredSha256": "3b154e87ebe7a00d3f79dcc3767605b13b395774432c44307c045733a20b42dc",
       "adaptation": "Keep four pure test methods and their helpers verbatim. Omit SaveRetainsVerifiedOriginalAndRefusesCorruptBackup, EngineeringPage upload integration, HTTP helpers and their unused imports."
+    },
+    {
+      "role": "test",
+      "upstreamPath": "HMISync.Tests/Engineering/DxfSmallCircleValidationTests.cs",
+      "upstreamSha256": "3527f169792a79926adc84b7417a252affdeba49048c22772a807743826f7399",
+      "vendoredPath": "tests/DXFER.Core.Tests/ProductionPreparationVendor/DxfSmallCircleValidationTests.cs",
+      "vendoredSha256": "3527f169792a79926adc84b7417a252affdeba49048c22772a807743826f7399",
+      "adaptation": "verbatim"
     }
   ]
 }

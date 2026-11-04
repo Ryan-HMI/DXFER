@@ -7,7 +7,7 @@ namespace DXFER.Core.Tests.ProductionPreparationVendor;
 
 public sealed class VendorSourceParityTests
 {
-    private const string PinnedCommit = "f8674c7f09e974797062ba012e37f4ea2625509a";
+    private const string PinnedCommit = "6aa81c8417dc29358878aff1bd64206297df532a";
     private const string VendorDirectory = "vendor/HmiDxfPreparation/";
     private static readonly string[] AlgorithmPaths =
     [
@@ -27,7 +27,7 @@ public sealed class VendorSourceParityTests
         manifest.SchemaVersion.Should().Be(1);
         manifest.UpstreamRepository.Should().Be("HMI-Sync");
         manifest.UpstreamCommit.Should().Be(PinnedCommit);
-        manifest.Files.Should().HaveCount(11);
+        manifest.Files.Should().HaveCount(12);
         manifest.Files.Select(file => file.VendoredPath).Should().OnlyHaveUniqueItems();
         manifest.Files.Select(file => file.UpstreamPath).Should().OnlyHaveUniqueItems();
         var algorithms = manifest.Files.Where(file => file.Role == "algorithm").ToArray();
@@ -46,7 +46,7 @@ public sealed class VendorSourceParityTests
         var sources = Directory.EnumerateFiles(Path.Combine(root, VendorDirectory), "*.cs", SearchOption.AllDirectories)
             .Select(path => Path.GetRelativePath(root, path).Replace('\\', '/'));
         sources.Should().BeEquivalentTo(algorithms.Append(contract).Select(file => file.VendoredPath));
-        manifest.Files.Count(file => file.Role == "test").Should().Be(5);
+        manifest.Files.Count(file => file.Role == "test").Should().Be(6);
     }
 
     [Fact]
