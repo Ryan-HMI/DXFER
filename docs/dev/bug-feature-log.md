@@ -4,9 +4,10 @@ Use this log for bugs and feature requests that arrive while another task is act
 
 ## Open
 
-- PROD-CLEANUP-20261104: Ryan requested CypNest cleanup in all production DXFER
-  paths. Shared raw-record pipeline, source preservation and refusal gates in
-  progress. See `production-cleanup-20261104.md`. No deployment claimed.
+- [x] PROD-CLEANUP-20261104: Shared raw-record cleanup, Sync source preservation
+  and refusal gates implemented and owner-app-verified. Installed normal
+  Production `9865808` and Test `898307e`; independent Flux acceptance pending.
+  See `production-cleanup-20261104.md`. No historical bulk rewrite or repair.
 
 - [x] UT-DEDUP-001 (2026-09-27): Ryan approved exact coincident geometry cleanup after access-plate double holes. TEST only. Shared service covers open, auto-normalization, save-back and Remove duplicates command with undo. No fuzzy merging or cross-layer/process removal; referenced copies are retained, reference-only documents untouched. Lines (reversed endpoints), circles, equivalent arc angles, whole polylines (reversed/cyclic), identical polygons/ellipses/spline parameters covered. Points/dimensions/constraint glyphs excluded. Cross-type equivalents, partial overlaps and ambiguous/retraced or >4096-vertex polyline cleanup deliberately remain review; spline measurement still unsupported. Layout contract: shared cleanup icon/menu classes and existing command-status wrapping, no new panels or CSS. 570 tests pass; real access plate normalization/browser save-back stores22.959380in/3contours/matching checksum and unchanged6.5x4.5bounds. At dummy200IPM/.6sec per pierce calculator shows0.1448min/unit. Desktop/phone Sync screenshots inspected. User retest pending; original live artifacts untouched and need re-save.
 
