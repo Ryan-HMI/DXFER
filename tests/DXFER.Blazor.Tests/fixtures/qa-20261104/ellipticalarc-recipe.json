@@ -1,0 +1,55 @@
+{
+  "file": "ellipticalarc-before.dxf",
+  "sourceId": "source",
+  "tool": "line",
+  "automaticSnapConstraints": true,
+  "center": {
+    "x": 17,
+    "y": -9
+  },
+  "majorAxisEndPoint": {
+    "x": 6,
+    "y": 8
+  },
+  "minorRadiusRatio": 0.5,
+  "startParameterDegrees": 0,
+  "endParameterDegrees": 144.78240703180728,
+  "endpoints": [
+    {
+      "label": "start",
+      "point": {
+        "x": 23,
+        "y": -1
+      },
+      "referenceKey": "source|point|start|23|-1",
+      "canonicalReferenceKey": "source:start",
+      "pointerEnd": {
+        "x": 26,
+        "y": 3
+      },
+      "keyedLength": 12,
+      "keyedEnd": {
+        "x": 30.2,
+        "y": 8.6
+      }
+    },
+    {
+      "label": "end",
+      "point": {
+        "x": 9.791460030016808,
+        "y": -13.805693313322125
+      },
+      "referenceKey": "source|point|end|9.791460030016808|-13.805693313322125",
+      "canonicalReferenceKey": "source:end",
+      "pointerEnd": {
+        "x": 12.791460030016808,
+        "y": -9.805693313322125
+      },
+      "keyedLength": 12,
+      "keyedEnd": {
+        "x": 16.991460030016807,
+        "y": -4.205693313322126
+      }
+    }
+  ]
+}

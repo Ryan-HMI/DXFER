@@ -1,0 +1,110 @@
+{
+  "file": "inscribed-pentagon-before.dxf",
+  "sourceId": "source",
+  "tool": "line",
+  "automaticSnapConstraints": true,
+  "center": {
+    "x": 17,
+    "y": -9
+  },
+  "radius": 10,
+  "circumscribed": false,
+  "sideCount": 5,
+  "centerEditTarget": {
+    "x": 21,
+    "y": -12
+  },
+  "radiusEditTarget": 15,
+  "vertices": [
+    {
+      "index": 0,
+      "point": {
+        "x": 23,
+        "y": -1
+      },
+      "referenceKey": "source|point|vertex-0|23|-1",
+      "canonicalReferenceKey": "source|segment|0:start",
+      "pointerEnd": {
+        "x": 26,
+        "y": 3
+      },
+      "keyedLength": 12,
+      "keyedEnd": {
+        "x": 30.2,
+        "y": 8.6
+      }
+    },
+    {
+      "index": 1,
+      "point": {
+        "x": 11.245649835888456,
+        "y": -0.8215249472294985
+      },
+      "referenceKey": "source|point|vertex-1|11.245649835888456|-0.8215249472294985",
+      "canonicalReferenceKey": "source|segment|0:end",
+      "pointerEnd": {
+        "x": 14.245649835888456,
+        "y": 3.1784750527705015
+      },
+      "keyedLength": 12,
+      "keyedEnd": {
+        "x": 18.445649835888457,
+        "y": 8.778475052770501
+      }
+    },
+    {
+      "index": 2,
+      "point": {
+        "x": 7.44361601541053,
+        "y": -11.94542444124474
+      },
+      "referenceKey": "source|point|vertex-2|7.44361601541053|-11.94542444124474",
+      "canonicalReferenceKey": "source|segment|1:end",
+      "pointerEnd": {
+        "x": 10.44361601541053,
+        "y": -7.9454244412447395
+      },
+      "keyedLength": 12,
+      "keyedEnd": {
+        "x": 14.64361601541053,
+        "y": -2.34542444124474
+      }
+    },
+    {
+      "index": 3,
+      "point": {
+        "x": 16.8481800520901,
+        "y": -18.99884746875442
+      },
+      "referenceKey": "source|point|vertex-3|16.8481800520901|-18.99884746875442",
+      "canonicalReferenceKey": "source|segment|2:end",
+      "pointerEnd": {
+        "x": 19.8481800520901,
+        "y": -14.99884746875442
+      },
+      "keyedLength": 12,
+      "keyedEnd": {
+        "x": 24.0481800520901,
+        "y": -9.39884746875442
+      }
+    },
+    {
+      "index": 4,
+      "point": {
+        "x": 26.462554096610912,
+        "y": -12.234203142771342
+      },
+      "referenceKey": "source|point|vertex-4|26.462554096610912|-12.234203142771342",
+      "canonicalReferenceKey": "source|segment|3:end",
+      "pointerEnd": {
+        "x": 29.462554096610912,
+        "y": -8.234203142771342
+      },
+      "keyedLength": 12,
+      "keyedEnd": {
+        "x": 33.66255409661091,
+        "y": -2.6342031427713426
+      }
+    }
+  ]
+}
