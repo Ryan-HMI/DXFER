@@ -712,10 +712,9 @@ public static class SketchDimensionSolverService
             return false;
         }
 
-        if (entity is EllipseEntity ellipse
-            && TryGetEllipseCanvasPoint(ellipse, label, out point))
+        if (entity is EllipseEntity)
         {
-            return true;
+            return SketchReferenceResolver.TryGetEllipseAxisPoint(entities, referenceKey, out point);
         }
 
         if (entity is PolylineEntity polyline)
@@ -795,51 +794,6 @@ public static class SketchDimensionSolverService
 
         resized = ellipse with { MajorAxisEndPoint = majorVector, MinorRadiusRatio = ratio };
         return true;
-    }
-
-    private static bool TryGetEllipseCanvasPoint(EllipseEntity ellipse, string label, out Point2 point)
-    {
-        if (StringComparer.OrdinalIgnoreCase.Equals(label, "major-start"))
-        {
-            point = new Point2(
-                ellipse.Center.X - ellipse.MajorAxisEndPoint.X,
-                ellipse.Center.Y - ellipse.MajorAxisEndPoint.Y);
-            return true;
-        }
-
-        if (StringComparer.OrdinalIgnoreCase.Equals(label, "major-end"))
-        {
-            point = new Point2(
-                ellipse.Center.X + ellipse.MajorAxisEndPoint.X,
-                ellipse.Center.Y + ellipse.MajorAxisEndPoint.Y);
-            return true;
-        }
-
-        if (StringComparer.OrdinalIgnoreCase.Equals(label, "minor-start")
-            || StringComparer.OrdinalIgnoreCase.Equals(label, "minor-end"))
-        {
-            var majorLength = Distance(ellipse.Center, new Point2(
-                ellipse.Center.X + ellipse.MajorAxisEndPoint.X,
-                ellipse.Center.Y + ellipse.MajorAxisEndPoint.Y));
-            if (majorLength <= SketchGeometryEditor.Tolerance)
-            {
-                point = default;
-                return false;
-            }
-
-            var minorLength = majorLength * ellipse.MinorRadiusRatio;
-            var minorUnit = new Point2(
-                -ellipse.MajorAxisEndPoint.Y / majorLength,
-                ellipse.MajorAxisEndPoint.X / majorLength);
-            var direction = StringComparer.OrdinalIgnoreCase.Equals(label, "minor-start") ? -1.0 : 1.0;
-            point = new Point2(
-                ellipse.Center.X + (minorUnit.X * minorLength * direction),
-                ellipse.Center.Y + (minorUnit.Y * minorLength * direction));
-            return true;
-        }
-
-        point = default;
-        return false;
     }
 
     private static bool TryGetPointToLineDimensionMeasurement(

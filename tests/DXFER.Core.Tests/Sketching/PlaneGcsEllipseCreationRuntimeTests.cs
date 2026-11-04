@@ -11,6 +11,86 @@ namespace DXFER.Core.Tests.Sketching;
 
 public sealed class PlaneGcsEllipseCreationRuntimeTests
 {
+    [Theory]
+    [InlineData(90, false, 0)]
+    [InlineData(90, true, 0)]
+    [InlineData(90, false, 37)]
+    [InlineData(90, true, 37)]
+    [InlineData(0, false, 0)]
+    [InlineData(0, true, 37)]
+    public void UnconstrainedEllipseQuadrantDimensionCreatesEditsAndReopens(int quadrant, bool reverse, double angle)
+    {
+        var radians = angle * Math.PI / 180;
+        var ellipse = new EllipseEntity(EntityId.Create("shape"), new(7, -2),
+            new(6 * Math.Cos(radians), 6 * Math.Sin(radians)), 0.5);
+        var original = new DrawingDocument([ellipse]);
+        var keys = new[] { quadrant, quadrant + 180 }.Select(degrees =>
+        {
+            var point = ellipse.PointAtParameterDegrees(degrees);
+            return FormattableString.Invariant($"shape|point|quadrant-{degrees}|{point.X:R}|{point.Y:R}");
+        }).ToArray();
+        if (reverse) Array.Reverse(keys);
+        SketchCommandFactory.TryBuildDimension(original, keys, "picked-axis", out var dimension, out var status,
+            anchorOverride: new(16, -2)).Should().BeTrue(status);
+        dimension.ReferenceKeys.Should().Equal(keys);
+        dimension.Kind.Should().Be(SketchDimensionKind.LinearDistance);
+        dimension.IsDriving.Should().BeTrue();
+        dimension.Value.Should().BeApproximately(quadrant == 0 ? 12 : 6, 1e-6);
+        using var runtime = CreateRuntime();
+        var observed = new ObservedRuntime(runtime);
+        var solver = new PlaneGcsSketchSolverAdapter(observed);
+
+        var created = solver.Solve(new(original, [], [dimension]));
+
+        AssertSolved(created, observed, 12, 6);
+        var placed = (EllipseEntity)created.Document.Entities.Single();
+        placed.Center.X.Should().BeApproximately(ellipse.Center.X, 1e-12);
+        placed.Center.Y.Should().BeApproximately(ellipse.Center.Y, 1e-12);
+        placed.MajorAxisEndPoint.X.Should().BeApproximately(ellipse.MajorAxisEndPoint.X, 1e-12);
+        placed.MajorAxisEndPoint.Y.Should().BeApproximately(ellipse.MajorAxisEndPoint.Y, 1e-12);
+        created.Document.Constraints.Should().BeEmpty();
+        foreach (var value in quadrant == 0 ? new[] { 14d, 16d } : new[] { 8d, 10d })
+        {
+            var reopened = RoundTrip(created.Document);
+            reopened.Dimensions.Single().ReferenceKeys.Should().Equal(keys);
+            var edit = WithValue(reopened.Dimensions.Single(), value);
+            created = solver.Solve(new(reopened, [], [edit]));
+            created.Status.Should().Be(SketchSolveStatus.Solved, string.Join(" ", created.Diagnostics));
+            observed.Response!.Engine.Should().Be("PlaneGCS");
+            created.Document.Dimensions.Single().IsDriving.Should().BeTrue();
+            created.Document.Dimensions.Single().ReferenceKeys.Should().Equal(keys);
+            SketchDimensionSolverService.TryGetDimensionMeasurement(created.Document, edit, out var measured).Should().BeTrue();
+            measured.Should().BeApproximately(value, 1e-6);
+            var changed = (EllipseEntity)created.Document.Entities.Single();
+            var radius = Math.Sqrt(changed.MajorAxisEndPoint.X * changed.MajorAxisEndPoint.X
+                + changed.MajorAxisEndPoint.Y * changed.MajorAxisEndPoint.Y);
+            (2 * radius * (quadrant == 0 ? 1 : changed.MinorRadiusRatio)).Should().BeApproximately(value, 1e-6);
+        }
+        original.Dimensions.Should().BeEmpty();
+        original.Entities.Should().Equal(ellipse);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void QuadrantFixedConflictReachesEngineAndRefusesWithoutMovingGeometry(bool fixPoints)
+    {
+        var keys = new[] { "shape|point|quadrant-90|7|1", "shape|point|quadrant-270|7|-5" };
+        var document = new DrawingDocument([new EllipseEntity(EntityId.Create("shape"), new(7, -2), new(6, 0), 0.5)]);
+        var dimension = new SketchDimension("minor", SketchDimensionKind.LinearDistance, keys, 8, isDriving: true);
+        using var runtime = CreateRuntime();
+        var observed = new ObservedRuntime(runtime);
+
+        var result = new PlaneGcsSketchSolverAdapter(observed).Solve(
+            new(document, [], [dimension], fixedReferenceKeys: fixPoints ? keys : ["shape"]));
+
+        observed.Response.Should().NotBeNull();
+        observed.Response!.Engine.Should().Be("PlaneGCS");
+        result.Status.Should().Be(SketchSolveStatus.Failed);
+        result.Document.Entities.Should().Equal(document.Entities);
+        result.Document.Dimensions.Single().Value.Should().Be(8);
+    }
+
     [Fact]
     public void ExportCreationReferenceBrowserFixturesWhenRequested()
     {
@@ -193,6 +273,10 @@ public sealed class PlaneGcsEllipseCreationRuntimeTests
     [InlineData("major-end", 0)]
     [InlineData("minor-start", 1)]
     [InlineData("minor-end", 1)]
+    [InlineData("quadrant-180", 0)]
+    [InlineData("quadrant-0", 0)]
+    [InlineData("quadrant-270", 1)]
+    [InlineData("quadrant-90", 1)]
     public void FixedNamedPointAllowsOtherAxisEditAndIsCheckedAgainstLiveResult(string label, int fixedAxis)
     {
         var document = Create(7, -2, 37);

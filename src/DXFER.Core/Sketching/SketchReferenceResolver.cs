@@ -92,13 +92,16 @@ public static class SketchReferenceResolver
     }
 
     internal static bool TryGetEllipseAxisPoint(DrawingDocument document, string key, out Point2 point)
+        => TryGetEllipseAxisPoint(document.Entities, key, out point);
+
+    internal static bool TryGetEllipseAxisPoint(IReadOnlyList<DrawingEntity> entities, string key, out Point2 point)
     {
         point = default;
         // Canvas coordinates are a finite acquisition snapshot, never the axis identity.
         if (!SketchReference.TryParseCanvasPointCoordinates(key, out var entityId, out var label, out var stored)
             || key.Trim().Split('|') is not [_, "point", _, _, _]
             || !double.IsFinite(stored.X) || !double.IsFinite(stored.Y)
-            || !SketchGeometryEditor.TryFindEntity(document.Entities, entityId, out _, out var entity)
+            || !SketchGeometryEditor.TryFindEntity(entities, entityId, out _, out var entity)
             || entity is not EllipseEntity ellipse) return false;
 
         if (!HasValidEllipseGeometry(ellipse)) return false;
@@ -106,10 +109,10 @@ public static class SketchReferenceResolver
         var major = ellipse.MajorAxisEndPoint;
         var offset = label.ToLowerInvariant() switch
         {
-            "major-start" => new Point2(-major.X, -major.Y),
-            "major-end" => major,
-            "minor-start" => new Point2(major.Y * ellipse.MinorRadiusRatio, -major.X * ellipse.MinorRadiusRatio),
-            "minor-end" => new Point2(-major.Y * ellipse.MinorRadiusRatio, major.X * ellipse.MinorRadiusRatio),
+            "major-start" or "quadrant-180" => new Point2(-major.X, -major.Y),
+            "major-end" or "quadrant-0" => major,
+            "minor-start" or "quadrant-270" => new Point2(major.Y * ellipse.MinorRadiusRatio, -major.X * ellipse.MinorRadiusRatio),
+            "minor-end" or "quadrant-90" => new Point2(-major.Y * ellipse.MinorRadiusRatio, major.X * ellipse.MinorRadiusRatio),
             _ => new Point2(double.NaN, double.NaN)
         };
         var resolved = new Point2(ellipse.Center.X + offset.X, ellipse.Center.Y + offset.Y);
