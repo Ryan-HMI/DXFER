@@ -2,8 +2,11 @@
 
 ## Production Cleanup 2026-11-04
 
-PROD-CLEANUP-20261104: USER-REQUESTED; integration/app checks pending. Pinned
-upstream algorithm tests pass; this alone is not production-entry-point parity.
+PROD-CLEANUP-20261104: AUTO-PASSED / APP-VERIFIED. Installed Test `898307e`,
+normal Production `9865808`; shared source-preservation prerequisite installed
+in Sync Test/Production. API, local Open/download and Sync callback paths passed
+on published builds and the installed normal service. Independent Flux and
+user acceptance pending; see `production-cleanup-20261104.md` for scope/evidence.
 
 Use this file to separate what the user has actually tested from what is only automated-tested or app-verified by Codex. Do not mark an item `USER-PASSED` unless the user reports it working. Do not mark an item `APP-VERIFIED` until it has been tested in the running app or canvas.
 
