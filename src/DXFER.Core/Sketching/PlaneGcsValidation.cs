@@ -121,8 +121,17 @@ internal static class PlaneGcsValidation
             return SketchReferenceResolver.TryGetEllipseAxisPoint(document, key, out _);
         if (reference.IsOrigin) return true;
         if (!SketchGeometryEditor.TryGetEntity(document.Entities, reference, out _, out var entity)) return false;
-        if (reference.SegmentIndex is { } segment
-            && (entity is not PolylineEntity polyline || segment < 0 || segment >= polyline.Vertices.Count - 1)) return false;
+        if (reference.SegmentIndex is { } segment)
+        {
+            if (entity is PolygonEntity polygon)
+            {
+                if (reference.Target is not (SketchReferenceTarget.Start or SketchReferenceTarget.End)) return false;
+                // The closing segment's end wraps to vertex zero, but a canvas vertex index must not wrap.
+                if (SketchReference.TryParseCanvasPointCoordinates(key, out _, out _, out _)
+                    && reference.Target == SketchReferenceTarget.End && segment + 1 >= polygon.NormalizedSideCount) return false;
+            }
+            else if (entity is not PolylineEntity polyline || segment < 0 || segment >= polyline.Vertices.Count - 1) return false;
+        }
         return reference.IsEntity || SketchGeometryEditor.TryGetPoint(document.Entities, reference, out _);
     }
 

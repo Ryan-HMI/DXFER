@@ -93,6 +93,63 @@ public sealed class PlaneGcsPolygonCreationRuntimeTests
         DxferDocumentSerializer.Write(document).Should().Be(before);
     }
 
+    public static IEnumerable<object[]> InvalidReferences()
+    {
+        foreach (var key in new[]
+        {
+            "source|segment|0", "source|segment|4", "source|segment|5",
+            "source|segment|0:center", "source|segment|0:mid",
+            "source|segment|5:start", "source|segment|5:end", "source|segment|99:end",
+            "source|segment|-1:start", "source|point|vertex-99|23|-1"
+        })
+        foreach (var fixedReference in new[] { false, true })
+            yield return [key, fixedReference];
+        // Constraint keys retain the canvas index; fixed keys are canonicalized before validation.
+        yield return ["source|point|vertex-5|23|-1", false];
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidReferences))]
+    public void PolygonSegmentBodiesAndInvalidIndicesAreRejectedBeforeRuntime(string key, bool fixedReference)
+    {
+        var source = Source(false);
+        var document = new DrawingDocument([source, new PointEntity(EntityId.Create("created"), source.GetVertices()[0])]);
+        using var runtime = CreateRuntime();
+        var observed = new ObservedRuntime(runtime);
+        var constraint = new SketchConstraint("snap", SketchConstraintKind.Coincident, ["created", key]);
+
+        var result = new PlaneGcsSketchSolverAdapter(observed).Solve(fixedReference
+            ? new(document, [], [], fixedReferenceKeys: [key]) : new(document, [constraint], []));
+
+        result.Status.Should().Be(SketchSolveStatus.Failed);
+        observed.Response.Should().BeNull();
+        result.Diagnostics.Should().Contain(message => message.Contains(fixedReference
+            ? "Unsupported or missing fixed reference" : "Unsupported or missing reference in constraint"));
+        result.Document.Entities.Should().Equal(document.Entities);
+    }
+
+    [Theory]
+    [InlineData(false, "start", 4)]
+    [InlineData(false, "end", 0)]
+    [InlineData(true, "start", 4)]
+    [InlineData(true, "end", 0)]
+    public void ClosingSegmentEndpointAliasesResolveWithoutAdmittingSegmentBodies(bool circumscribed, string target, int vertex)
+    {
+        var source = Source(circumscribed);
+        var start = source.GetVertices()[vertex];
+        var created = new LineEntity(EntityId.Create("created"), start, new(start.X + 3, start.Y + 4));
+        var document = new DrawingDocument([source, created]);
+        var constraint = new SketchConstraint("snap", SketchConstraintKind.Coincident, ["created:start", $"source|segment|4:{target}"]);
+        using var runtime = CreateRuntime();
+        var observed = new ObservedRuntime(runtime);
+
+        var result = new PlaneGcsSketchSolverAdapter(observed).Solve(new(document, [constraint], [], fixedReferenceKeys: ["source"]));
+
+        AssertSolved(result, observed, vertex);
+        AssertCreationUnchanged(result.Document, source, created);
+        AssertDocument(RoundTrip(result.Document), vertex);
+    }
+
     [Fact]
     public void ExportCreationReferenceBrowserFixturesWhenRequested()
     {
