@@ -27,6 +27,9 @@ public static class ProductionDxfPreparation
         {
             var pairs = DxfCompatibility.ReadPairs(bytes, cancellationToken);
             ValidateUnitsAndIntent(pairs);
+            // Validate before deletion: removing a tiny invalid circle must not hide
+            // nonplanar/ambiguous geometry and turn a damaged source into a success.
+            RefuseUnsafeImport(DxfDocumentReader.Read(sourceText));
             var circles = DxfSmallCircleFilter.Apply(bytes, cancellationToken);
             if (circles.ProtectedCount > 0)
                 throw new ProductionDxfPreparationException("Production cleanup requires review: small circles have retained DXF references. Original file unchanged.");
@@ -36,8 +39,8 @@ public static class ProductionDxfPreparation
             var document = DxfDocumentReader.Read(text);
             if (document.Entities.Count == 0)
                 throw new ProductionDxfPreparationException("Production cleanup refused: no supported DXF geometry. Original file unchanged.");
-            if (document.Metadata.UnsupportedEntityCounts.Count > 0 ||
-                document.Metadata.Warnings.Any(warning => warning.Code == CutPathLengthService.UnsafeImportCode))
+            RefuseUnsafeImport(document);
+            if (document.Metadata.UnsupportedEntityCounts.Count > 0)
                 throw new ProductionDxfPreparationException("Production cleanup requires review: unsupported, nonplanar, paper-space or incomplete geometry cannot be exported safely. Original file unchanged.");
             var duplicates = ExactDuplicateGeometryService.Remove(ManufacturingUnits.AssumeInches(document));
             return new(duplicates.Document, text, new(circles.RemovedCount, circles.ProtectedCount,
@@ -49,6 +52,17 @@ public static class ProductionDxfPreparation
             // Raw file content can include private URLs/metadata; do not echo parser text.
             throw new ProductionDxfPreparationException("Production cleanup requires review: incomplete DXF, unsupported records or ambiguous louver geometry. Original file unchanged.");
         }
+        catch (Exception ex) when (ex is ArgumentException or FormatException or OverflowException ||
+            ex is InvalidOperationException and not ProductionDxfPreparationException)
+        {
+            throw new ProductionDxfPreparationException("Production cleanup requires review: invalid or ambiguous DXF geometry. Original file unchanged.");
+        }
+    }
+
+    private static void RefuseUnsafeImport(DrawingDocument document)
+    {
+        if (document.Metadata.Warnings.Any(warning => warning.Code == CutPathLengthService.UnsafeImportCode))
+            throw new ProductionDxfPreparationException("Production cleanup requires review: unsafe or incomplete source geometry. Original file unchanged.");
     }
 
     private static void ValidateUnitsAndIntent(IReadOnlyList<DxfCompatibility.Pair> pairs)
