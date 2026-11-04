@@ -27,10 +27,11 @@ public static class ProductionDxfPreparation
         {
             var pairs = DxfCompatibility.ReadPairs(bytes, cancellationToken);
             ValidateUnitsAndIntent(pairs);
+            var workingBytes = ProductionDxfMetadata.PrepareWorkingCopy(bytes, pairs, cancellationToken);
             // Validate before deletion: removing a tiny invalid circle must not hide
             // nonplanar/ambiguous geometry and turn a damaged source into a success.
             RefuseUnsafeImport(DxfDocumentReader.Read(sourceText));
-            var circles = DxfSmallCircleFilter.Apply(bytes, cancellationToken);
+            var circles = DxfSmallCircleFilter.Apply(workingBytes, cancellationToken);
             if (circles.ProtectedCount > 0)
                 throw new ProductionDxfPreparationException("Production cleanup requires review: small circles have retained DXF references. Original file unchanged.");
             var layers = BatchDxfLayers.Prepare(circles.Bytes, Array.Empty<string>(), cancellationToken);
@@ -42,6 +43,11 @@ public static class ProductionDxfPreparation
             RefuseUnsafeImport(document);
             if (document.Metadata.UnsupportedEntityCounts.Count > 0)
                 throw new ProductionDxfPreparationException("Production cleanup requires review: unsupported, nonplanar, paper-space or incomplete geometry cannot be exported safely. Original file unchanged.");
+            if (!ReferenceEquals(bytes, workingBytes))
+                document = new DrawingDocument(document.Entities, document.Dimensions, document.Constraints,
+                    document.Metadata with { Warnings = document.Metadata.Warnings.Append(new DrawingDocumentWarning(
+                        "production-metadata-removed", DrawingDocumentWarningSeverity.Info,
+                        "Nongeometric source identifiers were omitted from the production working copy. Original file unchanged.")).ToArray() });
             var duplicates = ExactDuplicateGeometryService.Remove(ManufacturingUnits.AssumeInches(document));
             return new(duplicates.Document, text, new(circles.RemovedCount, circles.ProtectedCount,
                 layers.TearSlotsCreated, layers.ExistingTearSlots, layers.Layers.Count(layer => layer.Removed),
@@ -69,23 +75,6 @@ public static class ProductionDxfPreparation
     {
         if (pairs.Any(pair => pair.Value.Contains("DXFER_NATIVE_V1", StringComparison.Ordinal)))
             throw new ProductionDxfPreparationException("This drawing contains native DXFER constraints. Use the editing workspace; production cleanup will not discard its design intent.");
-
-        // The prep writer preserves geometry, not DXF reactors or application data.
-        // Reject associations before parsing strips the evidence needed to protect them.
-        var entityHandles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var section = "";
-        for (var index = 0; index < pairs.Count; index++)
-        {
-            var pair = pairs[index];
-            if (pair.Code == 0 && pair.Value == "SECTION" && index + 1 < pairs.Count)
-                section = pairs[index + 1].Value;
-            else if (pair.Code == 0 && pair.Value == "ENDSEC") section = "";
-            else if (section == "ENTITIES" && pair.Code == 5) entityHandles.Add(pair.Value);
-        }
-        if (pairs.Any(pair => pair.Code is 102 or >= 1000 ||
-                (pair.Code is >= 320 and <= 369 && pair.Code != 330 || pair.Code is >= 390 and <= 399)
-                && entityHandles.Contains(pair.Value)))
-            throw new ProductionDxfPreparationException("Production cleanup requires review: associated DXF records or application data cannot be discarded by the preparation workspace. Original file unchanged.");
 
         var declarations = pairs.Select((pair, index) => (pair, index))
             .Where(item => item.pair.Code == 9 && item.pair.Value == "$INSUNITS").ToArray();
