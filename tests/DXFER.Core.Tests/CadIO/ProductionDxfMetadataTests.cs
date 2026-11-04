@@ -42,14 +42,61 @@ public sealed class ProductionDxfMetadataTests
         ProductionDxfPreparation.Prepare(source).Document.Entities.Should().ContainSingle();
     }
 
-    [Fact]
-    public void ArcRadiusMetadataMustAgreeWithGeometry()
+    [Theory]
+    [InlineData("ARC")]
+    [InlineData("CIRCLE")]
+    public void CircularRadiusMetadataMustAgreeWithGeometry(string entityType)
     {
-        var arc = "0\nARC\n5\nA\n" + Extension + "8\nCUT\n10\n0\n20\n0\n40\n1\n50\n0\n51\n90\n";
+        var entity = $"0\n{entityType}\n5\nA\n" + Extension + "8\nCUT\n10\n0\n20\n0\n40\n1\n"
+            + (entityType == "ARC" ? "50\n0\n51\n90\n" : "");
         var objects = Dictionary.Replace("btDetId", "btArcOnSurfaceRadius") + Leaf.Replace("1000\npart-detail", "40\n1.0");
-        ProductionDxfPreparation.Prepare(Dxf(arc, objects)).Document.Entities.Should().ContainSingle().Which.Should().BeOfType<ArcEntity>();
-        Refused(Dxf(arc, objects.Replace("40\n1.0", "40\n2.0")));
+        var prepared = ProductionDxfPreparation.Prepare(Dxf(entity, objects));
+        prepared.Document.Entities.Should().ContainSingle().Which.GetType().Should()
+            .Be(entityType == "ARC" ? typeof(ArcEntity) : typeof(CircleEntity));
+        Refused(Dxf(entity, objects.Replace("40\n1.0", "40\n2.0")));
         Refused(Dxf(Line, objects));
+    }
+
+    [Theory]
+    [InlineData("0.3125", false)]
+    [InlineData("0.2500000000000001", false)]
+    [InlineData("0.025", false)]
+    [InlineData("0.01", true)]
+    public void CircleRadiusMetadataPreservesGeometryAndSmallHolePolicy(string radius, bool removed)
+    {
+        var circle = "0\nCIRCLE\n5\nA\n" + Extension + $"8\nCUT\n10\n2\n20\n3\n40\n{radius}\n";
+        var retained = "0\nLINE\n5\nD\n8\nCUT\n10\n0\n20\n0\n11\n6\n21\n6\n";
+        var objects = Dictionary.Replace("btDetId", "btArcOnSurfaceRadius") + Leaf.Replace("1000\npart-detail", $"40\n{radius}");
+        var source = Dxf(retained + circle, objects);
+        var prepared = ProductionDxfPreparation.Prepare(source);
+        prepared.Cleanup.SmallCirclesRemoved.Should().Be(removed ? 1 : 0);
+        prepared.Document.Entities.OfType<CircleEntity>().Should().HaveCount(removed ? 0 : 1);
+        if (!removed)
+        {
+            var expectedRadius = double.Parse(radius, System.Globalization.CultureInfo.InvariantCulture);
+            prepared.Document.Entities.OfType<CircleEntity>().Single().Radius.Should().Be(expectedRadius);
+            var reopened = ProductionDxfPreparation.Prepare(DxfDocumentWriter.Write(prepared.Document));
+            var kept = reopened.Document.Entities.OfType<CircleEntity>().Single();
+            kept.Radius.Should().BeApproximately(expectedRadius, 1e-12);
+            kept.Center.X.Should().Be(2);
+            kept.Center.Y.Should().Be(3);
+        }
+        prepared.PreparedText.Should().NotContain("btArcOnSurfaceRadius").And.NotContain("ACAD_XDICTIONARY");
+        source.Should().Be(Dxf(retained + circle, objects));
+    }
+
+    [Theory]
+    [InlineData("40\n0\n")]
+    [InlineData("40\nNaN\n")]
+    [InlineData("40\nInfinity\n")]
+    [InlineData("40\n0.3125\n40\n0.3125\n")]
+    [InlineData("1005\nA\n")]
+    [InlineData("340\nA\n")]
+    public void CircleRadiusMetadataStillRejectsInvalidOrReferencedPayloads(string payload)
+    {
+        var circle = "0\nCIRCLE\n5\nA\n" + Extension + "8\nCUT\n10\n2\n20\n3\n40\n0.3125\n";
+        var objects = Dictionary.Replace("btDetId", "btArcOnSurfaceRadius") + Leaf.Replace("1000\npart-detail\n", payload);
+        Refused(Dxf(circle, objects));
     }
 
     [Fact]
