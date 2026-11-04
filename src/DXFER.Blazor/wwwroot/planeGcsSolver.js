@@ -179,8 +179,10 @@ export async function createPlaneGcsSolver({ wasmBinary, wasmPath } = {}) {
                     const probe = new NativeCurveWrapper(new module.GcsSystem(), module);
                     try {
                         probe.fixedParameterIds = mapped.fixedParameterIds;
+                        // Rank is a property of hard intent at this accepted solution.
+                        // Replaying stale drag/stability goals can fail a valid rank check.
                         const probeStatus = solveNative(probe, copy(mapped.primitives
-                            .filter(primitive => !owned.has(primitive.id))
+                            .filter(primitive => !owned.has(primitive.id) && primitive.temporary !== true)
                             .map(primitive => get(primitive.id))));
                         if (![SolveStatus.Success, SolveStatus.Converged].includes(probeStatus)
                             || probe.get_gcs_conflicting_constraints().length) {
@@ -680,6 +682,42 @@ function mapRequest(request) {
         relation("p2p_symmetric_ppp", { p1_id: a.id, p2_id: b.id, p_id: middle.id }, source,
             get => distance(get(middle.id), midpoint(get(a.id), get(b.id))), temporary);
     }
+    function polygonVertex(shape, index) {
+        requireSupported(Number.isInteger(index) && index >= 0 && index < shape.entity.sideCount,
+            `Unknown polygon vertex: ${shape.entity.id}:${index}.`);
+        shape.vertexPoints ??= new Map();
+        if (shape.vertexPoints.has(index)) return shape.vertexPoints.get(index);
+        if (!shape.entity.circumscribed && index === 0) return shape.guide;
+        const center = shape.center, guide = shape.guide, source = `${shape.entity.id} polygon vertex ${index}`;
+        const phase = (shape.entity.circumscribed ? Math.PI / shape.entity.sideCount : 0) + index * 2 * Math.PI / shape.entity.sideCount;
+        const ratio = shape.entity.circumscribed ? 1 / Math.cos(Math.PI / shape.entity.sideCount) : 1;
+        if (!shape.vertexCircle) {
+            shape.vertexCircle = shape.polygonGuide;
+            if (shape.entity.circumscribed) {
+                const radius = shape.polygonGuide.radius;
+                shape.vertexCircle = add({ type: "circle", c_id: center.id, radius: radius * ratio });
+                const scaled = point({ x: radius, y: radius * ratio });
+                const zero = point({ x: 0, y: 0 }), slope = point({ x: 1, y: ratio });
+                zero.fixed = true; slope.fixed = true;
+                // Fixed-slope incidence supports two free radius parameters in the pinned engine.
+                for (const [prop, circle] of [["x", shape.polygonGuide], ["y", shape.vertexCircle]])
+                    relation("equal", { param1: { o_id: scaled.id, prop }, param2: { o_id: circle.id, prop: "radius" } }, source);
+                relation("point_on_line_ppp", { p_id: scaled.id, lp1_id: zero.id, lp2_id: slope.id }, source,
+                    get => Math.abs(get(shape.vertexCircle.id).radius - ratio * get(shape.polygonGuide.id).radius));
+            }
+        }
+        const angle = Math.atan2(guide.y - center.y, guide.x - center.x) + phase;
+        const vertex = point({ x: center.x + shape.vertexCircle.radius * Math.cos(angle),
+            y: center.y + shape.vertexCircle.radius * Math.sin(angle) });
+        shape.vertexPoints.set(index, vertex);
+        shape.guideLine ??= add({ type: "line", p1_id: center.id, p2_id: guide.id });
+        const radialLine = add({ type: "line", p1_id: center.id, p2_id: vertex.id });
+        relation("point_on_circle", { p_id: vertex.id, c_id: shape.vertexCircle.id }, source,
+            get => Math.abs(distance(get(center.id), get(vertex.id)) - get(shape.vertexCircle.id).radius));
+        relation("l2l_angle_ll", { l1_id: shape.guideLine.id, l2_id: radialLine.id, angle: angleDelta(phase) }, source,
+            get => Math.abs(angleDelta(lineAngle(radialLine, get) - lineAngle(shape.guideLine, get) - phase)));
+        return vertex;
+    }
     let origin;
     function resolve(key, dragging = false) {
         requireSupported(typeof key === "string" && key.length > 0, "Reference keys must be nonempty strings.");
@@ -718,6 +756,10 @@ function mapRequest(request) {
         const shape = model(base);
         let line = shape.kind === "line" ? shape.lines[0] : null;
         if (segment !== undefined) {
+            if (shape.kind === "polygon" && ["start", "end"].includes(target)) {
+                requireSupported(!dragging && segment < shape.entity.sideCount, `Unknown or uneditable polygon vertex: ${raw}.`);
+                return { point: polygonVertex(shape, (segment + (target === "end" ? 1 : 0)) % shape.entity.sideCount), shape };
+            }
             requireSupported(shape.kind === "polyline" && segment < shape.lines.length, `Unknown polyline segment: ${raw}.`);
             line = shape.lines[segment];
         }
@@ -749,6 +791,8 @@ function mapRequest(request) {
                 if (dragging && p) return { point: p, shape, splineTangentGrip: target };
             }
         } else if (shape.polygonGuide) {
+            const vertex = /^vertex-(\d+)$/.exec(target);
+            if (vertex && !dragging) p = polygonVertex(shape, Number(vertex[1]));
             if (target === "center") {
                 if (dragging) return { point: shape.center, shape, polygonGrip: "translate" };
                 p = shape.center;
@@ -808,13 +852,14 @@ function mapRequest(request) {
     }
     function mirrorPoint(a, b, axis, source, temporary) {
         requireSupported(lineLength(axis) > tolerance, `${source} requires a nonzero symmetry axis.`);
-        relation("p2p_symmetric_ppl", { p1_id: a.id, p2_id: b.id, l_id: axis.id }, source, get => {
+        const residual = get => {
             const [start, end] = endpoints(axis, get), p = get(a.id), q = get(b.id);
             const dx = end.x - start.x, dy = end.y - start.y, squared = dx * dx + dy * dy;
             if (squared <= tolerance * tolerance) return Infinity;
             const t = ((p.x - start.x) * dx + (p.y - start.y) * dy) / squared;
             return distance(q, { x: 2 * (start.x + t * dx) - p.x, y: 2 * (start.y + t * dy) - p.y });
-        }, temporary);
+        };
+        relation("p2p_symmetric_ppl", { p1_id: a.id, p2_id: b.id, l_id: axis.id }, source, residual, temporary);
     }
     function validateRelationCurve(ref, source) {
         const entity = ref.shape?.entity;
@@ -836,7 +881,7 @@ function mapRequest(request) {
         if (curve.type !== "arc") return null;
         for (const c of constraints) {
             if (lower(c.kind) !== "coincident" || lower(c.state) === "suppressed" || c.referenceKeys?.length !== 2) continue;
-            const points = c.referenceKeys.map(resolve).map(ref => ref.point?.id);
+            const points = c.referenceKeys.map(key => resolve(key)).map(ref => ref.point?.id);
             for (const [linePoint, arcPoint] of [points, [...points].reverse()]) {
                 if ((linePoint === line.p1_id || linePoint === line.p2_id)
                     && (arcPoint === curve.start_id || arcPoint === curve.end_id)) return arcPoint;
@@ -872,7 +917,7 @@ function mapRequest(request) {
             keys.forEach(key => registerFixedReference(key, source));
             return;
         }
-        const refs = array(c.referenceKeys, source).map(resolve);
+        const refs = array(c.referenceKeys, source).map(key => resolve(key));
         const count = (...counts) => requireSupported(counts.includes(refs.length), `${source} has an unsupported reference count.`);
         switch (kind) {
             case "symmetric": {
@@ -1149,7 +1194,7 @@ function mapRequest(request) {
         }
         requireSupported(["lineardistance", "horizontaldistance", "verticaldistance", "pointtolinedistance", "perimeterdistance",
             "radius", "diameter", "angle"].includes(kind), `${source} is not mapped by PlaneGCS.`);
-        const refs = array(d.referenceKeys, source).map(resolve);
+        const refs = array(d.referenceKeys, source).map(key => resolve(key));
         const value = finite(d.value, source);
         requireSupported(value >= 0, `${source} requires a nonnegative value.`);
         if (d.isDriving !== true) return;

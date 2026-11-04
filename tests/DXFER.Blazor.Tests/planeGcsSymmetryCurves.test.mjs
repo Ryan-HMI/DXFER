@@ -45,6 +45,21 @@ for(const ratio of [.5,1,1.5]) for(const reverse of [false,true]) test(`full ell
   near(mirrored.center.x,5);near(mirrored.center.y,1);
   near(mirrored.majorAxisEndPoint.x,-3);near(mirrored.majorAxisEndPoint.y,1);near(mirrored.minorRadiusRatio,ratio);
 });
+for (const direction of [-1, 1]) for (const reverse of [false, true]) {
+  test(`already mirrored full ellipses preserve geometry with equivalent axis sign ${direction}, reverse=${reverse}`,
+    {todo: direction === 1 ? 'Open: undirected full-ellipse symmetry must preserve equivalent endpoint frames.' : false}, async () => {
+    const a = {id:'a',kind:'ellipse',center:p(-5,1),majorAxisEndPoint:p(3,0),minorRadiusRatio:.5};
+    const b = {...a,id:'b',center:p(5,1),majorAxisEndPoint:p(3 * direction,0)};
+    const result = await run(a,b,reverse,{fixedReferenceKeys:['axis']}); solved(result);
+    for (const [index, before] of [[1,a],[2,b]]) {
+      const after = result.entities[index];
+      near(after.center.x,before.center.x); near(after.center.y,before.center.y);
+      near(after.majorAxisEndPoint.x,before.majorAxisEndPoint.x);
+      near(after.majorAxisEndPoint.y,before.majorAxisEndPoint.y);
+      near(after.minorRadiusRatio,before.minorRadiusRatio);
+    }
+  });
+}
 test('partial ellipse symmetry reverses exact eccentric endpoints',async()=>{
   const a={id:'a',kind:'ellipse',center:p(-5,1),majorAxisEndPoint:p(3,0),minorRadiusRatio:.5,startAngleDegrees:20,endAngleDegrees:100};
   const b={id:'b',kind:'ellipse',center:p(6,2),majorAxisEndPoint:p(-2,1),minorRadiusRatio:.7,startAngleDegrees:250,endAngleDegrees:330};

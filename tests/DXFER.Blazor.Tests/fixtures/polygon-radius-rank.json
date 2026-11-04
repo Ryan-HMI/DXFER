@@ -1,0 +1,169 @@
+{
+  "document": {
+    "entities": [
+      {
+        "id": "source",
+        "kind": "polygon",
+        "points": [
+          {
+            "x": 21.18765977595746,
+            "y": 0.35925516803282953
+          },
+          {
+            "x": 9.303639895819341,
+            "y": -8.002305062491066
+          },
+          {
+            "x": 13.583592135001094,
+            "y": -21.888543819999157
+          },
+          {
+            "x": 28.112767969179753,
+            "y": -22.109151117511374
+          },
+          {
+            "x": 32.81234022404402,
+            "y": -8.359255168032094
+          }
+        ],
+        "center": {
+          "x": 21.000000000000334,
+          "y": -12.000000000000172
+        },
+        "radius": 10.000000000000677,
+        "startAngleDegrees": null,
+        "endAngleDegrees": null,
+        "isConstruction": false,
+        "majorAxisEndPoint": null,
+        "minorRadiusRatio": null,
+        "rotationAngleDegrees": 53.13010235415598,
+        "sideCount": 5,
+        "circumscribed": true,
+        "controlPoints": null,
+        "fitPoints": null,
+        "startTangentHandle": null,
+        "endTangentHandle": null,
+        "splineDegree": null,
+        "splineKnots": null,
+        "splineWeights": null,
+        "layerName": "0",
+        "isLocked": false,
+        "isHidden": false,
+        "isGenerated": false
+      },
+      {
+        "id": "created",
+        "kind": "line",
+        "points": [
+          {
+            "x": 28.112767969179156,
+            "y": -22.109151117511793
+          },
+          {
+            "x": 30.891720609124135,
+            "y": -10.435359007621244
+          }
+        ],
+        "center": null,
+        "radius": null,
+        "startAngleDegrees": null,
+        "endAngleDegrees": null,
+        "isConstruction": false,
+        "majorAxisEndPoint": null,
+        "minorRadiusRatio": null,
+        "rotationAngleDegrees": null,
+        "sideCount": null,
+        "circumscribed": null,
+        "controlPoints": null,
+        "fitPoints": null,
+        "startTangentHandle": null,
+        "endTangentHandle": null,
+        "splineDegree": null,
+        "splineKnots": null,
+        "splineWeights": null,
+        "layerName": "0",
+        "isLocked": false,
+        "isHidden": false,
+        "isGenerated": false
+      }
+    ],
+    "constraints": [
+      {
+        "id": "c1",
+        "kind": "Coincident",
+        "referenceKeys": [
+          "created:start",
+          "source|segment|2:end"
+        ],
+        "state": "Satisfied"
+      }
+    ],
+    "dimensions": [
+      {
+        "id": "length",
+        "kind": "LinearDistance",
+        "referenceKeys": [
+          "created:start",
+          "created:end"
+        ],
+        "value": 12,
+        "anchor": {
+          "x": 28.10138923596478,
+          "y": -15.93878074577312
+        },
+        "isDriving": true,
+        "state": "Satisfied"
+      },
+      {
+        "id": "source-radius",
+        "kind": "Radius",
+        "referenceKeys": [
+          "source"
+        ],
+        "value": 15,
+        "anchor": null,
+        "isDriving": true,
+        "state": "Unsatisfied"
+      }
+    ],
+    "metadata": {
+      "sourceFileName": "circumscribed-pentagon-before.dxf",
+      "sourceSha256": null,
+      "normalizedFileName": null,
+      "normalizedSha256": null,
+      "units": "Inches",
+      "mode": "Editable",
+      "trustedSource": false,
+      "warnings": [],
+      "unsupportedEntityCounts": {},
+      "entityStyles": {},
+      "layers": {},
+      "activeLayerName": "0",
+      "patterns": []
+    },
+    "hasPatterns": false
+  },
+  "constraints": [],
+  "dimensions": [
+    {
+      "id": "source-radius",
+      "kind": "Radius",
+      "referenceKeys": [
+        "source"
+      ],
+      "value": 15,
+      "anchor": null,
+      "isDriving": true,
+      "state": "Unsatisfied"
+    }
+  ],
+  "fixedReferenceKeys": [
+    "source:center",
+    "$origin:center"
+  ],
+  "initialGuesses": [],
+  "drag": null,
+  "attemptedDrivingDimensionIds": [
+    "source-radius"
+  ]
+}
