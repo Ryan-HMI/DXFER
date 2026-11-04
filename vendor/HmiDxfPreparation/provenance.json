@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "upstreamRepository": "HMI-Sync",
+  "upstreamCommit": "f8674c7f09e974797062ba012e37f4ea2625509a",
+  "files": [
+    {
+      "role": "algorithm",
+      "upstreamPath": "HmiSync.Web/Infrastructure/DxfCompatibility.cs",
+      "upstreamSha256": "4bd813796db144d3f9046f3a944f116d3f55f3213c5915b664c70251fb7eae53",
+      "vendoredPath": "vendor/HmiDxfPreparation/Infrastructure/DxfCompatibility.cs",
+      "vendoredSha256": "4bd813796db144d3f9046f3a944f116d3f55f3213c5915b664c70251fb7eae53",
+      "adaptation": "verbatim"
+    },
+    {
+      "role": "algorithm",
+      "upstreamPath": "HmiSync.Web/Infrastructure/DxfSmallCircleFilter.cs",
+      "upstreamSha256": "17f49e63fceb1396c4e9e356cb6aaeda746fb8a6a261ed6f8f66b045a06521bf",
+      "vendoredPath": "vendor/HmiDxfPreparation/Infrastructure/DxfSmallCircleFilter.cs",
+      "vendoredSha256": "17f49e63fceb1396c4e9e356cb6aaeda746fb8a6a261ed6f8f66b045a06521bf",
+      "adaptation": "verbatim"
+    },
+    {
+      "role": "algorithm",
+      "upstreamPath": "HmiSync.Web/Production/BatchDxfLayers.cs",
+      "upstreamSha256": "f5d5bf559d08853f1e41ca3a3395ccf23e26430b8bc0d9a0f3b811192d3792ff",
+      "vendoredPath": "vendor/HmiDxfPreparation/Production/BatchDxfLayers.cs",
+      "vendoredSha256": "f5d5bf559d08853f1e41ca3a3395ccf23e26430b8bc0d9a0f3b811192d3792ff",
+      "adaptation": "verbatim"
+    },
+    {
+      "role": "algorithm",
+      "upstreamPath": "HmiSync.Web/Production/BatchDxfTearSlots.cs",
+      "upstreamSha256": "c6c895b7d14ea447d820db468f0df93a86436cd65a74c07f74e58ac2d0b8e7b1",
+      "vendoredPath": "vendor/HmiDxfPreparation/Production/BatchDxfTearSlots.cs",
+      "vendoredSha256": "c6c895b7d14ea447d820db468f0df93a86436cd65a74c07f74e58ac2d0b8e7b1",
+      "adaptation": "verbatim"
+    },
+    {
+      "role": "algorithm",
+      "upstreamPath": "HmiSync.Web/Production/BatchDxfCutLayers.cs",
+      "upstreamSha256": "bf0906c8ebd1073a8c4f0cc856e7c47c78759307a6467120792b6a30638fb35e",
+      "vendoredPath": "vendor/HmiDxfPreparation/Production/BatchDxfCutLayers.cs",
+      "vendoredSha256": "bf0906c8ebd1073a8c4f0cc856e7c47c78759307a6467120792b6a30638fb35e",
+      "adaptation": "verbatim"
+    },
+    {
+      "role": "contract",
+      "upstreamPath": "HmiSync.Web/Production/BatchExportContracts.cs",
+      "upstreamSha256": "1d905b65ccaefa00d86deebf6a67d82377adb25ba2d3ff77f9d421dba4f20398",
+      "vendoredPath": "vendor/HmiDxfPreparation/Production/BatchDxfLayer.cs",
+      "vendoredSha256": "55e7f671f7f95aaee4be36074c5a33ec450e5744dc0d6cbe6b9b3e71600b1b5b",
+      "adaptation": "Extract only the namespace and BatchDxfLayer record declaration; no application contracts."
+    },
+    {
+      "role": "test",
+      "upstreamPath": "HMISync.Tests/Production/BatchDxfLayerTests.cs",
+      "upstreamSha256": "387a4dc6c0eb126644e78f257a00f38384c24958e22c6b7631c98ac3c74d733b",
+      "vendoredPath": "tests/DXFER.Core.Tests/ProductionPreparationVendor/BatchDxfLayerTests.cs",
+      "vendoredSha256": "387a4dc6c0eb126644e78f257a00f38384c24958e22c6b7631c98ac3c74d733b",
+      "adaptation": "verbatim"
+    },
+    {
+      "role": "test",
+      "upstreamPath": "HMISync.Tests/Production/BatchDxfTearSlotTests.cs",
+      "upstreamSha256": "1d4b45ddc68221a2379ac7cb10732edab073ebee9543561c79f7693c8ef7fb31",
+      "vendoredPath": "tests/DXFER.Core.Tests/ProductionPreparationVendor/BatchDxfTearSlotTests.cs",
+      "vendoredSha256": "1d4b45ddc68221a2379ac7cb10732edab073ebee9543561c79f7693c8ef7fb31",
+      "adaptation": "verbatim"
+    },
+    {
+      "role": "test",
+      "upstreamPath": "HMISync.Tests/Production/BatchDxfLegacyFormatTests.cs",
+      "upstreamSha256": "a626a9638ac24b28273fb864db4d5d65532b652b04e03cc4ff81c32669856abb",
+      "vendoredPath": "tests/DXFER.Core.Tests/ProductionPreparationVendor/BatchDxfLegacyFormatTests.cs",
+      "vendoredSha256": "a626a9638ac24b28273fb864db4d5d65532b652b04e03cc4ff81c32669856abb",
+      "adaptation": "verbatim"
+    },
+    {
+      "role": "test",
+      "upstreamPath": "HMISync.Tests/Production/BatchDxfCutLayerTests.cs",
+      "upstreamSha256": "f57f1dd3abcf3b59b810284c3537264000e9bd9817848ab871d64868afdebf9f",
+      "vendoredPath": "tests/DXFER.Core.Tests/ProductionPreparationVendor/BatchDxfCutLayerTests.cs",
+      "vendoredSha256": "930cc7996f7ede25a8ca899eee0292a9269a61a2aee9a2def0c9f97d8a3ba358",
+      "adaptation": "Keep all eight standalone tests verbatim. Omit ModernFallbackAuditsCleanAndPreservesSplineXdataAndUnusedBlocks and PythonAsync, which require BatchExportStage and CypNestTestRuntime; remove unused System.Diagnostics import."
+    },
+    {
+      "role": "test",
+      "upstreamPath": "HMISync.Tests/Engineering/DxfSmallCircleFilterTests.cs",
+      "upstreamSha256": "30f6b57da82b1b7241b1115494987110653bbb20275685123c56905cca746e71",
+      "vendoredPath": "tests/DXFER.Core.Tests/ProductionPreparationVendor/DxfSmallCircleFilterTests.cs",
+      "vendoredSha256": "3b154e87ebe7a00d3f79dcc3767605b13b395774432c44307c045733a20b42dc",
+      "adaptation": "Keep four pure test methods and their helpers verbatim. Omit SaveRetainsVerifiedOriginalAndRefusesCorruptBackup, EngineeringPage upload integration, HTTP helpers and their unused imports."
+    }
+  ]
+}
