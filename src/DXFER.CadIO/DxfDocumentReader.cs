@@ -42,7 +42,8 @@ public static class DxfDocumentReader
             TryReadEntityPairs(pairs, index + 1, out var rawPairs, out _);
             var nonCut = CutPathLengthService.IsAnnotation(entityType)
                 || CutPathLengthService.IsNonCutLayer(ReadString(rawPairs, 8));
-            var checkGeometry = !nonCut || entityType is "POINT" or "CIRCLE" or "ARC" or "ELLIPSE" or "SPLINE";
+            var checkGeometry = !nonCut || entityType is "POINT" or "LINE" or "CIRCLE" or "ARC" or "ELLIPSE"
+                or "SPLINE" or "LWPOLYLINE" or "POLYLINE";
             if (checkGeometry) CheckCutGeometry(entityType, rawPairs, cutWarnings);
             if (rawPairs.Any(pair => pair.Code == 410 && !pair.Value.Equals("Model", StringComparison.OrdinalIgnoreCase)))
                 AddCutWarning(cutWarnings, "Non-model layout geometry requires review.");
@@ -120,10 +121,10 @@ public static class DxfDocumentReader
                     {
                         entities.Add(classicPolyline);
                         AddEntityStyle(entityStyles, classicPolyline.Id, rawPairs, layerStyles);
-                        if (!nonCut)
+                        if (checkGeometry)
                             CheckCutGeometry("POLYLINE", pairs.Skip(index + 1).Take(nextIndex - index - 1).ToArray(), cutWarnings);
-                        index = nextIndex - 1;
                     }
+                    index = nextIndex - 1;
 
                     break;
 
@@ -355,50 +356,40 @@ public static class DxfDocumentReader
         out PolylineEntity polyline,
         out int nextIndex)
     {
+        polyline = default!;
         var points = new List<Point2>();
-        var currentVertex = new Dictionary<int, double>();
         TryReadEntityPairs(pairs, startIndex, out var headerPairs, out var verticesStart);
         var closed = TryReadInt(headerPairs, 70, out var flags) && (flags & 1) != 0;
+        var valid = true;
+        nextIndex = verticesStart;
 
-        for (var index = verticesStart; index < pairs.Count; index++)
+        // Each classic VERTEX owns one point; never carry coordinates across records.
+        while (nextIndex < pairs.Count && pairs[nextIndex].Code == 0)
         {
-            var pair = pairs[index];
-            if (pair.Code == 0)
+            var marker = pairs[nextIndex].Value.Trim().ToUpperInvariant();
+            if (marker == "SEQEND")
             {
-                var marker = pair.Value.Trim().ToUpperInvariant();
-                if (marker == "VERTEX")
-                {
-                    FlushVertex(currentVertex, points);
-                    currentVertex.Clear();
-                    continue;
-                }
-
-                if (marker == "SEQEND")
-                {
-                    FlushVertex(currentVertex, points);
-                    nextIndex = index + 1;
-                    return TryCreatePolyline(points, closed, id, out polyline);
-                }
-
-                FlushVertex(currentVertex, points);
-                nextIndex = index;
-                return TryCreatePolyline(points, closed, id, out polyline);
+                TryReadEntityPairs(pairs, nextIndex + 1, out _, out nextIndex);
+                return valid && TryCreatePolyline(points, closed, id, out polyline);
             }
+            if (marker != "VERTEX") return false;
 
-            if ((pair.Code == 10 || pair.Code == 20) && TryReadDouble(pair.Value, out var value))
-            {
-                currentVertex[pair.Code] = value;
-            }
+            TryReadEntityPairs(pairs, nextIndex + 1, out var vertexPairs, out nextIndex);
+            if (!TryReadPointSequence(vertexPairs, 10, 20, out var vertex) || vertex.Count != 1
+                || vertexPairs.Count(pair => pair.Code == 30) > 1)
+                valid = false;
+            else
+                points.Add(vertex[0]);
         }
 
-        FlushVertex(currentVertex, points);
-        nextIndex = pairs.Count;
-        return TryCreatePolyline(points, closed, id, out polyline);
+        return false;
     }
 
     private static bool TryCreateLine(IReadOnlyList<DxfPair> pairs, EntityId id, out LineEntity line)
     {
-        if (TryReadPoint(pairs, 10, 20, out var start) && TryReadPoint(pairs, 11, 21, out var end))
+        if (!pairs.Where(pair => pair.Code is 10 or 20 or 30 or 11 or 21 or 31)
+                .GroupBy(pair => pair.Code).Any(group => group.Count() > 1)
+            && TryReadPoint(pairs, 10, 20, out var start) && TryReadPoint(pairs, 11, 21, out var end))
         {
             line = new LineEntity(id, start, end);
             return true;
@@ -487,7 +478,11 @@ public static class DxfDocumentReader
 
     private static bool TryCreateLightweightPolyline(IReadOnlyList<DxfPair> pairs, EntityId id, out PolylineEntity polyline)
     {
-        var points = ReadPointSequence(pairs, 10, 20);
+        polyline = default!;
+        if (!TryReadPointSequence(pairs, 10, 20, out var points)
+            || pairs.Count(pair => pair.Code == 90) > 1
+            || (pairs.Any(pair => pair.Code == 90) && (!TryReadInt(pairs, 90, out var count) || count != points.Count)))
+            return false;
         var closed = TryReadDouble(pairs, 70, out var flags) && (((int)flags) & 1) == 1;
         return TryCreatePolyline(points, closed, id, out polyline);
     }
@@ -495,8 +490,9 @@ public static class DxfDocumentReader
     private static bool TryCreateSpline(IReadOnlyList<DxfPair> pairs, EntityId id, out SplineEntity spline)
     {
         spline = default!;
-        var controlPoints = ReadPointSequence(pairs, 10, 20);
-        var fitPoints = ReadPointSequence(pairs, 11, 21);
+        if (!TryReadPointSequence(pairs, 10, 20, out var controlPoints)
+            || !TryReadPointSequence(pairs, 11, 21, out var fitPoints))
+            return false;
         var knots = ReadDoubleSequence(pairs, 40);
         var weights = ReadDoubleSequence(pairs, 41);
 
@@ -543,27 +539,30 @@ public static class DxfDocumentReader
         return false;
     }
 
-    private static IReadOnlyList<Point2> ReadPointSequence(IReadOnlyList<DxfPair> pairs, int xCode, int yCode)
+    private static bool TryReadPointSequence(IReadOnlyList<DxfPair> pairs, int xCode, int yCode, out IReadOnlyList<Point2> points)
     {
-        var points = new List<Point2>();
+        var values = new List<Point2>();
+        points = values;
         var currentX = default(double?);
 
         foreach (var pair in pairs)
         {
-            if (pair.Code == xCode && TryReadDouble(pair.Value, out var x))
+            if (pair.Code == xCode)
             {
+                if (currentX.HasValue || !TryReadDouble(pair.Value, out var x)) return false;
                 currentX = x;
                 continue;
             }
 
-            if (pair.Code == yCode && currentX.HasValue && TryReadDouble(pair.Value, out var y))
+            if (pair.Code == yCode)
             {
-                points.Add(new Point2(currentX.Value, y));
+                if (!currentX.HasValue || !TryReadDouble(pair.Value, out var y)) return false;
+                values.Add(new Point2(currentX.Value, y));
                 currentX = null;
             }
         }
 
-        return points;
+        return !currentX.HasValue;
     }
 
     private static IReadOnlyList<double> ReadDoubleSequence(IReadOnlyList<DxfPair> pairs, int code)
@@ -578,14 +577,6 @@ public static class DxfDocumentReader
         }
 
         return values;
-    }
-
-    private static void FlushVertex(Dictionary<int, double> currentVertex, ICollection<Point2> points)
-    {
-        if (currentVertex.TryGetValue(10, out var x) && currentVertex.TryGetValue(20, out var y))
-        {
-            points.Add(new Point2(x, y));
-        }
     }
 
     private static bool TryReadPoint(IReadOnlyList<DxfPair> pairs, int xCode, int yCode, out Point2 point)
