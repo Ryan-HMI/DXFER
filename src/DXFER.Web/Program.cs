@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using DXFER.CadIO;
@@ -43,6 +44,7 @@ app.MapRazorComponents<App>()
 app.MapGet("/api/dxfer/capabilities", () => Results.Json(new
 {
     contractVersion = 1,
+    buildVersion = typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
     launchParameters = new[]
     {
         "syncBaseUrl",
