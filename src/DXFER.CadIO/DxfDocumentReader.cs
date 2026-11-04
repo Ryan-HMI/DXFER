@@ -42,7 +42,10 @@ public static class DxfDocumentReader
             TryReadEntityPairs(pairs, index + 1, out var rawPairs, out _);
             var nonCut = CutPathLengthService.IsAnnotation(entityType)
                 || CutPathLengthService.IsNonCutLayer(ReadString(rawPairs, 8));
-            if (!nonCut) CheckCutGeometry(entityType, rawPairs, cutWarnings);
+            var checkGeometry = !nonCut || entityType is "POINT" or "CIRCLE" or "ARC" or "ELLIPSE" or "SPLINE";
+            if (checkGeometry) CheckCutGeometry(entityType, rawPairs, cutWarnings);
+            if (rawPairs.Any(pair => pair.Code == 410 && !pair.Value.Equals("Model", StringComparison.OrdinalIgnoreCase)))
+                AddCutWarning(cutWarnings, "Non-model layout geometry requires review.");
             var previousEntityCount = entities.Count;
             switch (entityType)
             {
@@ -148,8 +151,8 @@ public static class DxfDocumentReader
 
                     break;
             }
-            if (!nonCut && entities.Count == previousEntityCount
-                && entityType is "LINE" or "CIRCLE" or "ARC" or "ELLIPSE" or "LWPOLYLINE" or "POLYLINE" or "SPLINE")
+            if (checkGeometry && entities.Count == previousEntityCount
+                && entityType is "LINE" or "CIRCLE" or "ARC" or "ELLIPSE" or "LWPOLYLINE" or "POLYLINE" or "SPLINE" or "POINT")
                 AddCutWarning(cutWarnings, $"Malformed {entityType} geometry was not imported.");
         }
 
@@ -185,6 +188,10 @@ public static class DxfDocumentReader
 
     private static void CheckCutGeometry(string type, IReadOnlyList<DxfPair> pairs, ICollection<DrawingDocumentWarning> warnings)
     {
+        if (type is "CIRCLE" or "ARC" or "ELLIPSE"
+            && pairs.Where(pair => pair.Code is >= 10 and <= 59 or >= 210 and <= 239)
+                .GroupBy(pair => pair.Code).Any(group => group.Count() > 1))
+            AddCutWarning(warnings, $"Ambiguous duplicate {type} parameters require review.");
         foreach (var pair in pairs)
         {
             if (pair.Code is >= 10 and <= 59 or >= 210 and <= 239)
@@ -422,6 +429,7 @@ public static class DxfDocumentReader
             && TryReadDouble(pairs, 50, out var startAngle)
             && TryReadDouble(pairs, 51, out var endAngle)
             && Math.Abs(endAngle - startAngle) <= 360
+            && endAngle - startAngle is not (0 or -360)
             && radius > 0)
         {
             arc = new ArcEntity(id, center, radius, startAngle, endAngle);
@@ -437,16 +445,22 @@ public static class DxfDocumentReader
         if (TryReadPoint(pairs, 10, 20, out var center)
             && TryReadPoint(pairs, 11, 21, out var majorAxisEndPoint)
             && TryReadDouble(pairs, 40, out var minorRatio)
-            && minorRatio > 0)
+            && minorRatio is > 0 and <= 1
+            && (majorAxisEndPoint.X != 0 || majorAxisEndPoint.Y != 0))
         {
-            var startParameterDegrees = TryReadDouble(pairs, 41, out var startRadians)
-                ? RadiansToDegrees(startRadians)
-                : 0;
-            var endParameterDegrees = TryReadDouble(pairs, 42, out var endRadians)
-                ? RadiansToDegrees(endRadians)
-                : 360;
+            var startRadians = 0d;
+            var endRadians = Math.Tau;
+            if ((pairs.Any(pair => pair.Code == 41) && !TryReadDouble(pairs, 41, out startRadians))
+                || (pairs.Any(pair => pair.Code == 42) && !TryReadDouble(pairs, 42, out endRadians)))
+            {
+                ellipse = default!;
+                return false;
+            }
+            var startParameterDegrees = RadiansToDegrees(startRadians);
+            var endParameterDegrees = RadiansToDegrees(endRadians);
             if (!double.IsFinite(startParameterDegrees) || !double.IsFinite(endParameterDegrees)
-                || Math.Abs(endParameterDegrees - startParameterDegrees) > 360.000001)
+                || Math.Abs(endParameterDegrees - startParameterDegrees) > 360.000001
+                || endParameterDegrees - startParameterDegrees is 0 or -360)
             {
                 ellipse = default!;
                 return false;
@@ -480,35 +494,32 @@ public static class DxfDocumentReader
 
     private static bool TryCreateSpline(IReadOnlyList<DxfPair> pairs, EntityId id, out SplineEntity spline)
     {
+        spline = default!;
         var controlPoints = ReadPointSequence(pairs, 10, 20);
         var fitPoints = ReadPointSequence(pairs, 11, 21);
         var knots = ReadDoubleSequence(pairs, 40);
         var weights = ReadDoubleSequence(pairs, 41);
 
-        if (controlPoints.Count < 2)
-        {
-            if (fitPoints.Count >= 2)
-            {
-                spline = SplineEntity.FromFitPoints(id, fitPoints);
-                return true;
-            }
+        bool CompletePoints(int xCode, int count) => pairs.Count(pair => pair.Code == xCode) == count
+            && pairs.Count(pair => pair.Code == xCode + 10) == count
+            && (!pairs.Any(pair => pair.Code == xCode + 20) || pairs.Count(pair => pair.Code == xCode + 20) == count);
+        bool MatchesCount(int code, int count) => !pairs.Any(pair => pair.Code == code)
+            || (pairs.Count(pair => pair.Code == code) == 1 && TryReadInt(pairs, code, out var declared) && declared == count);
 
-            spline = default!;
+        // The entity constructor supplies authoring defaults for incomplete arrays.
+        // Imported curves must already be complete so those defaults cannot change their shape.
+        if (pairs.Count(pair => pair.Code == 71) != 1 || !TryReadInt(pairs, 71, out var degree)
+            || degree < 1 || degree >= controlPoints.Count
+            || !CompletePoints(10, controlPoints.Count) || !CompletePoints(11, fitPoints.Count)
+            || knots.Count != pairs.Count(pair => pair.Code == 40) || knots.Count != controlPoints.Count + degree + 1
+            || !MatchesCount(72, knots.Count) || !MatchesCount(73, controlPoints.Count) || !MatchesCount(74, fitPoints.Count)
+            || knots[degree] >= knots[controlPoints.Count]
+            || weights.Count != pairs.Count(pair => pair.Code == 41)
+            || (weights.Count != 0 && weights.Count != controlPoints.Count) || weights.Any(weight => weight <= 0))
             return false;
-        }
 
-        if (!TryReadDouble(pairs, 71, out var rawDegree))
-        {
-            spline = default!;
-            return false;
-        }
-
-        var degree = (int)Math.Round(rawDegree);
-        if (degree < 1 || controlPoints.Count < degree + 1)
-        {
-            spline = default!;
-            return false;
-        }
+        for (var index = 1; index < knots.Count; index++)
+            if (knots[index] < knots[index - 1]) return false;
 
         spline = new SplineEntity(id, degree, controlPoints, knots, weights, fitPoints: fitPoints);
         return true;
