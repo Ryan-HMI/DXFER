@@ -70,3 +70,19 @@ timestamp `1793825406.085909`. Independent acceptance is pending; these are owne
 checks, not user or independent QA acceptance. No historical files were bulk
 rewritten or repaired. Existing files require a new Open/reprocess operation to
 receive cleanup. Previously changed historical source files were not audited.
+
+### Independent QA Blocker
+
+Flux reported Google `redirect_uri_mismatch` before entering the installed Test
+UI. Owner reproduced on 2026-11-04: Test's generated callback is exactly
+`https://dxfer-test.sync.harrisonmetals.com/signin-google`; HTTPS and host are
+correct. Test and Dev use the same OAuth client, project number 84006041312.
+Google rejects Test at `/signin/oauth/error` while Dev reaches the sign-in page.
+The existing client's authorized redirect list must admit that exact Test URL
+without replacing other entries. No application/authentication changes were
+made for this diagnosis. Cloud Console browser access is unavailable in this
+session and the cached Google Cloud CLI login requires reauthentication.
+
+This is an unresolved external configuration blocker, not a failed cleanup
+replay and not independent acceptance. Retry login only after the administrator
+updates the existing client; no password retries, key rotation or auth bypass.
