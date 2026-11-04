@@ -37,10 +37,13 @@ public sealed class ProductionFoundationContractTests
     public void ProductionNormalizeRetainsGuardedMeasurements()
     {
         var program = File.ReadAllText(FindRepositoryFile("src", "DXFER.Web", "Program.cs"));
-        program.Should().Contain("ManufacturingUnits.AssumeInches(WithApiMetadata(DxfDocumentReader.Read(sourceText)");
+        program.Should().Contain("ProductionDxfPreparation.Prepare(sourceText, request.HttpContext.RequestAborted)");
+        program.Should().Contain("WithApiMetadata(prepared.Document, file.FileName, sourceText)");
+        program.Should().Contain("catch (ProductionDxfPreparationException ex)");
+        program.Should().NotContain("DxfDocumentReader.Read(sourceText)");
         program.Should().Contain("CutPathLengthService.Calculate(normalizedDocument)");
         program.Should().Contain("ClosedContourService.Calculate(normalizedDocument)");
-        foreach (var field in new[] { "cutLengthInches", "cutLengthReviewReason", "units", "closedContourCount", "contourReviewReason" })
+        foreach (var field in new[] { "productionCleanup", "cutLengthInches", "cutLengthReviewReason", "units", "closedContourCount", "contourReviewReason" })
         {
             program.Should().Contain(field + " =");
         }
