@@ -150,6 +150,124 @@ public sealed class WorkbenchSyncLoadTests
         harness.Handler.Requests.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SuccessfulSaveIsVisibleAndConsumedEvenWhenTabCannotClose(bool closeThrows)
+    {
+        var pending = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var harness = await Harness.CreateAsync(attempt => attempt == 1
+            ? Task.FromResult(Ok(ValidDxf)) : pending.Task, js: new CloseRuntime(closeThrows));
+        await harness.InvokeAsync("TryLoadSyncLaunchDocumentAsync");
+        var save = await harness.StartAsync("SaveToSyncCallbackAsync");
+        var saving = await harness.HtmlAsync();
+        saving.Should().Contain("Saving to Sync").And.NotContain("Removed 0 exact duplicate");
+        SaveButton(saving).Should().Contain("disabled");
+        await harness.InvokeAsync("SaveToSyncCallbackAsync");
+        harness.Handler.Requests.Should().HaveCount(2);
+
+        pending.SetResult(Ok("{}"));
+        await save;
+        var saved = await harness.HtmlAsync();
+        saved.Should().Contain("Saved to Sync").And.Contain("Reopen from Sync")
+            .And.NotContain("Removed 0 exact duplicate");
+        SaveButton(saved).Should().Contain("disabled");
+        await harness.InvokeAsync("SaveToSyncCallbackAsync");
+        harness.Handler.Requests.Should().HaveCount(2, "the successful launch job is consumed");
+        AssertNoSecrets(saved, harness.Logger);
+    }
+
+    [Fact]
+    public async Task SaveFailureIsNotHiddenByCleanupAndCanRetryWithoutExposingSecrets()
+    {
+        await using var harness = await Harness.CreateAsync(attempt => Task.FromResult(attempt switch
+        {
+            1 => Ok(ValidDxf),
+            2 => new HttpResponseMessage(HttpStatusCode.BadRequest) { ReasonPhrase = Secret, Content = new StringContent(Secret) },
+            _ => Ok("{}")
+        }), js: new CloseRuntime(false));
+        await harness.InvokeAsync("TryLoadSyncLaunchDocumentAsync");
+        await harness.InvokeAsync("SaveToSyncCallbackAsync");
+        var failed = await harness.HtmlAsync();
+        failed.Should().Contain("HTTP 400").And.NotContain("Removed 0 exact duplicate");
+        SaveButton(failed).Should().NotContain("disabled");
+        AssertNoSecrets(failed, harness.Logger);
+        await harness.InvokeAsync("SaveToSyncCallbackAsync");
+        (await harness.HtmlAsync()).Should().Contain("Saved to Sync");
+        SaveButton(await harness.HtmlAsync()).Should().Contain("disabled");
+        harness.Handler.Requests.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task SaveTimeoutReportsUnconfirmedOutcomeWithoutClaimingFailureOrSuccess()
+    {
+        await using var harness = await Harness.CreateAsync(attempt => attempt == 1
+            ? Task.FromResult(Ok(ValidDxf))
+            : Task.FromException<HttpResponseMessage>(new TaskCanceledException(Secret)));
+        await harness.InvokeAsync("TryLoadSyncLaunchDocumentAsync");
+        await harness.InvokeAsync("SaveToSyncCallbackAsync");
+        var html = await harness.HtmlAsync();
+        html.Should().Contain("Save confirmation timed out").And.Contain("Check Sync before retrying")
+            .And.NotContain("Removed 0 exact duplicate").And.NotContain("Saved to Sync");
+        SaveButton(html).Should().Contain("disabled");
+        await harness.InvokeAsync("SaveToSyncCallbackAsync");
+        harness.Handler.Requests.Should().HaveCount(2);
+        AssertNoSecrets(html, harness.Logger);
+    }
+
+    [Theory]
+    [InlineData(500)]
+    [InlineData(401)]
+    [InlineData(0)]
+    public async Task UncertainSaveResponseBlocksBlindRetry(int status)
+    {
+        await using var harness = await Harness.CreateAsync(attempt => attempt == 1
+            ? Task.FromResult(Ok(ValidDxf))
+            : status == 0 ? Task.FromException<HttpResponseMessage>(new HttpRequestException(Secret))
+            : Task.FromResult(new HttpResponseMessage((HttpStatusCode)status) { ReasonPhrase = Secret }));
+        await harness.InvokeAsync("TryLoadSyncLaunchDocumentAsync");
+        await harness.InvokeAsync("SaveToSyncCallbackAsync");
+        var html = await harness.HtmlAsync();
+        html.Should().Contain("Save not confirmed").And.NotContain("Saved to Sync");
+        SaveButton(html).Should().Contain("disabled");
+        await harness.InvokeAsync("SaveToSyncCallbackAsync");
+        harness.Handler.Requests.Should().HaveCount(2);
+        AssertNoSecrets(html, harness.Logger);
+    }
+
+    [Theory]
+    [InlineData("import")]
+    [InlineData("closeLaunchedSyncTab")]
+    public async Task PendingCloseInteropIsBoundedAndCannotUndoConfirmedSave(string pendingCall)
+    {
+        await using var harness = await Harness.CreateAsync(attempt => Task.FromResult(Ok(attempt == 1 ? ValidDxf : "{}")),
+            js: new CloseRuntime(false, pendingCall));
+        await harness.InvokeAsync("TryLoadSyncLaunchDocumentAsync");
+        await harness.InvokeAsync("SaveToSyncCallbackAsync").WaitAsync(TimeSpan.FromSeconds(5));
+        var html = await harness.HtmlAsync();
+        html.Should().Contain("Saved to Sync").And.Contain("Close this tab");
+        SaveButton(html).Should().Contain("disabled");
+        harness.Handler.Requests.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task FailedFallbackWriteCannotHideSaveOutcome()
+    {
+        var existingFile = Path.GetTempFileName();
+        try
+        {
+            await using var harness = await Harness.CreateAsync(attempt => Task.FromResult(attempt == 1
+                ? Ok(ValidDxf) : new HttpResponseMessage(HttpStatusCode.BadRequest)), jobFolder: existingFile);
+            await harness.InvokeAsync("TryLoadSyncLaunchDocumentAsync");
+            await harness.InvokeAsync("SaveToSyncCallbackAsync");
+            var html = await harness.HtmlAsync();
+            html.Should().Contain("HTTP 400").And.Contain("fallback file could not be written")
+                .And.NotContain(existingFile).And.NotContain("Removed 0 exact duplicate");
+            SaveButton(html).Should().NotContain("disabled");
+        }
+        finally { File.Delete(existingFile); }
+    }
+
     [Fact]
     public void CompactSyncStatusPreservesLayoutContract()
     {
@@ -208,7 +326,7 @@ public sealed class WorkbenchSyncLoadTests
         public Handler Handler { get; }
         public CapturingLogger Logger { get; }
 
-        public static async Task<Harness> CreateAsync(Func<int, Task<HttpResponseMessage>> respond, bool hasInput = true)
+        public static async Task<Harness> CreateAsync(Func<int, Task<HttpResponseMessage>> respond, bool hasInput = true, IJSRuntime? js = null, string? jobFolder = null)
         {
             var activator = new CapturingActivator();
             var handler = new Handler(respond);
@@ -217,8 +335,8 @@ public sealed class WorkbenchSyncLoadTests
             services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
             services.AddSingleton<ILogger<DrawingWorkbench>>(logger);
             services.AddSingleton<IComponentActivator>(activator);
-            services.AddSingleton<NavigationManager>(new TestNavigation(hasInput));
-            services.AddSingleton<IJSRuntime, NoJsRuntime>();
+            services.AddSingleton<NavigationManager>(new TestNavigation(hasInput, jobFolder));
+            services.AddSingleton<IJSRuntime>(js ?? new NoJsRuntime());
             services.AddSingleton<WorkbenchMenuCommandService>();
             services.AddSingleton<ToolHotkeyService>();
             services.AddSingleton(new HttpClient(handler));
@@ -233,10 +351,12 @@ public sealed class WorkbenchSyncLoadTests
 
         public Task InvokeAsync(string name) => _renderer.Dispatcher.InvokeAsync(() => Invoke(name));
 
-        public async Task<Task> StartLoadAsync()
+        public Task<Task> StartLoadAsync() => StartAsync("TryLoadSyncLaunchDocumentAsync");
+
+        public async Task<Task> StartAsync(string name)
         {
             Task load = Task.CompletedTask;
-            await _renderer.Dispatcher.InvokeAsync(() => { load = Invoke("TryLoadSyncLaunchDocumentAsync"); });
+            await _renderer.Dispatcher.InvokeAsync(() => { load = Invoke(name); });
             return load;
         }
 
@@ -269,8 +389,9 @@ public sealed class WorkbenchSyncLoadTests
 
     private sealed class TestNavigation : NavigationManager
     {
-        public TestNavigation(bool hasInput) => Initialize("https://dxfer.invalid/",
+        public TestNavigation(bool hasInput, string? jobFolder) => Initialize("https://dxfer.invalid/",
             "https://dxfer.invalid/?syncBaseUrl=https%3A%2F%2Fsync.invalid&artifactId=1&jobId=test&editToken=" + Secret
+            + (jobFolder is null ? "" : "&jobFolder=" + System.Uri.EscapeDataString(jobFolder))
             + (hasInput ? "&downloadUrl=" + System.Uri.EscapeDataString(DownloadUrl) : ""));
     }
 
@@ -279,6 +400,23 @@ public sealed class WorkbenchSyncLoadTests
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) => throw new NotSupportedException();
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class CloseRuntime(bool throws, string? pendingCall = null) : IJSRuntime, IJSObjectReference
+    {
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+        {
+            if (identifier == "import") return ValueTask.FromResult((TValue)(object)this);
+            if (identifier != "closeLaunchedSyncTab") throw new NotSupportedException(identifier);
+            if (throws) throw new JSException(Secret);
+            return ValueTask.FromResult((TValue)(object)false);
+        }
+        public async ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+        {
+            if (identifier == pendingCall) await Task.Delay(Timeout.Infinite, cancellationToken);
+            return await InvokeAsync<TValue>(identifier, args);
+        }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private sealed class Handler(Func<int, Task<HttpResponseMessage>> respond) : HttpMessageHandler

@@ -54,6 +54,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private bool _isSyncLoadInFlight;
     private string? _syncLoadError;
     private bool _isSyncSaveInFlight;
+    private bool _syncSaveSucceeded;
+    private bool _syncSaveUnconfirmed;
+    private string? _syncSaveFeedback;
     private int _selectionResetToken;
     private int _documentFitToken = 1;
     private int _createdEntitySequence;
@@ -201,16 +204,22 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         && HasDocument
         && !_isSyncLoadInFlight
         && _syncLoadError is null
-        && !_isSyncSaveInFlight;
+        && !_isSyncSaveInFlight
+        && !_syncSaveSucceeded
+        && !_syncSaveUnconfirmed;
 
     private string SyncCallbackStateText =>
         _isSyncLoadInFlight ? "Loading Sync DXF..."
+        : _isSyncSaveInFlight ? "Saving to Sync..."
+        : _syncSaveSucceeded ? "Saved to Sync"
+        : _syncSaveUnconfirmed ? "Save not confirmed"
+        : _syncSaveFeedback is not null ? "Sync save failed"
         : _syncLoadError ?? (_syncLaunchOptions.IsCallbackConfigured
             ? HasDocument ? "Sync DXF loaded" : "No Sync DXF loaded"
             : "Sync connection missing");
 
     private string SyncCallbackStateClass =>
-        _syncLoadError is not null
+        _syncLoadError is not null || (_syncSaveFeedback is not null && !_syncSaveSucceeded && !_isSyncSaveInFlight)
             ? "dxfer-sync-state dxfer-sync-state-missing dxfer-sync-state-error"
             : _isSyncLoadInFlight
             ? "dxfer-sync-state"
@@ -240,10 +249,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             : _lastAutoNormalization is null ? "Manual edit" : "Auto-normalized";
 
     private string SyncSaveButtonText =>
-        _isSyncSaveInFlight ? "Saving..." : "Save to Sync";
+        _isSyncSaveInFlight ? "Saving..." : _syncSaveSucceeded ? "Saved" : _syncSaveUnconfirmed ? "Check Sync" : "Save to Sync";
 
     private string SyncSaveButtonTitle =>
         _isSyncLoadInFlight ? "Loading Sync DXF."
+        : _syncSaveSucceeded ? "Saved to Sync. Reopen from Sync to save further edits."
+        : _syncSaveUnconfirmed ? "Save not confirmed. Check Sync before starting another edit."
         : _syncLoadError ?? (!_syncLaunchOptions.IsCallbackConfigured
             ? "Sync launch fields are missing."
             : !HasDocument ? "No DXF geometry is loaded."
@@ -485,7 +496,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private string CornerModifyDistanceValue =>
         FormatNumber(GetCornerModifyDistance());
 
-    private string CommandPromptText => _importFeedback ?? _duplicateCleanupStatus ?? (_activeTool switch
+    private string CommandPromptText => _syncSaveFeedback ?? _importFeedback ?? _duplicateCleanupStatus ?? (_activeTool switch
     {
         WorkbenchTool.Measure => "Measure: select points or geometry for live deltas. Esc: exit measure.",
         WorkbenchTool.Line => "Line: click start point, then end point. Shift: polar snap. Double-click: start a fresh line. Esc: cancel.",
@@ -821,6 +832,8 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     {
         _importFeedback = null;
         _duplicateCleanupStatus = null;
+        if (!_isSyncSaveInFlight && !_syncSaveSucceeded && !_syncSaveUnconfirmed)
+            _syncSaveFeedback = null;
         switch (commandId)
         {
             case WorkbenchCommandId.NewBlankDocument:
@@ -2329,6 +2342,10 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             return;
         }
 
+        // Sync consumes a successful launch job. A lost response is not permission
+        // to retry the write, because the server may already have committed it.
+        if (_syncSaveSucceeded || _syncSaveUnconfirmed) return;
+
         if (_isSyncLoadInFlight || _syncLoadError is not null)
         {
             return;
@@ -2347,7 +2364,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         _isSyncSaveInFlight = true;
-        _status = "Sending normalized DXF to Sync.";
+        _syncSaveFeedback = _status = "Saving to Sync...";
         await InvokeAsync(StateHasChanged);
 
         var shouldCloseAfterSuccessfulSave = false;
@@ -2383,16 +2400,35 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
                 contours.ContourReviewReason);
 
             await SyncCallbackClient.PostSaveAsync(_syncLaunchOptions, package);
-            _status = $"Sent normalized DXF to Sync job {_syncLaunchOptions.JobId}.";
+            _syncSaveSucceeded = true;
+            _syncSaveFeedback = _status = "Saved to Sync. Reopen from Sync to save further edits.";
             shouldCloseAfterSuccessfulSave = true;
         }
-        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or OperationCanceledException)
         {
-            var exportText = DxfDocumentWriter.Write(ManufacturingUnits.AssumeInches(_document), CreateDxfWriteOptions());
-            var wroteFallback = await ExportJobFolderFallbackAsync(exportText);
-            _status = wroteFallback
-                ? $"Sync callback failed: {ex.Message} Wrote normalized.dxf fallback for explicit Sync import."
-                : $"Sync callback failed: {ex.Message}";
+            _syncSaveUnconfirmed = ex is OperationCanceledException
+                or HttpRequestException { StatusCode: null }
+                || ex is HttpRequestException { StatusCode: { } code } && ((int)code >= 500 || (int)code == 401);
+            var feedback = ex switch
+            {
+                OperationCanceledException => "Save confirmation timed out. Check Sync before retrying; the save may have completed.",
+                HttpRequestException { StatusCode: { } status } => _syncSaveUnconfirmed
+                    ? $"Save not confirmed (HTTP {(int)status}). Check Sync before retrying; the save may have completed."
+                    : $"Sync save rejected (HTTP {(int)status}). Check Sync before retrying.",
+                HttpRequestException => "Save confirmation was interrupted. Check Sync before retrying; the save may have completed.",
+                _ => "Sync save could not be completed. Check Sync before retrying."
+            };
+            _syncSaveFeedback = _status = feedback;
+            try
+            {
+                var exportText = DxfDocumentWriter.Write(ManufacturingUnits.AssumeInches(_document), CreateDxfWriteOptions());
+                if (await ExportJobFolderFallbackAsync(exportText))
+                    _syncSaveFeedback = _status = feedback + " Wrote normalized.dxf fallback for explicit Sync import.";
+            }
+            catch (Exception fallbackError) when (fallbackError is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                _syncSaveFeedback = _status = feedback + " The fallback file could not be written.";
+            }
         }
         finally
         {
@@ -2411,17 +2447,18 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         try
         {
             await Task.Delay(SyncCloseDelayMilliseconds);
-            _syncWindowModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", SyncWindowModulePath);
-            var closed = await _syncWindowModule.InvokeAsync<bool>("closeLaunchedSyncTab");
+            using var closeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            _syncWindowModule ??= await JsRuntime.InvokeAsync<IJSObjectReference>("import", closeTimeout.Token, SyncWindowModulePath);
+            var closed = await _syncWindowModule.InvokeAsync<bool>("closeLaunchedSyncTab", closeTimeout.Token);
             if (!closed)
             {
-                _status = $"Sent normalized DXF to Sync job {_syncLaunchOptions.JobId}. Close this DXFER tab when done.";
+                _syncSaveFeedback = _status = "Saved to Sync. Close this tab. Reopen from Sync to save further edits.";
                 await InvokeAsync(StateHasChanged);
             }
         }
-        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
         {
-            _status = $"Sent normalized DXF to Sync job {_syncLaunchOptions.JobId}. Close this DXFER tab when done.";
+            _syncSaveFeedback = _status = "Saved to Sync. Close this tab. Reopen from Sync to save further edits.";
             await InvokeAsync(StateHasChanged);
         }
     }
