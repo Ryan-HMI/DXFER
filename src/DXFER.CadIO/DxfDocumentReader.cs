@@ -359,8 +359,8 @@ public static class DxfDocumentReader
         polyline = default!;
         var points = new List<Point2>();
         TryReadEntityPairs(pairs, startIndex, out var headerPairs, out var verticesStart);
-        var closed = TryReadInt(headerPairs, 70, out var flags) && (flags & 1) != 0;
-        var valid = true;
+        var valid = TryReadOptionalFlags(headerPairs, out var flags);
+        var closed = (flags & 1) != 0;
         nextIndex = verticesStart;
 
         // Each classic VERTEX owns one point; never carry coordinates across records.
@@ -479,18 +479,21 @@ public static class DxfDocumentReader
     private static bool TryCreateLightweightPolyline(IReadOnlyList<DxfPair> pairs, EntityId id, out PolylineEntity polyline)
     {
         polyline = default!;
-        if (!TryReadPointSequence(pairs, 10, 20, out var points)
+        if (!TryReadOptionalFlags(pairs, out var flags)
+            || !TryReadPointSequence(pairs, 10, 20, out var points)
             || pairs.Count(pair => pair.Code == 90) > 1
             || (pairs.Any(pair => pair.Code == 90) && (!TryReadInt(pairs, 90, out var count) || count != points.Count)))
             return false;
-        var closed = TryReadDouble(pairs, 70, out var flags) && (((int)flags) & 1) == 1;
+        var closed = (flags & 1) != 0;
         return TryCreatePolyline(points, closed, id, out polyline);
     }
 
     private static bool TryCreateSpline(IReadOnlyList<DxfPair> pairs, EntityId id, out SplineEntity spline)
     {
         spline = default!;
-        if (!TryReadPointSequence(pairs, 10, 20, out var controlPoints)
+        // Closed/periodic intent is not represented by the current entity/writer contract.
+        if (!TryReadOptionalFlags(pairs, out var flags) || (flags & 3) != 0
+            || !TryReadPointSequence(pairs, 10, 20, out var controlPoints)
             || !TryReadPointSequence(pairs, 11, 21, out var fitPoints))
             return false;
         var knots = ReadDoubleSequence(pairs, 40);
@@ -612,6 +615,13 @@ public static class DxfDocumentReader
     {
         var rawValue = pairs.FirstOrDefault(item => item.Code == code)?.Value;
         return int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+    }
+
+    private static bool TryReadOptionalFlags(IReadOnlyList<DxfPair> pairs, out int flags)
+    {
+        flags = 0;
+        var count = pairs.Count(pair => pair.Code == 70);
+        return count == 0 || (count == 1 && TryReadInt(pairs, 70, out flags));
     }
 
     private static string? ResolveLineTypeName(string? layerName, string? entityLineTypeName, string? layerLineTypeName)
