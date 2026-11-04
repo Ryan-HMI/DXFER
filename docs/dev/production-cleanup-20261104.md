@@ -2,7 +2,8 @@
 
 Ryan requested existing CypNest manufacturing cleanup on every production DXFER
 entry point. Implemented and deployed to Test and normal Production; independent
-Flux acceptance remains pending. No historical record repair was performed.
+Flux acceptance remains pending. The initial rollout did not repair historical
+records; the targeted regression recovery below restored missing measurements.
 
 ## Contract
 
@@ -86,3 +87,60 @@ session and the cached Google Cloud CLI login requires reauthentication.
 This is an unresolved external configuration blocker, not a failed cleanup
 replay and not independent acceptance. Retry login only after the administrator
 updates the existing client; no password retries, key rotation or auth bypass.
+
+## Metadata Import Regression And Recovery
+
+Ryan reported that Connor's uploaded flat was blank and bounds were not being
+extracted. The new blanket code-102/XDATA rejection was the shared cause, not a
+bad part definition. Ordinary Onshape font/provenance records were rejected
+before display and measurement. A later baseplate also exposed CIRCLE radius
+provenance and legitimate repeated group-5 draw-order keys in SORTENTSTABLE.
+
+The fix validates object ownership, known scalar provenance, matching radius,
+and draw-order entity references before detaching metadata in the working copy.
+Unknown associations, malformed/shared graphs, genuine entity reactors and
+native design intent still refuse. Original input bytes are unchanged. Verified
+draw-order entries do not protect duplicate geometry or small holes from cleanup.
+
+Installed hotfix sequence on 2026-11-04:
+
+- Production `77c5664`, then `c6887e7`; Test `b1f1313`, then `0f95047`.
+- Final full unit suites: 898 Production / 896 Test passed.
+- Both final self-contained releases passed runtime verification with
+  .NET/ASP.NET 8.0.33. Public capabilities verified the exact installed commits.
+- Installed Production browser replays passed actual panel and baseplate local
+  Open, both Sync normalization modes, callbacks to a localhost stub, and
+  desktop/mobile nonblank canvases. Source hashes remained unchanged. The
+  synthetic cleanup/refusal/download suite also passed. Screenshots inspected.
+- Sync remains Production `28b3a675`, Test `6aa81c84`; DXFER Dev untouched.
+  No authentication, permission, schema or original-file changes.
+
+After the systemic fix, a scoped, reviewed maintenance helper restored missing
+measurements on original artifacts 866, 867, 869, 870, 872, 873, 875, 876 and 877.
+It verified exact source hashes, latest revision ownership, current selection,
+installed build and raw/API geometry, then rechecked under serializable row
+locks. Original files and artifact IDs/current selections remain unchanged.
+Fresh database/file verification passed all nine, with zero remaining missing
+bounds among current flats uploaded during the outage window.
+
+The reported panel 866 is 50.5 x 38.5 inches, 187.132741-inch cut, one contour.
+Baseplate 875 is deliberately different: its original has five duplicate circles,
+18 entities, 8 x 8 bounds, 49.132741-inch raw cut and an ambiguous-contour warning.
+Those original-file measurements and warning were retained. DXFER's cleaned
+preview has 13 entities, 39.707963-inch cut and six contours. Saving that cleaned
+version back is still required to replace the original's duplicate-bearing
+geometry; recovery did not falsely attach cleaned measurements to original bytes
+or declare manufacturing clearance.
+
+Local recovery evidence is under
+`/home/ryan/.codex-nudger/repairs/fellowship-bounds-20261104/evidence/`
+at `20261104T222157Z` and `20261104T223132Z`. Each contains before-state snapshots,
+original-file copies, API previews and after-state evidence. Helper and explicit
+seven-artifact manifest are retained beside the investigation; no bulk history
+rewrite was attempted. Final persisted verification is
+`/tmp/dxfer-bounds-investigation/persisted-verification.log`.
+
+Flux handoff: #all-agents `1793831565.154829`. Independent acceptance is not
+claimed. Test Google OAuth still rejects the exact Test callback with
+`redirect_uri_mismatch`; that external client configuration issue is separate
+and was not changed. Preserve both metadata hotfixes in future promotions.
