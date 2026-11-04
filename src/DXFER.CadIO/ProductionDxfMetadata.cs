@@ -13,7 +13,9 @@ internal static class ProductionDxfMetadata
 
     private sealed record Record(string Type, string Section, int Start, int End, Pair[] Fields)
     {
-        public string? Handle => Fields.FirstOrDefault(p => p.Code is 5 or 105)?.Value;
+        // SORTENTSTABLE repeats group 5 in its body for draw-order keys, not object IDs.
+        public IEnumerable<Pair> IdentityFields => Type == "SORTENTSTABLE" ? Fields.TakeWhile(p => p.Code != 100) : Fields;
+        public string? Handle => IdentityFields.FirstOrDefault(p => p.Code is 5 or 105)?.Value;
     }
 
     private sealed record Header(string? Owner, string? Extension, Pair[] ExtensionPairs, Pair[] Reactors, Pair[] Body);
@@ -94,7 +96,7 @@ internal static class ProductionDxfMetadata
                 records.Add(record);
                 if (type is not ("SECTION" or "ENDSEC" or "EOF" or "CLASS" or "ENDTAB"))
                 {
-                    Require(fields.Count(p => p.Code is 5 or 105) <= 1);
+                    Require(record.IdentityFields.Count(p => p.Code is 5 or 105) <= 1);
                     if (record.Handle is { } handle) Require(handle.Length > 0 && handles.TryAdd(handle, record));
                 }
                 if (type == "ENDSEC") section = "";
@@ -161,7 +163,7 @@ internal static class ProductionDxfMetadata
                     Require(payload[0].Code == 1000 && payload[0].Value.Length > 0);
                 else
                 {
-                    Require(key == "btArcOnSurfaceRadius" && entity.Type == "ARC" && payload[0].Code == 40);
+                    Require(key == "btArcOnSurfaceRadius" && entity.Type is "ARC" or "CIRCLE" && payload[0].Code == 40);
                     var radius = entity.Fields.Where(p => p.Code == 40).ToArray();
                     Require(radius.Length == 1 && Number(payload[0].Value, out var metadataRadius)
                         && Number(radius[0].Value, out var geometryRadius) && metadataRadius > 0 && metadataRadius == geometryRadius);
@@ -279,7 +281,8 @@ internal static class ProductionDxfMetadata
         private void InspectMetadataObject(Record record)
         {
             var header = ReadHeader(record);
-            if (record.Type == "XRECORD")
+            if (record.Type == "SORTENTSTABLE") InspectSortOrder(record);
+            else if (record.Type == "XRECORD")
             {
                 Require(header.Extension is null);
                 foreach (var pair in XrecordPayload(record))
@@ -295,6 +298,37 @@ internal static class ProductionDxfMetadata
                     InspectDictionary(Resolve(header.Extension, "DICTIONARY"), record.Handle!, "roundtrip");
                 }
             }
+        }
+
+        private void InspectSortOrder(Record record)
+        {
+            var header = ReadHeader(record);
+            Require(header.Extension is null && header.Owner is not null);
+            var dictionary = Resolve(header.Owner!, "DICTIONARY");
+            var blockHandle = ReadHeader(dictionary).Owner;
+            Require(blockHandle is not null);
+            var block = Resolve(blockHandle!, "BLOCK_RECORD");
+            Require(block.Section == "TABLES" && string.Equals(ReadHeader(block).Extension, dictionary.Handle, StringComparison.OrdinalIgnoreCase));
+            var body = header.Body;
+            Require(body.Length >= 2 && body[0].Code == 100 && body[0].Value == "AcDbSortentsTable"
+                && body[1].Code == 330 && string.Equals(body[1].Value, block.Handle, StringComparison.OrdinalIgnoreCase)
+                && (body.Length - 2) % 2 == 0);
+            var entities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var sortHandles = new HashSet<ulong>();
+            for (var index = 2; index < body.Length; index += 2)
+            {
+                var reference = body[index];
+                var sort = body[index + 1];
+                Require(reference.Code == 331 && sort.Code == 5 && entities.Add(reference.Value)
+                    && ulong.TryParse(sort.Value, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var order)
+                    && order != 0 && sortHandles.Add(order));
+                Require(handles.TryGetValue(reference.Value, out var entity) && entity.Section == "ENTITIES"
+                    && string.Equals(ReadHeader(entity).Owner, block.Handle, StringComparison.OrdinalIgnoreCase));
+                removalReferences.Add(reference.Start);
+            }
+            // Verified ordering links are not design constraints. Drop only these entries
+            // so subsequent hole/duplicate cleanup cannot leave dangling draw-order links.
+            if (body.Length > 2) spans.Add((body[2].Start, record.End));
         }
 
         private static Pair[] XrecordPayload(Record record)
