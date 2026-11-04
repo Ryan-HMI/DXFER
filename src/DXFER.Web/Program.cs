@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Security.Claims;
 using System.Text;
@@ -166,6 +167,7 @@ app.MapGet("/auth/status", (HttpContext context) => Results.Json(new
 app.MapGet("/api/dxfer/capabilities", () => Results.Json(new
 {
     contractVersion = 1,
+    buildVersion = typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
     launchParameters = new[]
     {
         "syncBaseUrl",
