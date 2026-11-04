@@ -19,6 +19,47 @@ class NativeCurveWrapper extends GcsWrapper {
         return super.push_p_params(id, values, fixed || this.fixedParameterIds?.has(id) === true);
     }
 
+    push_constraint(constraint) {
+        if (constraint.type !== "p2p_symmetric_ppl") return super.push_constraint(constraint);
+        const a = this.get_primitive_addr(constraint.p1_id), b = this.get_primitive_addr(constraint.p2_id);
+        const value = address => this.gcs.get_p_param(address);
+        // PPL rescales by the pair's length at native construction, not mapping.
+        // Inspect live parameters after seeding, and again in every rank probe.
+        if (Math.hypot(value(a) - value(b), value(a + 1) - value(b + 1)) > tolerance)
+            return super.push_constraint(constraint);
+        const axis = this.sketch_index.get_sketch_line(constraint.l_id);
+        const start = this.get_primitive_addr(axis.p1_id), end = this.get_primitive_addr(axis.p2_id);
+        const tag = this.sketch_index.counter() + 1;
+        const intentTag = constraint.temporary ? -1 : tag;
+        const driving = constraint.driving ?? true, scale = constraint.scale ?? 1;
+        const difference = (first, second) => {
+            const result = this.gcs.push_p_param(value(second) - value(first), false);
+            // Definitions are hard even for temporary intent: four auxiliary
+            // unknowns plus four identities must add no physical freedom.
+            this.gcs.add_constraint_difference(first, second, result, tag, true, 1);
+            return result;
+        };
+        const nx = difference(end + 1, start + 1), ny = difference(start, end);
+        const dx = difference(b, a), dy = difference(b + 1, a + 1);
+        const zero = this.gcs.push_p_param(0, true);
+        const handles = [];
+        const point = (x, y) => {
+            const result = this.gcs.make_point(x, y);
+            handles.push(result);
+            return result;
+        };
+        try {
+            // (a-b) lies on the axis normal through the origin. Relative
+            // coordinates avoid cancellation from a translated auxiliary line.
+            this.gcs.add_constraint_point_on_line_ppp(point(dx, dy), point(zero, zero), point(nx, ny),
+                intentTag, driving, scale);
+            this.gcs.add_constraint_midpoint_on_line_pppp(point(a, a + 1), point(b, b + 1),
+                point(start, start + 1), point(end, end + 1), intentTag, driving, scale);
+        } finally {
+            handles.forEach(handle => handle.delete());
+        }
+    }
+
     sketch_primitive_to_gcs(primitive) {
         if (primitive.type !== "bspline") return super.sketch_primitive_to_gcs(primitive);
         const cached = this.bspline_gcs_cache.get(primitive.id);
