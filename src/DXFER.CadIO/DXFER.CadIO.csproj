@@ -10,4 +10,14 @@
     <ProjectReference Include="..\DXFER.Core\DXFER.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="../../vendor/HmiDxfPreparation/Infrastructure/DxfCompatibility.cs" Link="HmiDxfPreparation/Infrastructure/DxfCompatibility.cs" />
+    <Compile Include="../../vendor/HmiDxfPreparation/Infrastructure/DxfSmallCircleFilter.cs" Link="HmiDxfPreparation/Infrastructure/DxfSmallCircleFilter.cs" />
+    <Compile Include="../../vendor/HmiDxfPreparation/Production/BatchDxfLayer.cs" Link="HmiDxfPreparation/Production/BatchDxfLayer.cs" />
+    <Compile Include="../../vendor/HmiDxfPreparation/Production/BatchDxfLayers.cs" Link="HmiDxfPreparation/Production/BatchDxfLayers.cs" />
+    <Compile Include="../../vendor/HmiDxfPreparation/Production/BatchDxfTearSlots.cs" Link="HmiDxfPreparation/Production/BatchDxfTearSlots.cs" />
+    <Compile Include="../../vendor/HmiDxfPreparation/Production/BatchDxfCutLayers.cs" Link="HmiDxfPreparation/Production/BatchDxfCutLayers.cs" />
+    <InternalsVisibleTo Include="DXFER.Core.Tests" />
+  </ItemGroup>
+
 </Project>
