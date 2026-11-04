@@ -73,7 +73,7 @@ public sealed class PlaneGcsCollapsedSymmetryRuntimeTests
         measured.Should().BeApproximately(8, 1e-6);
     }
 
-    [Theory(Skip = "Open: undirected full-ellipse symmetry must preserve equivalent endpoint frames.")]
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void EquivalentEllipseFramesDoNotChangeAlreadyMirroredGeometry(bool reverse)
@@ -95,6 +95,40 @@ public sealed class PlaneGcsCollapsedSymmetryRuntimeTests
             after.MinorRadiusRatio.Should().BeApproximately(before.MinorRadiusRatio, 1e-6);
         }
         AssertSolved(solver.Solve(SketchSolveRequest.FromDocument(RoundTrip(result.Document))));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(-1)]
+    public void IndependentMinorRadiusRemainsEditableWithRedundantMajorDimension(int sign)
+    {
+        using var runtime = CreateRuntime();
+        var solver = new PlaneGcsSketchSolverAdapter(runtime);
+        var majorKey = FormattableString.Invariant($"b|point|major-end|{5 + sign * 3}|0");
+        var minorKey = FormattableString.Invariant($"b|point|minor-end|5|{sign * 1.5}");
+        SketchDimension Minor(double value) => new("minor", SketchDimensionKind.LinearDistance,
+            ["b:center", minorKey], value, isDriving: true);
+        var document = new DrawingDocument([Axis(), new EllipseEntity(Id("a"), new(-5, 0), new(3, 0), .5),
+            new EllipseEntity(Id("b"), new(5, 0), new(sign * 3, 0), .5),
+            new PointEntity(Id("target"), new(5 + sign * 3, 0))],
+            [new("major", SketchDimensionKind.LinearDistance, ["b:center", majorKey], 3, isDriving: true), Minor(1.5)],
+            [FixedAxis(), Mirror(), new("anchor", SketchConstraintKind.Fix, ["a:center", "a|point|major-end|-2|0", "target"]),
+                new("endpoint", SketchConstraintKind.Coincident, [majorKey, "target"])]);
+        var before = DxferDocumentSerializer.Write(document);
+
+        var edited = solver.Solve(new(document, [], [Minor(2)]));
+
+        AssertSolved(edited);
+        foreach (var ellipse in edited.Document.Entities.OfType<EllipseEntity>())
+        {
+            var major = Math.Sqrt(ellipse.MajorAxisEndPoint.X * ellipse.MajorAxisEndPoint.X
+                + ellipse.MajorAxisEndPoint.Y * ellipse.MajorAxisEndPoint.Y);
+            major.Should().BeApproximately(3, 1e-6);
+            (major * ellipse.MinorRadiusRatio).Should().BeApproximately(2, 1e-6);
+        }
+        edited.Document.Dimensions.Single(d => d.Id == "major").Value.Should().Be(3);
+        AssertSolved(solver.Solve(new(RoundTrip(edited.Document), [], [Minor(2.5)])));
+        DxferDocumentSerializer.Write(document).Should().Be(before);
     }
 
     private static void AssertSolved(SketchSolveResult result)

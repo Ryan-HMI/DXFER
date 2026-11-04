@@ -1,4 +1,5 @@
-import { Algorithm, GcsWrapper, init_planegcs_module, SolveStatus } from "./vendor/planegcs/dist/index.js";
+import { GcsWrapper, init_planegcs_module, SolveStatus } from "./vendor/planegcs/dist/index.js";
+import { solveNativeWithFallback as solveNative } from "./planeGcsSolveStrategy.js";
 import { mapPlaneGcsOffsets } from "./planeGcsOffsets.js";
 import { mapPlaneGcsPatterns } from "./planeGcsPatterns.js";
 import { measurePerimeterDistance } from "./perimeterDistance.js";
@@ -20,6 +21,21 @@ class NativeCurveWrapper extends GcsWrapper {
     }
 
     push_constraint(constraint) {
+        // Native PPP uses normalized geometric incidence for an affine identity.
+        // Linear midpoint equations keep replayed rank independent of endpoint separation.
+        if (constraint.type === "p2p_symmetric_ppp") {
+            const a = this.get_primitive_addr(constraint.p1_id), b = this.get_primitive_addr(constraint.p2_id);
+            const center = this.get_primitive_addr(constraint.p_id), tag = this.sketch_index.counter() + 1;
+            const intentTag = constraint.temporary ? -1 : tag;
+            for (const offset of [0, 1]) {
+                const delta = this.gcs.push_p_param(this.gcs.get_p_param(center + offset)
+                    - this.gcs.get_p_param(a + offset), false);
+                this.gcs.add_constraint_difference(a + offset, center + offset, delta, tag, true, 1);
+                this.gcs.add_constraint_difference(center + offset, b + offset, delta,
+                    intentTag, constraint.driving ?? true, constraint.scale ?? 1);
+            }
+            return;
+        }
         if (constraint.type !== "p2p_symmetric_ppl") return super.push_constraint(constraint);
         const a = this.get_primitive_addr(constraint.p1_id), b = this.get_primitive_addr(constraint.p2_id);
         const value = address => this.gcs.get_p_param(address);
@@ -138,24 +154,6 @@ function unionById(existing, updates, context) {
     return [...merged.values()];
 }
 
-function solveNative(wrapper, primitives) {
-    const preferences = primitives.filter(primitive => primitive.temporary === true);
-    wrapper.push_primitives_and_params(primitives.filter(primitive => primitive.temporary !== true));
-    wrapper.set_max_iterations(200);
-    if (preferences.length) {
-        // Diagnose hard intent before adding negative-tagged goals. Native
-        // redundancy checks must not mistake pointer preferences for conflicts.
-        const hardStatus = wrapper.solve(Algorithm.LevenbergMarquardt);
-        if (wrapper.get_gcs_conflicting_constraints().length) return hardStatus;
-        // Underdetermined geometry can need stability goals to converge.
-        // Only the final solve and validation may publish geometry.
-        if ([SolveStatus.Success, SolveStatus.Converged].includes(hardStatus))
-            wrapper.apply_solution();
-        wrapper.push_primitives_and_params(preferences);
-    }
-    return wrapper.solve(Algorithm.LevenbergMarquardt);
-}
-
 // Wire contract: {document:{entities,constraints,dimensions,metadata?,hasPatterns?},
 // constraints?,dimensions?,fixedReferenceKeys?,initialGuesses?:[{referenceKey,point}],
 // drag?:{key,start,end,constrain?,temporarySnapIntent?}}. Updates replace by ID.
@@ -167,88 +165,138 @@ export async function createPlaneGcsSolver({ wasmBinary, wasmPath } = {}) {
     const module = await init_planegcs_module(options);
     let wrapper = new NativeCurveWrapper(new module.GcsSystem(), module);
     let disposed = false;
+    const solveOnce = (request, ellipseBranches, ellipseBranchOverrides, branchDiagnosis) => {
+        const original = copy(request?.document?.entities ?? []);
+        let redundantDrivingDimensionIds = [];
+        const refuse = (status, diagnostics) => ({ status, entities: original, diagnostics, engine: "PlaneGCS",
+            redundantDrivingDimensionIds });
+        if (disposed) return refuse("failed", ["PlaneGCS solver has been disposed."]);
+        try {
+            // Each request is a complete snapshot. clear_data alone retains
+            // native solve state that can change repeated-snapshot results.
+            wrapper.destroy_gcs_module();
+            wrapper = new NativeCurveWrapper(new module.GcsSystem(), module);
+            const mapped = mapRequest(request, ellipseBranches, ellipseBranchOverrides);
+            if (request.drag) mapped.tryPatternSeed();
+            wrapper.fixedParameterIds = mapped.fixedParameterIds;
+            const status = solveNative(wrapper, mapped.primitives);
+            const conflicts = wrapper.get_gcs_conflicting_constraints();
+            const redundant = wrapper.get_gcs_redundant_constraints();
+            const partiallyRedundant = wrapper.get_gcs_partially_redundant_constraints();
+            redundantDrivingDimensionIds = [...new Set([...redundant, ...partiallyRedundant]
+                .map(id => mapped.relationDimensions.get(id)).filter(id => id !== undefined))];
+            const describe = (prefix, ids) => [...new Set(ids.map(id => `${prefix}: ${mapped.sources.get(id) ?? id}.`))];
+            const diagnostics = [
+                `PlaneGCS mapped-system degrees of freedom: ${wrapper.gcs.dof()}.`,
+                ...describe("Redundant equation", redundant),
+                ...describe("Partially redundant equation", partiallyRedundant)
+            ];
+            if (![SolveStatus.Success, SolveStatus.Converged].includes(status) || conflicts.length) {
+                if (ellipseBranches.size) Object.assign(branchDiagnosis, mapped.ellipseConflictBranches(conflicts));
+                return refuse("failed", [`PlaneGCS did not satisfy the system (status ${status}).`,
+                    ...describe("Conflicting intent", conflicts), ...diagnostics]);
+            }
+            wrapper.apply_solution();
+            const get = id => wrapper.sketch_index.get_primitive(id);
+            const errors = mapped.validate(get);
+            if (errors.length) {
+                if (ellipseBranches.size) Object.assign(branchDiagnosis, mapped.ellipseConflictBranches([], get));
+                return refuse("failed", [...errors, ...diagnostics]);
+            }
+            const attempts = array(request.attemptedDrivingDimensionIds ?? [], "attemptedDrivingDimensionIds");
+            requireSupported(attempts.every(value => typeof value === "string" && value.length > 0),
+                "Attempted driving dimension IDs must be nonempty strings.");
+            // Native redundant tags name one selected basis, not necessarily
+            // the edited intent. Compare native ranks at the same solution
+            // with that intent's equations removed, retaining all unknowns.
+            const reported = new Set(redundantDrivingDimensionIds);
+            for (const dimensionId of new Set(attempts)) {
+                if (mapped.discreteDimensionIds.has(dimensionId)) {
+                    diagnostics.push(`Validated discrete topology dimension ${dimensionId}; not a continuous rank equation.`);
+                    continue;
+                }
+                const owned = new Set([...mapped.relationDimensions]
+                    .filter(([, owner]) => owner === dimensionId).map(([id]) => id));
+                requireSupported(owned.size > 0, `Attempted dimension ${dimensionId} has no mapped driving equations.`);
+                const probe = new NativeCurveWrapper(new module.GcsSystem(), module);
+                try {
+                    probe.fixedParameterIds = mapped.fixedParameterIds;
+                    // Rank is a property of hard intent at this accepted solution.
+                    // Replaying stale drag/stability goals can fail a valid rank check.
+                    const probeStatus = solveNative(probe, copy(mapped.primitives
+                        .filter(primitive => !owned.has(primitive.id) && primitive.temporary !== true)
+                        .map(primitive => get(primitive.id))));
+                    if (![SolveStatus.Success, SolveStatus.Converged].includes(probeStatus)
+                        || probe.get_gcs_conflicting_constraints().length) {
+                        return refuse("failed", [`PlaneGCS could not verify native rank for dimension ${dimensionId}.`, ...diagnostics]);
+                    }
+                    const fullDof = wrapper.gcs.dof(), withoutDof = probe.gcs.dof();
+                    if (withoutDof < fullDof) {
+                        return refuse("failed", [`PlaneGCS returned inconsistent native rank for dimension ${dimensionId}.`, ...diagnostics]);
+                    }
+                    reported.delete(dimensionId);
+                    if (withoutDof === fullDof) reported.add(dimensionId);
+                    diagnostics.push(`Native rank check ${dimensionId}: DOF ${fullDof}, without intent ${withoutDof}.`);
+                } finally {
+                    probe.destroy_gcs_module();
+                }
+            }
+            redundantDrivingDimensionIds = [...reported];
+            return { status: "solved", entities: mapped.entities(get), diagnostics, engine: "PlaneGCS",
+                redundantDrivingDimensionIds };
+        } catch (error) {
+            return refuse(error instanceof Unsupported ? "unsupported" : "failed",
+                [error instanceof Error ? error.message : "PlaneGCS could not solve this request."]);
+        } finally {
+            wrapper.clear_data();
+        }
+    };
     return {
         solve(request) {
-            const original = copy(request?.document?.entities ?? []);
-            let redundantDrivingDimensionIds = [];
-            const refuse = (status, diagnostics) => ({ status, entities: original, diagnostics, engine: "PlaneGCS",
-                redundantDrivingDimensionIds });
-            if (disposed) return refuse("failed", ["PlaneGCS solver has been disposed."]);
-            try {
-                // Each request is a complete snapshot. clear_data alone retains
-                // native solve state that can change repeated-snapshot results.
-                wrapper.destroy_gcs_module();
-                wrapper = new NativeCurveWrapper(new module.GcsSystem(), module);
-                const mapped = mapRequest(request);
-                if (request.drag) mapped.tryPatternSeed();
-                wrapper.fixedParameterIds = mapped.fixedParameterIds;
-                const status = solveNative(wrapper, mapped.primitives);
-                const conflicts = wrapper.get_gcs_conflicting_constraints();
-                const redundant = wrapper.get_gcs_redundant_constraints();
-                const partiallyRedundant = wrapper.get_gcs_partially_redundant_constraints();
-                redundantDrivingDimensionIds = [...new Set([...redundant, ...partiallyRedundant]
-                    .map(id => mapped.relationDimensions.get(id)).filter(id => id !== undefined))];
-                const describe = (prefix, ids) => [...new Set(ids.map(id => `${prefix}: ${mapped.sources.get(id) ?? id}.`))];
-                const diagnostics = [
-                    `PlaneGCS mapped-system degrees of freedom: ${wrapper.gcs.dof()}.`,
-                    ...describe("Redundant equation", redundant),
-                    ...describe("Partially redundant equation", partiallyRedundant)
-                ];
-                if (![SolveStatus.Success, SolveStatus.Converged].includes(status) || conflicts.length) {
-                    return refuse("failed", [`PlaneGCS did not satisfy the system (status ${status}).`,
-                        ...describe("Conflicting intent", conflicts), ...diagnostics]);
+            const branches = new Map(), diagnosis = {};
+            const first = solveOnce(request, branches, new Map(), diagnosis);
+            if (first.status !== "failed" || !branches.size || diagnosis.unrelated) return first;
+            // A full ellipse is unchanged by reversing both axes. Try exact
+            // endpoint correspondences, never discard intent to choose a frame.
+            const choices = [...branches.keys()], pending = [], visited = new Set();
+            const signature = values => choices.map(id => Number(values.get(id) ?? branches.get(id))).join("");
+            visited.add(signature(new Map()));
+            const enqueue = (values, urgent = false) => {
+                const key = signature(values);
+                if (visited.has(key)) return;
+                visited.add(key);
+                if (urgent) pending.unshift(values); else pending.push(values);
+            };
+            const expand = (values, failure) => {
+                if (failure.unrelated) return;
+                const involved = failure.branches?.length ? failure.branches : choices;
+                const flip = ids => {
+                    const candidate = new Map(values);
+                    for (const id of ids) candidate.set(id, !(values.get(id) ?? branches.get(id)));
+                    return candidate;
+                };
+                // Independent failing pairs and consistent cycles can change
+                // together, without enumerating their Cartesian product.
+                enqueue(flip(involved), true);
+                for (const id of involved) enqueue(flip([id]));
+            };
+            enqueue(new Map(choices.map(id => [id, false])));
+            expand(new Map(), diagnosis);
+            let attempts = 1;
+            const limit = 32, started = performance.now();
+            while (pending.length) {
+                const overrides = pending.shift(), failure = {};
+                const result = solveOnce(request, branches, overrides, failure);
+                attempts++;
+                if (result.status === "solved") return result;
+                if (attempts >= limit || performance.now() - started > 500) {
+                    first.diagnostics.push(`Full-ellipse frame search exhausted its bounded retry budget after ${attempts} attempts; geometry unchanged.`);
+                    return first;
                 }
-                wrapper.apply_solution();
-                const get = id => wrapper.sketch_index.get_primitive(id);
-                const errors = mapped.validate(get);
-                if (errors.length) return refuse("failed", [...errors, ...diagnostics]);
-                const attempts = array(request.attemptedDrivingDimensionIds ?? [], "attemptedDrivingDimensionIds");
-                requireSupported(attempts.every(value => typeof value === "string" && value.length > 0),
-                    "Attempted driving dimension IDs must be nonempty strings.");
-                // Native redundant tags name one selected basis, not necessarily
-                // the edited intent. Compare native ranks at the same solution
-                // with that intent's equations removed, retaining all unknowns.
-                const reported = new Set(redundantDrivingDimensionIds);
-                for (const dimensionId of new Set(attempts)) {
-                    if (mapped.discreteDimensionIds.has(dimensionId)) {
-                        diagnostics.push(`Validated discrete topology dimension ${dimensionId}; not a continuous rank equation.`);
-                        continue;
-                    }
-                    const owned = new Set([...mapped.relationDimensions]
-                        .filter(([, owner]) => owner === dimensionId).map(([id]) => id));
-                    requireSupported(owned.size > 0, `Attempted dimension ${dimensionId} has no mapped driving equations.`);
-                    const probe = new NativeCurveWrapper(new module.GcsSystem(), module);
-                    try {
-                        probe.fixedParameterIds = mapped.fixedParameterIds;
-                        // Rank is a property of hard intent at this accepted solution.
-                        // Replaying stale drag/stability goals can fail a valid rank check.
-                        const probeStatus = solveNative(probe, copy(mapped.primitives
-                            .filter(primitive => !owned.has(primitive.id) && primitive.temporary !== true)
-                            .map(primitive => get(primitive.id))));
-                        if (![SolveStatus.Success, SolveStatus.Converged].includes(probeStatus)
-                            || probe.get_gcs_conflicting_constraints().length) {
-                            return refuse("failed", [`PlaneGCS could not verify native rank for dimension ${dimensionId}.`, ...diagnostics]);
-                        }
-                        const fullDof = wrapper.gcs.dof(), withoutDof = probe.gcs.dof();
-                        if (withoutDof < fullDof) {
-                            return refuse("failed", [`PlaneGCS returned inconsistent native rank for dimension ${dimensionId}.`, ...diagnostics]);
-                        }
-                        reported.delete(dimensionId);
-                        if (withoutDof === fullDof) reported.add(dimensionId);
-                        diagnostics.push(`Native rank check ${dimensionId}: DOF ${fullDof}, without intent ${withoutDof}.`);
-                    } finally {
-                        probe.destroy_gcs_module();
-                    }
-                }
-                redundantDrivingDimensionIds = [...reported];
-                return { status: "solved", entities: mapped.entities(get), diagnostics, engine: "PlaneGCS",
-                    redundantDrivingDimensionIds };
-            } catch (error) {
-                return refuse(error instanceof Unsupported ? "unsupported" : "failed",
-                    [error instanceof Error ? error.message : "PlaneGCS could not solve this request."]);
-            } finally {
-                wrapper.clear_data();
+                expand(overrides, failure);
             }
+            first.diagnostics.push(`No evaluated full-ellipse endpoint correspondence satisfied all intent (${attempts} combinations checked).`);
+            return first;
         },
         dispose() {
             if (!disposed) {
@@ -259,7 +307,7 @@ export async function createPlaneGcsSolver({ wasmBinary, wasmPath } = {}) {
     };
 }
 
-function mapRequest(request) {
+function mapRequest(request, ellipseBranches = new Map(), ellipseBranchOverrides = new Map()) {
     const document = request?.document;
     requireSupported(document && typeof document === "object", "A full document snapshot is required.");
     const patterns = document.metadata?.patterns ?? document.metadata?.Patterns ?? [];
@@ -273,6 +321,7 @@ function mapRequest(request) {
     }
     const constraints = unionById(document.constraints, request.constraints, "Constraints");
     const dimensions = unionById(document.dimensions, request.dimensions, "Dimensions");
+    const ellipseEquationBranches = new Map();
     const ellipseAxisModels = new Set();
     const ellipseAxisPatternMembers = new Set();
     const ellipseSymmetryParents = new Map();
@@ -390,7 +439,7 @@ function mapRequest(request) {
         sources.set(item.id, source);
         const dimensionId = values.drivingDimensionId ?? (dimensionOwner?.source === source ? dimensionOwner.id : null);
         if (dimensionId !== null && dimensionId !== undefined && !temporary) relationDimensions.set(item.id, dimensionId);
-        if (!temporary && check) checks.push({ source, check });
+        if (!temporary && check) checks.push({ id: item.id, source, check });
         return item;
     };
     const samePoint = (a, b, source, temporary = false) =>
@@ -1019,13 +1068,33 @@ function mapRequest(request) {
                     const [a, b] = peers.map(ref => ref.shape);
                     requireSupported(a !== b && fullEllipse(a.entity) === fullEllipse(b.entity), `${source}: ellipse topology must match.`);
                     mirrorPoint(a.center, b.center, axis, source, temporary);
+                    const firstFrameEquation = relations.length;
+                    let opposite = false;
+                    if (fullEllipse(a.entity)) {
+                        const [start, end] = endpoints(axis);
+                        const dx = end.x - start.x, dy = end.y - start.y;
+                        const ap = a.ellipseAxes?.majorEnd ?? a.focus, bp = b.ellipseAxes?.majorEnd ?? b.focus;
+                        const av = { x: ap.x - a.center.x, y: ap.y - a.center.y };
+                        const bv = { x: bp.x - b.center.x, y: bp.y - b.center.y };
+                        const projection = 2 * (av.x * dx + av.y * dy) / (dx * dx + dy * dy);
+                        const reverse = (projection * dx - av.x) * bv.x + (projection * dy - av.y) * bv.y < 0;
+                        ellipseBranches.set(c.id, reverse);
+                        opposite = ellipseBranchOverrides.get(c.id) ?? reverse;
+                    }
                     if (a.ellipseAxes && b.ellipseAxes && fullEllipse(a.entity)) {
-                        mirrorPoint(a.ellipseAxes.majorEnd, b.ellipseAxes.majorEnd, axis, source, temporary);
-                        mirrorPoint(a.ellipseAxes.minorEnd, ellipsePoint(b, -Math.PI / 2), axis, source, temporary);
+                        mirrorPoint(a.ellipseAxes.majorEnd, opposite ? ellipsePoint(b, Math.PI) : b.ellipseAxes.majorEnd,
+                            axis, source, temporary);
+                        mirrorPoint(a.ellipseAxes.minorEnd, opposite ? b.ellipseAxes.minorEnd : ellipsePoint(b, -Math.PI / 2),
+                            axis, source, temporary);
                     } else {
                         requireSupported(a.ellipse && b.ellipse && a.ellipse.type === b.ellipse.type,
                             `${source}: partial equal-axis ellipses are not mapped for symmetry.`);
-                        mirrorPoint(a.focus, b.focus, axis, source, temporary);
+                        let focus = b.focus;
+                        if (opposite) {
+                            focus = point({ x: 2 * b.center.x - b.focus.x, y: 2 * b.center.y - b.focus.y });
+                            symmetric(b.focus, focus, b.center, `${source} opposite focus`);
+                        }
+                        mirrorPoint(a.focus, focus, axis, source, temporary);
                         relation("equal", { param1: { o_id: a.ellipse.id, prop: "radmin" }, param2: { o_id: b.ellipse.id, prop: "radmin" } },
                             source, get => Math.abs(get(a.ellipse.id).radmin - get(b.ellipse.id).radmin), temporary);
                         if (a.ellipse.type === "arc_of_ellipse") {
@@ -1041,6 +1110,8 @@ function mapRequest(request) {
                                 source, get => Math.abs(get(a.ellipse.id)[left] + get(b.ellipse.id)[right] - sum), temporary);
                         }
                     }
+                    if (fullEllipse(a.entity))
+                        for (const equation of relations.slice(firstFrameEquation)) ellipseEquationBranches.set(equation.id, c.id);
                 } else {
                     count(3);
                     const [a, b] = peers.map(getCurve);
@@ -1294,8 +1365,16 @@ function mapRequest(request) {
                 const [a, b] = refs.map(getLine), current = lineAngle(b) - lineAngle(a);
                 const options = [angle, -angle, Math.PI - angle, angle - Math.PI];
                 const target = options.sort((x, y) => Math.abs(angleDelta(x - current)) - Math.abs(angleDelta(y - current)))[0];
-                relation("l2l_angle_ll", { l1_id: a.id, l2_id: b.id, angle: target }, source,
-                    get => Math.abs(angleDelta(lineAngle(b, get) - lineAngle(a, get) - target)));
+                const angular = relation("l2l_angle_ll", { l1_id: a.id, l2_id: b.id, angle: target,
+                    alternativeAngles: (request.dimensions?.some(update => update.id === d.id)
+                        || request.attemptedDrivingDimensionIds?.includes(d.id))
+                        ? options.filter(option => option !== target) : [] }, source,
+                    get => {
+                        // Pre-native seed validation supplies geometry nodes only.
+                        const solvedTarget = get(angular.id)?.angle ?? target;
+                        if (!options.some(option => Math.abs(angleDelta(option - solvedTarget)) < 1e-12)) return Infinity;
+                        return Math.abs(angleDelta(lineAngle(b, get) - lineAngle(a, get) - solvedTarget));
+                    });
             }
         } else if (kind === "pointtolinedistance") {
             requireSupported(refs.length === 2, `${source} requires two references.`);
@@ -1588,6 +1667,57 @@ function mapRequest(request) {
         sources,
         relationDimensions,
         discreteDimensionIds,
+        ellipseConflictBranches(conflicts, get) {
+            if (get) conflicts = checks.filter(item => item.id && (!Number.isFinite(item.check(get))
+                || item.check(get) > tolerance)).map(item => item.id);
+            // Trace hard-equation parameter components. A fixed shared axis must
+            // not couple otherwise independent families or unrelated conflicts.
+            const geometry = new Map(geometries.map(node => [node.id, node]));
+            const variables = new Map(), parents = new Map();
+            const root = id => {
+                if (!parents.has(id)) parents.set(id, id);
+                while (parents.get(id) !== id) id = parents.get(id);
+                return id;
+            };
+            const references = value => {
+                if (typeof value === "string") return geometry.has(value) ? [value] : [];
+                if (!value || typeof value !== "object") return [];
+                return Object.entries(value).flatMap(([key, entry]) => key === "id" ? [] : references(entry));
+            };
+            const independent = id => {
+                if (variables.has(id)) return variables.get(id);
+                const node = geometry.get(id), ids = new Set();
+                variables.set(id, ids);
+                if (["point", "circle", "arc", "ellipse", "arc_of_ellipse"].includes(node.type)
+                    && !node.fixed && !fixedParameterIds.has(id)) ids.add(id);
+                for (const dependency of references(node))
+                    for (const parameter of independent(dependency)) ids.add(parameter);
+                return ids;
+            };
+            const equations = new Map(relations.filter(eq => !eq.temporary).map(eq => [eq.id,
+                new Set(references(eq).flatMap(id => [...independent(id)]))]));
+            for (const ids of equations.values()) {
+                const first = ids.values().next().value;
+                for (const id of ids) parents.set(root(id), root(first));
+            }
+            const families = new Map();
+            for (const [id, branch] of ellipseEquationBranches) for (const parameter of equations.get(id) ?? []) {
+                const component = root(parameter);
+                if (!families.has(component)) families.set(component, new Set());
+                families.get(component).add(branch);
+            }
+            const involved = new Set();
+            for (const id of conflicts) {
+                const owner = ellipseEquationBranches.get(id), ids = equations.get(id);
+                if (owner) involved.add(owner);
+                const related = new Set([...(ids ?? [])].flatMap(parameter => [...(families.get(root(parameter)) ?? [])]));
+                for (const branch of related) involved.add(branch);
+                const check = checks.find(item => item.id === id)?.check;
+                if (!owner && ids && !related.size && (ids.size || check?.(key => nodes.get(key)) > tolerance))
+                    return { branches: [], unrelated: true };
+            }
+            return { branches: [...involved], unrelated: false };
+        },
         tryPatternSeed() {
             if (!seedOperations.length) return;
             const before = snapshotGeometry();

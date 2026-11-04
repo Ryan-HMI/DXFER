@@ -47,7 +47,7 @@ for(const ratio of [.5,1,1.5]) for(const reverse of [false,true]) test(`full ell
 });
 for (const direction of [-1, 1]) for (const reverse of [false, true]) {
   test(`already mirrored full ellipses preserve geometry with equivalent axis sign ${direction}, reverse=${reverse}`,
-    {todo: direction === 1 ? 'Open: undirected full-ellipse symmetry must preserve equivalent endpoint frames.' : false}, async () => {
+    async () => {
     const a = {id:'a',kind:'ellipse',center:p(-5,1),majorAxisEndPoint:p(3,0),minorRadiusRatio:.5};
     const b = {...a,id:'b',center:p(5,1),majorAxisEndPoint:p(3 * direction,0)};
     const result = await run(a,b,reverse,{fixedReferenceKeys:['axis']}); solved(result);

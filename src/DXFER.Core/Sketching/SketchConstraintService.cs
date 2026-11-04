@@ -72,11 +72,11 @@ public static class SketchConstraintService
         var satisfied = constraint.Kind switch
         {
             SketchConstraintKind.Offset => SketchOffsetRelation.IsSatisfied(document.Entities, constraint.ReferenceKeys),
-            SketchConstraintKind.Coincident => IsCoincident(document.Entities, constraint),
+            SketchConstraintKind.Coincident => IsCoincident(document, constraint),
             SketchConstraintKind.PointOnLine or SketchConstraintKind.Collinear => SketchLineIncidence.IsSatisfied(document.Entities, constraint),
             SketchConstraintKind.PointOnCircle => SketchCircleIncidence.IsSatisfied(document.Entities, constraint),
-            SketchConstraintKind.Horizontal => IsAxisAligned(document.Entities, constraint, isHorizontal: true),
-            SketchConstraintKind.Vertical => IsAxisAligned(document.Entities, constraint, isHorizontal: false),
+            SketchConstraintKind.Horizontal => IsAxisAligned(document, constraint, isHorizontal: true),
+            SketchConstraintKind.Vertical => IsAxisAligned(document, constraint, isHorizontal: false),
             SketchConstraintKind.Parallel => IsParallel(document.Entities, constraint),
             SketchConstraintKind.Perpendicular => IsPerpendicular(document.Entities, constraint),
             SketchConstraintKind.Tangent => IsTangent(document.Entities, constraint),
@@ -659,11 +659,11 @@ public static class SketchConstraintService
             && SketchGeometryEditor.TrySetCircleLikeRadius(entities, movingReference, nextRadius);
     }
 
-    private static bool IsCoincident(IReadOnlyList<DrawingEntity> entities, SketchConstraint constraint)
+    private static bool IsCoincident(DrawingDocument document, SketchConstraint constraint)
     {
-        if (!TryGetTwoPointReferences(constraint, out var firstReference, out var secondReference)
-            || !SketchGeometryEditor.TryGetPoint(entities, firstReference, out var firstPoint)
-            || !SketchGeometryEditor.TryGetPoint(entities, secondReference, out var secondPoint))
+        if (constraint.ReferenceKeys.Count != 2
+            || !SketchReferenceResolver.TryGetLivePoint(document, constraint.ReferenceKeys[0], out var firstPoint)
+            || !SketchReferenceResolver.TryGetLivePoint(document, constraint.ReferenceKeys[1], out var secondPoint))
         {
             return false;
         }
@@ -672,13 +672,13 @@ public static class SketchConstraintService
     }
 
     private static bool IsAxisAligned(
-        IReadOnlyList<DrawingEntity> entities,
+        DrawingDocument document,
         SketchConstraint constraint,
         bool isHorizontal)
     {
         if (constraint.ReferenceKeys.Count == 1
             && SketchReference.TryParse(constraint.ReferenceKeys[0], out var lineReference)
-            && SketchGeometryEditor.TryGetLine(entities, lineReference, out _, out var line))
+            && SketchGeometryEditor.TryGetLine(document.Entities, lineReference, out _, out var line))
         {
             if (!SketchGeometryEditor.TryGetLineDirection(line, out var unitX, out var unitY, out _))
             {
@@ -690,9 +690,9 @@ public static class SketchConstraintService
                 : Math.Abs(unitX) <= SketchGeometryEditor.Tolerance;
         }
 
-        if (!TryGetTwoPointReferences(constraint, out var firstReference, out var secondReference)
-            || !SketchGeometryEditor.TryGetPoint(entities, firstReference, out var firstPoint)
-            || !SketchGeometryEditor.TryGetPoint(entities, secondReference, out var secondPoint))
+        if (constraint.ReferenceKeys.Count != 2
+            || !SketchReferenceResolver.TryGetLivePoint(document, constraint.ReferenceKeys[0], out var firstPoint)
+            || !SketchReferenceResolver.TryGetLivePoint(document, constraint.ReferenceKeys[1], out var secondPoint))
         {
             return false;
         }

@@ -83,8 +83,7 @@ try {
   for (const point of points) { near(Math.abs(point.location.x), 3); near(point.location.y, 4); }
   near(points[0].location.x, -points[1].location.x);
   await page.screenshot({path: `${output}/collapsed-points.png`}); results.cases.push('collapsed-points');
-  results.pending = ['Full-ellipse equivalent endpoint frames remain unresolved; not accepted by this replay.'];
-  for (const preselect of process.env.DXFER_VERIFY_FULL_ELLIPSE_SYMMETRY === '1' ? [false, true] : []) {
+  for (const preselect of [false, true]) {
     const name = `same-direction-ellipses-${preselect}`; results.currentCase = name;
     await load('same-direction-ellipses'); const before = await download(`${name}-before`);
     if (!preselect) await tool('Symmetric');
@@ -103,6 +102,8 @@ try {
       near(e.center.x, before.doc.entities[i].center.x); near(e.center.y, before.doc.entities[i].center.y);
       near(e.majorAxisEndPoint.x, 3); near(e.majorAxisEndPoint.y, 0); near(e.minorRadiusRatio, .5);
     }
+    await tool('Undo'); assert.deepEqual(content((await download(`${name}-undo`)).doc), content(before.doc));
+    await tool('Redo'); assert.deepEqual(content((await download(`${name}-redo`)).doc), content(after.doc));
     await load(`${name}-reopen`, after.text); allSatisfied((await download(`${name}-reopen`)).doc);
     await page.screenshot({path: `${output}/${name}.png`}); results.cases.push(name);
   }

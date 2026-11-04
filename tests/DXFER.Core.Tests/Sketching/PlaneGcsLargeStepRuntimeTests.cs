@@ -227,8 +227,7 @@ public sealed class PlaneGcsLargeStepRuntimeTests
             .Where(directory => !string.IsNullOrWhiteSpace(directory))
             .Select(directory => Path.GetFullPath(Path.Combine(directory, executable))).FirstOrDefault(File.Exists)
             ?? throw new InvalidOperationException("Node is required; no mock or legacy solver is permitted.");
-        var module = Environment.GetEnvironmentVariable("DXFER_LARGE_STEP_INTEGRATION") == "1"
-            ? "tests/DXFER.Blazor.Tests/largeStepStrategy.runtime.mjs" : "src/DXFER.Blazor/wwwroot/planeGcsSolver.js";
+        const string module = "src/DXFER.Blazor/wwwroot/planeGcsSolver.js";
         return new(node, Path.Combine(root.FullName, "src/DXFER.Web/Solver/planeGcsHost.mjs"), Path.Combine(root.FullName, module));
     }
 }

@@ -49,6 +49,17 @@ public static class SketchReferenceResolver
     }
 
     public static bool TryGetPoint(DrawingDocument document, string key, out Point2 point)
+        => TryGetPoint(document, key, allowAcquisitionCoordinates: true, out point);
+
+    public static bool TryGetLivePoint(DrawingDocument document, string key, out Point2 point)
+    {
+        if (TryGetPoint(document, key, allowAcquisitionCoordinates: false, out point)
+            && double.IsFinite(point.X) && double.IsFinite(point.Y)) return true;
+        point = default;
+        return false;
+    }
+
+    private static bool TryGetPoint(DrawingDocument document, string key, bool allowAcquisitionCoordinates, out Point2 point)
     {
         ArgumentNullException.ThrowIfNull(document);
 
@@ -73,7 +84,7 @@ public static class SketchReferenceResolver
             if (entity is EllipseEntity) return TryGetEllipseAxisPoint(document, key, out point);
             if (entity is PolylineEntity polyline) return TryGetPolylineCanvasPoint(polyline, label, out point);
             if (entity is SplineEntity spline) return TryGetSplineCanvasPoint(spline, label, out point);
-            return true;
+            return allowAcquisitionCoordinates;
         }
 
         point = default;
