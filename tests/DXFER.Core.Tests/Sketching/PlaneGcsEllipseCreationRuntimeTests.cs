@@ -5,11 +5,47 @@ using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
 using DXFER.Core.Sketching;
 using FluentAssertions;
+using System.Text.Json;
 
 namespace DXFER.Core.Tests.Sketching;
 
 public sealed class PlaneGcsEllipseCreationRuntimeTests
 {
+    [Fact]
+    public void ExportCreationReferenceBrowserFixturesWhenRequested()
+    {
+        var output = Environment.GetEnvironmentVariable("DXFER_CREATION_REFERENCE_FIXTURES");
+        if (string.IsNullOrWhiteSpace(output)) return;
+        Directory.CreateDirectory(output);
+        var source = (EllipseEntity)SketchCreationEntityFactory.CreateEntitiesForTool("ellipticalarc",
+            [new(17, -9), new(23, -1), new(13, -6), new(11, -13)], _ => EntityId.Create("source"), false).Single();
+        var document = new DrawingDocument([source], [], [], new DrawingDocumentMetadata
+        {
+            SourceFileName = "ellipticalarc-before.dxf", Units = DrawingUnits.Inches
+        });
+        RoundTrip(document).Entities.Should().Equal(document.Entities);
+        File.WriteAllText(Path.Combine(output, "ellipticalarc-before.dxf"),
+            DxfDocumentWriter.Write(document, new DxfWriteOptions(IncludeNativeDocument: true)));
+        var recipe = new
+        {
+            file = "ellipticalarc-before.dxf", sourceId = source.Id.Value, tool = "line", automaticSnapConstraints = true,
+            center = source.Center, source.MajorAxisEndPoint, source.MinorRadiusRatio,
+            source.StartParameterDegrees, source.EndParameterDegrees,
+            endpoints = new[] { "start", "end" }.Select(label =>
+            {
+                var point = source.PointAtParameterDegrees(label == "start" ? source.StartParameterDegrees : source.EndParameterDegrees);
+                return new
+                {
+                    label, point, referenceKey = FormattableString.Invariant($"source|point|{label}|{point.X:R}|{point.Y:R}"),
+                    canonicalReferenceKey = $"source:{label}", pointerEnd = new Point2(point.X + 3, point.Y + 4),
+                    keyedLength = 12, keyedEnd = new Point2(point.X + 7.2, point.Y + 9.6)
+                };
+            }).ToArray()
+        };
+        File.WriteAllText(Path.Combine(output, "ellipticalarc-recipe.json"), JsonSerializer.Serialize(recipe,
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true }));
+    }
+
     [Theory]
     [InlineData("start", false)]
     [InlineData("end", false)]
@@ -291,8 +327,11 @@ public sealed class PlaneGcsEllipseCreationRuntimeTests
             .Where(directory => !string.IsNullOrWhiteSpace(directory))
             .Select(directory => Path.GetFullPath(Path.Combine(directory, executable))).FirstOrDefault(File.Exists);
         if (node is null) throw new InvalidOperationException("Node is required; no mock or legacy solver is permitted.");
-        return new(node, Path.Combine(root.FullName, "src/DXFER.Web/Solver/planeGcsHost.mjs"),
-            Path.Combine(root.FullName, "src/DXFER.Blazor/wwwroot/planeGcsSolver.js"));
+        var module = Environment.GetEnvironmentVariable("DXFER_CREATION_REFERENCE_SOLVER_MODULE");
+        module = string.IsNullOrWhiteSpace(module) ? Path.Combine(root.FullName, "src/DXFER.Blazor/wwwroot/planeGcsSolver.js")
+            : Path.GetFullPath(module);
+        if (!File.Exists(module)) throw new FileNotFoundException("The requested PlaneGCS module is unavailable.", module);
+        return new(node, Path.Combine(root.FullName, "src/DXFER.Web/Solver/planeGcsHost.mjs"), module);
     }
 
     private sealed class ObservedRuntime(IPlaneGcsRuntime inner) : IPlaneGcsRuntime
