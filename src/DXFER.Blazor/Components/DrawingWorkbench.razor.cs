@@ -564,6 +564,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             _status = ex.Message;
             _importFeedback = ex.Message;
         }
+        catch (IOException)
+        {
+            _importFeedback = "DXF file could not be read. Current drawing unchanged.";
+            _status = _importFeedback;
+        }
         finally
         {
             await InvokeAsync(StateHasChanged);

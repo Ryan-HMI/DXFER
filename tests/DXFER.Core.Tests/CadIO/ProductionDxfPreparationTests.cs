@@ -105,6 +105,17 @@ public sealed class ProductionDxfPreparationTests
         prepare.Should().Throw<ProductionDxfPreparationException>().WithMessage("*Original file unchanged*");
     }
 
+    [Theory]
+    [InlineData("10\nNaN\n20\n0\n")]
+    [InlineData("10\n0\n20\n0\n30\n5\n")]
+    [InlineData("10\n0\n20\n0\n10\n100\n")]
+    public void DeletingSmallGeometryCannotHideInvalidSourceCoordinates(string coordinates)
+    {
+        var source = Dxf(Line("CUT", 0, 0, 4, 2) + "0\nCIRCLE\n8\nCUT\n" + coordinates + "40\n0.01\n");
+        Action prepare = () => ProductionDxfPreparation.Prepare(source);
+        prepare.Should().Throw<ProductionDxfPreparationException>().WithMessage("*Original file unchanged*");
+    }
+
     [Fact]
     public void ValidSplineSurvivesLouverPreparationAndExportWithoutResampling()
     {
