@@ -1,5 +1,10 @@
 # User Test Tracking
 
+## Production Cleanup 2026-11-04
+
+PROD-CLEANUP-20261104: USER-REQUESTED; integration/app checks pending. Pinned
+upstream algorithm tests pass; this alone is not production-entry-point parity.
+
 Use this file to separate what the user has actually tested from what is only automated-tested or app-verified by Codex. Do not mark an item `USER-PASSED` unless the user reports it working. Do not mark an item `APP-VERIFIED` until it has been tested in the running app or canvas.
 
 ## Legend

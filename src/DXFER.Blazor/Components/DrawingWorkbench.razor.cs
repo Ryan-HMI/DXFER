@@ -38,6 +38,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private string _fileName = "Untitled.dxf";
     private string _status = "Blank drawing ready. Sketch geometry or open a DXF.";
     private string? _duplicateCleanupStatus;
+    private string? _importFeedback;
     private string? _hoveredEntityId;
     private string? _activeSelectionKey;
     private GrainDirection _grainDirection = GrainDirection.None;
@@ -484,7 +485,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private string CornerModifyDistanceValue =>
         FormatNumber(GetCornerModifyDistance());
 
-    private string CommandPromptText => _duplicateCleanupStatus ?? (_activeTool switch
+    private string CommandPromptText => _importFeedback ?? _duplicateCleanupStatus ?? (_activeTool switch
     {
         WorkbenchTool.Measure => "Measure: select points or geometry for live deltas. Esc: exit measure.",
         WorkbenchTool.Line => "Line: click start point, then end point. Shift: polar snap. Double-click: start a fresh line. Esc: cancel.",
@@ -558,6 +559,11 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
             var text = await reader.ReadToEndAsync();
             LoadDxfText(file.Name, text, trustedSource: false, autoNormalize: false);
         }
+        catch (ProductionDxfPreparationException ex)
+        {
+            _status = ex.Message;
+            _importFeedback = ex.Message;
+        }
         finally
         {
             await InvokeAsync(StateHasChanged);
@@ -625,6 +631,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private static (string Category, string Message) DescribeSyncLoadFailure(Exception exception, string stage) =>
         exception switch
         {
+            ProductionDxfPreparationException cleanup => ("production-cleanup", cleanup.Message),
             OperationCanceledException => ("timeout", "Sync load timed out."),
             HttpRequestException { InnerException: FileNotFoundException or FileLoadException } =>
                 ("service-load", "Sync download failed: service dependency unavailable."),
@@ -677,13 +684,9 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         bool trustedSource,
         bool autoNormalize)
     {
-        _fileName = fileName;
-        _grainDirection = GrainDirection.None;
-        _grainAngleDegrees = null;
-        var document = WithOpenFileMetadata(DxfDocumentReader.Read(text), fileName, text, trustedSource);
-        var cleanup = ExactDuplicateGeometryService.Remove(document);
-        document = cleanup.Document;
-        _duplicateCleanupStatus = cleanup.RemovedCount > 0 || cleanup.ProtectedCount > 0 ? DuplicateCleanupStatus(cleanup) : null;
+        // Prepare into locals: a refused import must not relabel or replace the open drawing.
+        var prepared = ProductionDxfPreparation.Prepare(text);
+        var document = WithOpenFileMetadata(prepared.Document, fileName, text, trustedSource);
 
         if (document.Entities.Count == 0)
         {
@@ -712,6 +715,15 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         }
 
         _document = document;
+        _fileName = fileName;
+        _grainDirection = GrainDirection.None;
+        _grainAngleDegrees = null;
+        _duplicateCleanupStatus = prepared.Cleanup.ExactDuplicatesRemoved > 0
+            ? $"Removed {prepared.Cleanup.ExactDuplicatesRemoved} exact duplicates." : null;
+        _importFeedback = $"Production cleanup: {prepared.Cleanup.TearSlotsCreated} louver slots, "
+            + $"{prepared.Cleanup.SmallCirclesRemoved} small circles removed, "
+            + $"{prepared.Cleanup.CleanupLayersRemoved} cleanup layers removed.";
+        _status += " " + _importFeedback;
         _syncLoadError = null;
         _documentFitToken++;
         ClearHistory();
@@ -802,6 +814,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private async Task InvokeWorkbenchCommand(WorkbenchCommandId commandId)
     {
+        _importFeedback = null;
         _duplicateCleanupStatus = null;
         switch (commandId)
         {
