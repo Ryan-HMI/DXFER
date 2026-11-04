@@ -658,15 +658,19 @@ public static class SketchCreationConstraintFactory
             return false;
         }
 
-        if (existing.SequenceEqual(candidate, StringComparer.Ordinal))
+        if (existing.Zip(candidate).All(pair => SameReference(pair.First, pair.Second)))
         {
             return true;
         }
 
         return candidate.Count == 2
-            && StringComparer.Ordinal.Equals(existing[0], candidate[1])
-            && StringComparer.Ordinal.Equals(existing[1], candidate[0]);
+            && SameReference(existing[0], candidate[1])
+            && SameReference(existing[1], candidate[0]);
     }
+
+    private static bool SameReference(string first, string second) =>
+        StringComparer.Ordinal.Equals(first, second)
+        || SketchReference.TryParse(first, out var a) && SketchReference.TryParse(second, out var b) && a == b;
 
     private static void AddConstraint(
         ICollection<SketchConstraint> constraints,

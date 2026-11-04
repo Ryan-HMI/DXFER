@@ -61,10 +61,10 @@ public static class SketchReferenceResolver
             return false;
         }
 
-        if (SketchReference.TryParse(key, out var reference)
-            && SketchGeometryEditor.TryGetPoint(document.Entities, reference, out point))
+        if (SketchReference.TryParse(key, out var reference))
         {
-            return true;
+            // A recognized identity must resolve against live geometry, never its acquisition snapshot.
+            return SketchGeometryEditor.TryGetPoint(document.Entities, reference, out point);
         }
 
         if (SketchReference.TryParseCanvasPointCoordinates(key, out var entityId, out var label, out point)
@@ -90,14 +90,9 @@ public static class SketchReferenceResolver
             || !SketchGeometryEditor.TryFindEntity(document.Entities, entityId, out _, out var entity)
             || entity is not EllipseEntity ellipse) return false;
 
-        var major = ellipse.MajorAxisEndPoint;
-        var radius = Math.Sqrt(major.X * major.X + major.Y * major.Y);
-        var minorRadius = radius * ellipse.MinorRadiusRatio;
-        if (!double.IsFinite(ellipse.Center.X) || !double.IsFinite(ellipse.Center.Y)
-            || !double.IsFinite(radius) || radius <= SketchGeometryEditor.Tolerance
-            || !double.IsFinite(minorRadius) || minorRadius <= SketchGeometryEditor.Tolerance
-            || !double.IsFinite(ellipse.StartParameterDegrees) || !double.IsFinite(ellipse.EndParameterDegrees)) return false;
+        if (!HasValidEllipseGeometry(ellipse)) return false;
 
+        var major = ellipse.MajorAxisEndPoint;
         var offset = label.ToLowerInvariant() switch
         {
             "major-start" => new Point2(-major.X, -major.Y),
@@ -110,6 +105,28 @@ public static class SketchReferenceResolver
         if (!double.IsFinite(resolved.X) || !double.IsFinite(resolved.Y)) return false;
         point = resolved;
         return true;
+    }
+
+    internal static bool TryGetEllipseEndpoint(EllipseEntity ellipse, SketchReferenceTarget target, out Point2 point)
+    {
+        point = default;
+        if (!HasValidEllipseGeometry(ellipse)) return false;
+        var resolved = ellipse.PointAtParameterDegrees(target == SketchReferenceTarget.Start
+            ? ellipse.StartParameterDegrees : ellipse.EndParameterDegrees);
+        if (!double.IsFinite(resolved.X) || !double.IsFinite(resolved.Y)) return false;
+        point = resolved;
+        return true;
+    }
+
+    private static bool HasValidEllipseGeometry(EllipseEntity ellipse)
+    {
+        var major = ellipse.MajorAxisEndPoint;
+        var radius = Math.Sqrt(major.X * major.X + major.Y * major.Y);
+        var minorRadius = radius * ellipse.MinorRadiusRatio;
+        return double.IsFinite(ellipse.Center.X) && double.IsFinite(ellipse.Center.Y)
+            && double.IsFinite(radius) && radius > SketchGeometryEditor.Tolerance
+            && double.IsFinite(minorRadius) && minorRadius > SketchGeometryEditor.Tolerance
+            && double.IsFinite(ellipse.StartParameterDegrees) && double.IsFinite(ellipse.EndParameterDegrees);
     }
 
     internal static bool TryGetSplineCanvasPoint(SplineEntity spline, string label, out Point2 point)

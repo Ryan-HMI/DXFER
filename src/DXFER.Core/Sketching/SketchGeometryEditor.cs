@@ -101,6 +101,18 @@ internal static class SketchGeometryEditor
 
         switch (entity)
         {
+            case PolygonEntity polygon when reference.SegmentIndex is { } polygonSegment
+                && reference.Target is SketchReferenceTarget.Start or SketchReferenceTarget.End:
+                point = default;
+                if (polygonSegment >= polygon.NormalizedSideCount
+                    || !double.IsFinite(polygon.Radius) || polygon.Radius <= Tolerance
+                    || !double.IsFinite(polygon.RotationAngleDegrees)) return false;
+                var vertices = polygon.GetVertices();
+                point = vertices[(polygonSegment + (reference.Target == SketchReferenceTarget.End ? 1 : 0)) % vertices.Count];
+                return double.IsFinite(point.X) && double.IsFinite(point.Y);
+            case EllipseEntity ellipse when !reference.SegmentIndex.HasValue
+                && reference.Target is SketchReferenceTarget.Start or SketchReferenceTarget.End:
+                return SketchReferenceResolver.TryGetEllipseEndpoint(ellipse, reference.Target, out point);
             case SplineEntity spline when !reference.SegmentIndex.HasValue && reference.Target is SketchReferenceTarget.Start or SketchReferenceTarget.End:
                 return SketchReferenceResolver.TryGetSplineCanvasPoint(spline,
                     reference.Target == SketchReferenceTarget.Start ? "start" : "end", out point);

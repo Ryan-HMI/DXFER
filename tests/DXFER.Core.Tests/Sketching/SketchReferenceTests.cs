@@ -103,4 +103,69 @@ public sealed class SketchReferenceTests
         SketchReferenceResolver.TryGetPoint(document, "poly|point|vertex-99|10|0", out _).Should().BeFalse();
         SketchReferenceResolver.TryGetPoint(document, "poly|point|mid-99|10|0", out _).Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PolygonVertexReferencesFollowTranslationRotationAndResize(bool circumscribed)
+    {
+        var polygon = new PolygonEntity(EntityId.Create("shape"), new(17, -9), 10, 37, 5, circumscribed);
+        var edited = polygon with { Center = new(-4, 23), Radius = 7, RotationAngleDegrees = 121 };
+        var oldVertices = polygon.GetVertices();
+        var document = new DrawingDocument([edited]);
+        for (var index = 0; index < oldVertices.Count; index++)
+        {
+            var key = FormattableString.Invariant($"shape|point|vertex-{index}|{oldVertices[index].X:R}|{oldVertices[index].Y:R}");
+            SketchReference.TryNormalize(key, out var canonical).Should().BeTrue();
+            foreach (var alias in new[] { key, canonical })
+            {
+                SketchReferenceResolver.TryGetPoint(document, alias, out var point).Should().BeTrue();
+                point.Should().Be(edited.GetVertices()[index]);
+                SketchReferenceResolver.TryGetPoint(new DrawingDocument([]), alias, out _).Should().BeFalse();
+            }
+        }
+        foreach (var key in new[] { "shape|point|vertex-99|1|2", "shape|segment|99:end", "shape:start", "shape:end" })
+            SketchReferenceResolver.TryGetPoint(document, key, out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(0.5, 35, 213)]
+    [InlineData(1, 320, 40)]
+    [InlineData(2, -75, 142)]
+    public void EllipticalEndpointReferencesUseLiveParametersAndDirectedAxes(double ratio, double start, double end)
+    {
+        var ellipse = new EllipseEntity(EntityId.Create("shape"), new(-4, 23), new(-8, 6), ratio, start, end);
+        var document = new DrawingDocument([ellipse]);
+        foreach (var label in new[] { "start", "end" })
+        foreach (var key in new[] { $"shape:{label}", $"shape|point|{label}|999|-999" })
+        {
+            SketchReferenceResolver.TryGetPoint(document, key, out var point).Should().BeTrue();
+            point.Should().Be(ellipse.PointAtParameterDegrees(label == "start" ? start : end));
+            SketchReferenceResolver.TryGetPoint(new DrawingDocument([]), key, out _).Should().BeFalse();
+        }
+        SketchReferenceResolver.TryGetPoint(document, "shape|segment|0:start", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void InvalidLiveGeometryDoesNotFallBackToPlausibleEndpointCoordinates()
+    {
+        var polygon = new PolygonEntity(EntityId.Create("shape"), new(17, -9), 10, 37, 5);
+        var ellipse = new EllipseEntity(EntityId.Create("shape"), new(17, -9), new(6, 8), 0.5, 30, 210);
+        var invalid = new DrawingEntity[]
+        {
+            polygon with { Radius = 0 }, polygon with { Radius = double.NaN },
+            polygon with { Center = new(double.PositiveInfinity, 0) }, polygon with { RotationAngleDegrees = double.NaN },
+            ellipse with { MajorAxisEndPoint = new(0, 0) }, ellipse with { MinorRadiusRatio = 0 },
+            ellipse with { MinorRadiusRatio = double.NaN }, ellipse with { Center = new(double.PositiveInfinity, 0) },
+            ellipse with { StartParameterDegrees = double.NaN }, ellipse with { EndParameterDegrees = double.PositiveInfinity }
+        };
+        foreach (var source in invalid)
+        {
+            var label = source is PolygonEntity ? "vertex-1" : "start";
+            var key = $"shape|point|{label}|1|2";
+            SketchReference.TryNormalize(key, out var canonical).Should().BeTrue();
+            foreach (var alias in new[] { key, canonical })
+                SketchReferenceResolver.TryGetPoint(new DrawingDocument([source]), alias, out _).Should().BeFalse();
+        }
+    }
 }

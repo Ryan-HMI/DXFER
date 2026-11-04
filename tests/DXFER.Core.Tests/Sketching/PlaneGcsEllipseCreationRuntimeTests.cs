@@ -1,4 +1,5 @@
 using DXFER.Blazor.Sketching;
+using DXFER.Blazor.Interop;
 using DXFER.CadIO;
 using DXFER.Core.Documents;
 using DXFER.Core.Geometry;
@@ -9,6 +10,45 @@ namespace DXFER.Core.Tests.Sketching;
 
 public sealed class PlaneGcsEllipseCreationRuntimeTests
 {
+    [Theory]
+    [InlineData("start", false)]
+    [InlineData("end", false)]
+    [InlineData("start", true)]
+    [InlineData("end", true)]
+    public void LineCreationAtEllipticalArcEndpointReachesRealEngineAndReopens(string label, bool keyed)
+    {
+        var source = (EllipseEntity)SketchCreationEntityFactory.CreateEntitiesForTool("ellipticalarc",
+            [new(17, -9), new(23, -1), new(13, -6), new(11, -13)], _ => EntityId.Create("source"), false).Single();
+        var start = source.PointAtParameterDegrees(label == "start" ? source.StartParameterDegrees : source.EndParameterDegrees);
+        var values = keyed ? new Dictionary<string, double> { ["length"] = 12 } : new Dictionary<string, double>();
+        var created = SketchCreationEntityFactory.CreateEntitiesForTool("line", [start, new(start.X + 3, start.Y + 4)],
+            _ => EntityId.Create("created"), false, values);
+        var index = 0;
+        var constraints = SketchCreationConstraintFactory.CreateConstraintsForInsertion("line", [source], created,
+            _ => $"c{++index}", creationSnaps: [new CanvasCreationSnapDto(start, "Coincident", [$"source|point|{label}|999|-999"])]);
+        var dimensions = SketchCreationDimensionFactory.CreateDimensionsForTool("line", created, values, () => "length");
+        var document = new DrawingDocument(new DrawingEntity[] { source }.Concat(created), dimensions, []);
+        using var runtime = CreateRuntime();
+        var observed = new ObservedRuntime(runtime);
+
+        var result = new PlaneGcsSketchSolverAdapter(observed).Solve(new(document, constraints, [], fixedReferenceKeys: ["source"]));
+
+        result.Status.Should().Be(SketchSolveStatus.Solved, string.Join(" ", result.Diagnostics));
+        observed.Response!.Engine.Should().Be("PlaneGCS");
+        result.Document.Entities.Should().BeEquivalentTo(document.Entities);
+        result.Document.Constraints.Should().ContainSingle();
+        var reopened = RoundTrip(result.Document);
+        reopened.Constraints.Should().BeEquivalentTo(result.Document.Constraints);
+        reopened.Dimensions.Should().BeEquivalentTo(dimensions);
+        foreach (var constraint in reopened.Constraints)
+            SketchConstraintService.ValidateConstraint(reopened, constraint).State.Should().Be(SketchConstraintState.Satisfied);
+        foreach (var dimension in reopened.Dimensions)
+        {
+            SketchDimensionSolverService.TryGetDimensionMeasurement(reopened, dimension, out var measured).Should().BeTrue();
+            measured.Should().BeApproximately(12, 1e-6);
+        }
+    }
+
     [Theory]
     [InlineData(0, 0, 0)]
     [InlineData(0, 0, 37)]
