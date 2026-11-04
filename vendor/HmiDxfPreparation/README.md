@@ -1,6 +1,6 @@
 # Pinned HMI DXF Preparation
 
-Source: HMI-Sync commit `f8674c7f09e974797062ba012e37f4ea2625509a`.
+Source: HMI-Sync commit `6aa81c8417dc29358878aff1bd64206297df532a`.
 DXFER compiles this pinned implementation into `DXFER.CadIO` using repository-relative
 Compile links. Building and testing do not require a Sync checkout or application.
 
@@ -25,12 +25,12 @@ hashes exactly. The local `.gitattributes` files retain LF bytes across checkout
 `tests/DXFER.Core.Tests/ProductionPreparationVendor/` contains the existing Sync
 layer, tear-slot, legacy-format, cut-layer, and pure small-circle tests. Original
 test namespaces and retained test bodies are unchanged. Layer, tear-slot, and
-legacy test files are byte-identical imports.
+legacy and small-circle validation test files are byte-identical imports.
 
 The cut-layer import excludes the CypNest runtime theory and Python helper, which
 depend on `BatchExportStage`, `CypNestTestRuntime`, and an external Python runtime.
 The small-circle import includes only the four pure test methods and their
-fixtures, excluding the file-backup test, EngineeringPage upload integration, and
+fixtures, excluding file-backup tests, EngineeringPage upload integration, and
 HTTP helpers. Unused imports are removed from these two extracted suites.
 
 `VendorSourceParityTests` verifies the pinned manifest, complete algorithm inventory,
