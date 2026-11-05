@@ -161,3 +161,27 @@ Existing cleanup and failed-load/retry browser suites remain regression gates.
 This follow-up is Test-first; independent Flux replay is required before its
 Production promotion. No existing artifacts require repair for this UI defect:
 the two reported saves already committed. No records or authentication changed.
+
+### Production Promotion, 2026-11-05
+
+Flux independently accepted the bounded successful-save lifecycle on Test
+`e85b594`: MANUAL/AUTO confirmation, disabled Saved action, no extra version
+through File > Save, retained originals/history and idempotent reopen. Local
+Open and synthetic metadata acceptance remain pending file-picker approval;
+transport/timeout/fallback coverage remains owner-run, not independent QA.
+
+Selectively backported that commit as `5ddaef1`, retaining Production metadata
+fixes `77c5664` and `c6887e7`. All 908 unit tests passed. The fresh self-contained
+.NET/ASP.NET 8.0.33 release passed save-feedback, cleanup and failed-load/retry
+browser suites, with desktop/mobile save screenshots inspected. After activation,
+the installed service passed the save-feedback browser replay against synthetic
+localhost callbacks. Public capabilities confirmed full SHA
+`5ddaef1e8debe0c7028faad9cdc1f3680f7349ca` at 12:31 UTC.
+
+Release: `/home/ryan/dxfer-runtime/releases/prod-5ddaef1-save-feedback-20261105`.
+Rollback retained: `prod-c6887e7-metadata-20261104` under the same releases root.
+Logs/screenshots: `/tmp/dxfer-save-prod-*-20261105`. Sync Production `28b3a675`
+and Test `6aa81c84` remain unchanged and healthy. No real Sync callback, database
+repair, original-file change or authentication change was performed in this
+release. The underlying feedback/lifecycle defect is fixed; already-successful
+saves need no record repair. The standalone Test Google callback remains separate.
