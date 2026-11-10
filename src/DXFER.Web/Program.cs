@@ -54,7 +54,8 @@ app.MapGet("/api/dxfer/capabilities", () => Results.Json(new
         "inputPath",
         "downloadUrl",
         "returnUrl",
-        "jobFolder"
+        "jobFolder",
+        "saveToSync"
     },
     callbackPath = "/api/dxfer/edit-callback",
     normalizeEndpoint = "/api/dxfer/normalize",

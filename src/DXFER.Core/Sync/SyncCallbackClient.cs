@@ -23,6 +23,11 @@ public sealed class SyncCallbackClient
         ArgumentNullException.ThrowIfNull(launchOptions);
         ArgumentNullException.ThrowIfNull(package);
 
+        if (!launchOptions.SaveToSync)
+        {
+            throw new InvalidOperationException("Save to Sync is disabled for this launch.");
+        }
+
         if (!launchOptions.IsCallbackConfigured)
         {
             throw new InvalidOperationException("Sync callback save requires syncBaseUrl, artifactId, jobId, and editToken.");

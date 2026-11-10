@@ -49,13 +49,16 @@
                                    Disabled="@(!CanRetrySyncLoad)"
                                    OnClick="RetrySyncLaunchDocumentAsync" />
                 }
-                <button type="button"
-                        class="dxfer-sync-send-button"
-                        title="@SyncSaveButtonTitle"
-                        disabled="@(!CanSaveBackToSync)"
-                        @onclick="() => InvokeWorkbenchCommand(WorkbenchCommandId.SendToSync)">
-                    @SyncSaveButtonText
-                </button>
+                @if (_syncLaunchOptions.SaveToSync)
+                {
+                    <button type="button"
+                            class="dxfer-sync-send-button"
+                            title="@SyncSaveButtonTitle"
+                            disabled="@(!CanSaveBackToSync)"
+                            @onclick="() => InvokeWorkbenchCommand(WorkbenchCommandId.SendToSync)">
+                        @SyncSaveButtonText
+                    </button>
+                }
             </div>
         </section>
     }

@@ -2,6 +2,7 @@ using System.Net;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using DXFER.Blazor.Components;
+using DXFER.Core.Documents;
 using DXFER.Core.Sync;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components;
@@ -19,6 +20,111 @@ public sealed class WorkbenchSyncLoadTests
     private const string Secret = "synthetic-signed-token-must-not-leak";
     private const string DownloadUrl = "https://sync.invalid/download?editToken=" + Secret;
     private const string ValidDxf = "0\nSECTION\n2\nENTITIES\n0\nLINE\n10\n0\n20\n0\n11\n7.25\n21\n4.1\n0\nENDSEC\n0\nEOF\n";
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ExternalOnlyLaunchLoadsButAllSyncSavePathsLeaveDocumentAndHistoryUntouched(bool autoNormalize)
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "dxfer-no-fallback-" + Guid.NewGuid().ToString("N"));
+        await using var harness = await Harness.CreateAsync(_ => Task.FromResult(Ok(ValidDxf)),
+            saveToSync: false, jobFolder: folder, autoNormalize: autoNormalize);
+        await harness.InvokeAsync("TryLoadSyncLaunchDocumentAsync");
+        var loaded = harness.Field<DrawingDocument>("_document");
+        loaded.Entities.Should().HaveCount(1);
+        loaded.Metadata.TrustedSource.Should().BeTrue();
+        await harness.CommandAsync(WorkbenchCommandId.Rotate90Clockwise);
+        var edited = harness.Field<DrawingDocument>("_document");
+        edited.Should().NotBeSameAs(loaded);
+        var fileName = harness.Field<string>("_fileName");
+        var history = harness.Field<Stack<DrawingDocument>>("_undoStack").ToArray();
+        history.Should().NotBeEmpty();
+
+        await harness.CommandAsync(WorkbenchCommandId.SendToSync);
+        await harness.InvokeAsync("SaveBackToSyncAsync");
+        await harness.InvokeAsync("SaveToSyncCallbackAsync");
+        await harness.HotkeyAsync(WorkbenchCommandId.SendToSync);
+        (await harness.FallbackAsync()).Should().BeFalse();
+
+        harness.Handler.Requests.Should().Equal(new Uri(DownloadUrl));
+        Directory.Exists(folder).Should().BeFalse();
+        harness.Field<DrawingDocument>("_document").Should().BeSameAs(edited);
+        harness.Field<string>("_fileName").Should().Be(fileName);
+        harness.Field<Stack<DrawingDocument>>("_undoStack").Should().Equal(history);
+        harness.Field<bool>("_syncSaveSucceeded").Should().BeFalse();
+        var html = await harness.HtmlAsync();
+        html.Should().Contain("External save only").And.NotContain("dxfer-sync-send-button")
+            .And.Contain("Sync save disabled. Download DXF instead.")
+            .And.NotContain("Sync save failed").And.NotContain("Saving to Sync").And.NotContain("Saved to Sync");
+        AssertNoSecrets(html, harness.Logger);
+
+        await harness.CommandAsync(WorkbenchCommandId.Undo);
+        harness.Field<DrawingDocument>("_document").Should().BeSameAs(loaded);
+        await harness.CommandAsync(WorkbenchCommandId.Redo);
+        harness.Field<DrawingDocument>("_document").Should().BeSameAs(edited);
+    }
+
+    [Fact]
+    public async Task ExternalOnlySaveDxfDownloadsEditedGeometryWithoutCallbackOrHistoryReset()
+    {
+        var js = new DownloadRuntime();
+        await using var harness = await Harness.CreateAsync(_ => Task.FromResult(Ok(ValidDxf)), saveToSync: false, js: js);
+        await harness.InvokeAsync("TryLoadSyncLaunchDocumentAsync");
+        await harness.CommandAsync(WorkbenchCommandId.Rotate90Clockwise);
+        var document = harness.Field<DrawingDocument>("_document");
+        var history = harness.Field<Stack<DrawingDocument>>("_undoStack").ToArray();
+        var fileName = harness.Field<string>("_fileName");
+        await harness.CommandAsync(WorkbenchCommandId.SendToSync);
+        await harness.CommandAsync(WorkbenchCommandId.SaveDxf);
+        await harness.HotkeyAsync(WorkbenchCommandId.SaveDxf);
+
+        js.Downloads.Should().HaveCount(2);
+        js.Downloads[0].Should().Equal(js.Downloads[1]);
+        js.Downloads[0][0].Should().Be("download.dxf");
+        js.Downloads[0][1].Should().Be(DXFER.CadIO.DxfDocumentWriter.Write(document));
+        js.Downloads[0][2].Should().Be("application/dxf;charset=utf-8");
+        harness.Handler.Requests.Should().Equal(new Uri(DownloadUrl));
+        harness.Field<DrawingDocument>("_document").Should().BeSameAs(document);
+        harness.Field<string>("_fileName").Should().Be(fileName);
+        harness.Field<Stack<DrawingDocument>>("_undoStack").Should().Equal(history);
+        (await harness.HtmlAsync()).Should().Contain("External save only").And.NotContain("Saved to Sync")
+            .And.NotContain("Sync save disabled");
+    }
+
+    [Theory]
+    [InlineData(401)]
+    [InlineData(403)]
+    public async Task ExternalOnlyStillHonorsSignedDownloadAuthorizationAndRetriesExactUrl(int status)
+    {
+        await using var harness = await Harness.CreateAsync(attempt => Task.FromResult(attempt == 1
+            ? new HttpResponseMessage((HttpStatusCode)status) { Content = new StringContent(Secret) }
+            : Ok(ValidDxf)), saveToSync: false);
+        await harness.InvokeAsync("TryLoadSyncLaunchDocumentAsync");
+        harness.Field<DrawingDocument>("_document").Entities.Should().BeEmpty();
+        var denied = await harness.HtmlAsync();
+        denied.Should().Contain($"HTTP {status}").And.Contain("Retry Sync download")
+            .And.NotContain("dxfer-sync-send-button").And.NotContain("External save only");
+        await harness.CommandAsync(WorkbenchCommandId.SendToSync);
+        harness.Handler.Requests.Should().HaveCount(1);
+
+        await harness.InvokeAsync("RetrySyncLaunchDocumentAsync");
+        harness.Field<DrawingDocument>("_document").Entities.Should().HaveCount(1);
+        var recovered = await harness.HtmlAsync();
+        recovered.Should().Contain("External save only").And.NotContain("Retry Sync download")
+            .And.NotContain("dxfer-sync-send-button");
+        harness.Handler.Requests.Should().Equal(new Uri(DownloadUrl), new Uri(DownloadUrl));
+        AssertNoSecrets(denied + recovered, harness.Logger);
+    }
+
+    [Fact]
+    public async Task ExternalOnlyCredentialsWithoutInputStillReportMissingSource()
+    {
+        await using var harness = await Harness.CreateAsync(_ => Task.FromResult(Ok(ValidDxf)),
+            hasInput: false, saveToSync: false);
+        await harness.InvokeAsync("TryLoadSyncLaunchDocumentAsync");
+        (await harness.HtmlAsync()).Should().Contain("missing a DXF source").And.NotContain("dxfer-sync-send-button");
+        harness.Handler.Requests.Should().BeEmpty();
+    }
 
     [Theory]
     [InlineData(HttpRequestError.SecureConnectionError, "TLS")]
@@ -326,7 +432,8 @@ public sealed class WorkbenchSyncLoadTests
         public Handler Handler { get; }
         public CapturingLogger Logger { get; }
 
-        public static async Task<Harness> CreateAsync(Func<int, Task<HttpResponseMessage>> respond, bool hasInput = true, IJSRuntime? js = null, string? jobFolder = null)
+        public static async Task<Harness> CreateAsync(Func<int, Task<HttpResponseMessage>> respond, bool hasInput = true, IJSRuntime? js = null,
+            string? jobFolder = null, bool saveToSync = true, bool autoNormalize = true)
         {
             var activator = new CapturingActivator();
             var handler = new Handler(respond);
@@ -335,7 +442,7 @@ public sealed class WorkbenchSyncLoadTests
             services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
             services.AddSingleton<ILogger<DrawingWorkbench>>(logger);
             services.AddSingleton<IComponentActivator>(activator);
-            services.AddSingleton<NavigationManager>(new TestNavigation(hasInput, jobFolder));
+            services.AddSingleton<NavigationManager>(new TestNavigation(hasInput, jobFolder, saveToSync, autoNormalize));
             services.AddSingleton<IJSRuntime>(js ?? new NoJsRuntime());
             services.AddSingleton<WorkbenchMenuCommandService>();
             services.AddSingleton<ToolHotkeyService>();
@@ -350,6 +457,22 @@ public sealed class WorkbenchSyncLoadTests
         public Task<string> HtmlAsync() => _renderer.Dispatcher.InvokeAsync(() => _root.ToHtmlString());
 
         public Task InvokeAsync(string name) => _renderer.Dispatcher.InvokeAsync(() => Invoke(name));
+
+        public T Field<T>(string name) => (T)typeof(DrawingWorkbench)
+            .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_activator.Workbench)!;
+
+        public Task CommandAsync(WorkbenchCommandId command) => _renderer.Dispatcher.InvokeAsync(() =>
+            _services.GetRequiredService<WorkbenchMenuCommandService>().InvokeAsync(command));
+
+        public Task HotkeyAsync(WorkbenchCommandId command) => _renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            _services.GetRequiredService<ToolHotkeyService>().SetBinding(command, "Ctrl+S");
+            (await _activator.Workbench!.OnToolHotkeyPressed("S", true, false, false, false, false)).Should().BeTrue();
+        });
+
+        public Task<bool> FallbackAsync() => _renderer.Dispatcher.InvokeAsync(() =>
+            (Task<bool>)typeof(DrawingWorkbench).GetMethod("ExportJobFolderFallbackAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(_activator.Workbench, new object[] { ValidDxf })!);
 
         public Task<Task> StartLoadAsync() => StartAsync("TryLoadSyncLaunchDocumentAsync");
 
@@ -389,8 +512,9 @@ public sealed class WorkbenchSyncLoadTests
 
     private sealed class TestNavigation : NavigationManager
     {
-        public TestNavigation(bool hasInput, string? jobFolder) => Initialize("https://dxfer.invalid/",
+        public TestNavigation(bool hasInput, string? jobFolder, bool saveToSync, bool autoNormalize) => Initialize("https://dxfer.invalid/",
             "https://dxfer.invalid/?syncBaseUrl=https%3A%2F%2Fsync.invalid&artifactId=1&jobId=test&editToken=" + Secret
+            + $"&saveToSync={saveToSync}&autoNormalize={autoNormalize}"
             + (jobFolder is null ? "" : "&jobFolder=" + System.Uri.EscapeDataString(jobFolder))
             + (hasInput ? "&downloadUrl=" + System.Uri.EscapeDataString(DownloadUrl) : ""));
     }
@@ -400,6 +524,21 @@ public sealed class WorkbenchSyncLoadTests
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) => throw new NotSupportedException();
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class DownloadRuntime : IJSRuntime, IJSObjectReference
+    {
+        public List<object?[]> Downloads { get; } = new();
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+        {
+            if (identifier == "import") return ValueTask.FromResult((TValue)(object)this);
+            if (identifier != "downloadTextFile") throw new NotSupportedException(identifier);
+            Downloads.Add(args!);
+            return ValueTask.FromResult(default(TValue)!);
+        }
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) =>
+            InvokeAsync<TValue>(identifier, args);
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private sealed class CloseRuntime(bool throws, string? pendingCall = null) : IJSRuntime, IJSObjectReference

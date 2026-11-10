@@ -31,7 +31,7 @@
                         </label>
                         <button type="button" class="app-menu-command" @onclick="OpenSyncConnectDialog">Connect to Sync...</button>
                         <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SaveDxf)">Download DXF</button>
-                        @if (IsSyncLaunch)
+                        @if (_syncLaunchOptions.IsCallbackConfigured)
                         {
                             <button type="button" class="app-menu-command" @onclick="() => InvokeMenuCommand(WorkbenchCommandId.SendToSync)">Save to Sync</button>
                         }
@@ -113,8 +113,6 @@
     private SyncEditLaunchOptions _syncLaunchOptions = SyncEditLaunchOptions.Empty;
 
     private string AppMenuClass => _isAppMenuOpen ? "app-menu app-menu-open" : "app-menu";
-
-    private bool IsSyncLaunch => _syncLaunchOptions.IsCallbackConfigured || _syncLaunchOptions.HasInput;
 
     protected override void OnInitialized()
     {

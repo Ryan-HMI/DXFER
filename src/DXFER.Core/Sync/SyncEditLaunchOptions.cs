@@ -9,7 +9,8 @@ public sealed record SyncEditLaunchOptions(
     string? DownloadUrl,
     string? ReturnUrl,
     string? JobFolder,
-    bool AutoNormalize = true)
+    bool AutoNormalize = true,
+    bool SaveToSync = true)
 {
     public static SyncEditLaunchOptions Empty { get; } = new(
         SyncBaseUrl: null,
@@ -22,11 +23,14 @@ public sealed record SyncEditLaunchOptions(
         JobFolder: null,
         AutoNormalize: true);
 
-    public bool IsCallbackConfigured =>
+    // Presence only: Sync still validates the signed download and callback tokens.
+    public bool HasLaunchCredentials =>
         !string.IsNullOrWhiteSpace(SyncBaseUrl)
         && !string.IsNullOrWhiteSpace(ArtifactId)
         && !string.IsNullOrWhiteSpace(JobId)
         && !string.IsNullOrWhiteSpace(EditToken);
+
+    public bool IsCallbackConfigured => SaveToSync && HasLaunchCredentials;
 
     public bool HasInput =>
         !string.IsNullOrWhiteSpace(InputPath)

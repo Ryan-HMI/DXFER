@@ -62,6 +62,68 @@ public sealed class SyncContractTests
         options.IsCallbackConfigured.Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("", true)]
+    [InlineData("&saveToSync=true", true)]
+    [InlineData("&saveToSync=false", false)]
+    [InlineData("&SAVETOSYNC=%20FALSE%20", false)]
+    [InlineData("&saveToSync=0", false)]
+    [InlineData("&saveToSync=no", false)]
+    [InlineData("&saveToSync=", true)]
+    [InlineData("&saveToSync=invalid", true)]
+    public void LaunchParserSeparatesCredentialsFromWritePermission(string flag, bool canSave)
+    {
+        var options = SyncLaunchOptionsParser.ParseQueryString(
+            "?syncBaseUrl=https%3A%2F%2Fsync.local&artifactId=a&jobId=j&editToken=t"
+            + "&downloadUrl=https%3A%2F%2Fsync.local%2Fdownload%3FeditToken%3Dt" + flag);
+
+        options.SaveToSync.Should().Be(canSave);
+        options.HasLaunchCredentials.Should().BeTrue();
+        options.IsCallbackConfigured.Should().Be(canSave);
+        options.HasInput.Should().BeTrue();
+        options.DownloadUrl.Should().Be("https://sync.local/download?editToken=t");
+    }
+
+    [Theory]
+    [InlineData("syncBaseUrl")]
+    [InlineData("artifactId")]
+    [InlineData("jobId")]
+    [InlineData("editToken")]
+    public void WriteFlagDoesNotReplaceRequiredLaunchCredentials(string missing)
+    {
+        var query = new Dictionary<string, string?>
+        {
+            ["syncBaseUrl"] = "https://sync.local", ["artifactId"] = "a",
+            ["jobId"] = "j", ["editToken"] = "t", ["saveToSync"] = "true"
+        };
+        query.Remove(missing);
+        var options = SyncLaunchOptionsParser.Parse(query);
+        options.HasLaunchCredentials.Should().BeFalse();
+        options.IsCallbackConfigured.Should().BeFalse();
+    }
+
+    [Fact]
+    public void EmptyLaunchRetainsBackwardCompatibleFlagWithoutCredentials()
+    {
+        SyncEditLaunchOptions.Empty.SaveToSync.Should().BeTrue();
+        SyncEditLaunchOptions.Empty.HasLaunchCredentials.Should().BeFalse();
+        SyncEditLaunchOptions.Empty.IsCallbackConfigured.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CallbackClientRejectsExternalOnlyBeforeAnyHttpRequest()
+    {
+        using var handler = new CapturingHandler();
+        using var httpClient = new HttpClient(handler);
+        var launch = SyncLaunchOptionsParser.ParseQueryString(
+            "?syncBaseUrl=https%3A%2F%2Fsync.local&artifactId=a&jobId=j&editToken=t&saveToSync=false");
+        var save = () => new SyncCallbackClient(httpClient).PostSaveAsync(launch, CreatePackage(false));
+
+        await save.Should().ThrowAsync<InvalidOperationException>().WithMessage("*disabled for this launch*");
+        handler.RequestUri.Should().BeNull();
+        handler.Body.Should().BeEmpty();
+    }
+
     [Fact]
     public void SavePackageKeepsSyncAsSourceOfTruth()
     {

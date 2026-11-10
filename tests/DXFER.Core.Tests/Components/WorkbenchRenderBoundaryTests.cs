@@ -293,7 +293,7 @@ public sealed class WorkbenchRenderBoundaryTests
         var source = File.ReadAllText(layout);
 
         source.Should().Contain("SyncLaunchOptionsParser");
-        source.Should().Contain("@if (IsSyncLaunch)");
+        source.Should().Contain("@if (_syncLaunchOptions.IsCallbackConfigured)");
         source.Should().NotContain("@if (!IsSyncLaunch)");
         source.Should().NotContain("Canvas prototype");
         source.Should().NotContain("Sync cleanup");

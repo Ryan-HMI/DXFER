@@ -51,7 +51,8 @@ public static class SyncLaunchOptionsParser
             Read(lookup, "downloadUrl"),
             Read(lookup, "returnUrl"),
             Read(lookup, "jobFolder"),
-            ReadBool(lookup, "autoNormalize", defaultValue: true));
+            ReadBool(lookup, "autoNormalize", defaultValue: true),
+            ReadBool(lookup, "saveToSync", defaultValue: true));
     }
 
     private static string? Read(IReadOnlyDictionary<string, string?> values, string key) =>

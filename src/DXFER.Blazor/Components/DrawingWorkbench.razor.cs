@@ -32,6 +32,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
     private const string PointKeySeparator = "|point|";
     private const int DefaultPatternInstanceCount = 3;
     private const int SyncCloseDelayMilliseconds = 250;
+    private const string ExternalOnlySaveStatus = "Sync save disabled. Download DXF instead.";
 
     private DrawingCanvas? _canvas;
     private DrawingDocument _document = CreateBlankDocument();
@@ -179,7 +180,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private bool HasDocument => _document.Entities.Count > 0;
 
-    private bool IsSyncLaunch => _syncLaunchOptions.IsCallbackConfigured || _syncLaunchOptions.HasInput;
+    private bool IsSyncLaunch => _syncLaunchOptions.HasLaunchCredentials || _syncLaunchOptions.HasInput;
 
     private bool HasSelection => _selectedEntityIds.Count > 0;
 
@@ -213,17 +214,17 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
         : _isSyncSaveInFlight ? "Saving to Sync..."
         : _syncSaveSucceeded ? "Saved to Sync"
         : _syncSaveUnconfirmed ? "Save not confirmed"
-        : _syncSaveFeedback is not null ? "Sync save failed"
-        : _syncLoadError ?? (_syncLaunchOptions.IsCallbackConfigured
-            ? HasDocument ? "Sync DXF loaded" : "No Sync DXF loaded"
+        : _syncSaveFeedback is not null && _syncLaunchOptions.SaveToSync ? "Sync save failed"
+        : _syncLoadError ?? (_syncLaunchOptions.HasLaunchCredentials
+            ? HasDocument ? (_syncLaunchOptions.SaveToSync ? "Sync DXF loaded" : "External save only") : "No Sync DXF loaded"
             : "Sync connection missing");
 
     private string SyncCallbackStateClass =>
-        _syncLoadError is not null || (_syncSaveFeedback is not null && !_syncSaveSucceeded && !_isSyncSaveInFlight)
+        _syncLoadError is not null || (_syncLaunchOptions.SaveToSync && _syncSaveFeedback is not null && !_syncSaveSucceeded && !_isSyncSaveInFlight)
             ? "dxfer-sync-state dxfer-sync-state-missing dxfer-sync-state-error"
             : _isSyncLoadInFlight
             ? "dxfer-sync-state"
-            : _syncLaunchOptions.IsCallbackConfigured && HasDocument
+            : _syncLaunchOptions.HasLaunchCredentials && HasDocument
             ? "dxfer-sync-state dxfer-sync-state-ready"
             : "dxfer-sync-state dxfer-sync-state-missing";
 
@@ -2313,6 +2314,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private async Task SaveBackToSyncAsync()
     {
+        if (!_syncLaunchOptions.SaveToSync)
+        {
+            _syncSaveFeedback = _status = ExternalOnlySaveStatus;
+            return;
+        }
+
         if (!_syncLaunchOptions.IsCallbackConfigured)
         {
             _status = "Send to Sync is unavailable for this launch.";
@@ -2337,6 +2344,12 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private async Task SaveToSyncCallbackAsync()
     {
+        if (!_syncLaunchOptions.SaveToSync)
+        {
+            _syncSaveFeedback = _status = ExternalOnlySaveStatus;
+            return;
+        }
+
         if (_isSyncSaveInFlight)
         {
             return;
@@ -2465,7 +2478,7 @@ public partial class DrawingWorkbench : IDisposable, IAsyncDisposable
 
     private async Task<bool> ExportJobFolderFallbackAsync(string normalizedDxf)
     {
-        if (string.IsNullOrWhiteSpace(_syncLaunchOptions.JobFolder))
+        if (!_syncLaunchOptions.SaveToSync || string.IsNullOrWhiteSpace(_syncLaunchOptions.JobFolder))
         {
             return false;
         }
