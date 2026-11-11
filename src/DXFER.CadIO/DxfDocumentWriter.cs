@@ -501,7 +501,7 @@ public static class DxfDocumentWriter
         builder.AppendLine(value);
     }
 
-    private static string Format(double value) => value.ToString("0.##########", CultureInfo.InvariantCulture);
+    private static string Format(double value) => value.ToString("G17", CultureInfo.InvariantCulture);
 
     private static string SanitizeTextValue(string value) =>
         value.Replace("\r", " ", StringComparison.Ordinal)

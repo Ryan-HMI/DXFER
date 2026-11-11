@@ -17,6 +17,60 @@ public sealed class ProductionDxfMetadataTests
         + "0\nSECTION\n2\nENTITIES\n" + entities + "0\nENDSEC\n"
         + "0\nSECTION\n2\nOBJECTS\n" + objects + "0\nENDSEC\n0\nEOF\n";
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("CLOSED_FILLED")]
+    [InlineData("A")]
+    public void DimensionStyleLegacyArrowNameIsNotAnObjectHandle(string arrowName)
+    {
+        var table = "0\nTABLE\n2\nDIMSTYLE\n5\n20\n70\n1\n0\nDIMSTYLE\n105\n21\n330\n20\n"
+            + "100\nAcDbSymbolTableRecord\n100\nAcDbDimStyleTableRecord\n2\nSTANDARD\n70\n0\n5\n"
+            + arrowName + "\n0\nENDTAB\n";
+        var source = Dxf(tables: table);
+        var prepared = ProductionDxfPreparation.Prepare(source);
+        prepared.Document.Entities.Should().ContainSingle();
+        prepared.PreparedText.Should().Contain(table);
+        source.Should().Be(Dxf(tables: table));
+        Refused(Dxf(tables: table.Replace("105\n21", "105\nA")));
+        Refused(Dxf(tables: table.Replace("105\n21", "105\n21\n105\n22")));
+        Refused(Dxf(tables: table.Replace("70\n0\n5\n", "70\n0\n340\nA\n5\n")));
+    }
+
+    [Theory]
+    [InlineData("AC1012")]
+    [InlineData("AC1014")]
+    public void LegacyXrecordsWithoutCloningFlagStillValidateTheirPayload(string version)
+    {
+        var leaf = Leaf.Replace("AcDbXrecord\n280\n1\n", "AcDbXrecord\n");
+        var source = Dxf(objects: Dictionary + leaf).Replace("2\nHEADER\n", $"2\nHEADER\n9\n$ACADVER\n1\n{version}\n");
+        var prepared = ProductionDxfPreparation.Prepare(source);
+        prepared.Document.Entities.Should().ContainSingle();
+        prepared.PreparedText.Should().NotContain("btDetId");
+        Refused(source.Replace("1000\npart-detail", "340\nA"));
+        Refused(source.Replace("btDetId", "UnknownConstraint"));
+        Refused(source.Replace("AcDbXrecord\n", "AcDbXrecord\n280\n9\n"));
+        Refused(source.Replace("AcDbXrecord\n", "AcDbXrecord\n280\ninvalid\n"));
+        Refused(source.Replace("AcDbXrecord\n", "AcDbXrecord\n280\n1\n280\n1\n"));
+        Refused(source.Replace($"9\n$ACADVER\n1\n{version}\n", ""));
+        Refused(source.Replace(version, "AC1015"));
+        Refused(source.Replace(version, version + "\n9\n$ACADVER\n1\nAC1014"));
+        Refused(source.Replace(version, version + "\n9\n$ACADVER\n1\nAC1015"));
+    }
+
+    [Fact]
+    public void LegacyRoundtripXrecordRetainsPayloadWithoutCloningFlag()
+    {
+        var tables = "0\nTABLE\n2\nVPORT\n5\n20\n102\n{ACAD_XDICTIONARY\n360\n21\n102\n}\n330\n0\n100\nAcDbSymbolTable\n70\n0\n0\nENDTAB\n";
+        var objects = "0\nDICTIONARY\n5\n21\n330\n20\n100\nAcDbDictionary\n3\nacad_xrec_roundtrip\n360\n22\n"
+            + "0\nXRECORD\n5\n22\n330\n21\n100\nAcDbXrecord\n102\nVTR_DEFAULTLIGHTING\n70\n1\n340\n0\n";
+        var source = Dxf(objects: Dictionary + Leaf + objects, tables: tables)
+            .Replace("2\nHEADER\n", "2\nHEADER\n9\n$ACADVER\n1\nAC1014\n");
+        ProductionDxfPreparation.Prepare(source).PreparedText.Should().Contain(objects);
+        Refused(source.Replace("340\n0", "340\nA"));
+        Refused(source.Replace("acad_xrec_roundtrip", "unknown_constraint"));
+        Refused(source.Replace("70\n1\n340\n0", "310\nABCD\n340\n0"));
+    }
+
     [Fact]
     public void ScalarExtensionOwnershipAndFontMetadataDoNotBlockGeometry()
     {
@@ -40,6 +94,51 @@ public sealed class ProductionDxfMetadataTests
     {
         var source = Dxf(objects: Dictionary.Replace("btDetId", key) + Leaf.Replace("part-detail", "A"));
         ProductionDxfPreparation.Prepare(source).Document.Entities.Should().ContainSingle();
+    }
+
+    [Theory]
+    [InlineData("BTDETID", "1000\npart-detail\n")]
+    [InlineData("BTPARTID", "1000\npart-detail\n")]
+    [InlineData("BTUNFLATTENEDPARTID", "1000\npart-detail\n")]
+    [InlineData("BTOWNERFACEID_", "1000\npart-detail\n")]
+    [InlineData("BTBENDANGLE", "40\n1.570796326794897\n")]
+    [InlineData("BTBENDRADIUS", "40\n0.075\n")]
+    [InlineData("BTBENDISUP", "290\n1\n")]
+    [InlineData("BTISBEND", "290\n1\n")]
+    public void OnshapeDictionaryKeysAcceptExporterCaseVariants(string key, string payload)
+    {
+        foreach (var variant in new[] { key, key.ToLowerInvariant() })
+        {
+            var bend = Line.Replace("8\nCUT", "8\nSHEETMETAL_BEND_LINES_UP");
+            var cut = "0\nLINE\n5\nD\n8\nCUT\n10\n0\n20\n0\n11\n8\n21\n4\n";
+            var objects = Dictionary.Replace("btDetId", variant) + Leaf.Replace("1000\npart-detail\n", payload);
+            var source = Dxf(bend + cut, objects);
+            var prepared = ProductionDxfPreparation.Prepare(source);
+
+            prepared.Document.Entities.Should().ContainSingle().Which.Should().BeOfType<LineEntity>();
+            prepared.Document.GetBounds().Width.Should().Be(8);
+            prepared.Document.GetBounds().Height.Should().Be(4);
+            prepared.Cleanup.CleanupLayersRemoved.Should().Be(1);
+            prepared.PreparedText.Should().NotContain(variant).And.NotContain("ACAD_XDICTIONARY");
+            ProductionDxfPreparation.Prepare(prepared.PreparedText).PreparedText.Should().Be(prepared.PreparedText);
+            source.Should().Be(Dxf(bend + cut, objects));
+
+            Refused(Dxf(bend + cut, Dictionary.Replace("btDetId", variant) + Leaf.Replace("1000\npart-detail\n", "340\nD\n")));
+            if (key.StartsWith("BTBEND", StringComparison.Ordinal) || key == "BTISBEND")
+                Refused(Dxf(Line + cut, objects));
+        }
+    }
+
+    [Theory]
+    [InlineData("BTARCONSURFACERADIUS")]
+    [InlineData("btarconsurfaceradius")]
+    public void CircularRadiusCaseVariantsStillRequireMatchingGeometry(string key)
+    {
+        var circle = "0\nCIRCLE\n5\nA\n" + Extension + "8\nCUT\n10\n2\n20\n3\n40\n0.3125\n";
+        var objects = Dictionary.Replace("btDetId", key) + Leaf.Replace("1000\npart-detail", "40\n0.3125");
+        var prepared = ProductionDxfPreparation.Prepare(Dxf(circle, objects));
+        prepared.Document.Entities.OfType<CircleEntity>().Single().Radius.Should().Be(0.3125);
+        Refused(Dxf(circle, objects.Replace("40\n0.3125", "40\n0.5")));
     }
 
     [Theory]
