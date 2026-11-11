@@ -1,5 +1,6 @@
 using System.Globalization;
 using HMISync.Web.Infrastructure;
+using HMISync.Web.Production;
 using static HMISync.Web.Infrastructure.DxfCompatibility;
 
 namespace DXFER.CadIO;
@@ -161,6 +162,22 @@ internal static class ProductionDxfMetadata
                 Require(payload.Length == 1);
                 if (key is "btDetId" or "btPartId" or "btUnflattenedPartId" or "btOwnerFaceId_")
                     Require(payload[0].Code == 1000 && payload[0].Value.Length > 0);
+                else if (key is "btBendAngle" or "btBendRadius" or "btBendIsUp" or "btIsBend")
+                {
+                    // These scalar annotations describe lines already removed by the
+                    // shared bend-layer policy; they are not retained design constraints.
+                    var layers = entity.Fields.Where(p => p.Code == 8).ToArray();
+                    Require(entity.Type == "LINE" && layers.Length == 1 && BatchDxfLayers.Bend(layers[0].Value));
+                    var value = payload[0];
+                    Require(key switch
+                    {
+                        "btBendAngle" => value.Code == 40 && Number(value.Value, out _),
+                        "btBendRadius" => value.Code == 40 && Number(value.Value, out var radius) && radius >= 0,
+                        "btBendIsUp" => value.Code == 290 && value.Value is "0" or "1",
+                        "btIsBend" => value.Code == 290 && value.Value == "1",
+                        _ => false
+                    });
+                }
                 else
                 {
                     Require(key == "btArcOnSurfaceRadius" && entity.Type is "ARC" or "CIRCLE" && payload[0].Code == 40);
