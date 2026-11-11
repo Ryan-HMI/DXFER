@@ -43,6 +43,63 @@ public sealed class ProductionDxfMetadataTests
     }
 
     [Theory]
+    [InlineData("btBendAngle", "40\n1.570796326794897\n")]
+    [InlineData("btBendRadius", "40\n0.075\n")]
+    [InlineData("btBendRadius", "40\n0\n")]
+    [InlineData("btBendIsUp", "290\n0\n")]
+    [InlineData("btBendIsUp", "290\n1\n")]
+    [InlineData("btIsBend", "290\n1\n")]
+    public void KnownBendAnnotationsAllowExistingBendLayerCleanup(string key, string payload)
+    {
+        var bend = Line.Replace("8\nCUT", "8\nSHEETMETAL_BEND_LINES_DOWN");
+        var cut = "0\nLINE\n5\nD\n8\nCUT\n10\n0\n20\n0\n11\n8\n21\n4\n";
+        var objects = Dictionary.Replace("btDetId", key) + Leaf.Replace("1000\npart-detail\n", payload);
+        var source = Dxf(bend + cut, objects);
+        var original = source;
+
+        var result = ProductionDxfPreparation.Prepare(source);
+
+        source.Should().Be(original);
+        result.Document.Entities.Should().ContainSingle().Which.Should().BeOfType<LineEntity>();
+        result.Document.GetBounds().Width.Should().Be(8);
+        result.Document.GetBounds().Height.Should().Be(4);
+        result.Cleanup.CleanupLayersRemoved.Should().Be(1);
+        result.PreparedText.Should().NotContain(key).And.NotContain("ACAD_XDICTIONARY");
+        ProductionDxfPreparation.Prepare(result.PreparedText).PreparedText.Should().Be(result.PreparedText);
+        Refused(Dxf(Line + cut, objects));
+    }
+
+    [Theory]
+    [InlineData("btBendAngle", "40\nNaN\n")]
+    [InlineData("btBendAngle", "40\nInfinity\n")]
+    [InlineData("btBendAngle", "1000\n1.57\n")]
+    [InlineData("btBendRadius", "40\n-0.1\n")]
+    [InlineData("btBendIsUp", "290\n2\n")]
+    [InlineData("btIsBend", "290\n0\n")]
+    [InlineData("btBendRadius", "1005\nD\n")]
+    [InlineData("btBendRadius", "340\nD\n")]
+    [InlineData("btBendRadius", "40\n0.075\n40\n0.1\n")]
+    [InlineData("btUnknownBendConstraint", "40\n1\n")]
+    public void UnsafeOrUnknownBendAnnotationsStillRefuse(string key, string payload)
+    {
+        var bend = Line.Replace("8\nCUT", "8\nSHEETMETAL_BEND_LINES_UP");
+        var cut = "0\nLINE\n5\nD\n8\nCUT\n10\n0\n20\n0\n11\n8\n21\n4\n";
+        var objects = Dictionary.Replace("btDetId", key) + Leaf.Replace("1000\npart-detail\n", payload);
+        Refused(Dxf(bend + cut, objects));
+    }
+
+    [Fact]
+    public void BendAnnotationsDoNotAllowReferencedBendDeletion()
+    {
+        var bend = Line.Replace("8\nCUT", "8\nSHEETMETAL_BEND_LINES_UP");
+        var cut = "0\nLINE\n5\nD\n8\nCUT\n10\n0\n20\n0\n11\n8\n21\n4\n";
+        var objects = Dictionary.Replace("btDetId", "btIsBend") + Leaf.Replace("1000\npart-detail\n", "290\n1\n");
+        Refused(Dxf(bend + cut + "340\nA\n", objects));
+        Refused(Dxf(bend + cut, objects.Replace("330\nA", "330\nD")));
+        Refused(Dxf(bend.Replace("8\nSHEETMETAL_BEND_LINES_UP", "8\nSHEETMETAL_BEND_LINES_UP\n8\nCUT") + cut, objects));
+    }
+
+    [Theory]
     [InlineData("ARC")]
     [InlineData("CIRCLE")]
     public void CircularRadiusMetadataMustAgreeWithGeometry(string entityType)
