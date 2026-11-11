@@ -41,6 +41,19 @@ public sealed class ProductionDxfSortOrderMetadataTests
         prepared.Document.Entities.Should().HaveCount(2);
     }
 
+    [Theory]
+    [InlineData("*MODEL_SPACE")]
+    [InlineData("*model_space")]
+    [InlineData("*PAPER_SPACE")]
+    [InlineData("*PAPER_SPACE0")]
+    public void StandardSpaceNamesAcceptExporterCaseVariants(string name)
+    {
+        var source = Dxf().Replace("*Model_Space", name).Replace("ACAD_SORTENTS", "acad_sortents");
+        ProductionDxfPreparation.Prepare(source).Document.Entities.Should().HaveCount(2);
+        Refused(source.Replace(name, "UNKNOWN_SPACE"));
+        Refused(source.Replace("CIRCLE\n5\nD\n330\n1F", "CIRCLE\n5\nD\n330\n1"));
+    }
+
     [Fact]
     public void DrawOrderDoesNotProtectSmallHolesOrDuplicatesFromCleanup()
     {

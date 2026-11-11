@@ -14,8 +14,14 @@ internal static class ProductionDxfMetadata
 
     private sealed record Record(string Type, string Section, int Start, int End, Pair[] Fields)
     {
-        // SORTENTSTABLE repeats group 5 in its body for draw-order keys, not object IDs.
-        public IEnumerable<Pair> IdentityFields => Type == "SORTENTSTABLE" ? Fields.TakeWhile(p => p.Code != 100) : Fields;
+        // Group 5 is a legacy arrow name in DIMSTYLE, and a draw-order key in
+        // SORTENTSTABLE's body. Neither is another object identity.
+        public IEnumerable<Pair> IdentityFields => Type switch
+        {
+            "DIMSTYLE" => Fields.Where(p => p.Code != 5),
+            "SORTENTSTABLE" => Fields.TakeWhile(p => p.Code != 100),
+            _ => Fields
+        };
         public string? Handle => IdentityFields.FirstOrDefault(p => p.Code is 5 or 105)?.Value;
     }
 
@@ -30,10 +36,17 @@ internal static class ProductionDxfMetadata
         private readonly HashSet<Record> removed = [];
         private readonly HashSet<int> removalReferences = [];
         private readonly List<(int Start, int End)> spans = [];
+        private bool legacyXrecords;
 
         public byte[] Prepare()
         {
             ReadRecords();
+            var fileHeaders = records.Where(r => r.Type == "SECTION" && r.Section == "HEADER").ToArray();
+            var headerFields = fileHeaders.SelectMany(r => r.Fields).ToArray();
+            var versions = headerFields.Select((pair, index) => (pair, index))
+                .Where(item => item.pair.Code == 9 && item.pair.Value == "$ACADVER").ToArray();
+            legacyXrecords = fileHeaders.Length == 1 && versions.Length == 1 && versions[0].index + 1 < headerFields.Length
+                && headerFields[versions[0].index + 1] is { Code: 1, Value: "AC1012" or "AC1014" };
             foreach (var record in records)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -156,37 +169,51 @@ internal static class ProductionDxfMetadata
             spans.Add((header.ExtensionPairs[0].Start, next < entity.Fields.Length ? entity.Fields[next].Start : entity.End));
             foreach (var (key, leaf) in Entries(dictionary))
             {
+                if (leaf.Type == "ACAD_PROXY_OBJECT")
+                {
+                    Require(key is "BTBENDISUP" or "BTISBEND" && IsDiscardedBend(entity));
+                    Own(leaf, dictionary.Handle!);
+                    InspectLegacyProxy(leaf, "XRECORD");
+                    Require(!ReadHeader(leaf).Body.Any(p => IsReference(p.Code)));
+                    Remove(leaf);
+                    continue;
+                }
                 Require(leaf.Type == "XRECORD");
                 Own(leaf, dictionary.Handle!);
                 var payload = XrecordPayload(leaf);
                 Require(payload.Length == 1);
-                if (key is "btDetId" or "btPartId" or "btUnflattenedPartId" or "btOwnerFaceId_")
+                if (key is "BTDETID" or "BTPARTID" or "BTUNFLATTENEDPARTID" or "BTOWNERFACEID_")
                     Require(payload[0].Code == 1000 && payload[0].Value.Length > 0);
-                else if (key is "btBendAngle" or "btBendRadius" or "btBendIsUp" or "btIsBend")
+                else if (key is "BTBENDANGLE" or "BTBENDRADIUS" or "BTBENDISUP" or "BTISBEND")
                 {
                     // These scalar annotations describe lines already removed by the
                     // shared bend-layer policy; they are not retained design constraints.
-                    var layers = entity.Fields.Where(p => p.Code == 8).ToArray();
-                    Require(entity.Type == "LINE" && layers.Length == 1 && BatchDxfLayers.Bend(layers[0].Value));
+                    Require(IsDiscardedBend(entity));
                     var value = payload[0];
                     Require(key switch
                     {
-                        "btBendAngle" => value.Code == 40 && Number(value.Value, out _),
-                        "btBendRadius" => value.Code == 40 && Number(value.Value, out var radius) && radius >= 0,
-                        "btBendIsUp" => value.Code == 290 && value.Value is "0" or "1",
-                        "btIsBend" => value.Code == 290 && value.Value == "1",
+                        "BTBENDANGLE" => value.Code == 40 && Number(value.Value, out _),
+                        "BTBENDRADIUS" => value.Code == 40 && Number(value.Value, out var radius) && radius >= 0,
+                        "BTBENDISUP" => value.Code == 290 && value.Value is "0" or "1",
+                        "BTISBEND" => value.Code == 290 && value.Value == "1",
                         _ => false
                     });
                 }
                 else
                 {
-                    Require(key == "btArcOnSurfaceRadius" && entity.Type is "ARC" or "CIRCLE" && payload[0].Code == 40);
+                    Require(key == "BTARCONSURFACERADIUS" && entity.Type is "ARC" or "CIRCLE" && payload[0].Code == 40);
                     var radius = entity.Fields.Where(p => p.Code == 40).ToArray();
                     Require(radius.Length == 1 && Number(payload[0].Value, out var metadataRadius)
                         && Number(radius[0].Value, out var geometryRadius) && metadataRadius > 0 && metadataRadius == geometryRadius);
                 }
                 Remove(leaf);
             }
+        }
+
+        private static bool IsDiscardedBend(Record entity)
+        {
+            var layers = entity.Fields.Where(p => p.Code == 8).ToArray();
+            return entity.Type == "LINE" && layers.Length == 1 && BatchDxfLayers.Bend(layers[0].Value);
         }
 
         private void InspectTable(Record record)
@@ -198,8 +225,8 @@ internal static class ProductionDxfMetadata
             if (header.Extension is null) return;
             var role = record.Type switch
             {
-                "TABLE" when record.Fields.Any(p => p.Code == 2 && p.Value == "VPORT") => "roundtrip",
-                "BLOCK_RECORD" when record.Fields.Any(p => p.Code == 2 && p.Value is "*Model_Space" or "*Paper_Space" or "*Paper_Space0") => "sort",
+                "TABLE" when record.Fields.Any(p => p.Code == 2 && p.Value.Equals("VPORT", StringComparison.OrdinalIgnoreCase)) => "roundtrip",
+                "BLOCK_RECORD" when record.Fields.Any(p => p.Code == 2 && p.Value.ToUpperInvariant() is "*MODEL_SPACE" or "*PAPER_SPACE" or "*PAPER_SPACE0") => "sort",
                 _ => "unsupported"
             };
             Require(role != "unsupported" && record.Handle is not null);
@@ -245,7 +272,9 @@ internal static class ProductionDxfMetadata
                 Require(pair.Code == 3 && pair.Value.Length > 0 && keys.Add(pair.Value) && index + 1 < fields.Length);
                 var link = fields[++index];
                 Require(link.Code is 350 or 360 && handles.ContainsKey(link.Value));
-                yield return (pair.Value, handles[link.Value]);
+                // Exporters vary the casing of known dictionary keys. Payload values
+                // and ownership checks remain unchanged.
+                yield return (pair.Value.ToUpperInvariant(), handles[link.Value]);
             }
         }
 
@@ -268,7 +297,8 @@ internal static class ProductionDxfMetadata
                         "ACAD_SCALELIST" => "collection:SCALE",
                         "ACAD_TABLESTYLE" => "collection:TABLESTYLE",
                         "ACAD_VISUALSTYLE" => "collection:VISUALSTYLE",
-                        "AcDbVariableDictionary" => "variables",
+                        "ACDBVARIABLEDICTIONARY" => "variables",
+                        "ACDBHEADERROUNDTRIPXREC" when legacyXrecords => "legacy-header",
                         "DWGPROPS" => "XRECORD",
                         "ONSHAPE_DATA" => "onshape",
                         _ => "unsupported"
@@ -277,14 +307,28 @@ internal static class ProductionDxfMetadata
                     "sort" when key == "ACAD_SORTENTS" => "SORTENTSTABLE",
                     "variables" when key is "CANNOSCALE" or "CMLEADERSTYLE" or "CTABLESTYLE" or "DIMASSOC" or "HIDETEXT" or "MSLTSCALE" => "DICTIONARYVAR",
                     "onshape" when key is "DIM_UNITS" or "DWGGEN_VERSION" or "FIRST_ANGLE" => "XRECORD",
+                    "legacy-header" => "legacy-header-value",
                     _ when role.StartsWith("collection:", StringComparison.Ordinal) => role[11..],
                     _ => "unsupported"
                 };
                 Require(childRole != "unsupported");
                 if (child.Type is "DICTIONARY" or "ACDBDICTIONARYWDFLT")
                 {
-                    Require(childRole is "empty" or "variables" or "onshape" || childRole.StartsWith("collection:", StringComparison.Ordinal));
+                    Require(childRole is "empty" or "variables" or "onshape" or "legacy-header" || childRole.StartsWith("collection:", StringComparison.Ordinal));
                     InspectDictionary(child, dictionary.Handle!, childRole);
+                }
+                else if (childRole == "legacy-header-value")
+                {
+                    Require(child.Type == "XRECORD");
+                    Own(child, dictionary.Handle!);
+                    InspectLegacyHeaderValue(child, key);
+                }
+                else if (child.Type == "ACAD_PROXY_OBJECT")
+                {
+                    Require(childRole is "SCALE" or "VISUALSTYLE" or "MLEADERSTYLE"
+                        || role == "onshape" && key == "FIRST_ANGLE");
+                    Own(child, dictionary.Handle!);
+                    InspectLegacyProxy(child, childRole);
                 }
                 else
                 {
@@ -293,6 +337,97 @@ internal static class ProductionDxfMetadata
                     InspectMetadataObject(child);
                 }
             }
+        }
+
+        private void InspectLegacyHeaderValue(Record record, string key)
+        {
+            Require(legacyXrecords && ReadHeader(record).Extension is null);
+            var payload = XrecordPayload(record);
+            if (key == "INSUNITS")
+            {
+                Require(payload.Length == 1 && payload[0].Code == 90);
+                if (payload[0].Value is not ("0" or "1"))
+                    throw new ProductionDxfPreparationException("Production cleanup requires inch coordinates: legacy DXF insertion units require review; no scaling was guessed. Original file unchanged.");
+                return;
+            }
+            if (key == "DIMSTYLEDATA")
+            {
+                Require(payload.Length == 5 && payload[0] is { Code: 1000, Value: "DSTYLE" }
+                    && payload[1] is { Code: 1002, Value: "{" } && payload[2] is { Code: 1070, Value: "340" }
+                    && payload[3].Code == 340 && payload[4] is { Code: 1002, Value: "}" });
+                if (payload[3].Value != "0") Require(Resolve(payload[3].Value, "STYLE").Section == "TABLES");
+                return;
+            }
+            var expectedCode = key switch
+            {
+                "CEPSNID" or "LAYOUTDICT" or "PLOTSETDICT" or "UCSBASE" or "PUCSBASE" or "UCSORTHOREF" or "PUCSORTHOREF" => 340,
+                "CEPSNTYPE" or "LWETCUNION" or "TSTACKALIGN" or "TSTACKSIZE" => 90,
+                "FINGERPRINTGUID" or "VERSIONGUID" or "HYPERLINKBASE" or "STYLESHEET" => 1,
+                "PSVPSCALE" => 40,
+                "UCSORTHOVIEW" or "PUCSORTHOVIEW" => 70,
+                "UCSORGBACK" or "UCSORGBOTTOM" or "UCSORGFRONT" or "UCSORGLEFT" or "UCSORGRIGHT" or "UCSORGTOP"
+                    or "PUCSORGBACK" or "PUCSORGBOTTOM" or "PUCSORGFRONT" or "PUCSORGLEFT" or "PUCSORGRIGHT" or "PUCSORGTOP" => 10,
+                _ => -1
+            };
+            if (expectedCode == 10)
+                Require(payload.Length == 3 && payload.Select(p => p.Code).SequenceEqual(new[] { 10, 20, 30 })
+                    && payload.All(p => Number(p.Value, out _)));
+            else
+                Require(payload.Length == 1 && payload[0].Code == expectedCode
+                    && (IsMetadataScalar(payload[0]) || IsReference(payload[0].Code)));
+        }
+
+        private void InspectLegacyProxy(Record record, string expectedType)
+        {
+            var header = ReadHeader(record);
+            var body = header.Body;
+            Require(legacyXrecords && header.Extension is null && body.Length >= 5
+                && body[0] is { Code: 100, Value: "AcDbProxyObject" } && body[1] is { Code: 90, Value: "499" }
+                && body[2].Code == 91 && body[3].Code == 93);
+            Require(int.TryParse(body[2].Value, out var classId));
+            var classes = records.Where(r => r.Section == "CLASSES" && r.Type == "CLASS").ToArray();
+            Require(classId >= 500 && classId - 500 < classes.Length);
+            var definition = classes[classId - 500];
+            var className = expectedType switch
+            {
+                "XRECORD" => "AcDbXrecord", "SCALE" => "AcDbScale",
+                "VISUALSTYLE" => "AcDbVisualStyle", "MLEADERSTYLE" => "AcDbMLeaderStyle", _ => ""
+            };
+            Require(className.Length > 0 && definition.Fields.Count(p => p.Code == 1) == 1
+                && definition.Fields.Single(p => p.Code == 1).Value == expectedType
+                && definition.Fields.Count(p => p.Code == 2) == 1 && definition.Fields.Single(p => p.Code == 2).Value == className
+                && definition.Fields.Count(p => p.Code == 281) == 1 && definition.Fields.Single(p => p.Code == 281).Value == "0");
+            Require(int.TryParse(body[3].Value, out var bits) && bits > 0);
+            long byteCount = 0;
+            var index = 4;
+            for (; index < body.Length && body[index].Code == 310; index++)
+            {
+                var hex = body[index].Value;
+                Require(hex.Length > 0 && hex.Length % 2 == 0 && hex.All(Uri.IsHexDigit));
+                byteCount += hex.Length / 2;
+            }
+            Require(byteCount == ((long)bits + 7) / 8);
+            var referencesStart = index;
+            while (index < body.Length && body[index].Code is 330 or 340 or 350 or 360) index++;
+            if (index > referencesStart || index < body.Length && body[index].Code == 94)
+            {
+                Require(index < body.Length && body[index] is { Code: 94, Value: "0" });
+                index++;
+            }
+            if (index < body.Length && body[index].Code == 95)
+            {
+                Require(uint.TryParse(body[index].Value, out _));
+                index++;
+            }
+            if (index < body.Length && body[index].Code == 70)
+            {
+                Require(body[index].Value is "0" or "1");
+                index++;
+            }
+            Require(body[index..].All(p => p.Code >= 1000));
+            InspectXdata(record, expectedType);
+            // Known display metadata stays intact in the working copy. Only the
+            // caller for discarded bend flags removes it; inbound links are checked later.
         }
 
         private void InspectMetadataObject(Record record)
@@ -348,25 +483,34 @@ internal static class ProductionDxfMetadata
             if (body.Length > 2) spans.Add((body[2].Start, record.End));
         }
 
-        private static Pair[] XrecordPayload(Record record)
+        private Pair[] XrecordPayload(Record record)
         {
             var fields = record.Fields;
             Require(fields.Count(p => p.Code == 100) == 1);
             var start = Array.FindIndex(fields, p => p.Code == 100 && p.Value == "AcDbXrecord");
-            Require(start >= 0 && start + 1 < fields.Length && fields[start + 1].Code == 280
-                && int.TryParse(fields[start + 1].Value, out var flag) && flag is >= 0 and <= 5);
-            return fields[(start + 2)..];
+            Require(start >= 0);
+            var payloadStart = start + 1;
+            if (payloadStart < fields.Length && fields[payloadStart].Code == 280)
+            {
+                Require(int.TryParse(fields[payloadStart].Value, out var flag) && flag is >= 0 and <= 5);
+                payloadStart++;
+            }
+            // R13/R14 exporters omit the later cloning flag. Do not skip the first
+            // payload field: it still needs the same scalar/reference validation.
+            else Require(legacyXrecords);
+            return fields[payloadStart..];
         }
 
-        private static void InspectXdata(Record record)
+        private static void InspectXdata(Record record, string? effectiveType = null)
         {
+            var type = effectiveType ?? record.Type;
             var data = record.Fields.Where(p => p.Code >= 1000).ToArray();
             if (data.Length == 0) return;
-            var font = record.Type == "STYLE" && data.Length == 3 && data[0].Code == 1001 && data[0].Value == "ACAD"
+            var font = type == "STYLE" && data.Length == 3 && data[0].Code == 1001 && data[0].Value == "ACAD"
                 && data[1].Code == 1000 && data[2].Code == 1071 && int.TryParse(data[2].Value, out _);
-            var visual = record.Type == "VISUALSTYLE" && data.Length == 3 && data[0].Code == 1001 && data[0].Value == "ACAD"
+            var visual = type == "VISUALSTYLE" && data.Length == 3 && data[0].Code == 1001 && data[0].Value == "ACAD"
                 && data[1].Code == 1000 && data[1].Value == "AcDbSavedByObjectVersion" && data[2].Code == 1070 && short.TryParse(data[2].Value, out _);
-            var leader = record.Type == "MLEADERSTYLE" && data.Length == 2 && data[0].Code == 1001 && data[0].Value == "ACAD_MLEADERVER"
+            var leader = type == "MLEADERSTYLE" && data.Length == 2 && data[0].Code == 1001 && data[0].Value == "ACAD_MLEADERVER"
                 && data[1].Code == 1070 && short.TryParse(data[1].Value, out _);
             Require(font || visual || leader);
         }
